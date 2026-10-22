@@ -4,3 +4,7 @@ __pycache__/
 *.pyc
 .venv/
 node_modules/
+.dev-data/
+.pytest_cache/
+.ruff_cache/
+deploy/.env

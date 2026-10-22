@@ -1,0 +1,24 @@
+{
+ "page": 1,
+ "total_results": 2,
+ "results": [
+  {
+   "id": 438631,
+   "title": "Dune",
+   "original_title": "Dune",
+   "release_date": "2021-09-15",
+   "overview": "Paul Atreides...",
+   "poster_path": "/d5NXSklXo0qyIYkgV94XAgMIckC.jpg",
+   "backdrop_path": "/jYEW5xZkZk2WTrdbMGAPFuBqbDc.jpg"
+  },
+  {
+   "id": 841,
+   "title": "Dune",
+   "original_title": "Dune",
+   "release_date": "1984-12-14",
+   "overview": "1984 film",
+   "poster_path": null,
+   "backdrop_path": null
+  }
+ ]
+}

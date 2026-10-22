@@ -1,0 +1,44 @@
+{
+ "id": 129,
+ "imdb_id": "tt0245429",
+ "title": "El viaje de Chihiro",
+ "original_title": "千と千尋の神隠し",
+ "release_date": "2001-07-20",
+ "overview": "Chihiro y sus padres...",
+ "tagline": "",
+ "runtime": 125,
+ "vote_average": 8.5,
+ "poster_path": "/chihiro.jpg",
+ "backdrop_path": null,
+ "genres": [
+  {
+   "id": 16,
+   "name": "Animación"
+  }
+ ],
+ "credits": {
+  "cast": [
+   {
+    "id": 1000,
+    "name": "Ghibli Actor 0",
+    "character": "Role 0",
+    "order": 2,
+    "profile_path": "/pghibli0.jpg"
+   },
+   {
+    "id": 1001,
+    "name": "Ghibli Actor 1",
+    "character": "Role 1",
+    "order": 1,
+    "profile_path": null
+   },
+   {
+    "id": 1002,
+    "name": "Ghibli Actor 2",
+    "character": "Role 2",
+    "order": 0,
+    "profile_path": "/pghibli2.jpg"
+   }
+  ]
+ }
+}

@@ -1,0 +1,11 @@
+{
+  "streams": [
+    {"index": 0, "codec_name": "vp9", "codec_type": "video", "profile": "Profile 0",
+     "width": 1280, "height": 720, "pix_fmt": "yuv420p",
+     "r_frame_rate": "30/1", "avg_frame_rate": "30/1", "disposition": {"default": 1}},
+    {"index": 1, "codec_name": "opus", "codec_type": "audio", "channels": 2,
+     "channel_layout": "stereo", "disposition": {"default": 1}, "tags": {"language": "eng"}}
+  ],
+  "format": {"format_name": "matroska,webm", "start_time": "-0.007000", "duration": "20.000000",
+             "bit_rate": "500000"}
+}

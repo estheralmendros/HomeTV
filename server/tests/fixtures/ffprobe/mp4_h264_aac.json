@@ -1,0 +1,16 @@
+{
+  "streams": [
+    {"index": 0, "codec_name": "h264", "codec_type": "video", "profile": "High",
+     "width": 1920, "height": 1080, "pix_fmt": "yuv420p", "color_transfer": "bt709",
+     "r_frame_rate": "25/1", "avg_frame_rate": "25/1",
+     "disposition": {"default": 1, "attached_pic": 0},
+     "tags": {"language": "und", "handler_name": "VideoHandler"}},
+    {"index": 1, "codec_name": "aac", "codec_type": "audio", "profile": "LC",
+     "channels": 2, "channel_layout": "stereo",
+     "disposition": {"default": 1, "attached_pic": 0},
+     "tags": {"language": "en", "handler_name": "SoundHandler"}}
+  ],
+  "format": {"filename": "/media/Films/The Matrix (1999).mp4", "nb_streams": 2,
+             "format_name": "mov,mp4,m4a,3gp,3g2,mj2", "start_time": "0.000000",
+             "duration": "8160.000000", "size": "4000000000", "bit_rate": "3921568"}
+}

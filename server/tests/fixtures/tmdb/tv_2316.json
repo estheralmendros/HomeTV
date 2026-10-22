@@ -1,0 +1,69 @@
+{
+ "id": 2316,
+ "name": "The Office",
+ "original_name": "The Office",
+ "first_air_date": "2005-03-24",
+ "overview": "Una comedia...",
+ "status": "Ended",
+ "vote_average": 8.6,
+ "poster_path": "/office.jpg",
+ "backdrop_path": "/officebd.jpg",
+ "genres": [
+  {
+   "id": 35,
+   "name": "Comedia"
+  }
+ ],
+ "seasons": [
+  {
+   "season_number": 0,
+   "name": "Especiales",
+   "episode_count": 30,
+   "air_date": null
+  },
+  {
+   "season_number": 1,
+   "name": "Temporada 1",
+   "episode_count": 6,
+   "air_date": "2005-03-24"
+  },
+  {
+   "season_number": 2,
+   "name": "Temporada 2",
+   "episode_count": 22,
+   "air_date": "2005-09-20"
+  }
+ ],
+ "credits": {
+  "cast": [
+   {
+    "id": 1000,
+    "name": "Office Actor 0",
+    "character": "Role 0",
+    "order": 3,
+    "profile_path": "/poffice0.jpg"
+   },
+   {
+    "id": 1001,
+    "name": "Office Actor 1",
+    "character": "Role 1",
+    "order": 2,
+    "profile_path": null
+   },
+   {
+    "id": 1002,
+    "name": "Office Actor 2",
+    "character": "Role 2",
+    "order": 1,
+    "profile_path": "/poffice2.jpg"
+   },
+   {
+    "id": 1003,
+    "name": "Office Actor 3",
+    "character": "Role 3",
+    "order": 0,
+    "profile_path": null
+   }
+  ]
+ }
+}

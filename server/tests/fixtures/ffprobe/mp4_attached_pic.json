@@ -1,0 +1,19 @@
+{
+  "streams": [
+    {"index": 0, "codec_name": "mjpeg", "codec_type": "video", "profile": "Baseline",
+     "width": 600, "height": 900, "pix_fmt": "yuvj420p",
+     "r_frame_rate": "90000/1", "avg_frame_rate": "0/0",
+     "disposition": {"default": 0, "attached_pic": 1}},
+    {"index": 1, "codec_name": "h264", "codec_type": "video", "profile": "Main",
+     "width": 1280, "height": 720, "pix_fmt": "yuv420p",
+     "r_frame_rate": "30000/1001", "avg_frame_rate": "30000/1001",
+     "color_transfer": "arib-std-b67",
+     "disposition": {"default": 1, "attached_pic": 0}},
+    {"index": 2, "codec_name": "aac", "codec_type": "audio", "channels": 6,
+     "channel_layout": "5.1", "disposition": {"default": 1, "attached_pic": 0},
+     "tags": {"language": "spa"}}
+  ],
+  "format": {"filename": "/media/Films/Cover (2010).mp4", "nb_streams": 3,
+             "format_name": "mov,mp4,m4a,3gp,3g2,mj2", "start_time": "0.000000",
+             "duration": "0.000000"}
+}
