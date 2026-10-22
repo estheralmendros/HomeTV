@@ -1,0 +1,35 @@
+"""Title normalization helpers (pure).
+
+- ``normalize_title``: NFKD, strip diacritics, casefold, ``&`` -> ``and``, remove punctuation,
+  collapse spaces (PRD §5 Matching).
+- ``sort_title``: leading article removed, then ``normalize_title`` (PRD §10).
+- ``search_text``: ``normalize_title(title) + " " + normalize_title(original_title)`` (PRD §10).
+"""
+
+import re
+import unicodedata
+
+_ARTICLE_RE = re.compile(r"^\s*(?:(?:the|a|an|el|la|los|las|un|una|le|les)\s+|l['’]\s*)", re.I)
+_SPACES_RE = re.compile(r"\s+")
+
+
+def normalize_title(value: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", value)
+    stripped = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+    folded = stripped.casefold().replace("&", " and ")
+    # Punctuation (P*) and symbols (S*) are removed, not replaced by a space:
+    # "Spider-Man" -> "spiderman", "L'Âge" -> "lage".
+    cleaned = "".join(ch for ch in folded if unicodedata.category(ch)[0] not in ("P", "S"))
+    return _SPACES_RE.sub(" ", cleaned).strip()
+
+
+def sort_title(title: str) -> str:
+    match = _ARTICLE_RE.match(title)
+    if match and title[match.end() :].strip():
+        title = title[match.end() :]
+    return normalize_title(title)
+
+
+def search_text(title: str, original_title: str | None) -> str:
+    parts = [normalize_title(title), normalize_title(original_title or "")]
+    return " ".join(p for p in parts if p)

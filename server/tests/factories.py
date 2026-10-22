@@ -1,0 +1,291 @@
+"""Row factories for catalog/watch tests (and the perf seed). All take an open write session.
+
+- ``add_film(s, title, ...)`` -> ``m.Film`` with ``files`` present media files (default 1).
+- ``add_file(s, film_id=..., episode_ids=(...), ...)`` -> ``m.MediaFile`` (probe JSON from
+  ``probe_json(...)``; ``missing=True`` sets ``missing_since``).
+- ``add_show(s, title, episodes={season: count}, ...)`` -> ``(m.Show, {(s, e): m.Episode})``,
+  each episode with one present file.
+- ``add_progress(s, profile_id, film_id=/episode_id=, ...)``.
+"""
+
+from datetime import UTC, date, datetime, timedelta
+from typing import Any
+
+from sqlalchemy.orm import Session
+
+from hometv.db import models as m
+from hometv.scanner import ensure_libraries
+from hometv.text import normalize_title, search_text, sort_title
+
+T0 = datetime(2026, 1, 1, tzinfo=UTC)
+_WIDTHS = {2160: 3840, 1080: 1920, 720: 1280, 480: 854}
+_counter = {"n": 0}
+
+
+def _next() -> int:
+    _counter["n"] += 1
+    return _counter["n"]
+
+
+def probe_json(
+    *,
+    container: str = "mkv",
+    duration: float | None = 5400.0,
+    codec: str = "h264",
+    width: int | None = 1920,
+    height: int | None = 1080,
+    hdr: str | None = None,
+    audio: list[dict[str, Any]] | None = None,
+    subtitles: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    return {
+        "container": container,
+        "duration_seconds": duration,
+        "start_seconds": 0.0,
+        "bitrate": None,
+        "video": {
+            "index": 0,
+            "codec": codec,
+            "profile": None,
+            "width": width,
+            "height": height,
+            "pix_fmt": None,
+            "frame_rate": 23.976,
+            "hdr": hdr,
+        },
+        "audio": audio
+        if audio is not None
+        else [
+            {
+                "index": 1,
+                "codec": "aac",
+                "channels": 2,
+                "channel_layout": "stereo",
+                "language": "eng",
+                "title": None,
+                "default": True,
+            }
+        ],
+        "subtitles": subtitles or [],
+    }
+
+
+def libraries(s: Session) -> dict[str, int]:
+    return ensure_libraries(s)
+
+
+def add_file(
+    s: Session,
+    *,
+    film_id: int | None = None,
+    episode_ids: tuple[int, ...] | list[int] = (),
+    name: str | None = None,
+    height: int | None = 1080,
+    size: int = 1_000_000,
+    duration: float | None = 5400.0,
+    part_number: int | None = None,
+    missing: bool = False,
+    probe: dict[str, Any] | None = None,
+    probe_error: str | None = None,
+    added_at: datetime | None = None,
+) -> m.MediaFile:
+    libs = libraries(s)
+    n = _next()
+    name = name or f"file{n}.mkv"
+    library = "films" if film_id is not None or not episode_ids else "shows"
+    if probe_error is not None:
+        probe = None
+    elif probe is None:
+        probe = probe_json(duration=duration, height=height, width=_WIDTHS.get(height or 0))
+    video = (probe or {}).get("video") or {}
+    row = m.MediaFile(
+        library_id=libs[library],
+        root_path=f"/media/{library}",
+        path=f"/media/{library}/{n}/{name}",
+        relative_path=f"{n}/{name}",
+        size_bytes=size,
+        mtime_ns=n,
+        container=(probe or {}).get("container"),
+        duration_seconds=(probe or {}).get("duration_seconds"),
+        video_codec=video.get("codec"),
+        width=video.get("width"),
+        height=video.get("height"),
+        hdr=video.get("hdr"),
+        probe=probe,
+        probe_error=probe_error,
+        film_id=film_id,
+        part_number=part_number,
+        missing_since=T0 if missing else None,
+        added_at=added_at or T0,
+    )
+    s.add(row)
+    s.flush()
+    for episode_id in episode_ids:
+        s.add(m.MediaFileEpisode(media_file_id=row.id, episode_id=episode_id))
+    s.flush()
+    return row
+
+
+def _item_fields(title: str, year: int | None, original_title: str | None) -> dict[str, Any]:
+    return {
+        "parsed_title": title,
+        "parsed_title_norm": normalize_title(title),
+        "parsed_year": year,
+        "title": title,
+        "original_title": original_title,
+        "year": year,
+        "sort_title": sort_title(title),
+        "search_text": search_text(title, original_title),
+    }
+
+
+def add_film(
+    s: Session,
+    title: str,
+    *,
+    year: int | None = 2020,
+    original_title: str | None = None,
+    poster: str | None = None,
+    backdrop: str | None = None,
+    overview: str | None = None,
+    added_at: datetime | None = None,
+    genres: tuple[tuple[int, str], ...] = (),
+    files: int = 1,
+    tmdb_id: int | None = None,
+    match_status: str = "matched",
+    **extra: Any,
+) -> m.Film:
+    libs = libraries(s)
+    film = m.Film(
+        library_id=libs["films"],
+        match_status=match_status,
+        tmdb_id=tmdb_id,
+        poster_path=poster,
+        backdrop_path=backdrop,
+        overview=overview,
+        added_at=added_at or T0,
+        **_item_fields(title, year, original_title),
+        **extra,
+    )
+    s.add(film)
+    s.flush()
+    for genre_id, name in genres:
+        if s.get(m.Genre, genre_id) is None:
+            s.add(m.Genre(id=genre_id, name=name))
+            s.flush()
+        s.add(m.FilmGenre(film_id=film.id, genre_id=genre_id))
+    for _ in range(files):
+        add_file(s, film_id=film.id)
+    s.flush()
+    return film
+
+
+def add_show(
+    s: Session,
+    title: str,
+    *,
+    year: int | None = 2005,
+    episodes: dict[int, int] | None = None,
+    poster: str | None = None,
+    backdrop: str | None = None,
+    overview: str | None = None,
+    content_updated_at: datetime | None = None,
+    genres: tuple[tuple[int, str], ...] = (),
+    match_status: str = "matched",
+    with_files: bool = True,
+    **extra: Any,
+) -> tuple[m.Show, dict[tuple[int, int], m.Episode]]:
+    libs = libraries(s)
+    show = m.Show(
+        library_id=libs["shows"],
+        match_status=match_status,
+        poster_path=poster,
+        backdrop_path=backdrop,
+        overview=overview,
+        added_at=T0,
+        content_updated_at=content_updated_at or T0,
+        **_item_fields(title, year, None),
+        **extra,
+    )
+    s.add(show)
+    s.flush()
+    for genre_id, name in genres:
+        if s.get(m.Genre, genre_id) is None:
+            s.add(m.Genre(id=genre_id, name=name))
+            s.flush()
+        s.add(m.ShowGenre(show_id=show.id, genre_id=genre_id))
+    result: dict[tuple[int, int], m.Episode] = {}
+    for season_number, count in (episodes or {1: 3}).items():
+        for number in range(1, count + 1):
+            result[(season_number, number)] = add_episode(
+                s, show, season_number, number, with_file=with_files
+            )
+    return show, result
+
+
+def add_episode(
+    s: Session,
+    show: m.Show,
+    season_number: int,
+    episode_number: int,
+    *,
+    with_file: bool = True,
+    title: str | None = None,
+    duration: float | None = 1320.0,
+) -> m.Episode:
+    from sqlalchemy import select
+
+    season = s.scalar(
+        select(m.Season).where(m.Season.show_id == show.id, m.Season.season_number == season_number)
+    )
+    if season is None:
+        season = m.Season(
+            show_id=show.id,
+            season_number=season_number,
+            name=f"Temporada {season_number}",
+            air_date=date(2005, 1, 1) + timedelta(days=season_number),
+        )
+        s.add(season)
+        s.flush()
+    episode = m.Episode(
+        season_id=season.id,
+        show_id=show.id,
+        season_number=season_number,
+        episode_number=episode_number,
+        title=title or f"Episode {episode_number}",
+        added_at=T0,
+    )
+    s.add(episode)
+    s.flush()
+    if with_file:
+        add_file(s, episode_ids=[episode.id], duration=duration)
+    return episode
+
+
+def add_progress(
+    s: Session,
+    profile_id: int,
+    *,
+    film_id: int | None = None,
+    episode_id: int | None = None,
+    position: float = 0.0,
+    duration: float = 5400.0,
+    watched: bool = False,
+    watched_at: datetime | None = None,
+    updated_at: datetime | None = None,
+    media_file_id: int | None = None,
+) -> m.PlaybackProgress:
+    row = m.PlaybackProgress(
+        profile_id=profile_id,
+        film_id=film_id,
+        episode_id=episode_id,
+        position_seconds=position,
+        duration_seconds=duration,
+        watched=watched,
+        watched_at=watched_at or (T0 if watched else None),
+        updated_at=updated_at or T0,
+        media_file_id=media_file_id,
+    )
+    s.add(row)
+    s.flush()
+    return row

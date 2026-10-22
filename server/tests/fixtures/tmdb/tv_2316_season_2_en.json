@@ -1,0 +1,20 @@
+{
+ "id": 9999,
+ "season_number": 2,
+ "name": "Season 2",
+ "overview": "Season two of The Office.",
+ "episodes": [
+  {
+   "episode_number": 1,
+   "name": "The Dundies",
+   "overview": "Michael hosts...",
+   "air_date": "2005-09-20"
+  },
+  {
+   "episode_number": 3,
+   "name": "Office Olympics",
+   "overview": "Ryan's first sale...",
+   "air_date": "2005-10-04"
+  }
+ ]
+}

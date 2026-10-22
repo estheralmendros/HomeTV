@@ -1,0 +1,26 @@
+{
+ "id": 9999,
+ "season_number": 2,
+ "name": "Temporada 2",
+ "overview": "",
+ "air_date": "2005-09-20",
+ "poster_path": "/office_s2.jpg",
+ "episodes": [
+  {
+   "episode_number": 1,
+   "name": "Los Dundies",
+   "overview": "Michael...",
+   "air_date": "2005-09-20",
+   "still_path": "/s2e1.jpg",
+   "runtime": 22
+  },
+  {
+   "episode_number": 3,
+   "name": "Olimpiadas de oficina",
+   "overview": "",
+   "air_date": "2005-10-04",
+   "still_path": "/s2e3.jpg",
+   "runtime": 22
+  }
+ ]
+}
