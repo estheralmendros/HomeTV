@@ -1,0 +1,7 @@
+.section {
+  margin-bottom: var(--space-6);
+}
+
+.heading {
+  font-size: var(--font-size-lg);
+}

@@ -1,0 +1,86 @@
+import { describe, expect, it } from 'vitest';
+import { ApiError } from './errors';
+import { createQueryClient, shouldRetry } from './queryClient';
+import { invalidateAfter, queryKeys, staleTimes } from './queryKeys';
+
+describe('queryKeys', () => {
+  it('builds the PRD keys', () => {
+    expect(queryKeys.info()).toEqual(['info']);
+    expect(queryKeys.profiles()).toEqual(['profiles']);
+    expect(queryKeys.me()).toEqual(['me']);
+    expect(queryKeys.home()).toEqual(['home']);
+    expect(queryKeys.library('films', { sort: 'title', order: 'asc' })).toEqual(['films', 'list', { sort: 'title', order: 'asc' }]);
+    expect(queryKeys.libraryAll('shows')).toEqual(['shows', 'list']);
+    expect(queryKeys.genres('films')).toEqual(['genres', 'films']);
+    expect(queryKeys.search('dune')).toEqual(['search', 'dune']);
+    expect(queryKeys.film(12)).toEqual(['film', 12]);
+    expect(queryKeys.show(7)).toEqual(['show', 7]);
+    expect(queryKeys.season(7, 2)).toEqual(['season', 7, 2]);
+    expect(queryKeys.seasonsOf(7)).toEqual(['season', 7]);
+    expect(queryKeys.episode(345)).toEqual(['episode', 345]);
+    expect(queryKeys.admin.scan()).toEqual(['admin', 'scan']);
+    expect(queryKeys.admin.unmatched({ library: 'films', page: 2 })).toEqual(['admin', 'unmatched', { library: 'films', page: 2 }]);
+    expect(queryKeys.admin.unmatchedAll()).toEqual(['admin', 'unmatched']);
+    expect(queryKeys.admin.tmdbSearch('movie', 'dune', 2021)).toEqual(['admin', 'tmdb', 'movie', 'dune', 2021]);
+    expect(queryKeys.admin.tmdbSeasons(2316)).toEqual(['admin', 'tmdb', 'tv', 2316, 'seasons']);
+    expect(queryKeys.admin.tmdbSeason(2316, 2)).toEqual(['admin', 'tmdb', 'tv', 2316, 'season', 2]);
+  });
+
+  it('has the PRD stale times', () => {
+    expect(staleTimes).toEqual({
+      info: Infinity, profiles: 30_000, me: 300_000, home: 0, library: 30_000, genres: 300_000, search: 30_000,
+      film: 30_000, show: 30_000, season: 30_000, episode: 30_000, adminScan: 0, adminUnmatched: 0, adminTmdb: 300_000,
+    });
+  });
+});
+
+describe('invalidateAfter', () => {
+  const lists = [['films', 'list'], ['shows', 'list'], ['search']];
+
+  it('player exit of a film', () => {
+    expect(invalidateAfter({ type: 'playerExit', item: { type: 'film', id: 12 } })).toEqual([['home'], ['film', 12], ...lists]);
+  });
+
+  it('player exit of an episode (detail + show + season)', () => {
+    expect(
+      invalidateAfter({ type: 'playerExit', item: { type: 'episode', id: 345, showId: 7, seasonNumber: 2 } }),
+    ).toEqual([['home'], ['episode', 345], ['show', 7], ['season', 7, 2], ...lists]);
+  });
+
+  it('watched film', () => {
+    expect(invalidateAfter({ type: 'watchedFilm', id: 12 })).toEqual([['film', 12], ['home'], ['films', 'list'], ['search']]);
+  });
+
+  it('watched episode / season / show', () => {
+    expect(invalidateAfter({ type: 'watchedEpisodes', showId: 7 })).toEqual([
+      ['show', 7], ['season', 7], ['episode'], ['home'], ['shows', 'list'], ['search'],
+    ]);
+  });
+
+  it('match / resolve success and scan finished', () => {
+    const keys = [
+      ['home'], ['films'], ['shows'], ['genres'], ['search'], ['film'], ['show'], ['season'], ['episode'],
+      ['admin', 'unmatched'], ['admin', 'scan'],
+    ];
+    expect(invalidateAfter({ type: 'catalogChanged' })).toEqual(keys);
+  });
+
+  it('profile create / edit / delete', () => {
+    expect(invalidateAfter({ type: 'profilesChanged' })).toEqual([['profiles'], ['me']]);
+  });
+});
+
+describe('QueryClient defaults', () => {
+  it('retries only network errors and 5xx, at most twice', () => {
+    expect(shouldRetry(0, new ApiError({ status: 0, code: 'network_error' }))).toBe(true);
+    expect(shouldRetry(1, new ApiError({ status: 502, code: 'tmdb_unavailable' }))).toBe(true);
+    expect(shouldRetry(2, new ApiError({ status: 500, code: 'x' }))).toBe(false);
+    expect(shouldRetry(0, new ApiError({ status: 404, code: 'not_found' }))).toBe(false);
+    expect(shouldRetry(0, new TypeError('x'))).toBe(false);
+  });
+
+  it('sets staleTime 30 s, gcTime 5 min, no refetch on focus', () => {
+    const defaults = createQueryClient().getDefaultOptions().queries;
+    expect(defaults).toMatchObject({ staleTime: 30_000, gcTime: 300_000, refetchOnWindowFocus: false });
+  });
+});

@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1
 # check=skip=FromPlatformFlagConstDisallowed
-# HomeTV server image (PRD "Deployment"). Build from the repo root:
+# HomeTV image (prd.md "Deployment", prd2.md Technical Requirements). Build from the repo root:
 #   docker build --platform=linux/amd64 -f deploy/Dockerfile -t hometv .
 # docker-compose.yml does this with `build: { context: .., dockerfile: deploy/Dockerfile }`.
-# prd2.md adds a `web-build` stage (node:24-bookworm-slim, `npm ci && npm run build` in web/)
-# whose web/dist is copied to /app/web/dist. Until then the server serves "Web UI not built".
+# Stages: web-build (the SPA, Node 24) and server-build (uv venv), combined in runtime; the
+# server serves /app/web/dist (settings `server.web_dist`) with SPA fallback (prd.md §12).
 
 ARG PYTHON_IMAGE=python:3.12-slim-bookworm
 ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.12.5
@@ -31,7 +31,17 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
 # ---------------------------------------------------------------------------------------------
-# Stage 2: runtime. ffmpeg + ffprobe from Debian bookworm (5.1), util-linux (ionice) from slim.
+# Stage 2: web-build. Static SPA (platform-independent output, so it runs on $BUILDPLATFORM).
+# ---------------------------------------------------------------------------------------------
+FROM --platform=$BUILDPLATFORM node:24-bookworm-slim AS web-build
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ ./
+RUN npm run build
+
+# ---------------------------------------------------------------------------------------------
+# Stage 3: runtime. ffmpeg + ffprobe from Debian bookworm (5.1), util-linux (ionice) from slim.
 # ---------------------------------------------------------------------------------------------
 FROM --platform=linux/amd64 ${PYTHON_IMAGE} AS runtime
 RUN apt-get update \
@@ -46,6 +56,7 @@ WORKDIR /app
 COPY --from=server-build /app/.venv /app/.venv
 COPY --from=server-build /app/hometv /app/hometv
 COPY --from=server-build /app/alembic.ini /app/alembic.ini
+COPY --from=web-build /web/dist /app/web/dist
 ENV PATH=/app/.venv/bin:$PATH \
     HOMETV_DATA_DIR=/data \
     PYTHONUNBUFFERED=1 \

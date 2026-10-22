@@ -1,0 +1,136 @@
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-3);
+}
+
+.header h1 {
+  margin: 0;
+}
+
+.count {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.input,
+.select {
+  min-height: 40px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.search {
+  flex: 1 1 220px;
+  max-width: 360px;
+}
+
+.year {
+  width: 6.5em;
+}
+
+.yearRange {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.yearRange legend {
+  padding: 0;
+  margin-bottom: var(--space-1);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.error {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--color-danger);
+}
+
+.sheet {
+  align-self: end;
+  width: min(560px, 100%);
+}
+
+.sheetFields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.sheetActions {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--space-4) var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cell {
+  min-width: 0;
+}
+
+.more {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-5) 0;
+}
+
+.moreError {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+@media (max-width: 599px) {
+  .grid {
+    /* ≥ 3 columns on a 360 px phone: 104 px cards, never wider than a third of the row. */
+    grid-template-columns: repeat(auto-fill, minmax(min(104px, calc((100% - 2 * var(--space-2)) / 3)), 1fr));
+    column-gap: var(--space-2);
+  }
+
+  .search {
+    max-width: none;
+  }
+}

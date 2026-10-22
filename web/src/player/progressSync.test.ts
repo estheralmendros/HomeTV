@@ -1,0 +1,174 @@
+import { QueryClient } from '@tanstack/react-query';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { queryKeys } from '@/api/queryKeys';
+import type { EpisodeDetail, FilmDetail, HomeResponse, Progress } from '@/api/types';
+import * as f from '../../tests/fixtures';
+import {
+  awaitFinalBarrier,
+  findHomeEpisode,
+  hasPendingFinal,
+  registerFinalReport,
+  resetProgressSync,
+  writeProgress,
+} from './progressSync';
+
+const film = { type: 'film', id: 12 } as const;
+const episode = { type: 'episode', id: 345, showId: 7, seasonNumber: 2 } as const;
+const fresh = f.progress({ position_seconds: 400, media_file_id: 91, updated_at: '2026-10-22T10:00:00Z' });
+
+function client() {
+  return new QueryClient({ defaultOptions: { queries: { retry: false } } });
+}
+
+function deferred<T>() {
+  let resolve!: (v: T) => void;
+  let reject!: (e: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+afterEach(() => resetProgressSync());
+
+describe('writeProgress', () => {
+  it('patches cached film/episode details and the matching home entries', () => {
+    const qc = client();
+    qc.setQueryData(queryKeys.film(12), f.filmDetail({ progress: f.progress({ position_seconds: 100 }) }));
+    qc.setQueryData(queryKeys.episode(345), f.episodeDetail());
+    const home = f.homeResponse({
+      continue_watching: [f.filmSummary({ id: 12 }), f.homeEpisode({ id: 345 }), f.homeEpisode({ id: 999 })],
+      next_up: [f.homeEpisode({ id: 345 })],
+    });
+    qc.setQueryData(queryKeys.home(), home);
+
+    writeProgress(qc, film, fresh);
+    writeProgress(qc, episode, fresh);
+
+    expect(qc.getQueryData<FilmDetail>(queryKeys.film(12))?.progress).toEqual(fresh);
+    expect(qc.getQueryData<EpisodeDetail>(queryKeys.episode(345))?.progress).toEqual(fresh);
+    const patched = qc.getQueryData<HomeResponse>(queryKeys.home());
+    expect(patched?.continue_watching.map((x) => x.progress)).toEqual([fresh, fresh, home.continue_watching[2]?.progress]);
+    expect(patched?.next_up[0]?.progress).toEqual(fresh);
+  });
+
+  it('creates no entry when nothing is cached', () => {
+    const qc = client();
+    writeProgress(qc, film, fresh);
+    writeProgress(qc, episode, fresh);
+    expect(qc.getQueryData(queryKeys.film(12))).toBeUndefined();
+    expect(qc.getQueryData(queryKeys.episode(345))).toBeUndefined();
+    expect(qc.getQueryData(queryKeys.home())).toBeUndefined();
+  });
+
+  it('does not touch a home film entry with the same id as an episode', () => {
+    const qc = client();
+    const home = f.homeResponse({ continue_watching: [f.filmSummary({ id: 345 })], next_up: [] });
+    qc.setQueryData(queryKeys.home(), home);
+    writeProgress(qc, episode, fresh);
+    expect(qc.getQueryData<HomeResponse>(queryKeys.home())?.continue_watching[0]?.progress).toEqual(
+      home.continue_watching[0]?.progress,
+    );
+  });
+});
+
+describe('registerFinalReport', () => {
+  it('writes the 200 body before invalidating', async () => {
+    const qc = client();
+    qc.setQueryData(queryKeys.film(12), f.filmDetail());
+    const seen: Array<Progress | null | undefined> = [];
+    const invalidate = vi.spyOn(qc, 'invalidateQueries').mockImplementation(async () => {
+      seen.push(qc.getQueryData<FilmDetail>(queryKeys.film(12))?.progress);
+    });
+
+    await registerFinalReport(qc, film, Promise.resolve(fresh));
+
+    expect(invalidate).toHaveBeenCalled();
+    expect(seen.every((p) => p === fresh)).toBe(true);
+    const keys = invalidate.mock.calls.map(([filters]) => filters?.queryKey);
+    expect(keys).toEqual(expect.arrayContaining([queryKeys.home(), queryKeys.film(12), ['films', 'list'], ['search']]));
+  });
+
+  it('a failed PUT only invalidates', async () => {
+    const qc = client();
+    const old = f.filmDetail();
+    qc.setQueryData(queryKeys.film(12), old);
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
+    await registerFinalReport(qc, film, Promise.reject(new Error('offline')));
+    expect(qc.getQueryData(queryKeys.film(12))).toBe(old);
+    expect(invalidate).toHaveBeenCalled();
+  });
+
+  it('invalidates the episode, its show and season', async () => {
+    const qc = client();
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
+    await registerFinalReport(qc, episode, Promise.resolve(fresh));
+    const keys = invalidate.mock.calls.map(([filters]) => filters?.queryKey);
+    expect(keys).toEqual(
+      expect.arrayContaining([queryKeys.episode(345), queryKeys.show(7), queryKeys.season(7, 2), ['shows', 'list']]),
+    );
+  });
+
+  it('is pending until the PUT settles', async () => {
+    const qc = client();
+    const put = deferred<Progress>();
+    const done = registerFinalReport(qc, film, put.promise);
+    expect(hasPendingFinal(film)).toBe(true);
+    put.resolve(fresh);
+    await done;
+    expect(hasPendingFinal(film)).toBe(false);
+  });
+});
+
+describe('awaitFinalBarrier', () => {
+  it('returns at once when nothing is pending', async () => {
+    await expect(awaitFinalBarrier(film)).resolves.toBe('none');
+  });
+
+  it('resolves when the pending PUT settles (written first)', async () => {
+    vi.useFakeTimers();
+    const qc = client();
+    qc.setQueryData(queryKeys.film(12), f.filmDetail());
+    const put = deferred<Progress>();
+    void registerFinalReport(qc, film, put.promise);
+    const barrier = awaitFinalBarrier(film);
+    let outcome: string | null = null;
+    void barrier.then((r) => (outcome = r));
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(outcome).toBeNull();
+    put.resolve(fresh);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(outcome).toBe('settled');
+    expect(qc.getQueryData<FilmDetail>(queryKeys.film(12))?.progress).toEqual(fresh);
+  });
+
+  it('gives up after 3 s', async () => {
+    vi.useFakeTimers();
+    void registerFinalReport(client(), film, new Promise<Progress>(() => undefined));
+    let outcome: string | null = null;
+    void awaitFinalBarrier(film).then((r) => (outcome = r));
+    await vi.advanceTimersByTimeAsync(2_999);
+    expect(outcome).toBeNull();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(outcome).toBe('timeout');
+  });
+
+  it('is keyed per item', async () => {
+    void registerFinalReport(client(), film, new Promise<Progress>(() => undefined));
+    await expect(awaitFinalBarrier({ type: 'episode', id: 12 })).resolves.toBe('none');
+  });
+});
+
+describe('findHomeEpisode', () => {
+  it('finds a Continue Watching or Next Up episode, never a film', () => {
+    const home = f.homeResponse({
+      continue_watching: [f.filmSummary({ id: 345 }), f.homeEpisode({ id: 1 })],
+      next_up: [f.homeEpisode({ id: 345 })],
+    });
+    expect(findHomeEpisode(home, 345)).toBe(home.next_up[0]);
+    expect(findHomeEpisode(home, 1)).toBe(home.continue_watching[1]);
+    expect(findHomeEpisode(home, 2)).toBeNull();
+    expect(findHomeEpisode(undefined, 1)).toBeNull();
+  });
+});
