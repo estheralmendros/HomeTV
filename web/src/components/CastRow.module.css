@@ -1,0 +1,27 @@
+.member {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  text-align: center;
+  min-width: 0;
+}
+
+.photo {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+.name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.character {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}

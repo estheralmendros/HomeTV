@@ -1,0 +1,70 @@
+.modal {
+  width: min(380px, 100%);
+  text-align: center;
+}
+
+.who {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  color: var(--color-text-muted);
+}
+
+.purpose {
+  margin: 0 0 var(--space-3);
+  color: var(--color-text-muted);
+}
+
+.dots {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-3);
+  margin: var(--space-4) 0;
+  font-size: 1.6rem;
+  letter-spacing: 0.1em;
+}
+
+.shake {
+  animation: shake 0.4s ease-in-out;
+}
+
+.keypad {
+  display: grid;
+  grid-template-columns: repeat(3, var(--touch-target));
+  justify-content: center;
+  gap: var(--space-3) var(--space-4);
+}
+
+.key {
+  min-width: var(--touch-target);
+  min-height: var(--touch-target);
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-2);
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+
+.key:hover:not(:disabled) {
+  background: var(--color-border);
+}
+
+.message {
+  min-height: 1.5em;
+  margin: var(--space-3) 0 0;
+  color: var(--color-danger);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-4);
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-8px); }
+  40%, 80% { transform: translateX(8px); }
+}

@@ -49,22 +49,57 @@ prd.md is a contract: change the PRD first, then the code.
     `perf`), `fixtures/`, `factories.py` (`add_film`/`add_show`/`add_file`/`add_progress`),
     `stubs.py` (`FakeProc`, `Spawner`, `ScaledClock`, `wait_until`), `fmp4_builder.py`
     (synthetic fMP4), `hls_stub.py` (argv-driven stub ffmpeg for API tests).
-- `deploy/`: `Dockerfile` (multi-stage linux/amd64: `server-build` uv venv, `runtime`
-  python:3.12-slim-bookworm + Debian ffmpeg 5.1, user `hometv` 1000, healthcheck, CMD `hometv`;
-  build context = repo root, `Dockerfile.dockerignore` whitelists `server/`), `docker-compose.yml`
+- `web/`: React 18 + TS (strict, `noUncheckedIndexedAccess`, alias `@/`) + Vite 5 SPA, Node 24
+  (`.nvmrc`), TanStack Query 5, React Router 6 data router, hls.js (lazy), CSS Modules over
+  `styles/tokens.css`, no UI kit. `tsconfig.json` = references to `tsconfig.app.json` (src +
+  tests) and `tsconfig.node.json` (configs + `tests/e2e`).
+  - `src/strings.es.ts`: `S`, the only UI string catalog (es-ES; functions for values/plurals).
+  - `src/api/`: `client.ts` (`apiFetch`, 401 hook, `X-Admin-Token`), `errors.ts` (`ApiError`,
+    `errorMessage`), `types.ts` (prd.md shapes, snake_case), one module per area,
+    `queryKeys.ts` (`queryKeys`, `staleTimes`, `invalidateAfter(event)`), `queries.ts`.
+  - `src/auth/`: per-tab session (`AuthProvider`, `session.ts`), `BootGate`/`RequireProfile`/
+    `RequireAdmin`, in-memory `adminUnlock`, `useAdminAction` (keypad + one retry on
+    `admin_locked`), `AdminPinModal`.
+  - `src/player/`: pure `capabilities`, `versions` (`selectVersion`/`startPosition`/`nextPart`,
+    D10–D13), `playerMachine` (reducer), `tracks`, `nextEpisode`, `progressSync`; I/O hooks
+    `usePlaybackSession` (POST/preparing/attach/keep-alive/D9/recovery/exit), `attachSource`
+    (direct, hls.js, native iOS HLS), `useProgressReporter` (`PositionTracker` attach
+    generations), `subtitleLoader` (Bearer fetch → blob `<track>`); `PlayerRoute` is the stable
+    shell (fullscreen root + the single `<video>`, `PlayerShellContext`), `PlayerPage` is keyed by
+    `pathname + ?file=` and holds all per-playback state.
+  - `src/features/<screen>/` (setup, profiles, home, library, search, film, show, admin, about),
+    `src/components/` (shared UI), `src/lib/` (`format`, `languages`, `chunkReload`,
+    `RouteErrorBoundary`, `lazyRoute`, hooks), `router.tsx` (lazy `/admin/*` and `/watch/*`).
+  - `tests/`: `setup.ts` (MSW `onUnhandledRequest: 'error'`, media/TextTrack stubs, resets),
+    `fixtures.ts` (`f.*` factories), `msw/handlers.ts` (`handlers`, `apiError`),
+    `msw/server.ts` (`recordRequests()`), `renderWithProviders.tsx`, `player.tsx`, `fakeHls.ts`,
+    `flush.ts`, `capsEnvs.ts`, `media.ts`, `e2e/smoke.spec.ts` (optional Playwright).
+- `deploy/`: `Dockerfile` (multi-stage linux/amd64: `server-build` uv venv, `web-build`
+  `node:24-bookworm-slim` on `$BUILDPLATFORM` (`npm ci && npm run build`), `runtime`
+  python:3.12-slim-bookworm + Debian ffmpeg 5.1 + `web/dist` in `/app/web/dist`, user `hometv`
+  1000, healthcheck, CMD `hometv`; build context = repo root, `Dockerfile.dockerignore`
+  whitelists `server/` and `web/` minus node_modules/dist), `docker-compose.yml`
   (app in the tailscale sidecar's netns, `HOMETV_HOST=127.0.0.1`, media `:ro`, no ports),
   `tailscale/serve.json`, `.env.example`, `README.md` (setup steps).
-- Planned (later PRDs): `web/` (prd2 adds a `web-build` stage to the Dockerfile), `tv/`.
+- Planned (later PRDs): `tv/`.
 
 ## Commands
 
-- `make install`: uv sync. `make test`: `uv run pytest -m "not perf"`.
+- `make install`: uv sync + `npm ci`. `make test`: `uv run pytest -m "not perf"`, then
+  `npm test` in `web/` (`make server-test` / `make web-test` run one side).
 - Perf (G3 browse p95 < 100 ms): `make perf` (`cd server && uv run pytest -m perf -s`).
 - Deploy: `make docker-build` (linux/amd64 image), `make compose-config` (validates the compose
   file with `.env.example`); run with `docker compose up -d --build` in `deploy/`.
-- `make lint`: ruff check + format check. `make format`: auto-fix.
-- `make run`: dev server on 127.0.0.1:8000 with data in `.dev-data/`.
-- Single test: `cd server && uv run pytest tests/unit/test_parser.py -k row11`.
+- `make lint`: ruff check + format check + web typecheck. `make format`: auto-fix (server).
+- `make run`: dev server on 127.0.0.1:8000 with data in `.dev-data/`, serving `web/dist`.
+- Web: `make web-build` (`tsc -b && vite build`; initial JS ≤ 200 kB gzip, admin/player/hls.js
+  are lazy chunks), `make web-dev` (Vite on :5173, `/api` proxied to `HOMETV_API_TARGET`),
+  `make web-typecheck`, `make web-e2e` (Playwright smoke, Chromium, against `HOMETV_E2E_URL`;
+  `npx playwright install chromium` once; `HOMETV_E2E_FILM=Dune` for the demo library).
+- Demo server with a generated library and `web/dist`: `specs/HOMETV-1/hometv-app/create-environment.sh`
+  (127.0.0.1:8000, admin "Admin" PIN 1234, viewer "Invitado"; Ctrl-C / kill stops it).
+- Single test: `cd server && uv run pytest tests/unit/test_parser.py -k row11`;
+  `cd web && npx vitest run src/player/versions.test.ts -t "D13"`.
 
 ## Conventions
 
@@ -121,3 +156,29 @@ prd.md is a contract: change the PRD first, then the code.
   hand-built PGS `.sup` provides the image-subtitle track and sidecar);
   `make_media_app()` gives a scanned app over the clip library. Keyframe reader fixtures are
   regenerated with `uv run python -m tests.fixtures.keyframes.make_fixtures`.
+
+## Web conventions (`web/`)
+
+- **Strings**: every visible text, `aria-label`, `alt`, `title`, `placeholder`, toast and
+  `document.title` comes from `S` in `src/strings.es.ts` (`strings.test.ts` scans `src/**/*.tsx`).
+  Component tests assert the literal Spanish texts. Server diagnostics (`message`, `detail`) are
+  never the main text ("Detalles técnicos" or raw admin log lines only).
+- **Data**: TanStack Query only; keys from `queryKeys`, invalidation via
+  `runInvalidation(qc, event)` / `invalidateAfter`. `['admin', …]` queries are enabled only while
+  `useAdminToken() !== null`; every admin op goes through `useAdminAction().run(op, purpose)`.
+- **Player**: the reducer is pure (time and positions come in event payloads); effects live in
+  `usePlaybackSession` (declare `useProgressReporter` before it: the final report must precede
+  the release). Never touch `video.src`/hls.js outside `attachSource`; positions for requests
+  and reports are `tracker.position`, never `video.currentTime`.
+- **Tests** (`npm test` must pass with no network, no stderr): `renderWithProviders(ui, opts)` /
+  `renderApp({route, …})` (seeded session/`['me']`/`['info']`; `profile: null`/`info: null` run
+  the boot requests), `renderPlayer(url)` from `tests/player.tsx` (`startDirect`, `startHls`,
+  `at`, `pauseAt`, `puts/posts/deletes/keepalives`, `answerPlayback`, `stubFullscreen`),
+  `recordRequests()` (MSW recorder; bodies after `await settled()`), `vi.mock('hls.js', () =>
+  import('<rel>/tests/fakeHls'))` (`FakeHls.last`, `hlsLog`, `emit`, `fatal`), `setCapabilityEnv(
+  iphoneEnv())` from `tests/capsEnvs.ts`, `mediaState(video)` / `fakeTextTrack(el)` from
+  `tests/media.ts`, `setViewportWidth(360)` from `tests/viewport.ts` (matchMedia stub, desktop
+  1280 px by default; layout that differs on phones renders via `useMediaQuery(PHONE_QUERY)`, not
+  CSS-only hiding, so it is testable). Fake timers: `useFakePlayerTimers()` (also moves React Query's scheduler to a
+  real tick), then `until`/`advance` from `tests/flush.ts`, never `findBy*`/`waitFor`; prefer
+  `fireEvent` under fake timers. Never `await` a sync `act()`.

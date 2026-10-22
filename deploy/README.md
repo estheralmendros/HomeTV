@@ -61,5 +61,8 @@ allowed by your ACL, at `https://hometv.<tailnet>.ts.net`.
 ## Building the image alone
 
 From the repo root: `docker build --platform=linux/amd64 -f deploy/Dockerfile -t hometv .`
-(ffmpeg/ffprobe 5.1 from Debian bookworm). The web UI is added by prd2.md's `web-build` stage;
-until then `/` shows a "Web UI not built" page and the API is at `/api/docs`.
+(ffmpeg/ffprobe 5.1 from Debian bookworm), or `make docker-build`. The `web-build` stage
+(`node:24-bookworm-slim`, run on the build platform: the output is static files) runs `npm ci`
+and `npm run build` in `web/` and copies `web/dist` to `/app/web/dist`, which the server serves at
+`/` with SPA fallback (`index.html` no-cache, `/assets/*` immutable, a missing asset is a 404).
+`web/package-lock.json` must be present (`npm ci`). The API stays at `/api` (docs at `/api/docs`).

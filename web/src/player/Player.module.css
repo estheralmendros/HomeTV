@@ -1,0 +1,428 @@
+/* Player shell, overlays and controls (prd2 §9). Full viewport, black, no AppShell. */
+
+.root {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  color: var(--color-text);
+  overflow: hidden;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+.video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+.page {
+  position: absolute;
+  inset: 0;
+}
+
+.surface {
+  position: absolute;
+  inset: 0;
+}
+
+/* --- Controls ------------------------------------------------------------------------------ */
+
+.chrome {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+  transition: opacity 200ms ease-out;
+}
+
+.chrome[data-hidden='true'] {
+  opacity: 0;
+}
+
+.chrome[data-hidden='true'] * {
+  pointer-events: none !important;
+}
+
+.topBar,
+.bottomBar {
+  pointer-events: auto;
+  padding: var(--space-3) var(--space-4);
+}
+
+.topBar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  background: linear-gradient(to bottom, rgb(0 0 0 / 0.75), transparent);
+}
+
+.title {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.watchedMark {
+  color: var(--color-success);
+  font-weight: 700;
+}
+
+.bottomBar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  background: linear-gradient(to top, rgb(0 0 0 / 0.8), transparent);
+}
+
+.buttons {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.controlButton {
+  min-width: var(--touch-target);
+  min-height: var(--touch-target);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: inherit;
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+}
+
+.controlButton:hover:not(:disabled) {
+  background: rgb(255 255 255 / 0.12);
+}
+
+.controlButton:disabled {
+  opacity: 0.4;
+}
+
+.time {
+  font-variant-numeric: tabular-nums;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.volume {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.volumeSlider {
+  width: 96px;
+  accent-color: var(--color-accent);
+}
+
+/* --- Seek bar ------------------------------------------------------------------------------ */
+
+.seek {
+  position: relative;
+  height: 24px;
+  display: flex;
+  align-items: center;
+}
+
+.seek::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 4px;
+  border-radius: 2px;
+  background: rgb(255 255 255 / 0.25);
+}
+
+.seekBuffered {
+  position: absolute;
+  left: 0;
+  height: 4px;
+  border-radius: 2px;
+  background: rgb(255 255 255 / 0.45);
+}
+
+.seekInput {
+  position: relative;
+  width: 100%;
+  margin: 0;
+  background: transparent;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+.seekTooltip {
+  position: absolute;
+  bottom: 28px;
+  transform: translateX(-50%);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Menus --------------------------------------------------------------------------------- */
+
+.menuWrap {
+  position: relative;
+}
+
+.menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + var(--space-2));
+  min-width: 260px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  background: rgb(21 25 34 / 0.96);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+}
+
+.menuTitle {
+  margin: 0 0 var(--space-2);
+  padding: 0 var(--space-2);
+  font-weight: 700;
+  text-align: center;
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 40px;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.menuItem:hover {
+  background: rgb(255 255 255 / 0.1);
+}
+
+.menuNote {
+  margin: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* --- Overlays, prompts and screens ---------------------------------------------------------- */
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.overlay > * {
+  pointer-events: auto;
+}
+
+.tapToPlay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+}
+
+.tapIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 96px;
+  height: 96px;
+  border-radius: var(--radius-lg);
+  background: rgb(0 0 0 / 0.6);
+  border: 2px solid rgb(255 255 255 / 0.8);
+  font-size: 2.5rem;
+}
+
+.screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5);
+  background: rgb(0 0 0 / 0.75);
+}
+
+.screenBox {
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.screenHeading {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.screenText {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.screenActions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.elapsed {
+  font-variant-numeric: tabular-nums;
+  margin-left: var(--space-2);
+}
+
+.details summary {
+  cursor: pointer;
+  color: var(--color-text-muted);
+}
+
+.detailsText {
+  white-space: pre-wrap;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.versions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.versionsHeading {
+  margin: 0;
+  font-weight: 600;
+}
+
+.prompt {
+  position: absolute;
+  right: var(--space-5);
+  bottom: 120px;
+  width: min(360px, calc(100% - 2 * var(--space-4)));
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: rgb(21 25 34 / 0.95);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.promptTitle {
+  margin: 0;
+  font-weight: 700;
+}
+
+.promptBody {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.promptStill {
+  width: 120px;
+  flex: none;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+}
+
+.promptCountdown {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.promptActions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.toasts {
+  position: absolute;
+  left: 50%;
+  top: 72px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: min(560px, calc(100% - 2 * var(--space-4)));
+  pointer-events: none;
+  z-index: 10;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: rgb(30 35 48 / 0.95);
+  border: 1px solid var(--color-border);
+  pointer-events: auto;
+}
+
+.toastText {
+  flex: 1;
+  margin: 0;
+}
+
+.toastButton {
+  border: 0;
+  background: transparent;
+  color: var(--color-accent-strong);
+  font-weight: 700;
+}
+
+@media (max-width: 600px) {
+  .prompt {
+    right: var(--space-4);
+    bottom: 140px;
+  }
+
+  .volumeSlider {
+    width: 64px;
+  }
+}

@@ -1,0 +1,99 @@
+// Query key factory, stale times and the invalidation table (prd2 § State & data fetching).
+// Keys never include the profile id: switching profile clears the whole cache.
+import type { QueryKey } from '@tanstack/react-query';
+import type { LibraryQuery, LibraryType, TmdbType, UnmatchedQuery } from './types';
+
+export const queryKeys = {
+  info: () => ['info'] as const,
+  profiles: () => ['profiles'] as const,
+  me: () => ['me'] as const,
+  home: () => ['home'] as const,
+  /** Infinite list; `params` excludes `page`. */
+  library: (type: LibraryType, params: Omit<LibraryQuery, 'page' | 'page_size'>) => [type, 'list', params] as const,
+  libraryAll: (type: LibraryType) => [type, 'list'] as const,
+  genres: (type: LibraryType) => ['genres', type] as const,
+  search: (q: string) => ['search', q] as const,
+  searchAll: () => ['search'] as const,
+  film: (id: number) => ['film', id] as const,
+  show: (id: number) => ['show', id] as const,
+  season: (showId: number, seasonNumber: number) => ['season', showId, seasonNumber] as const,
+  seasonsOf: (showId: number) => ['season', showId] as const,
+  episode: (id: number) => ['episode', id] as const,
+  admin: {
+    all: () => ['admin'] as const,
+    scan: () => ['admin', 'scan'] as const,
+    unmatched: (params: UnmatchedQuery) => ['admin', 'unmatched', params] as const,
+    unmatchedAll: () => ['admin', 'unmatched'] as const,
+    tmdbSearch: (type: TmdbType, q: string, year: number | null) => ['admin', 'tmdb', type, q, year] as const,
+    tmdbSeasons: (tmdbId: number) => ['admin', 'tmdb', 'tv', tmdbId, 'seasons'] as const,
+    tmdbSeason: (tmdbId: number, seasonNumber: number) => ['admin', 'tmdb', 'tv', tmdbId, 'season', seasonNumber] as const,
+  },
+};
+
+const SECOND = 1000;
+const MINUTE = 60 * SECOND;
+
+export const staleTimes = {
+  info: Infinity,
+  profiles: 30 * SECOND,
+  me: 5 * MINUTE,
+  home: 0,
+  library: 30 * SECOND,
+  genres: 5 * MINUTE,
+  search: 30 * SECOND,
+  film: 30 * SECOND,
+  show: 30 * SECOND,
+  season: 30 * SECOND,
+  episode: 30 * SECOND,
+  adminScan: 0,
+  adminUnmatched: 0,
+  adminTmdb: 5 * MINUTE,
+} as const;
+
+export type PlayedItem =
+  | { type: 'film'; id: number }
+  | { type: 'episode'; id: number; showId: number; seasonNumber: number };
+
+export type InvalidationEvent =
+  /** Player exit / next episode (after the final report), or a mid-playback watched=true deferred to exit. */
+  | { type: 'playerExit'; item: PlayedItem }
+  /** POST /api/watched for a film. */
+  | { type: 'watchedFilm'; id: number }
+  /** POST /api/watched for an episode, season or show. */
+  | { type: 'watchedEpisodes'; showId: number }
+  /** Match / resolve success, scan finished. */
+  | { type: 'catalogChanged' }
+  /** Profile create / edit / delete. */
+  | { type: 'profilesChanged' };
+
+/** The query keys (prefixes) to invalidate after an event (the PRD invalidation table). */
+export function invalidateAfter(event: InvalidationEvent): QueryKey[] {
+  switch (event.type) {
+    case 'playerExit': {
+      const { item } = event;
+      const itemKeys: QueryKey[] =
+        item.type === 'film'
+          ? [queryKeys.film(item.id)]
+          : [queryKeys.episode(item.id), queryKeys.show(item.showId), queryKeys.season(item.showId, item.seasonNumber)];
+      return [queryKeys.home(), ...itemKeys, queryKeys.libraryAll('films'), queryKeys.libraryAll('shows'), queryKeys.searchAll()];
+    }
+    case 'watchedFilm':
+      return [queryKeys.film(event.id), queryKeys.home(), queryKeys.libraryAll('films'), queryKeys.searchAll()];
+    case 'watchedEpisodes':
+      return [
+        queryKeys.show(event.showId),
+        queryKeys.seasonsOf(event.showId),
+        ['episode'],
+        queryKeys.home(),
+        queryKeys.libraryAll('shows'),
+        queryKeys.searchAll(),
+      ];
+    case 'catalogChanged':
+      return [
+        ['home'], ['films'], ['shows'], ['genres'], ['search'], ['film'], ['show'], ['season'], ['episode'],
+        queryKeys.admin.unmatchedAll(), queryKeys.admin.scan(),
+      ];
+    case 'profilesChanged':
+      return [queryKeys.profiles(), queryKeys.me()];
+  }
+}

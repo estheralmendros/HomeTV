@@ -8,3 +8,8 @@ node_modules/
 .pytest_cache/
 .ruff_cache/
 deploy/.env
+web/node_modules/
+web/dist/
+web/test-results/
+web/playwright-report/
+web/*.tsbuildinfo

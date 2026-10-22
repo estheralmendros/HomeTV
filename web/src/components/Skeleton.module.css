@@ -1,0 +1,76 @@
+.skeleton {
+  display: block;
+  border-radius: var(--radius-md);
+  background: linear-gradient(90deg, var(--color-surface) 0%, var(--color-surface-2) 50%, var(--color-surface) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.poster {
+  aspect-ratio: 2 / 3;
+}
+
+.still {
+  aspect-ratio: 16 / 9;
+}
+
+.line {
+  height: 0.9em;
+  width: 70%;
+}
+
+.row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 150px;
+  gap: var(--space-3);
+  overflow: hidden;
+  margin-bottom: var(--space-5);
+}
+
+.rowStill {
+  grid-auto-columns: 260px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--space-4) var(--space-3);
+}
+
+@media (max-width: 599px) {
+  .grid {
+    grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  }
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.detail {
+  display: flex;
+  gap: var(--space-5);
+  padding: var(--space-5) 0;
+}
+
+.detailPoster {
+  width: 200px;
+  aspect-ratio: 2 / 3;
+  flex: none;
+}
+
+.detailText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-3);
+}
