@@ -1,0 +1,252 @@
+package com.hometv.tv.core.playback
+
+import com.hometv.tv.core.api.ApiException
+import com.hometv.tv.core.api.ApiJson
+import com.hometv.tv.core.playback.MessageKey.AUDIO_PREPARING_TIMEOUT
+import com.hometv.tv.core.playback.MessageKey.AUDIO_SWITCH_FAILED
+import com.hometv.tv.core.playback.MessageKey.AUDIO_TRACK_UNPLAYABLE
+import com.hometv.tv.core.playback.PlaybackDecision.Preparing
+import com.hometv.tv.core.playback.PlaybackDecision.Recover
+import com.hometv.tv.core.playback.PlaybackDecision.RenewAndRecover
+import com.hometv.tv.core.playback.PlaybackDecision.RetryExcludingAudio
+import com.hometv.tv.core.playback.PlaybackDecision.RetryExcludingContainer
+import com.hometv.tv.core.playback.PlaybackDecision.RetryExcludingVideo
+import com.hometv.tv.core.playback.PlaybackDecision.RetryWithoutAudioIndex
+import com.hometv.tv.core.playback.PlaybackDecision.ShowError
+import com.hometv.tv.core.playback.PlaybackDecision.SubtitleUnavailable
+import com.hometv.tv.core.playback.PlaybackErrorCodes as C
+import com.hometv.tv.core.playback.PlayerAction.BACK
+import com.hometv.tv.core.playback.PlayerAction.RETRY
+import com.hometv.tv.core.playback.PlayerAction.RETRY_FROM_HERE
+import com.hometv.tv.core.playback.PlayerAction.TRY_OTHER_VERSION
+import java.io.IOException
+import javax.net.ssl.SSLHandshakeException
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Nested
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
+import org.junit.jupiter.params.provider.ValueSource
+
+/** Every row of prd3 §10; outcomes carry message keys, never the server `detail` or `error.message`. */
+class PlaybackErrorMapperTest {
+    private val mapper = PlaybackErrorMapper
+
+    private fun http(status: Int, code: String?, details: String = "{}") =
+        ApiException.Http(status, code, "English diagnostic", ApiJson.parseToJsonElement(details).jsonObject, null)
+
+    private fun shown(decision: PlaybackDecision): PlayerError = (decision as ShowError).error
+
+    @Nested
+    inner class RequestErrors {
+        @Test
+        fun `503 is told apart by code`() {
+            assertEquals(Preparing, mapper.forRequestError(http(503, "preparing"), false))
+            assertEquals(PlayerError(MessageKey.TOO_MANY_SESSIONS, actions = listOf(RETRY, BACK)), shown(mapper.forRequestError(http(503, "too_many_sessions"), false)))
+            assertEquals(PlayerError(MessageKey.HLS_DISK_FULL, actions = listOf(RETRY, BACK)), shown(mapper.forRequestError(http(503, "hls_disk_full"), false)))
+            assertEquals(PlayerError(MessageKey.SERVER_UNAVAILABLE, actions = listOf(RETRY, BACK)), shown(mapper.forRequestError(http(503, "something_new"), false)))
+            assertEquals(PlayerError(MessageKey.SERVER_UNAVAILABLE, actions = listOf(RETRY, BACK)), shown(mapper.forRequestError(http(503, null), false)))
+        }
+
+        @Test
+        fun `preparing timeout`() {
+            assertEquals(PlayerError(MessageKey.PREPARING_TIMEOUT, actions = listOf(RETRY, BACK)), mapper.forPreparingTimeout())
+        }
+
+        @Test
+        fun `keyframe_index_failed is terminal for the version, with no retry action`() {
+            val e = http(500, "transcoder_failed", """{"detail": "keyframe_index_failed: ffprobe exited 1"}""")
+            assertEquals(ShowError(PlayerError(MessageKey.KEYFRAME_INDEX_FAILED, actions = listOf(TRY_OTHER_VERSION, BACK)), refuseVersion = true), mapper.forRequestError(e, true))
+            assertEquals(listOf(BACK), shown(mapper.forRequestError(e, false)).actions)
+            // Another transcoder failure is a generic player error.
+            assertEquals(MessageKey.PLAYBACK_FAILED, shown(mapper.forRequestError(http(500, "transcoder_failed", """{"detail": "ffmpeg died"}"""), false)).message)
+        }
+
+        @Test
+        fun `404 file_missing and not_found`() {
+            assertEquals(ShowError(PlayerError(MessageKey.FILE_MISSING, actions = listOf(TRY_OTHER_VERSION, BACK)), refuseVersion = true), mapper.forRequestError(http(404, "file_missing"), true))
+            assertEquals(ShowError(PlayerError(MessageKey.ITEM_GONE, actions = listOf(BACK)), itemGone = true), mapper.forRequestError(http(404, "not_found"), true))
+        }
+
+        @Test
+        fun `422 invalid_audio_stream retries once without the index`() {
+            assertEquals(RetryWithoutAudioIndex, mapper.forRequestError(http(422, "invalid_audio_stream"), false))
+            assertEquals(MessageKey.PLAYBACK_FAILED, shown(mapper.forRequestError(http(422, "invalid_audio_stream"), false, audioIndexRetried = true)).message)
+        }
+
+        @Test
+        fun `network, TLS, auth and unknown codes`() {
+            assertEquals(PlayerError(MessageKey.CONNECTION_ERROR, actions = listOf(RETRY, BACK)), shown(mapper.forRequestError(ApiException.Unreachable(IOException("x")), false)))
+            assertEquals(MessageKey.TLS_ERROR, shown(mapper.forRequestError(ApiException.Unreachable(SSLHandshakeException("x")), false)).message)
+            assertEquals(PlaybackDecision.AuthExpired, mapper.forRequestError(ApiException.ProfileGone(), false))
+            assertEquals(MessageKey.SIGN_IN_FAILED, shown(mapper.forRequestError(ApiException.Unauthorized("unauthorized", null), false)).message)
+            assertEquals(PlayerError(MessageKey.UNEXPECTED_ERROR, args = listOf("brand_new_code"), actions = listOf(RETRY, BACK)), shown(mapper.forRequestError(http(400, "brand_new_code"), false)))
+            assertEquals(MessageKey.PLAYBACK_FAILED, shown(mapper.forRequestError(http(502, null), false)).message)
+            assertEquals(MessageKey.PLAYBACK_FAILED, shown(mapper.forRequestError(ApiException.Decode(IllegalStateException()), false)).message)
+        }
+    }
+
+    @Nested
+    inner class Unsupported {
+        @ParameterizedTest
+        @CsvSource(
+            "VIDEO_CODEC_UNSUPPORTED, REASON_VIDEO_CODEC_UNSUPPORTED",
+            "NO_VIDEO_STREAM, REASON_NO_VIDEO_STREAM",
+            "HLS_NOT_SUPPORTED, REASON_HLS_NOT_SUPPORTED",
+            "PROBE_FAILED, REASON_PROBE_FAILED",
+            "DURATION_UNKNOWN, REASON_DURATION_UNKNOWN",
+            "KEYFRAMES_TOO_SPARSE, REASON_KEYFRAMES_TOO_SPARSE",
+            "UNKNOWN, REASON_UNKNOWN",
+        )
+        fun `each reason has its own catalog key`(reason: UnsupportedReason, key: MessageKey) {
+            val error = mapper.forUnsupported(reason, F.hevc(1), hasOtherVersion = true)
+            assertEquals(MessageKey.PLAYBACK_UNSUPPORTED, error.message)
+            assertEquals(key, error.reason)
+            assertEquals(listOf(TRY_OTHER_VERSION, BACK), error.actions)
+        }
+
+        @Test
+        fun `the codec argument is the file's video codec in upper case, and no other version means Back only`() {
+            assertEquals(listOf("HEVC"), mapper.forUnsupported(UnsupportedReason.VIDEO_CODEC_UNSUPPORTED, F.hevc(1), false).args)
+            assertEquals(listOf(BACK), mapper.forUnsupported(UnsupportedReason.PROBE_FAILED, F.hevc(1), false).actions)
+            assertEquals(emptyList<String>(), mapper.forUnsupported(UnsupportedReason.DURATION_UNKNOWN, F.hevc(1), false).args)
+        }
+    }
+
+    @Nested
+    inner class PlayerFailures {
+        private val direct = FailureContext(PlaybackMode.DIRECT, nowMs = 100_000, videoCodec = "hevc", audioCodec = "dts", container = "mkv")
+        private val hls = FailureContext(PlaybackMode.HLS, nowMs = 100_000, videoCodec = "h264", audioCodec = "aac", audioAction = "copy")
+
+        @Test
+        fun `stream 401 renews and recovers (never the Picker), at most once per 30 s`() {
+            val f = PlayerFailure(C.IO_BAD_HTTP_STATUS, httpStatus = 401, urlKind = UrlKind.STREAM)
+            assertEquals(RenewAndRecover, mapper.forPlayerFailure(f, direct))
+            assertEquals(RenewAndRecover, mapper.forPlayerFailure(f.copy(urlKind = UrlKind.HLS), hls.copy(lastRenewalAtMs = 69_000)))
+            assertEquals(MessageKey.PLAYBACK_FAILED, shown(mapper.forPlayerFailure(f, direct.copy(lastRenewalAtMs = 80_000))).message)
+        }
+
+        @Test
+        fun `404 on the stream is file missing, on HLS a rate-limited recovery`() {
+            val stream404 = PlayerFailure(C.IO_BAD_HTTP_STATUS, httpStatus = 404, urlKind = UrlKind.STREAM, bodyCode = "file_missing")
+            assertEquals(PlayerError(MessageKey.FILE_MISSING, actions = listOf(BACK)), shown(mapper.forPlayerFailure(stream404, direct)))
+            val hls404 = PlayerFailure(C.IO_BAD_HTTP_STATUS, httpStatus = 404, urlKind = UrlKind.HLS, bodyCode = "session_not_found")
+            assertEquals(Recover, mapper.forPlayerFailure(hls404, hls))
+            assertEquals(MessageKey.PLAYBACK_FAILED, shown(mapper.forPlayerFailure(hls404, hls.copy(lastRecoveryAtMs = 90_000))).message)
+        }
+
+        @ParameterizedTest
+        @ValueSource(ints = [500, 504])
+        fun `HLS 500 and 504 offer retry from here`(status: Int) {
+            val f = PlayerFailure(C.IO_BAD_HTTP_STATUS, httpStatus = status, urlKind = UrlKind.HLS)
+            assertEquals(PlayerError(MessageKey.HLS_FAILED, actions = listOf(RETRY_FROM_HERE, BACK)), shown(mapper.forPlayerFailure(f, hls)))
+        }
+
+        @ParameterizedTest
+        @ValueSource(ints = [C.IO_NETWORK_CONNECTION_FAILED, C.IO_NETWORK_CONNECTION_TIMEOUT])
+        fun `network loss is the connection error with retry from here`(code: Int) {
+            assertEquals(PlayerError(MessageKey.CONNECTION_ERROR, actions = listOf(RETRY_FROM_HERE, BACK)), shown(mapper.forPlayerFailure(PlayerFailure(code, urlKind = UrlKind.STREAM), direct)))
+        }
+
+        @Test
+        fun `direct renderer failures retry with the failing codec type excluded, once`() {
+            val video = PlayerFailure(C.DECODER_INIT_FAILED, RendererType.VIDEO, "video/hevc")
+            assertEquals(RetryExcludingVideo("hevc"), mapper.forPlayerFailure(video, direct))
+            val audio = PlayerFailure(C.DECODING_FAILED, RendererType.AUDIO, "audio/vnd.dts")
+            assertEquals(RetryExcludingAudio("dts"), mapper.forPlayerFailure(audio, direct))
+            assertEquals(RetryExcludingAudio("dts"), mapper.forPlayerFailure(PlayerFailure(C.AUDIO_TRACK_INIT_FAILED), direct))
+            // The second failure of the same type is generic; the other type still retries.
+            assertEquals(MessageKey.PLAYBACK_FAILED, shown(mapper.forPlayerFailure(video, direct.copy(videoRetried = true))).message)
+            assertEquals(MessageKey.PLAYBACK_FAILED, shown(mapper.forPlayerFailure(audio, direct.copy(audioRetried = true))).message)
+            assertEquals(RetryExcludingVideo("hevc"), mapper.forPlayerFailure(video, direct.copy(audioRetried = true)))
+            // A renderer error of unknown type never removes the video codec.
+            assertEquals(MessageKey.PLAYBACK_FAILED, shown(mapper.forPlayerFailure(PlayerFailure(C.DECODING_FAILED, RendererType.OTHER, "text/x-unknown"), direct)).message)
+        }
+
+        @Test
+        fun `HLS decoder failure retries only an audio failure with audio_action copy`() {
+            val audio = PlayerFailure(C.DECODING_FAILED, RendererType.AUDIO, "audio/mp4a-latm")
+            assertEquals(RetryExcludingAudio("aac"), mapper.forPlayerFailure(audio, hls))
+            assertEquals(MessageKey.PLAYBACK_FAILED, shown(mapper.forPlayerFailure(audio, hls.copy(audioAction = "aac_stereo"))).message)
+            assertEquals(MessageKey.PLAYBACK_FAILED, shown(mapper.forPlayerFailure(audio, hls.copy(audioRetried = true))).message)
+            assertEquals(MessageKey.PLAYBACK_FAILED, shown(mapper.forPlayerFailure(PlayerFailure(C.DECODING_FAILED, RendererType.VIDEO, "video/avc"), hls)).message)
+        }
+
+        @ParameterizedTest
+        @ValueSource(ints = [C.PARSING_CONTAINER_UNSUPPORTED, C.PARSING_CONTAINER_MALFORMED])
+        fun `direct container parse failures on the stream retry without the container, once`(code: Int) {
+            val f = PlayerFailure(code, urlKind = UrlKind.STREAM)
+            assertEquals(RetryExcludingContainer("mkv"), mapper.forPlayerFailure(f, direct))
+            assertEquals(MessageKey.PLAYBACK_FAILED, shown(mapper.forPlayerFailure(f, direct.copy(containerRetried = true))).message)
+            // urlKind OTHER in direct mode goes to the generic row, never to the fallback.
+            assertEquals(MessageKey.PLAYBACK_FAILED, shown(mapper.forPlayerFailure(f.copy(urlKind = UrlKind.OTHER), direct)).message)
+        }
+
+        @Test
+        fun `HLS manifest parse errors are generic`() {
+            val f = PlayerFailure(C.PARSING_MANIFEST_MALFORMED, urlKind = UrlKind.HLS)
+            assertEquals(PlayerError(MessageKey.PLAYBACK_FAILED, actions = listOf(RETRY_FROM_HERE, BACK)), shown(mapper.forPlayerFailure(f, hls)))
+        }
+
+        @Test
+        fun `side-loaded subtitle parse or IO failures make the subtitle unavailable in any mode`() {
+            for (code in listOf(C.PARSING_CONTAINER_MALFORMED, C.PARSING_CONTAINER_UNSUPPORTED, C.IO_FILE_NOT_FOUND, C.IO_UNSPECIFIED)) {
+                assertEquals(SubtitleUnavailable, mapper.forPlayerFailure(PlayerFailure(code, urlKind = UrlKind.SUBTITLE), direct))
+                assertEquals(SubtitleUnavailable, mapper.forPlayerFailure(PlayerFailure(code, urlKind = UrlKind.SUBTITLE), hls))
+            }
+        }
+
+        @Test
+        fun `generic errors offer another version when there is one`() {
+            assertEquals(listOf(RETRY_FROM_HERE, TRY_OTHER_VERSION, BACK), shown(mapper.forPlayerFailure(PlayerFailure(1000), direct.copy(hasOtherVersion = true))).actions)
+        }
+
+        @Test
+        fun `silent track failures are handled as decoder failures of that type`() {
+            assertEquals(RetryExcludingVideo("hevc"), mapper.forTrackFailure(TrackFailure.VIDEO, direct))
+            assertEquals(RetryExcludingAudio("dts"), mapper.forTrackFailure(TrackFailure.AUDIO, direct))
+            assertEquals(null, mapper.forTrackFailure(TrackFailure.NONE, direct))
+            assertEquals(MessageKey.PLAYBACK_FAILED, shown(mapper.forTrackFailure(TrackFailure.AUDIO, direct.copy(audioRetried = true))!!).message)
+        }
+    }
+
+    @Nested
+    inner class Switch {
+        @Test
+        fun `row 40 toasts by outcome`() {
+            assertEquals(SwitchFailure.Toast(AUDIO_TRACK_UNPLAYABLE), mapper.forSwitchUnsupported())
+            assertEquals(SwitchFailure.Toast(AUDIO_TRACK_UNPLAYABLE), mapper.forSwitchError(http(500, "transcoder_failed", """{"detail": "keyframe_index_failed: x"}""")))
+            assertEquals(SwitchFailure.Toast(AUDIO_TRACK_UNPLAYABLE), mapper.forSwitchError(http(422, "invalid_audio_stream")))
+            assertEquals(SwitchFailure.Toast(AUDIO_SWITCH_FAILED), mapper.forSwitchError(http(500, "transcoder_failed", """{"detail": "ffmpeg"}""")))
+            assertEquals(SwitchFailure.Toast(AUDIO_SWITCH_FAILED), mapper.forSwitchError(http(503, "busy")))
+            assertEquals(SwitchFailure.Toast(MessageKey.TOO_MANY_SESSIONS), mapper.forSwitchError(http(503, "too_many_sessions")))
+            assertEquals(SwitchFailure.Toast(MessageKey.HLS_DISK_FULL), mapper.forSwitchError(http(503, "hls_disk_full")))
+            assertEquals(SwitchFailure.Toast(AUDIO_PREPARING_TIMEOUT), mapper.forSwitchPreparingTimeout())
+            assertEquals(SwitchFailure.Toast(AUDIO_SWITCH_FAILED), mapper.forSwitchError(http(404, "file_missing")))
+            assertEquals(SwitchFailure.Toast(AUDIO_SWITCH_FAILED), mapper.forSwitchError(http(404, "not_found")))
+            assertEquals(SwitchFailure.Toast(AUDIO_SWITCH_FAILED), mapper.forSwitchError(ApiException.Unreachable(IOException())))
+            assertEquals(SwitchFailure.Toast(AUDIO_SWITCH_FAILED), mapper.forSwitchError(ApiException.Unauthorized(null, null)))
+            assertEquals(SwitchFailure.AuthExpired, mapper.forSwitchError(ApiException.ProfileGone()))
+        }
+    }
+
+    @Test
+    fun `preparing estimate`() {
+        assertEquals(PreparingEstimate.None, mapper.preparingEstimate(null))
+        assertEquals(PreparingEstimate.LessThanAMinute, mapper.preparingEstimate(59))
+        assertEquals(PreparingEstimate.Minutes(1), mapper.preparingEstimate(60))
+        assertEquals(PreparingEstimate.Minutes(7), mapper.preparingEstimate(412))
+    }
+
+    @Test
+    fun `outcomes never carry the server message or detail`() {
+        val e = ApiException.Http(500, "transcoder_failed", "Transcoder failed badly", JsonObject(emptyMap()), null)
+        val error = shown(mapper.forRequestError(e, false))
+        assertFalse(error.args.any { "Transcoder" in it })
+        assertTrue(error.args.isEmpty())
+    }
+}

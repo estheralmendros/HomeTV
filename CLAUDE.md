@@ -81,16 +81,50 @@ prd.md is a contract: change the PRD first, then the code.
   whitelists `server/` and `web/` minus node_modules/dist), `docker-compose.yml`
   (app in the tailscale sidecar's netns, `HOMETV_HOST=127.0.0.1`, media `:ro`, no ports),
   `tailscale/serve.json`, `.env.example`, `README.md` (setup steps).
-- Planned (later PRDs): `tv/`.
+- `tv/`: Android TV app (prd3), Gradle 8.14 wrapper, AGP 8.13, Kotlin 2.2, compile/target SDK 35,
+  minSdk 26, JDK 21 (bytecode 17). Versions in `gradle/libs.versions.toml` (Media3 1.5.1, Compose
+  BOM, tv-material, Retrofit 3 + OkHttp 4.12, kotlinx.serialization, Coil 2, DataStore, JUnit 5,
+  Robolectric). `local.properties` (sdk.dir) and `keystore.properties` are gitignored.
+  - `core/` (pure Kotlin/JVM, package `com.hometv.tv.core`): `api/` (`HomeTvApi` Retrofit,
+    `ApiModels` DTOs, `ApiException`/`apiCall`, `ApiClients` (API / stream / validation OkHttp),
+    `AuthInterceptor` Bearer for the server host only), `data/` (`SessionStore` StateFlow +
+    `InMemorySessionStore`, `SessionGuard` single-flight `renew` → Renewed|ProfileGone|Unreachable,
+    `withRenewal(Origin.Foreground|Background)`, repositories, `AppEvents`, `NextEpisodeResolver`
+    (D12), `PlaybackRepository` (`preparing` loop as a `Flow<PlaybackProgress>`, POSTs in
+    `appScope`; `subtitleLoop`, keep-alive, DELETE)), `playback/` (pure `ClientCapsBuilder`,
+    `VersionSelector` (D10–D13), `TrackRules`, `TrackCheck`, `PlaybackErrorMapper`,
+    `PlaybackPlanner`, `SeekAccumulator`, `ProgressReporter`, the `PlayerController` interface),
+    `util/` (`ServerUrl`, `Format` (constant es-ES), `LanguageNames`).
+    `src/testFixtures`: `FakeHomeTvApi`, `TestServer` (MockWebServer routing), `F` media files.
+  - `app/` (`com.hometv.tv`): `MainActivity` (offers every key to `KeyDispatch` before Compose
+    focus; screens register with `KeyEventInterceptor { event -> Boolean }`), `di/AppContainer`
+    (manual DI: store, `clients()` rebuilt per server URL, `guard`, repositories, `events`,
+    `sessionExpired`, `appScope`, `codecs`, `playerLaunches`, `homeRefresh`, one factory per
+    ViewModel), `data/` (`DataStoreSessionStore`, `HomeCache`, `HomeRefresh`, `PlayerLaunches`),
+    `playback/` (`AndroidCodecInventory`, `PlayerFactory`, `HomeTvLoadErrorHandlingPolicy`,
+    `MediaItemBuilder`, `SubtitleFileCache`, `ExoPlayerController`, `ExoTrackMapper`), `ui/`
+    (`HomeTvRoot` NavHost, `navigation/` (`Route`, `AppNavigator`), `text/` (`UiText`,
+    `UiFormat`, `StringResolver`), `components/`, one package per screen; `player/`
+    (`PlayerViewModel` session state machine, `PlayerScreen` with Media3 `PlayerView`, overlay,
+    track dialog, countdown, error screen)). `res/values/strings.xml` is the only catalog.
+  - Tests: `app/src/test` (ViewModel/glue tests, JUnit 5; `ui/player/PlayerSessionStateTest` covers
+    the §8 session table with `FakePlayerController`), `app/src/sharedTest` (Compose focus/navigation
+    tests on Robolectric via `UiTestBase` + `testContainer` + `ScriptedApi`; also compiled into
+    `androidTest`).
 
 ## Commands
 
 - `make install`: uv sync + `npm ci`. `make test`: `uv run pytest -m "not perf"`, then
-  `npm test` in `web/` (`make server-test` / `make web-test` run one side).
+  `npm test` in `web/`, then `make tv-test` (`make server-test` / `make web-test` run one side).
 - Perf (G3 browse p95 < 100 ms): `make perf` (`cd server && uv run pytest -m perf -s`).
 - Deploy: `make docker-build` (linux/amd64 image), `make compose-config` (validates the compose
   file with `.env.example`); run with `docker compose up -d --build` in `deploy/`.
-- `make lint`: ruff check + format check + web typecheck. `make format`: auto-fix (server).
+- `make lint`: ruff check + format check + web typecheck + `tv-lint`. `make format`: auto-fix (server).
+- TV: `make tv-test` (`./gradlew :core:test :app:testDebugUnitTest`), `make tv-lint`
+  (`:app:lintDebug`), `make tv-build` (`:app:assembleRelease`, needs `tv/keystore.properties`).
+  The Makefile defaults `JAVA_HOME` to `/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home`
+  and `ANDROID_HOME` to `/opt/homebrew/share/android-commandlinetools` when unset; export both
+  before calling `./gradlew` directly. No emulator: `:app:assembleDebugAndroidTest` only compiles.
 - `make run`: dev server on 127.0.0.1:8000 with data in `.dev-data/`, serving `web/dist`.
 - Web: `make web-build` (`tsc -b && vite build`; initial JS ≤ 200 kB gzip, admin/player/hls.js
   are lazy chunks), `make web-dev` (Vite on :5173, `/api` proxied to `HOMETV_API_TARGET`),
@@ -99,7 +133,8 @@ prd.md is a contract: change the PRD first, then the code.
 - Demo server with a generated library and `web/dist`: `specs/HOMETV-1/hometv-app/create-environment.sh`
   (127.0.0.1:8000, admin "Admin" PIN 1234, viewer "Invitado"; Ctrl-C / kill stops it).
 - Single test: `cd server && uv run pytest tests/unit/test_parser.py -k row11`;
-  `cd web && npx vitest run src/player/versions.test.ts -t "D13"`.
+  `cd web && npx vitest run src/player/versions.test.ts -t "D13"`;
+  `cd tv && ./gradlew :core:test --tests '*VersionSelectorTest*'`.
 
 ## Conventions
 
@@ -182,3 +217,21 @@ prd.md is a contract: change the PRD first, then the code.
   CSS-only hiding, so it is testable). Fake timers: `useFakePlayerTimers()` (also moves React Query's scheduler to a
   real tick), then `until`/`advance` from `tests/flush.ts`, never `findBy*`/`waitFor`; prefer
   `fireEvent` under fake timers. Never `await` a sync `act()`.
+
+## TV conventions (`tv/`)
+
+- **No UI text in `core`**: it returns message keys (`MessageKey`, `ServerValidation`, unsupported
+  reasons) and structured values (`Runtime`, `EpisodeCode`, `SeasonTitle`, `EpisodeTitle`,
+  `LanguageName`, `TrackLabel`, `PreparingEstimate`); `CoreHasNoUiTextTest` guards it.
+  ViewModels emit `UiText` (args: strings, core structured values or nested `UiText`), resolved in
+  Compose through `ui/text/UiFormat`. Composables read text only via `stringResource` /
+  `pluralStringResource`; `NoHardcodedUiTextTest` scans `Text(`, `text =`, `contentDescription =`…
+  and ViewModel literals.
+- **Catalog**: Spanish only, `values/strings.xml`, no `values-<lang>/`. Templates use `%1$s` only
+  (never `%d`/`%f`, `StringsCatalogTest`); numbers are pre-formatted by `Format` (es-ES). Plurals:
+  `pluralStringResource(R.plurals.x, n, Format.count(n))`.
+- **Tests**: JUnit 5 + coroutines-test with virtual time (no real sleeps); core fakes come from
+  `testFixtures`. Focus/navigation tests live in `src/sharedTest` and run on the JVM with
+  Robolectric (`UiTestBase.press(Key…)`, `back()`, `assertFocused(tag)`); keep them there so they
+  stay runnable without an emulator. Drive the player through `FakePlayerController`; never touch
+  ExoPlayer outside `ExoPlayerController`.

@@ -1,17 +1,28 @@
-# HomeTV — developer commands. Later PRDs extend this file (tv).
+# HomeTV — developer commands (server, web, tv).
 SERVER_DIR := server
 WEB_DIR := web
+TV_DIR := tv
 DEV_DATA_DIR ?= $(CURDIR)/.dev-data
+
+# Android toolchain for the tv targets: defaults only when unset (or empty) in the environment.
+ifeq ($(strip $(JAVA_HOME)),)
+JAVA_HOME := /opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
+endif
+ifeq ($(strip $(ANDROID_HOME)),)
+ANDROID_HOME := /opt/homebrew/share/android-commandlinetools
+endif
+export JAVA_HOME ANDROID_HOME
 
 .PHONY: install test lint format run perf docker-build compose-config \
 	server-install server-test server-lint \
-	web-install web-test web-typecheck web-build web-dev web-e2e
+	web-install web-test web-typecheck web-build web-dev web-e2e \
+	tv-test tv-lint tv-build
 
 install: server-install web-install ## Install server (uv) and web (npm ci) dependencies
 
-test: server-test web-test ## Server tests, then the web suite (Vitest, no network)
+test: server-test web-test tv-test ## Server tests, the web suite (Vitest, no network), then the TV JVM tests
 
-lint: server-lint web-typecheck ## Ruff lint + format check, web typecheck
+lint: server-lint web-typecheck tv-lint ## Ruff lint + format check, web typecheck, TV Android lint
 
 server-install: ## Install server dependencies (uv)
 	cd $(SERVER_DIR) && uv sync
@@ -57,3 +68,12 @@ docker-build: ## Build the linux/amd64 image (deploy/Dockerfile, context = repo 
 
 compose-config: ## Validate deploy/docker-compose.yml with the example env
 	docker compose -f deploy/docker-compose.yml --env-file deploy/.env.example config -q
+
+tv-test: ## TV app JVM tests (core: JUnit 5 + MockWebServer + coroutines-test; app unit tests)
+	cd $(TV_DIR) && ./gradlew :core:test :app:testDebugUnitTest
+
+tv-lint: ## TV app Android lint (HardcodedText/SetTextI18n are errors)
+	cd $(TV_DIR) && ./gradlew :app:lintDebug
+
+tv-build: ## Signed release APK (needs tv/keystore.properties) -> tv/app/build/outputs/apk/release/
+	cd $(TV_DIR) && ./gradlew :app:assembleRelease

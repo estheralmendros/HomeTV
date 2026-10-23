@@ -1,0 +1,82 @@
+package com.hometv.tv.data
+
+import com.hometv.tv.core.api.ApiJson
+import com.hometv.tv.core.api.EpisodeSummary
+import com.hometv.tv.core.api.FilmSummary
+import com.hometv.tv.core.api.HomeResponse
+import com.hometv.tv.core.api.ShowSummary
+import com.hometv.tv.core.api.Summary
+import java.io.File
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
+
+/** The three Home payloads of one load (prd3 §3.2): `/api/home` and the Films/Series rows. */
+@Serializable
+data class HomePayload(
+    val home: HomeResponse,
+    val films: List<FilmSummary> = emptyList(),
+    val shows: List<ShowSummary> = emptyList(),
+) {
+    /** Drops `type:id` everywhere (and, for a show, its episodes). */
+    fun without(type: String, id: Long): HomePayload {
+        val gone = { s: Summary -> s.key == "$type:$id" || (type == "show" && s is EpisodeSummary && s.show_id == id) }
+        return copy(
+            home = home.copy(
+                continue_watching = home.continue_watching.filterNot(gone),
+                next_up = home.next_up.filterNot(gone),
+                recently_added = home.recently_added.filterNot(gone),
+            ),
+            films = films.filterNot(gone),
+            shows = shows.filterNot(gone),
+        )
+    }
+}
+
+/**
+ * Last Home payload per profile as JSON files `{dir}/{profileId}.json` (atomic write: temp + rename).
+ * Disposable: a missing or unreadable file is just "no cache"; cleared on server change.
+ */
+class HomeCache(private val dir: File, private val io: CoroutineDispatcher = Dispatchers.IO) {
+    private val mutex = Mutex()
+
+    suspend fun read(profileId: Long): HomePayload? = withContext(io) {
+        mutex.withLock { readFile(file(profileId)) }
+    }
+
+    suspend fun write(profileId: Long, payload: HomePayload) = withContext(io) {
+        mutex.withLock { writeFile(file(profileId), payload) }
+    }
+
+    /** `AppEvent.ItemGone`: a cached card for a removed title must not reappear. */
+    suspend fun remove(type: String, id: Long) = withContext(io) {
+        mutex.withLock {
+            dir.listFiles { f -> f.extension == "json" }.orEmpty().forEach { f ->
+                readFile(f)?.let { writeFile(f, it.without(type, id)) }
+            }
+        }
+    }
+
+    suspend fun clear() = withContext(io) {
+        mutex.withLock { dir.listFiles().orEmpty().forEach { it.delete() } }
+    }
+
+    private fun file(profileId: Long) = File(dir, "$profileId.json")
+
+    private fun readFile(f: File): HomePayload? = runCatching {
+        if (!f.isFile) null else ApiJson.decodeFromString(HomePayload.serializer(), f.readText())
+    }.getOrNull()
+
+    private fun writeFile(f: File, payload: HomePayload) {
+        dir.mkdirs()
+        val tmp = File(dir, "${f.name}.tmp")
+        tmp.writeText(ApiJson.encodeToString(HomePayload.serializer(), payload))
+        if (!tmp.renameTo(f)) {
+            f.delete()
+            tmp.renameTo(f)
+        }
+    }
+}

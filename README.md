@@ -13,20 +13,25 @@ The repo holds:
 - `web/`: the web UI (React 18 + TypeScript + Vite SPA, Spanish only), built into `web/dist`
   and served by the server.
 - `deploy/`: Docker image and Compose stack (the server plus a Tailscale sidecar).
+- `tv/`: the Android TV / Google TV app (Kotlin, Compose for TV, Media3 ExoPlayer, Spanish
+  only), viewer-only. See [`tv/README.md`](tv/README.md) and
+  [`docs/tv-app-installation.md`](docs/tv-app-installation.md).
 - `specs/HOMETV-1/hometv-app/`: the product specs. `prd.md` (server and deployment) is the
-  source of truth and the API contract, `prd2.md` the web UI. `prd3.md` (TV app, `tv/`) is not
-  implemented yet.
+  source of truth and the API contract, `prd2.md` the web UI, `prd3.md` the TV app.
 - `docs/`: user guides (e.g. installing the TV app).
 
 ## Development
 
 Requires [uv](https://docs.astral.sh/uv/) and Node 24 (`web/.nvmrc`). ffmpeg/ffprobe are
-optional: the server integration tests are skipped without them.
+optional: the server integration tests are skipped without them. The TV app needs JDK 21 and an
+Android SDK with `platforms;android-35` + `build-tools;35.0.0`; the Makefile defaults
+`JAVA_HOME`/`ANDROID_HOME` to the Homebrew paths (`openjdk@21`, `android-commandlinetools`) when
+they are unset.
 
 ```bash
 make install   # uv sync (server) + npm ci (web)
-make test      # server: unit + service + API (+ integration with ffmpeg); then the web suite
-make lint      # ruff check + format check (make format fixes), web typecheck
+make test      # server: unit + service + API (+ integration with ffmpeg); web suite; TV JVM tests
+make lint      # ruff check + format check (make format fixes), web typecheck, TV Android lint
 make run       # dev server on http://127.0.0.1:8000, data in .dev-data/, serves web/dist
 make perf      # browse-latency benchmark (not part of make test)
 ```
@@ -44,6 +49,10 @@ Playwright smoke runs against a real server: `npx playwright install chromium` o
 `HOMETV_E2E_URL=http://127.0.0.1:8000 make web-e2e` (add `HOMETV_E2E_FILM=Dune` for the demo library below). `specs/HOMETV-1/hometv-app/create-environment.sh`
 starts a server with a generated demo library (admin "Admin", PIN 1234) that serves `web/dist`.
 Contributor conventions (TDD, DB write rules, test layout) are in `CLAUDE.md`.
+
+TV app: `make tv-test` (JVM tests, including the Robolectric focus tests), `make tv-lint`,
+`make tv-build` (signed release APK; needs `tv/keystore.properties`). Install on the TV with
+`adb install -r`; see [`docs/tv-app-installation.md`](docs/tv-app-installation.md).
 
 ## Deployment
 
