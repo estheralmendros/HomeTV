@@ -1,5 +1,9 @@
 # Installing the TV App (Android TV / Google TV) + Tailscale
 
+The server must be installed first: see [`server-installation-linux.md`](server-installation-linux.md)
+or [`server-installation-windows.md`](server-installation-windows.md). For an iPad, see
+[`ipad-installation.md`](ipad-installation.md).
+
 ## Compatible devices
 - ✅ **Chromecast with Google TV** (HD or 4K) and **Google TV Streamer** — run Android TV OS and can install apps.
 - ❌ Older Chromecast dongles (no remote) — cannot install apps; they only support casting.
@@ -53,7 +57,7 @@ Tailscale's official Android app supports Android TV (Android 8.0+).
 
 ## 5. Make the server tailnet-only
 1. Install Tailscale on the server and join the same tailnet. The Compose stack in `deploy/`
-   does this with a Tailscale sidecar (see `deploy/README.md`).
+   does this with a Tailscale sidecar (see the server installation guides linked at the top).
 2. Publish the server over HTTPS, for example with:
    ```bash
    tailscale serve --bg <app-port>

@@ -84,6 +84,9 @@ prd.md is a contract: change the PRD first, then the code.
   whitelists `server/` and `web/` minus node_modules/dist), `docker-compose.yml`
   (app in the tailscale sidecar's netns, `HOMETV_HOST=127.0.0.1`, media `:ro`, no ports),
   `tailscale/serve.json`, `.env.example`, `README.md` (setup steps).
+- `docs/`: user guides: `server-installation-linux.md`, `server-installation-windows.md` (Docker
+  Desktop + WSL 2; no native Windows: HLS throttling uses SIGSTOP/SIGCONT), `tv-app-installation.md`,
+  `ipad-installation.md` (the web app in Safari over Tailscale; there is no iOS app).
 - `tv/`: Android TV app (prd3), Gradle 8.14 wrapper, AGP 8.13, Kotlin 2.2, compile/target SDK 35,
   minSdk 26, JDK 21 (bytecode 17). Versions in `gradle/libs.versions.toml` (Media3 1.5.1, Compose
   BOM, tv-material, Retrofit 3 + OkHttp 4.12, kotlinx.serialization, Coil 2, DataStore, JUnit 5,
