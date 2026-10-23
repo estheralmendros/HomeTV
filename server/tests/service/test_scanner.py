@@ -648,6 +648,33 @@ async def test_sidecars_follow_the_directory_listing(
     assert subs[0].media_file_id == _file(mdb, v).id
 
 
+async def test_sidecar_change_or_removal_drops_the_cached_vtt(
+    mdb, media: MediaTree, media_settings, stub_probe
+):
+    media.add("Dune (2021)/Dune (2021).mkv")
+    en = media.add("Dune (2021)/Dune (2021).en.srt")
+    es = media.add("Dune (2021)/Dune (2021).es.srt")
+    settings = media_settings()
+    await _scan(mdb, settings, stub_probe)
+    subs = {s.language: s for s in _all(mdb, m.SubtitleFile)}
+
+    def cached(sub: m.SubtitleFile) -> Path:
+        path = settings.subtitles_dir / str(sub.media_file_id) / f"ext-{sub.id}.vtt"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("WEBVTT\n\nstale")
+        return path
+
+    en_vtt, es_vtt = cached(subs["eng"]), cached(subs["spa"])
+    await _scan(mdb, settings, stub_probe)  # unchanged sidecars keep their conversions
+    assert en_vtt.exists() and es_vtt.exists()
+
+    media.touch(en)  # size + mtime change
+    es.unlink()
+    await _scan(mdb, settings, stub_probe)
+    assert not en_vtt.exists()
+    assert not es_vtt.exists()
+
+
 async def test_keyframe_hook_receives_eligible_files(
     mdb, media: MediaTree, media_settings, stub_probe
 ):

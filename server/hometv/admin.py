@@ -32,6 +32,7 @@ from hometv.db import models as m
 from hometv.metadata.artwork import image, tmdb_file_name
 from hometv.metadata.matching import result_year
 from hometv.metadata.tmdb import TmdbClient, TmdbError
+from hometv.text import str_or_none
 
 SEASON_CACHE_TTL_SECONDS = 600.0
 SEASON_CACHE_MAX_ENTRIES = 100
@@ -41,7 +42,7 @@ SEARCH_MAX_RESULTS = 20
 # --- Unmatched -----------------------------------------------------------------------------------
 
 
-def _unmatched_base() -> Select[Any]:
+def _unmatched_base() -> Select[m.UnmatchedEntry, m.MediaFile, m.Film, m.Show, str]:
     library_id = func.coalesce(m.MediaFile.library_id, m.Film.library_id, m.Show.library_id)
     return (
         select(m.UnmatchedEntry, m.MediaFile, m.Film, m.Show, m.Library.type)
@@ -58,16 +59,33 @@ def unmatched_count(session: Session) -> int:
     return session.scalar(select(func.count()).select_from(_unmatched_base().subquery())) or 0
 
 
-def _show_parsed(session: Session, show_id: int) -> dict[str, Any] | None:
-    parsed = session.scalar(
-        select(m.MediaFile.parsed)
-        .join(m.MediaFileEpisode, m.MediaFileEpisode.media_file_id == m.MediaFile.id)
-        .join(m.Episode, m.Episode.id == m.MediaFileEpisode.episode_id)
-        .where(m.Episode.show_id == show_id, m.MediaFile.missing_since.is_(None))
-        .order_by(m.MediaFile.added_at, m.MediaFile.id)
-        .limit(1)
+def _shows_parsed(session: Session, show_ids: list[int]) -> dict[int, dict[str, Any]]:
+    """Each show's earliest present episode parse (``added_at``, ``id``), in one query."""
+    if not show_ids:
+        return {}
+    rank = (
+        func.row_number()
+        .over(
+            partition_by=m.Episode.show_id,
+            order_by=(m.MediaFile.added_at, m.MediaFile.id),
+        )
+        .label("rank")
     )
-    return parsed if isinstance(parsed, dict) and parsed.get("kind") == "episode" else None
+    ranked = (
+        select(m.Episode.show_id.label("show_id"), m.MediaFile.parsed.label("parsed"), rank)
+        .join(m.MediaFileEpisode, m.MediaFileEpisode.episode_id == m.Episode.id)
+        .join(m.MediaFile, m.MediaFile.id == m.MediaFileEpisode.media_file_id)
+        .where(m.Episode.show_id.in_(show_ids), m.MediaFile.missing_since.is_(None))
+        .subquery()
+    )
+    rows = session.execute(
+        select(ranked.c.show_id, ranked.c.parsed).where(ranked.c.rank == 1)
+    ).all()
+    return {
+        show_id: parsed
+        for show_id, parsed in rows
+        if isinstance(parsed, dict) and parsed.get("kind") == "episode"
+    }
 
 
 def list_unmatched(
@@ -89,6 +107,10 @@ def list_unmatched(
         .offset((page - 1) * page_size)
         .limit(page_size)
     ).all()
+    show_parses = _shows_parsed(
+        session,
+        [show.id for _e, media_file, film, show, _l in rows if media_file is None and film is None],
+    )
     items: list[UnmatchedEntry] = []
     for entry, media_file, film, show, library_type in rows:
         target: dict[str, Any]
@@ -109,7 +131,7 @@ def list_unmatched(
             }
         else:
             target = {"type": "show", "id": show.id, "title": show.title, "year": show.year}
-            parsed = _show_parsed(session, show.id)
+            parsed = show_parses.get(show.id)
         items.append(
             UnmatchedEntry.model_validate(
                 {
@@ -154,10 +176,6 @@ class _TtlLru:
             self._data.popitem(last=False)
 
 
-def _str(value: Any) -> str | None:
-    return value if isinstance(value, str) and value else None
-
-
 class TmdbProxy:
     """Thin admin proxies over ``TmdbClient`` (``client=None`` -> 503 tmdb_not_configured)."""
 
@@ -189,10 +207,10 @@ class TmdbProxy:
         results = [
             TmdbSearchResult(
                 tmdb_id=r["id"],
-                title=_str(r.get(title_key)) or _str(r.get(original_key)) or "",
-                original_title=_str(r.get(original_key)),
+                title=str_or_none(r.get(title_key)) or str_or_none(r.get(original_key)) or "",
+                original_title=str_or_none(r.get(original_key)),
                 year=result_year(r, type_),
-                overview=_str(r.get("overview")),
+                overview=str_or_none(r.get("overview")),
                 poster=image("poster", tmdb_file_name(r.get("poster_path"))),
             )
             for r in raw[:SEARCH_MAX_RESULTS]
@@ -215,9 +233,9 @@ class TmdbProxy:
         seasons = [
             TmdbSeasonSummary(
                 season_number=s["season_number"],
-                name=_str(s.get("name")),
+                name=str_or_none(s.get("name")),
                 episode_count=int(s.get("episode_count") or 0),
-                air_date=_str(s.get("air_date")),
+                air_date=str_or_none(s.get("air_date")),
             )
             for s in data.get("seasons") or []
             if isinstance(s.get("season_number"), int)
@@ -225,7 +243,7 @@ class TmdbProxy:
         seasons.sort(key=lambda s: (s.season_number == 0, s.season_number))
         response = TmdbSeasonsResponse(
             tmdb_id=tmdb_id,
-            name=_str(data.get("name")) or _str(data.get("original_name")) or "",
+            name=str_or_none(data.get("name")) or str_or_none(data.get("original_name")) or "",
             year=result_year(data, "tv"),
             seasons=seasons,
         )
@@ -256,8 +274,8 @@ class TmdbProxy:
         episodes = [
             TmdbEpisodeSummary(
                 episode_number=e["episode_number"],
-                title=_str(e.get("name")),
-                air_date=_str(e.get("air_date")),
+                title=str_or_none(e.get("name")),
+                air_date=str_or_none(e.get("air_date")),
             )
             for e in data.get("episodes") or []
             if isinstance(e.get("episode_number"), int)
@@ -266,7 +284,7 @@ class TmdbProxy:
         response = TmdbSeasonResponse(
             tmdb_id=tmdb_id,
             season_number=season_number,
-            name=_str(data.get("name")),
+            name=str_or_none(data.get("name")),
             episodes=episodes,
         )
         self._cache.put(key, response)

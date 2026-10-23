@@ -37,6 +37,10 @@ async def test_svg_content_type(client, images, user):
     images.get(f"{TMDB_IMAGE_BASE_URL}/w185/logo.svg").respond(content=b"<svg/>")
     response = await client.get(f"/api/artwork/w185/logo.svg?token={user.token}")
     assert response.headers["content-type"].startswith("image/svg+xml")
+    # Opened directly, an SVG from the app origin must not run script there.
+    csp = response.headers["content-security-policy"]
+    assert "default-src 'none'" in csp and "sandbox" in csp
+    assert response.headers["x-content-type-options"] == "nosniff"
 
 
 @pytest.mark.parametrize(

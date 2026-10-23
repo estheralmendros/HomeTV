@@ -104,6 +104,36 @@ class BrowseViewModelTest {
     }
 
     @Test
+    fun `a failed next page shows the inline error and waits for Retry instead of refetching on every focus move`() = runTest(main.dispatcher) {
+        val vm = vm()
+        advanceUntilIdle()
+        var failPage2 = true
+        repos.api.onFilms.let { real ->
+            repos.api.onFilms = { p, s, so, o -> if (p == 2 && failPage2) throw com.hometv.tv.core.data.FakeHomeTvApi.httpError(500, "internal_error"); real(p, s, so, o) }
+        }
+        vm.onFocused(44)
+        advanceUntilIdle()
+        assertEquals(2, filmCalls().size)
+        assertTrue(vm.state.value.pageFailed, "the grid stays, with the inline error")
+        assertEquals(50, vm.state.value.items.size)
+        vm.onFocused(45)
+        vm.onFocused(49)
+        vm.onFocused(44)
+        advanceUntilIdle()
+        assertEquals(2, filmCalls().size, "no automatic retry on focus moves")
+
+        failPage2 = false
+        vm.retry()
+        advanceUntilIdle()
+        assertEquals(3, filmCalls().size)
+        assertEquals(100, vm.state.value.items.size)
+        assertEquals(false, vm.state.value.pageFailed)
+        assertNull(vm.state.value.error)
+        assertEquals(50, vm.state.value.focus!!.index, "the Retry row is gone: focus moves to the first new card")
+        assertEquals(50, vm.restoreIndex())
+    }
+
+    @Test
     fun `a sort change while a page is loading drops the stale page`() = runTest(main.dispatcher) {
         val vm = vm()
         advanceUntilIdle()

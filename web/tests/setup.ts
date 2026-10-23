@@ -14,6 +14,7 @@ import { transferableAbortController } from 'node:util';
 import { afterAll, afterEach, beforeAll, beforeEach, vi } from 'vitest';
 import { resetApiClient } from '@/api/client';
 import { adminUnlock } from '@/auth/adminUnlock';
+import { historyIndex } from '@/lib/historyIndex';
 import { setCapabilityEnv } from '@/player/capabilities';
 import { resetProgressSync } from '@/player/progressSync';
 import { chromeEnv } from './capsEnvs';
@@ -92,6 +93,7 @@ afterEach(() => {
   }
   resetApiClient();
   adminUnlock.clear();
+  historyIndex.read = () => historyIndex.browser();
   resetProgressSync();
   FakeHls.reset();
   document.title = 'HomeTV';

@@ -18,6 +18,7 @@ Injectable for tests: ``spawn``, ``clock``, ``disk_free``, ``segment_times_mode`
 import asyncio
 import contextlib
 import logging
+import mmap
 import os
 import shutil
 import signal
@@ -27,7 +28,7 @@ import uuid
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, BinaryIO, Literal
 
 from hometv.api.errors import ApiError
 from hometv.config import Settings
@@ -68,12 +69,10 @@ AUDIO_ARGS: dict[str, list[str]] = {
     "aac_5_1": ["-c:a", "aac", "-ac", "6", "-b:a", "384k"],
     "none": [],
 }
-NO_MORE_CUTS = "999999"
+NO_MORE_CUTS = "999999"  # a cut time no run ever reaches (no remaining boundaries)
 SEEK_MARGIN_SECONDS = 0.001 + 3 / 23
 BACKWARD_SEEK_SECONDS = 0.5
-FORWARD_SEEK_CONTAINERS = frozenset(
-    {"ts", "mpeg"}
-)  # a cut time no run ever reaches (no remaining boundaries)
+FORWARD_SEEK_CONTAINERS = frozenset({"ts", "mpeg"})  # land on the first keyframe after -ss
 
 SegmentTimesMode = Literal["absolute", "relative"]
 State = Literal["running", "throttled", "done", "failed", "stopped"]
@@ -103,6 +102,9 @@ class Run:
     rows_seen: int = 0
     partial: str = ""
     monitor: "asyncio.Task[None] | None" = None
+    # In-flight ``_finalize`` (worker thread). Cancelling the monitor does not stop the thread,
+    # so stopping a run waits for it before anyone clears or removes the session dir.
+    finalizing: "asyncio.Future[Any] | None" = None
 
 
 @dataclass
@@ -166,6 +168,20 @@ class Session:
 
     def bytes_on_disk(self) -> int:
         return sum(self.ready.values()) + (self.init_size or 0)
+
+
+@dataclass
+class SegmentFile:
+    """An open ``seg_k.m4s``: opened before the segment may be evicted, so the response keeps
+    streaming it after an unlink. The caller closes ``file``."""
+
+    file: BinaryIO
+    size: int
+
+
+def _open_segment(path: Path) -> SegmentFile:
+    fh = open(path, "rb")  # noqa: SIM115 - owned by the caller (streamed, then closed)
+    return SegmentFile(fh, os.fstat(fh.fileno()).st_size)
 
 
 def _rmtree(path: Path) -> None:
@@ -234,6 +250,7 @@ class HlsSessionManager:
         self.over_cap = False
         self.spawn_count = 0
         self._mode_lock = asyncio.Lock()
+        self._create_lock = asyncio.Lock()
         self._sweeper: asyncio.Task[None] | None = None
 
     # -- config shortcuts --
@@ -334,18 +351,24 @@ class HlsSessionManager:
         return int((bitrate or 0) / 8 * (self.ahead + self.behind))
 
     async def create_session(self, spec: SessionSpec) -> Session:
-        active = [s for s in self.sessions.values() if s.state not in ("failed", "stopped")]
-        if len(active) >= self.settings.playback.max_sessions:
-            raise ApiError(503, "too_many_sessions", "Too many streaming sessions")
-        free = await asyncio.to_thread(self.disk_free, self.hls_dir)
-        if self.total_bytes() + self.estimate_bytes(spec) > self.cap_bytes or free < MIN_FREE_BYTES:
-            raise ApiError(503, "hls_disk_full", "Not enough space for a streaming session")
-        await self.ensure_mode()
-        session_id = uuid.uuid4().hex
-        directory = self.hls_dir / session_id
-        await asyncio.to_thread(directory.mkdir, parents=True, exist_ok=True)
-        session = Session(session_id, spec, directory, last_access=self.clock())
-        self.sessions[session_id] = session
+        # Check and register under one lock: the checks await (disk_free, the mode probe,
+        # mkdir), so concurrent creates would otherwise all pass ``max_sessions`` / the budget.
+        async with self._create_lock:
+            active = [s for s in self.sessions.values() if s.state not in ("failed", "stopped")]
+            if len(active) >= self.settings.playback.max_sessions:
+                raise ApiError(503, "too_many_sessions", "Too many streaming sessions")
+            free = await asyncio.to_thread(self.disk_free, self.hls_dir)
+            if (
+                self.total_bytes() + self.estimate_bytes(spec) > self.cap_bytes
+                or free < MIN_FREE_BYTES
+            ):
+                raise ApiError(503, "hls_disk_full", "Not enough space for a streaming session")
+            await self.ensure_mode()
+            session_id = uuid.uuid4().hex
+            directory = self.hls_dir / session_id
+            await asyncio.to_thread(directory.mkdir, parents=True, exist_ok=True)
+            session = Session(session_id, spec, directory, last_access=self.clock())
+            self.sessions[session_id] = session
         k0 = segment_index(spec.plan, spec.start_position_seconds)
         async with session.lock:
             await self._start_run(session, k0)
@@ -498,6 +521,11 @@ class HlsSessionManager:
         if run.monitor is not None and run.monitor is not asyncio.current_task():
             run.monitor.cancel()
         await procs.kill_sequence(run.proc, grace=self.kill_grace)
+        job = run.finalizing
+        if job is not None and not job.done():
+            await asyncio.wait({job})
+            if not job.cancelled():
+                job.exception()  # retrieved: its result belongs to the cancelled monitor
 
     async def _fail(self, session: Session, detail: str) -> None:
         """Caller holds ``session.lock``."""
@@ -568,9 +596,20 @@ class HlsSessionManager:
         ``normalize_init``) is logged as ``init_mismatch`` (first one kept)."""
         raw = session.dir / f"raw_{k}.mp4"
         try:
-            data = raw.read_bytes()
+            fh = open(raw, "rb")  # noqa: SIM115 - closed by the ``with fh`` below
         except FileNotFoundError:
             return "missing", 0, None
+        with fh:
+            if os.fstat(fh.fileno()).st_size == 0:
+                return self._finalize_mapped(session, k, raw, b"")
+            # Mapped, not read: only the init and box headers are touched in memory; the
+            # media boxes are written from the map (no copy of a 200 MB 4K segment).
+            with mmap.mmap(fh.fileno(), 0, access=mmap.ACCESS_READ) as data:
+                return self._finalize_mapped(session, k, raw, data)
+
+    def _finalize_mapped(
+        self, session: Session, k: int, raw: Path, data: bytes | mmap.mmap
+    ) -> tuple[str | None, int, tuple[int, bool] | None]:
         try:
             split = split_fmp4(data)
         except Fmp4Error as exc:
@@ -602,10 +641,13 @@ class HlsSessionManager:
         if write or not complete:
             init = (len(split.init), complete)
         tmp = session.dir / f"seg_{k}.m4s.tmp"
-        tmp.write_bytes(split.media)
+        with open(tmp, "wb") as out, memoryview(data) as view:
+            for start, end in split.media_ranges:
+                with view[start:end] as chunk:
+                    out.write(chunk)
         tmp.replace(session.dir / f"seg_{k}.m4s")
         raw.unlink(missing_ok=True)
-        return None, len(split.media), init
+        return None, split.media_size, init
 
     async def _on_row(self, session: Session, run: Run, line: str) -> bool:
         """Verify + finalize one row. Returns False when this run is over (replaced)."""
@@ -641,7 +683,9 @@ class HlsSessionManager:
                         row.k,
                         row.start - TS_OFFSET_SECONDS,
                     )
-                error, seg_size, init_info = await asyncio.to_thread(self._finalize, session, row.k)
+                job = asyncio.ensure_future(asyncio.to_thread(self._finalize, session, row.k))
+                run.finalizing = job
+                error, seg_size, init_info = await asyncio.shield(job)
         k = row.k if row is not None else expected_k
         to_delete: list[Path] = []
         async with session.lock:
@@ -823,7 +867,7 @@ class HlsSessionManager:
                 raise ApiError(504, "segment_timeout", "Segment not ready in time")
             await asyncio.sleep(self.poll_seconds)
 
-    async def segment(self, session_id: str, k: int) -> bytes:
+    async def open_segment(self, session_id: str, k: int) -> SegmentFile:
         session = self._get(session_id)
         if k < 0 or k >= len(session.plan):
             raise ApiError(404, "segment_not_found", "Segment not found")
@@ -833,7 +877,7 @@ class HlsSessionManager:
         while True:
             run_id = await self._decide(session, k)
             outcome = await self._wait_for(session, k, run_id, deadline)
-            if isinstance(outcome, bytes):
+            if isinstance(outcome, SegmentFile):
                 return outcome
             if outcome == "timeout":
                 async with session.lock:
@@ -877,11 +921,11 @@ class HlsSessionManager:
             self._check_alive(session)
             if k in session.ready:
                 try:
-                    data = await asyncio.to_thread((session.dir / f"seg_{k}.m4s").read_bytes)
+                    opened = await asyncio.to_thread(_open_segment, session.dir / f"seg_{k}.m4s")
                 except FileNotFoundError:
-                    return "reenter"  # evicted between the check and the read
+                    return "reenter"  # evicted between the check and the open
                 session.consecutive_timeouts = 0
-                return data
+                return opened
             if session.run_id != run_id and not (
                 session.produced_max < k <= session.produced_max + RESUME_WINDOW
             ):

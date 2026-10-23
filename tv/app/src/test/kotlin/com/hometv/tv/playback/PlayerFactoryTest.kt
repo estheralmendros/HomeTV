@@ -1,11 +1,18 @@
 package com.hometv.tv.playback
 
+import androidx.media3.common.C
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
 /** prd3 Playback Flow rule 8: byte target `memoryClass × 1 MiB × 0.5`, clamped 48–128 MiB; buffers > one 30 s segment. */
 class PlayerFactoryTest {
     private val mib = 1024 * 1024
+
+    @Test
+    fun `the player and the passthrough query share the movie audio attributes`() {
+        assertEquals(C.USAGE_MEDIA, PlayerFactory.AUDIO_ATTRIBUTES.usage)
+        assertEquals(C.AUDIO_CONTENT_TYPE_MOVIE, PlayerFactory.AUDIO_ATTRIBUTES.contentType)
+    }
 
     @Test
     fun `the byte target follows the memory class within 48 to 128 MiB`() {

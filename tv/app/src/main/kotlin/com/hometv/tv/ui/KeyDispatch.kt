@@ -11,7 +11,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 /**
  * The activity-level key hook: `MainActivity.dispatchKeyEvent` offers every key event here before
  * the view hierarchy (Compose focus). Only the most recently registered handler sees it; returning
- * true consumes the event. Phase B2's Player registers one with [KeyEventInterceptor] (media keys,
+ * true consumes the event. The Player registers one with [KeyEventInterceptor] (media keys,
  * D-pad seek while the overlay is hidden, Back), so the keys reach its ViewModel, never `PlayerView`.
  */
 class KeyDispatch {

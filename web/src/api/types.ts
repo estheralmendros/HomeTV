@@ -8,10 +8,6 @@ export type IsoDate = string;
 
 // --- Shared --------------------------------------------------------------------------------
 
-export interface ErrorEnvelope {
-  error: { code: string; message: string; details: Record<string, unknown> };
-}
-
 export interface Page<T> {
   items: T[];
   page: number;
@@ -202,8 +198,6 @@ export interface EpisodeSummary {
 
 /** Continue Watching / Next Up episode entry: same version order as GET /api/episodes/{id}. */
 export type HomeEpisode = EpisodeSummary & { media_files: MediaFile[]; show_backdrop: Image | null };
-
-export type HomeItem = FilmSummary | HomeEpisode | ShowSummary;
 
 export interface LibraryCounts {
   films: number;

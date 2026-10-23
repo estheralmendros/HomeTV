@@ -33,7 +33,10 @@ prd.md is a contract: change the PRD first, then the code.
     `keyframe_readers.py` (pure MKV Cues / MP4 stss readers, ffprobe row parsing),
     `keyframes.py` (`KeyframeService`: cache, ffprobe fallback + rchar watchdog, failure map,
     background indexer = scanner `keyframe_hook`), `segments.py` (pure plan/check/playlist,
-    run.csv verification, `split_fmp4`, init helpers), `hls.py` (`HlsSessionManager`),
+    run.csv verification, `split_fmp4` (bytes or mmap -> init + `media_ranges`, no media copy),
+    init helpers), `hls.py` (`HlsSessionManager`: `_create_lock` makes check + register atomic;
+    `open_segment()` -> `SegmentFile(file, size)` opened before eviction, the caller closes it,
+    streamed by `stream.open_file_chunks`; `_stop_run` waits for an in-flight `finalizing` split),
     `subtitles.py` (`SubtitleService`), `procs.py` (spawn, `IDLE_PREFIX`, kill sequence).
   - `hometv/spa.py`: §12 static `web_dist` serving + SPA fallback (`SpaRoute` catch-all for
     non-`/api` GET/HEAD, appended last by `install_spa`; `/assets/*` immutable, stale asset ->
@@ -99,14 +102,21 @@ prd.md is a contract: change the PRD first, then the code.
   - `app/` (`com.hometv.tv`): `MainActivity` (offers every key to `KeyDispatch` before Compose
     focus; screens register with `KeyEventInterceptor { event -> Boolean }`), `di/AppContainer`
     (manual DI: store, `clients()` rebuilt per server URL, `guard`, repositories, `events`,
-    `sessionExpired`, `appScope`, `codecs`, `playerLaunches`, `homeRefresh`, one factory per
-    ViewModel), `data/` (`DataStoreSessionStore`, `HomeCache`, `HomeRefresh`, `PlayerLaunches`),
-    `playback/` (`AndroidCodecInventory`, `PlayerFactory`, `HomeTvLoadErrorHandlingPolicy`,
-    `MediaItemBuilder`, `SubtitleFileCache`, `ExoPlayerController`, `ExoTrackMapper`), `ui/`
+    `sessionExpired`, `appScope`, `codecs`, `playerLaunches`, `homeRefresh`, `detailRefresh`, one
+    shared Coil cache base for the per-server `ImageLoader`s, one factory per ViewModel), `data/`
+    (`DataStoreSessionStore`, `HomeCache` (write IOExceptions are logged and swallowed),
+    `HomeRefresh`, `DetailRefresh` (generation counter marked by `AppNavigator.play`; Film/Show
+    detail `onVisible()` on `ON_RESUME` refetches in place, prd3 §6 step 7), `PlayerLaunches`),
+    `playback/` (`AndroidCodecInventory`, `PlayerFactory` (`AUDIO_ATTRIBUTES` shared with the
+    passthrough query), `HomeTvLoadErrorHandlingPolicy`, `MediaItemBuilder`, `SubtitleFileCache`
+    (`get` answers from an in-memory index, no disk I/O), `ExoPlayerController` (the ExoPlayer is
+    private; `attach/detach(PlayerView)`), `ExoTrackMapper`), `ui/`
     (`HomeTvRoot` NavHost, `navigation/` (`Route`, `AppNavigator`), `text/` (`UiText`,
     `UiFormat`, `StringResolver`), `components/`, one package per screen; `player/`
-    (`PlayerViewModel` session state machine, `PlayerScreen` with Media3 `PlayerView`, overlay,
-    track dialog, countdown, error screen)). `res/values/strings.xml` is the only catalog.
+    (`PlayerViewModel` session state machine, `HlsSessionOwner` (HLS DELETEs and row-33 orphans in
+    `appScope`), `PlayerScreen` with Media3 `PlayerView`, overlay, track dialog, countdown, error
+    screen)). `res/values/strings.xml` is the only catalog; the APK keeps only `es` resources
+    (`localeFilters`).
   - Tests: `app/src/test` (ViewModel/glue tests, JUnit 5; `ui/player/PlayerSessionStateTest` covers
     the §8 session table with `FakePlayerController`), `app/src/sharedTest` (Compose focus/navigation
     tests on Robolectric via `UiTestBase` + `testContainer` + `ScriptedApi`; also compiled into
@@ -119,7 +129,10 @@ prd.md is a contract: change the PRD first, then the code.
 - Perf (G3 browse p95 < 100 ms): `make perf` (`cd server && uv run pytest -m perf -s`).
 - Deploy: `make docker-build` (linux/amd64 image), `make compose-config` (validates the compose
   file with `.env.example`); run with `docker compose up -d --build` in `deploy/`.
-- `make lint`: ruff check + format check + web typecheck + `tv-lint`. `make format`: auto-fix (server).
+- `make lint`: `server-lint` (ruff check + format check + `uv run mypy`: `[tool.mypy]` in
+  `server/pyproject.toml`, pydantic plugin, unused `# type: ignore` are errors) + web typecheck +
+  `web-lint` (`npm run lint`: ESLint flat config `web/eslint.config.js`, react-hooks rules only) +
+  `tv-lint`. `make format`: auto-fix (server).
 - TV: `make tv-test` (`./gradlew :core:test :app:testDebugUnitTest`), `make tv-lint`
   (`:app:lintDebug`), `make tv-build` (`:app:assembleRelease`, needs `tv/keystore.properties`).
   The Makefile defaults `JAVA_HOME` to `/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home`
@@ -181,8 +194,9 @@ prd.md is a contract: change the PRD first, then the code.
 - **Real ffmpeg 5.1** (the image's version) can be exercised by streaming `server/` into a
   container built FROM the image plus uv, then `uv sync --frozen && uv run pytest -m
   integration` (use `COPYFILE_DISABLE=1 tar --no-xattrs` on macOS). `segment_times_mode` probes
-  `absolute` there. Known 5.1 difference: a restarted run of the B-frame MP4 with `aac_stereo`
-  starts its audio ~11 ms below the cross-run AC window.
+  `absolute` there. A restarted run of the B-frame MP4 with `aac_stereo` starts its audio about
+  11 ms below one AAC frame of reorder; prd.md Rev 10 sets the AAC re-encode lower bound to two
+  audio frames, so the integration suite passes on 5.1 too.
 - **Timing in tests**: never assume ffmpeg (or a stub) is slower than the HLS monitor. Tiny
   clips remux in milliseconds: wait for a settled run (`wait_for_settled_run`) or evict
   explicitly before asserting restarts; the stub ffmpeg has `lockstep` (producer slower than the
@@ -213,8 +227,13 @@ prd.md is a contract: change the PRD first, then the code.
   import('<rel>/tests/fakeHls'))` (`FakeHls.last`, `hlsLog`, `emit`, `fatal`), `setCapabilityEnv(
   iphoneEnv())` from `tests/capsEnvs.ts`, `mediaState(video)` / `fakeTextTrack(el)` from
   `tests/media.ts`, `setViewportWidth(360)` from `tests/viewport.ts` (matchMedia stub, desktop
-  1280 px by default; layout that differs on phones renders via `useMediaQuery(PHONE_QUERY)`, not
-  CSS-only hiding, so it is testable). Fake timers: `useFakePlayerTimers()` (also moves React Query's scheduler to a
+  1280 px by default; layout that differs on phones renders via `useMediaQuery(PHONE_QUERY)`
+  (< 600 px) or `COMPACT_NAV_QUERY` (< 720 px: NavBar vs bottom tab bar, the /search page input),
+  not CSS-only hiding, so it is testable). Back navigation (`useGoBack`) reads the history index
+  through the `historyIndex` seam (`src/lib/historyIndex.ts`, React Router's `history.state.idx`;
+  the test harness counts memory-router entries). Components that only need a derived media-clock
+  value use `useMediaSelector(video, select)`; only `Controls`/`SeekBar` subscribe to
+  `useMediaClock`. `SeekBar` commits a drag or held range key once, on release. Fake timers: `useFakePlayerTimers()` (also moves React Query's scheduler to a
   real tick), then `until`/`advance` from `tests/flush.ts`, never `findBy*`/`waitFor`; prefer
   `fireEvent` under fake timers. Never `await` a sync `act()`.
 

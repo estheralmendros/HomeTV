@@ -48,7 +48,7 @@ open class ScriptedApi : FakeHomeTvApi() {
     var onWatched: suspend (WatchedRequest) -> WatchedResponse = { WatchedResponse(1) }
     val watchedBodies: MutableList<WatchedRequest> = Collections.synchronizedList(mutableListOf())
 
-    // Playback (phase B2): `POST .../playback`, `PUT /api/progress`, HLS keep-alive and DELETE.
+    // Playback: `POST .../playback`, `PUT /api/progress`, HLS keep-alive and DELETE.
     var onPlayback: suspend (Long, PlaybackRequest) -> PlaybackResponse = { _, _ -> throw httpError(404, "not_found") }
     val playbackBodies: MutableList<Pair<Long, PlaybackRequest>> = Collections.synchronizedList(mutableListOf())
     var onProgress: suspend (ProgressRequest) -> Progress = { Progress(it.position_seconds, it.duration_seconds, media_file_id = it.media_file_id) }

@@ -32,7 +32,7 @@
 }
 
 .seasonSelect {
-  display: none;
+  display: flex;
   align-items: center;
   gap: var(--space-2);
 }
@@ -151,14 +151,6 @@
 }
 
 @media (max-width: 599px) {
-  .tabs {
-    display: none;
-  }
-
-  .seasonSelect {
-    display: flex;
-  }
-
   .episode {
     grid-template-columns: 120px 1fr;
   }

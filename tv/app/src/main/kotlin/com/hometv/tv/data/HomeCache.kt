@@ -6,7 +6,9 @@ import com.hometv.tv.core.api.FilmSummary
 import com.hometv.tv.core.api.HomeResponse
 import com.hometv.tv.core.api.ShowSummary
 import com.hometv.tv.core.api.Summary
+import android.util.Log
 import java.io.File
+import java.io.IOException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -38,9 +40,14 @@ data class HomePayload(
 
 /**
  * Last Home payload per profile as JSON files `{dir}/{profileId}.json` (atomic write: temp + rename).
- * Disposable: a missing or unreadable file is just "no cache"; cleared on server change.
+ * Disposable: a missing or unreadable file is just "no cache", a failing write is logged and
+ * ignored; cleared on server change.
  */
-class HomeCache(private val dir: File, private val io: CoroutineDispatcher = Dispatchers.IO) {
+class HomeCache(
+    private val dir: File,
+    private val io: CoroutineDispatcher = Dispatchers.IO,
+    private val log: (String, Throwable?) -> Unit = { msg, e -> runCatching { Log.w("HomeTvCache", msg, e) } },
+) {
     private val mutex = Mutex()
 
     suspend fun read(profileId: Long): HomePayload? = withContext(io) {
@@ -48,14 +55,14 @@ class HomeCache(private val dir: File, private val io: CoroutineDispatcher = Dis
     }
 
     suspend fun write(profileId: Long, payload: HomePayload) = withContext(io) {
-        mutex.withLock { writeFile(file(profileId), payload) }
+        mutex.withLock { safeWrite(file(profileId), payload) }
     }
 
     /** `AppEvent.ItemGone`: a cached card for a removed title must not reappear. */
     suspend fun remove(type: String, id: Long) = withContext(io) {
         mutex.withLock {
             dir.listFiles { f -> f.extension == "json" }.orEmpty().forEach { f ->
-                readFile(f)?.let { writeFile(f, it.without(type, id)) }
+                readFile(f)?.let { safeWrite(f, it.without(type, id)) }
             }
         }
     }
@@ -69,6 +76,16 @@ class HomeCache(private val dir: File, private val io: CoroutineDispatcher = Dis
     private fun readFile(f: File): HomePayload? = runCatching {
         if (!f.isFile) null else ApiJson.decodeFromString(HomePayload.serializer(), f.readText())
     }.getOrNull()
+
+    /** The cache is disposable (prd3 §3): a failing write (disk full, read-only) is logged, never thrown. */
+    private fun safeWrite(f: File, payload: HomePayload) {
+        try {
+            writeFile(f, payload)
+        } catch (e: IOException) {
+            log("Home cache write failed: ${f.name}", e)
+            File(dir, "${f.name}.tmp").delete()
+        }
+    }
 
     private fun writeFile(f: File, payload: HomePayload) {
         dir.mkdirs()

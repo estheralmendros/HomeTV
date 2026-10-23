@@ -18,6 +18,11 @@ export const NEXT_EPISODE_COUNTDOWN_SECONDS = 10;
 
 const PLAYBACK_STATES: ReadonlySet<PlayerStateName> = new Set(['playing', 'paused', 'buffering', 'ended']);
 
+/** Whether `current` is in the last NEXT_EPISODE_LEAD_SECONDS of `duration`. */
+export function isWithinLead(current: number, duration: number | null): boolean {
+  return duration != null && duration - current <= NEXT_EPISODE_LEAD_SECONDS;
+}
+
 export interface NextUpInput {
   /** The fetched episode detail (never the home entry); undefined for films or while loading. */
   episode: EpisodeDetail | undefined;
@@ -26,8 +31,8 @@ export interface NextUpInput {
   currentFile: MediaFile | null;
   stateName: PlayerStateName;
   hasPlayed: boolean;
-  current: number;
-  duration: number | null;
+  /** The element is within NEXT_EPISODE_LEAD_SECONDS of the duration (see `isWithinLead`). */
+  withinLead: boolean;
   /** Starts the next episode (final report, NEXT, replace navigation). */
   onNextEpisode: (next: EpisodeDetail) => void;
 }
@@ -39,14 +44,12 @@ export function useNextUp({
   currentFile,
   stateName,
   hasPlayed,
-  current,
-  duration,
+  withinLead,
   onNextEpisode,
 }: NextUpInput) {
   const queryClient = useQueryClient();
   const ended = stateName === 'ended';
-  const nearEnd =
-    hasPlayed && PLAYBACK_STATES.has(stateName) && duration != null && duration - current <= NEXT_EPISODE_LEAD_SECONDS;
+  const nearEnd = hasPlayed && PLAYBACK_STATES.has(stateName) && withinLead;
   const reached = ended || nearEnd;
 
   // --- next episode -----------------------------------------------------------------------
@@ -68,6 +71,7 @@ export function useNextUp({
     });
     return () => controller.abort();
     // Resolved once per file: later refetches of the detail (new object) don't restart it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: `episode`/`queryClient` are not triggers
   }, [resolvable, playedFileId]);
 
   const nextEpisode = resolution.next;

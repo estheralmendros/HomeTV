@@ -35,6 +35,16 @@ class ExoPlayerControllerTest {
     }
 
     @Test
+    fun `in HLS mode a failing playlist (the media item URL) is HLS, not STREAM`() {
+        val playlist = "https://hometv.ts.net/api/hls/S1/index.m3u8"
+        val http = HttpDataSource.InvalidResponseCodeException(404, null, null, emptyMap(), DataSpec(Uri.parse(playlist)), ByteArray(0))
+        val error = ExoPlaybackException.createForSource(http, PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS)
+        val failure = ExoPlayerController.failureOf(error, ExoPlayerController.LoadRecord(playlist, C.TRACK_TYPE_DEFAULT), streamUrl = playlist)
+        assertEquals(UrlKind.HLS, failure.urlKind)
+        assertEquals(404, failure.httpStatus)
+    }
+
+    @Test
     fun `an HTTP status and the envelope code are extracted`() {
         val body = """{"error": {"code": "session_not_found", "message": "x", "details": {}}}""".toByteArray()
         val http = HttpDataSource.InvalidResponseCodeException(404, null, null, emptyMap(), DataSpec(Uri.parse(stream)), body)

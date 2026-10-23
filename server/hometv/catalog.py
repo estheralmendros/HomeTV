@@ -135,7 +135,7 @@ def media_file_out(row: m.MediaFile, sidecars: Iterable[m.SubtitleFile] = ()) ->
             SubtitleTrack(
                 id=track_id,
                 source="external",
-                kind=sidecar.kind,  # type: ignore[arg-type]
+                kind=sidecar.kind,
                 codec=sidecar.format,
                 language=sidecar.language,
                 title=None,
@@ -183,7 +183,7 @@ def _version_order(include_part: bool) -> list[Any]:
     ]
 
 
-def _sidecars(session: Session, file_ids: Sequence[int]) -> dict[int, list[m.SubtitleFile]]:
+def sidecars(session: Session, file_ids: Sequence[int]) -> dict[int, list[m.SubtitleFile]]:
     result: dict[int, list[m.SubtitleFile]] = defaultdict(list)
     if file_ids:
         for sub in session.scalars(
@@ -199,7 +199,7 @@ def film_media_files(session: Session, film_id: int) -> list[MediaFile]:
         .where(m.MediaFile.film_id == film_id, m.MediaFile.missing_since.is_(None))
         .order_by(*_version_order(include_part=True))
     ).all()
-    subs = _sidecars(session, [r.id for r in rows])
+    subs = sidecars(session, [r.id for r in rows])
     return [media_file_out(r, subs.get(r.id, ())) for r in rows]
 
 
@@ -217,7 +217,7 @@ def episode_media_files(session: Session, episode_ids: Sequence[int]) -> dict[in
         )
         if row.missing_since is None  # filtered here, see _episode_durations
     ]
-    subs = _sidecars(session, list({r.id for _, r in rows}))
+    subs = sidecars(session, list({r.id for _, r in rows}))
     built: dict[int, MediaFile] = {}
     for episode_id, row in rows:
         if row.id not in built:
@@ -270,8 +270,8 @@ def film_summaries(session: Session, profile_id: int, films: Sequence[m.Film]) -
             id=f.id,
             title=f.title,
             year=f.year,
-            poster=image("poster", f.poster_path),  # type: ignore[arg-type]
-            backdrop=image("backdrop", f.backdrop_path),  # type: ignore[arg-type]
+            poster=image("poster", f.poster_path),
+            backdrop=image("backdrop", f.backdrop_path),
             overview=f.overview,
             match_status=f.match_status,
             added_at=f.added_at,
@@ -330,8 +330,8 @@ def show_summaries(session: Session, profile_id: int, shows: Sequence[m.Show]) -
                 id=s.id,
                 title=s.title,
                 year=s.year,
-                poster=image("poster", s.poster_path),  # type: ignore[arg-type]
-                backdrop=image("backdrop", s.backdrop_path),  # type: ignore[arg-type]
+                poster=image("poster", s.poster_path),
+                backdrop=image("backdrop", s.backdrop_path),
                 overview=s.overview,
                 match_status=s.match_status,
                 added_at=s.added_at,
@@ -390,12 +390,12 @@ def episode_summaries(
                 episode_number=e.episode_number,
                 title=e.title,
                 overview=e.overview,
-                still=image("still", e.still_path),  # type: ignore[arg-type]
+                still=image("still", e.still_path),
                 air_date=e.air_date,
                 runtime_minutes=e.runtime_minutes,
                 duration_seconds=durations.get(e.id),
-                show_poster=image("poster", show.poster_path),  # type: ignore[arg-type]
-                show_backdrop=image("backdrop", show.backdrop_path),  # type: ignore[arg-type]
+                show_poster=image("poster", show.poster_path),
+                show_backdrop=image("backdrop", show.backdrop_path),
                 progress=progress.get(e.id),
             )
         )
@@ -514,7 +514,7 @@ def _cast(session: Session, fk: Any, item_id: int, limit: int) -> list[CastMembe
             person_id=person.id,
             name=person.name,
             character=character,
-            profile_image=image("profile", person.profile_path),  # type: ignore[arg-type]
+            profile_image=image("profile", person.profile_path),
         )
         for character, person in rows
     ]
@@ -540,8 +540,8 @@ def film_detail(session: Session, profile_id: int, film_id: int, cast_limit: int
         runtime_minutes=film.runtime_minutes,
         vote_average=film.vote_average,
         genres=_genres(session, m.FilmGenre, m.FilmGenre.film_id, film.id),
-        poster=image("poster", film.poster_path),  # type: ignore[arg-type]
-        backdrop=image("backdrop", film.backdrop_path),  # type: ignore[arg-type]
+        poster=image("poster", film.poster_path),
+        backdrop=image("backdrop", film.backdrop_path),
         match_status=film.match_status,
         tmdb_id=film.tmdb_id,
         cast=_cast(session, m.CastCredit.film_id, film.id, cast_limit),
@@ -599,7 +599,7 @@ def show_detail(session: Session, profile_id: int, show_id: int, cast_limit: int
             id=s.id,
             season_number=s.season_number,
             name=s.name,
-            poster=image("poster", s.poster_path),  # type: ignore[arg-type]
+            poster=image("poster", s.poster_path),
             air_date=s.air_date,
             episode_count=len(per_season[s.id]),
             unwatched_episode_count=sum(1 for e in per_season[s.id] if e.id not in watched),
@@ -622,8 +622,8 @@ def show_detail(session: Session, profile_id: int, show_id: int, cast_limit: int
         overview=show.overview,
         vote_average=show.vote_average,
         genres=_genres(session, m.ShowGenre, m.ShowGenre.show_id, show.id),
-        poster=image("poster", show.poster_path),  # type: ignore[arg-type]
-        backdrop=image("backdrop", show.backdrop_path),  # type: ignore[arg-type]
+        poster=image("poster", show.poster_path),
+        backdrop=image("backdrop", show.backdrop_path),
         match_status=show.match_status,
         tmdb_id=show.tmdb_id,
         cast=_cast(session, m.CastCredit.show_id, show.id, cast_limit),
@@ -659,7 +659,7 @@ def season_detail(
         season_number=season.season_number,
         name=season.name,
         overview=season.overview,
-        poster=image("poster", season.poster_path),  # type: ignore[arg-type]
+        poster=image("poster", season.poster_path),
         air_date=season.air_date,
         episodes=episode_summaries(session, profile_id, episodes),
     )
@@ -706,6 +706,8 @@ def search(session: Session, profile_id: int, q: str, limit: int) -> tuple[list,
 
 
 def genres(session: Session, library: Literal["films", "shows"]) -> list[GenreCount]:
+    link: type[m.FilmGenre] | type[m.ShowGenre]
+    model: type[m.Film] | type[m.Show]
     if library == "films":
         link, fk, model, visible = m.FilmGenre, m.FilmGenre.film_id, m.Film, film_has_present_file()
     else:
@@ -753,7 +755,13 @@ def _continue_watching(session: Session, profile_id: int, limit: int) -> list[An
     episodes = list(session.scalars(select(m.Episode).where(m.Episode.id.in_(episode_ids))))
     film_out = {s.id: s for s in film_summaries(session, profile_id, list(films.values()))}
     episode_out = {s.id: s for s in home_episodes(session, profile_id, episodes)}
-    return [film_out[f] if f is not None else episode_out[e] for f, e in rows]
+    items: list[Any] = []
+    for film_id, episode_id in rows:  # exactly one is set (the query's or_)
+        if film_id is not None:
+            items.append(film_out[film_id])
+        elif episode_id is not None:
+            items.append(episode_out[episode_id])
+    return items
 
 
 def _next_up(session: Session, profile_id: int, limit: int) -> list[HomeEpisode]:

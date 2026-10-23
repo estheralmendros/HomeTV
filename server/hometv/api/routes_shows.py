@@ -11,6 +11,7 @@ from hometv.api.schemas import (
     EpisodeDetail,
     ErrorResponse,
     Page,
+    Responses,
     SeasonDetail,
     ShowDetail,
     ShowSummary,
@@ -21,7 +22,7 @@ router = APIRouter(
     tags=["catalog"],
     responses={401: {"model": ErrorResponse, "description": "unauthorized"}},
 )
-_NOT_FOUND = {404: {"model": ErrorResponse, "description": "not_found"}}
+_NOT_FOUND: Responses = {404: {"model": ErrorResponse, "description": "not_found"}}
 
 
 @router.get("/shows", response_model=Page[ShowSummary])

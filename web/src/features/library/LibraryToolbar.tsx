@@ -88,6 +88,7 @@ function TitleFilter({ value, onCommit }: { value: string; onCommit: (q: string)
     const q = debounced.trim().slice(0, MAX_QUERY_LENGTH);
     if (q !== value) onCommitRef.current(q);
     // Only a settled keystroke commits (deps: debounced only); a URL change must not write back.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: `value` is read, not a trigger
   }, [debounced]);
 
   return (

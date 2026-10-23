@@ -1,7 +1,8 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import * as f from '../../tests/fixtures';
 import { currentUrl, renderApp, renderWithProviders } from '../../tests/renderWithProviders';
+import { setViewportWidth } from '../../tests/viewport';
 import { adminUnlock } from '@/auth/adminUnlock';
 import { SESSION_KEY } from '@/auth/session';
 import { AppShell } from './AppShell';
@@ -18,11 +19,33 @@ describe('NavBar', () => {
     ]);
   });
 
-  it('has the mobile tab bar with Buscar', () => {
+  it('desktop (1280 px): links and search in the top bar, no tab bar', () => {
+    renderWithProviders(<AppShell />);
+    expect(screen.getByRole('navigation', { name: 'Navegación principal' })).toBeInTheDocument();
+    expect(screen.getByRole('searchbox', { name: 'Buscar títulos' })).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Secciones' })).not.toBeInTheDocument();
+  });
+
+  it('below 720 px: the bottom tab bar with Buscar instead of the top links and search', () => {
+    setViewportWidth(719);
     renderWithProviders(<AppShell />);
     const tabs = screen.getByRole('navigation', { name: 'Secciones' });
     expect(within(tabs).getAllByRole('link').map((a) => a.textContent)).toEqual(['Inicio', 'Películas', 'Series', 'Buscar']);
     expect(within(tabs).getByRole('link', { name: 'Buscar' })).toHaveAttribute('href', '/search');
+    expect(screen.queryByRole('navigation', { name: 'Navegación principal' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('searchbox', { name: 'Buscar títulos' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'HomeTV, ir a Inicio' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Menú de perfil de Ana' })).toBeInTheDocument();
+  });
+
+  it('switches layouts when the viewport crosses 720 px', () => {
+    renderWithProviders(<AppShell />);
+    act(() => setViewportWidth(360));
+    expect(screen.getByRole('navigation', { name: 'Secciones' })).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Navegación principal' })).not.toBeInTheDocument();
+    act(() => setViewportWidth(720));
+    expect(screen.getByRole('navigation', { name: 'Navegación principal' })).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Secciones' })).not.toBeInTheDocument();
   });
 
   it('NavSearch submits to /search?q=…', async () => {

@@ -12,12 +12,5 @@
 }
 
 .page {
-  display: none;
   margin-bottom: var(--space-4);
-}
-
-@media (max-width: 719px) {
-  .page {
-    display: block;
-  }
 }

@@ -27,6 +27,17 @@ class SubtitleFileCacheTest {
     }
 
     @Test
+    fun `lookups answer from the in-memory index without touching the disk (main-thread safe)`() {
+        val cache = SubtitleFileCache(root)
+        val uri = cache.put(91, "emb-3", "WEBVTT\n".toByteArray())
+        root.deleteRecursively() // the index, not a stat, answers get()
+        assertEquals(uri, cache.get(91, "emb-3"))
+        assertNull(SubtitleFileCache(root).get(91, "emb-3"), "a new cache (a new process) starts empty")
+        cache.remove(91, "emb-3")
+        assertNull(cache.get(91, "emb-3"))
+    }
+
+    @Test
     fun `clear empties the cache (app start)`() {
         val cache = SubtitleFileCache(root)
         cache.put(1, "ext-1", ByteArray(10))

@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { RouterProvider, createMemoryRouter, type RouteObject } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ROUTER_FUTURE, ROUTER_PROVIDER_FUTURE } from '@/router';
-import { CHUNK_RELOAD_KEY, registerChunkReload } from './chunkReload';
+import { CHUNK_RELOAD_KEY, pendingNavigationHref, registerChunkReload } from './chunkReload';
 import { lazyRoute } from './lazyRoute';
 import { reloader } from './reload';
 import { RouteErrorBoundary } from './RouteErrorBoundary';
@@ -79,6 +79,22 @@ describe('RouteErrorBoundary', () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(screen.queryByText(APP_UPDATED)).not.toBeInTheDocument();
     expect(screen.queryByText('Algo ha ido mal.')).not.toBeInTheDocument();
+    unregister();
+  });
+
+  it('a vite:preloadError during a navigation reloads the target URL, not the page being left', async () => {
+    const lazy = lazyRoute(async () => {
+      const event = new Event('vite:preloadError', { cancelable: true });
+      window.dispatchEvent(event);
+      if (!event.defaultPrevented) throw chunkError();
+      return undefined as unknown as { C: () => null };
+    }, (m) => m.C);
+    const router = renderRoutes([{ path: 'films/2', element: <p>film</p> }, { path: 'watch/film/2', lazy }], '/films/2');
+    const unregister = registerChunkReload(window, () => pendingNavigationHref(router));
+    expect(await screen.findByText('film')).toBeInTheDocument();
+    void router.navigate('/watch/film/2?file=3');
+    await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+    expect(reload).toHaveBeenCalledWith('/watch/film/2?file=3');
     unregister();
   });
 

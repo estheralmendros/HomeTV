@@ -61,8 +61,8 @@ object VersionSelector {
 
     fun group(files: List<MediaFile>): Grouping = Grouping(
         standalone = files.filter { it.part_number == null }.sortedWith(VERSION_ORDER),
-        parts = files.filter { it.part_number != null }
-            .groupBy { it.part_number!! }
+        parts = files.mapNotNull { f -> f.part_number?.let { it to f } }
+            .groupBy({ it.first }, { it.second })
             .toSortedMap()
             .map { (number, versions) -> PartGroup(number, versions.sortedWith(VERSION_ORDER)) },
     )

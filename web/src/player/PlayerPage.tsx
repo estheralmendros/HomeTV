@@ -37,8 +37,8 @@ import { UnsupportedMessage } from './UnsupportedMessage';
 import { useAutoHide } from './useAutoHide';
 import { useFullscreen } from './useFullscreen';
 import { useKeyboardShortcuts } from './useKeyboardShortcuts';
-import { useMediaClock } from './useMediaClock';
-import { useNextUp } from './useNextUp';
+import { mediaDuration, useMediaSelector } from './useMediaClock';
+import { isWithinLead, useNextUp } from './useNextUp';
 import { usePlaybackSession } from './usePlaybackSession';
 import { usePlayerSubtitles } from './usePlayerSubtitles';
 import { PositionTracker, useProgressReporter } from './useProgressReporter';
@@ -179,10 +179,12 @@ export function PlayerPage({ type, id }: PlayerPageProps) {
   const audioEnabled = canSwitchAudio(state.name);
 
   // --- clock, volume, fullscreen --------------------------------------------------------------
-  const clock = useMediaClock(video);
+  // The time display and seek bar read the element clock inside Controls; the page re-renders only
+  // when the element's duration or the near-end flag changes, not on every timeupdate.
   const showTracked = state.sessionReleased || TRACKED_TIME_STATES.has(state.name);
-  const currentTime = showTracked ? tracker.position : clock.current;
-  const duration = state.durationSeconds ?? clock.duration ?? currentFile?.duration_seconds ?? null;
+  const elementDuration = useMediaSelector(video, mediaDuration);
+  const duration = state.durationSeconds ?? elementDuration ?? currentFile?.duration_seconds ?? null;
+  const withinLead = useMediaSelector(video, (v) => isWithinLead(Number.isFinite(v.currentTime) ? v.currentTime : 0, duration));
   const volume = useVolume(video);
   const fullscreen = useFullscreen(rootEl, video);
 
@@ -206,8 +208,7 @@ export function PlayerPage({ type, id }: PlayerPageProps) {
     currentFile,
     stateName: state.name,
     hasPlayed: state.hasPlayed,
-    current: clock.current,
-    duration,
+    withinLead,
     onNextEpisode: playNextEpisode,
   });
   const nextPartFile = nextUp.nextPartFile;
@@ -318,9 +319,9 @@ export function PlayerPage({ type, id }: PlayerPageProps) {
         playing={playing}
         onPlayPause={togglePlay}
         onSeekBy={seekBy}
-        current={currentTime}
+        video={video}
+        trackedPosition={showTracked ? () => tracker.position : null}
         duration={duration}
-        buffered={clock.buffered}
         onSeek={seekTo}
         volume={volume.volume}
         muted={volume.muted}

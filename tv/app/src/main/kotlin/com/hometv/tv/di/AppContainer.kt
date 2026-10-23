@@ -31,6 +31,7 @@ import com.hometv.tv.core.util.ServerUrl
 import com.hometv.tv.data.AccountState
 import com.hometv.tv.data.DataStoreSessionStore
 import com.hometv.tv.data.HomeCache
+import com.hometv.tv.data.DetailRefresh
 import com.hometv.tv.data.HomeRefresh
 import com.hometv.tv.data.PlayerLaunches
 import com.hometv.tv.playback.AndroidCodecInventory
@@ -82,7 +83,7 @@ data class AppConfig(
  * synchronously), [clients] (API + stream OkHttp clients and Retrofit, rebuilt when the server URL
  * changes), [api], [guard], the repositories, [events] (global `AppEvent` bus), [appScope]
  * (`SupervisorJob() + Dispatchers.IO`, process lifetime: final progress PUT, HLS DELETE),
- * [codecs] + [capsForFile] (capability hook), [playerLaunches], [homeRefresh], [account],
+ * [codecs] + [capsForFile] (capability hook), [playerLaunches], [homeRefresh], [detailRefresh], [account],
  * [imageLoader] and one factory function per ViewModel.
  */
 class AppContainer(
@@ -126,6 +127,7 @@ class AppContainer(
     val serverRepository = ServerRepository(validationClient)
     val account = AccountState(profiles)
     val homeRefresh = HomeRefresh()
+    val detailRefresh = DetailRefresh()
     val browseSorts = BrowseSortMemory()
     val playerLaunches = PlayerLaunches()
 
@@ -170,7 +172,7 @@ class AppContainer(
         if (store.session.value.serverUrl != null) guard.ensureFresh()
     }
 
-    /** Per-file refined caps with the current audio route (Film detail, and every playback request in B2). */
+    /** Per-file refined caps with the current audio route (Film detail, and every playback request of the Player). */
     suspend fun capsForFile(): CapsForFile {
         val inventory = codecs.inventory()
         val route = codecs.audioRoute()
@@ -193,18 +195,28 @@ class AppContainer(
         account.clear()
     }
 
+    /** Owns the memory and disk caches, built once: Coil allows one active DiskCache per directory. */
+    private var baseImageLoader: ImageLoader? = null
     private var images: Pair<ApiClients, ImageLoader>? = null
 
-    /** Coil on the API OkHttpClient (Bearer header), 25 % memory cache, 100 MB disk cache in `cacheDir/images`. */
+    /**
+     * Coil on the API OkHttpClient (Bearer header), 25 % memory cache, 100 MB disk cache in
+     * `cacheDir/images`. A server change derives a new loader with `newBuilder()`, which shares the
+     * caches of the first one.
+     */
+    @Synchronized
     fun imageLoader(context: Context): ImageLoader {
         val clients = runCatching { clients() }.getOrNull()
         images?.takeIf { it.first === clients }?.let { return it.second }
-        val builder = ImageLoader.Builder(context.applicationContext)
-            .memoryCache { MemoryCache.Builder(context.applicationContext).maxSizePercent(0.25).build() }
-            .diskCache { DiskCache.Builder().directory(File(context.cacheDir, "images")).maxSizeBytes(100L * 1024 * 1024).build() }
+        val app = context.applicationContext
+        val base = baseImageLoader ?: ImageLoader.Builder(app)
+            .memoryCache { MemoryCache.Builder(app).maxSizePercent(0.25).build() }
+            .diskCache { DiskCache.Builder().directory(File(app.cacheDir, "images")).maxSizeBytes(100L * 1024 * 1024).build() }
             .crossfade(false)
-        clients?.let { builder.okHttpClient(it.apiClient) }
-        return builder.build().also { loader -> if (clients != null) images = clients to loader }
+            .build()
+            .also { baseImageLoader = it }
+        if (clients == null) return base
+        return base.newBuilder().okHttpClient(clients.apiClient).build().also { images = clients to it }
     }
 
     // ---- ViewModel factories -------------------------------------------------------------
@@ -219,9 +231,9 @@ class AppContainer(
 
     fun searchViewModel() = SearchViewModel(catalog, store)
 
-    fun filmDetailViewModel(id: Long) = FilmDetailViewModel(id, catalog, watch, store, ::capsForFile, events, homeRefresh)
+    fun filmDetailViewModel(id: Long) = FilmDetailViewModel(id, catalog, watch, store, ::capsForFile, events, homeRefresh, detailRefresh)
 
-    fun showDetailViewModel(id: Long) = ShowDetailViewModel(id, catalog, watch, store, events, homeRefresh)
+    fun showDetailViewModel(id: Long) = ShowDetailViewModel(id, catalog, watch, store, events, homeRefresh, detailRefresh)
 
     fun settingsViewModel() = SettingsViewModel(store, account, ::deviceCaps, config.versionName)
 

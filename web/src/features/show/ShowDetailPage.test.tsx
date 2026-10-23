@@ -1,10 +1,11 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import { delay, http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import type { SeasonDetail, ShowDetail } from '@/api/types';
 import * as f from '../../../tests/fixtures';
 import { API, apiError } from '../../../tests/msw/handlers';
 import { recordRequests, server } from '../../../tests/msw/server';
+import { setViewportWidth } from '../../../tests/viewport';
 import { currentUrl, findProbedLocation, renderWithProviders } from '../../../tests/renderWithProviders';
 import { ShowDetailPage } from './ShowDetailPage';
 
@@ -74,7 +75,6 @@ describe('ShowDetailPage', () => {
       renderShow();
       expect(await screen.findByRole('tab', { name: 'Temporada 2' })).toHaveAttribute('aria-selected', 'true');
       expect(screen.getByRole('tab', { name: 'Temporada 1' })).toHaveAttribute('aria-selected', 'false');
-      expect(screen.getByLabelText('Temporada')).toHaveValue('2');
       expect(await screen.findByText('E3 · Office Olympics')).toBeInTheDocument();
       expect(screen.getByText('Temporada 2 · 22 episodios · 10 sin ver')).toBeInTheDocument();
       expect(screen.getByText('La segunda temporada…')).toBeInTheDocument();
@@ -88,20 +88,88 @@ describe('ShowDetailPage', () => {
       expect(await screen.findByRole('tab', { name: 'Temporada 1' })).toHaveAttribute('aria-selected', 'true');
     });
 
-    it('follows ?season= and writes the selection to the URL (tabs and select)', async () => {
+    it('follows ?season= and writes the selection to the URL (desktop tabs, no select)', async () => {
       const rec = recordRequests();
       const { user, router } = renderShow('/shows/7?season=1');
       expect(await screen.findByRole('tab', { name: 'Temporada 1' })).toHaveAttribute('aria-selected', 'true');
       await waitFor(() => expect(seasonRequests(rec)).toEqual([1]));
+      expect(screen.queryByLabelText('Temporada')).not.toBeInTheDocument();
 
       await user.click(screen.getByRole('tab', { name: 'Temporada 2' }));
       expect(currentUrl(router)).toBe('/shows/7?season=2');
       expect(await screen.findByText('Temporada 2 · 22 episodios · 10 sin ver')).toBeInTheDocument();
-
-      await user.selectOptions(screen.getByLabelText('Temporada'), 'Temporada 1');
-      expect(currentUrl(router)).toBe('/shows/7?season=1');
-      expect(screen.getByRole('tab', { name: 'Temporada 1' })).toHaveAttribute('aria-selected', 'true');
       rec.dispose();
+    });
+
+    it('phone (360 px): a <select> instead of tabs, writing the selection to the URL', async () => {
+      setViewportWidth(360);
+      const { user, router } = renderShow('/shows/7?season=1');
+      expect(await screen.findByLabelText('Temporada')).toHaveValue('1');
+      expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+      expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+
+      await user.selectOptions(screen.getByLabelText('Temporada'), 'Temporada 2');
+      expect(currentUrl(router)).toBe('/shows/7?season=2');
+      expect(screen.getByLabelText('Temporada')).toHaveValue('2');
+      expect(await screen.findByText('Temporada 2 · 22 episodios · 10 sin ver')).toBeInTheDocument();
+    });
+
+    it('switches to the select when the viewport shrinks below 600 px', async () => {
+      renderShow('/shows/7?season=2');
+      expect(await screen.findByRole('tab', { name: 'Temporada 2' })).toBeInTheDocument();
+      act(() => setViewportWidth(599));
+      expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+      expect(screen.getByLabelText('Temporada')).toHaveValue('2');
+    });
+
+    describe('keyboard (WAI-ARIA tabs, automatic activation)', () => {
+      const threeSeasons = () =>
+        serveShow({
+          next_episode: null,
+          seasons: [f.showSeason({ season_number: 1 }), f.showSeason({ season_number: 2 }), f.showSeason({ season_number: 0, name: null })],
+        });
+
+      it('only the selected tab is in the tab order', async () => {
+        threeSeasons();
+        const { user } = renderShow('/shows/7?season=2');
+        expect(await screen.findByRole('tab', { name: 'Temporada 2' })).toHaveAttribute('tabindex', '0');
+        expect(screen.getByRole('tab', { name: 'Temporada 1' })).toHaveAttribute('tabindex', '-1');
+        expect(screen.getByRole('tab', { name: 'Especiales' })).toHaveAttribute('tabindex', '-1');
+        for (let i = 0; i < 30 && document.activeElement?.getAttribute('role') !== 'tab'; i += 1) await user.tab();
+        expect(screen.getByRole('tab', { name: 'Temporada 2' })).toHaveFocus();
+      });
+
+      it('ArrowRight on the active tab selects and focuses the next season, wrapping at the end', async () => {
+        threeSeasons();
+        const { user, router } = renderShow('/shows/7?season=1');
+        const first = await screen.findByRole('tab', { name: 'Temporada 1' });
+        first.focus();
+        await user.keyboard('{ArrowRight}');
+        expect(screen.getByRole('tab', { name: 'Temporada 2' })).toHaveAttribute('aria-selected', 'true');
+        expect(screen.getByRole('tab', { name: 'Temporada 2' })).toHaveFocus();
+        expect(currentUrl(router)).toBe('/shows/7?season=2');
+        await user.keyboard('{ArrowRight}');
+        expect(screen.getByRole('tab', { name: 'Especiales' })).toHaveFocus();
+        await user.keyboard('{ArrowRight}');
+        expect(screen.getByRole('tab', { name: 'Temporada 1' })).toHaveAttribute('aria-selected', 'true');
+        expect(screen.getByRole('tab', { name: 'Temporada 1' })).toHaveFocus();
+        expect(currentUrl(router)).toBe('/shows/7?season=1');
+      });
+
+      it('ArrowLeft wraps to the last tab; Home and End jump to the ends', async () => {
+        threeSeasons();
+        const { user, router } = renderShow('/shows/7?season=1');
+        (await screen.findByRole('tab', { name: 'Temporada 1' })).focus();
+        await user.keyboard('{ArrowLeft}');
+        expect(screen.getByRole('tab', { name: 'Especiales' })).toHaveFocus();
+        expect(currentUrl(router)).toBe('/shows/7?season=0');
+        await user.keyboard('{Home}');
+        expect(screen.getByRole('tab', { name: 'Temporada 1' })).toHaveFocus();
+        expect(screen.getByRole('tab', { name: 'Temporada 1' })).toHaveAttribute('aria-selected', 'true');
+        await user.keyboard('{End}');
+        expect(screen.getByRole('tab', { name: 'Especiales' })).toHaveAttribute('aria-selected', 'true');
+        expect(currentUrl(router)).toBe('/shows/7?season=0');
+      });
     });
 
     it('labels seasons without a name "Temporada N" and season 0 "Especiales"', async () => {
@@ -112,6 +180,7 @@ describe('ShowDetailPage', () => {
       renderShow();
       expect(await screen.findByRole('tab', { name: 'Temporada 1' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: 'Especiales' })).toBeInTheDocument();
+      act(() => setViewportWidth(360));
       expect(within(screen.getByLabelText('Temporada')).getAllByRole('option').map((o) => o.textContent)).toEqual([
         'Temporada 1',
         'Especiales',

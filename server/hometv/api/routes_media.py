@@ -12,6 +12,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Body, Request, Response
 from fastapi.responses import FileResponse, StreamingResponse
+from sqlalchemy.orm import Session
 
 from hometv import catalog
 from hometv.api.deps import CurrentProfile, Db, MediaUser, ReadSession
@@ -24,6 +25,7 @@ from hometv.api.schemas import (
     PlaybackRequest,
     PlaybackResponse,
     PlaybackUnsupported,
+    Responses,
     SubtitleTrack,
 )
 from hometv.db import models as m
@@ -41,6 +43,7 @@ from hometv.playback.stream import (
     RangeNotSatisfiable,
     content_type,
     file_chunks,
+    open_file_chunks,
     parse_range,
 )
 from hometv.playback.subtitles import Sidecar, SubtitleService, SubtitleSource
@@ -75,14 +78,19 @@ class LoadedFile:
         return SubtitleSource(self.id, self.path, self.probe, self.sidecars)
 
 
+def _present_file(session: Session, media_file_id: int) -> tuple[m.MediaFile, list[m.SubtitleFile]]:
+    """The media file row and its sidecars; 404 ``not_found`` / ``file_missing``."""
+    row = session.get(m.MediaFile, media_file_id)
+    if row is None:
+        raise _not_found(media_file_id)
+    if row.missing_since is not None:
+        raise _file_missing()
+    return row, catalog.sidecars(session, [row.id]).get(row.id, [])
+
+
 def _load(db: Database, media_file_id: int, *, with_tracks: bool = True) -> LoadedFile:
     with db.read_session() as session:
-        row = session.get(m.MediaFile, media_file_id)
-        if row is None:
-            raise _not_found(media_file_id)
-        if row.missing_since is not None:
-            raise _file_missing()
-        sidecar_rows = catalog._sidecars(session, [row.id]).get(row.id, [])
+        row, sidecar_rows = _present_file(session, media_file_id)
         probe = ProbeResult.from_json(row.probe) if row.probe and row.probe_error is None else None
         tracks = catalog.media_file_out(row, sidecar_rows).subtitle_tracks if with_tracks else []
         return LoadedFile(
@@ -118,13 +126,7 @@ def _subtitles(request: Request) -> SubtitleService:
     responses={404: {"model": ErrorResponse, "description": "not_found | file_missing"}},
 )
 def get_media_file(media_file_id: int, session: ReadSession, _user: CurrentProfile) -> MediaFile:
-    row = session.get(m.MediaFile, media_file_id)
-    if row is None:
-        raise _not_found(media_file_id)
-    if row.missing_since is not None:
-        raise _file_missing()
-    sidecars = catalog._sidecars(session, [row.id]).get(row.id, [])
-    return catalog.media_file_out(row, sidecars)
+    return catalog.media_file_out(*_present_file(session, media_file_id))
 
 
 # --- playback ----------------------------------------------------------------------------------
@@ -326,7 +328,7 @@ async def get_subtitles(
 
 # --- HLS ---------------------------------------------------------------------------------------
 
-_HLS_ERRORS = {
+_HLS_ERRORS: Responses = {
     404: {"model": ErrorResponse, "description": "session_not_found | segment_not_found"},
     500: {"model": ErrorResponse, "description": "transcoder_failed"},
     504: {"model": ErrorResponse, "description": "segment_timeout"},
@@ -359,8 +361,13 @@ async def hls_init(session_id: str, request: Request) -> Response:
     responses={200: {"content": {"video/mp4": {}}}, **_HLS_ERRORS},
 )
 async def hls_segment(session_id: str, n: int, request: Request) -> Response:
-    data = await _hls(request).segment(session_id, n)
-    return Response(data, media_type="video/mp4", headers=NO_CACHE)
+    # Streamed from the fd opened before the segment can be evicted: never read whole.
+    opened = await _hls(request).open_segment(session_id, n)
+    return StreamingResponse(
+        open_file_chunks(opened.file, opened.size),
+        media_type="video/mp4",
+        headers={**NO_CACHE, "Content-Length": str(opened.size)},
+    )
 
 
 @router.post(

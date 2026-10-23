@@ -275,7 +275,12 @@ async def test_cross_run_tfdt(make_media_app, caplog, name, action):
         sid = session.session_id
         frame = 1 / probe.video.frame_rate
         reorder = reorder_delay(path, probe.video.index)
-        audio_low = 1.0 if name.endswith(".ts") else 0.03
+        # Audio window lower bound below ``start - reorder`` (PRD §7 HLS step 3 (a)): one AAC
+        # frame for copy, two for an AAC re-encode (Rev 10: ffmpeg 5.1 starts a restarted
+        # run's re-encoded audio up to ~35 ms early), 1 s for MPEG-TS sources (Rev 6).
+        audio_frame = 1024 / 44_100  # the fixtures' lavfi sine rate
+        frames = 1 if action == "copy" else 2
+        audio_low = 1.0 if name.endswith(".ts") else frames * audio_frame + 0.007
         inits, segs = [], {}
         with caplog.at_level(logging.WARNING, logger="hometv"):
             order = [0, 1, 2, len(plan) - 3, len(plan) - 2, 1]
@@ -287,7 +292,9 @@ async def test_cross_run_tfdt(make_media_app, caplog, name, action):
                     async with session.lock:
                         for j in [j for j in session.ready if j > 2]:
                             hls._drop(session, j).unlink(missing_ok=True)
-                data = await hls.segment(sid, k)
+                opened = await hls.open_segment(sid, k)
+                with opened.file as fh:
+                    data = fh.read()
                 init = await hls.init_segment(sid)
                 inits.append(init)
                 split = split_fmp4(init + data)
@@ -339,9 +346,12 @@ async def test_read_ahead_pauses_ffmpeg(make_media_app, clips_dir, tmp_path):
         assert ahead <= 20 + 2 * 6
         segs_on_disk = sorted(Path(session.dir).glob("seg_*.m4s"))
         assert len(segs_on_disk) == len(session.ready)
-        # Requesting further resumes it.
+        # Requesting further resumes it. The next unproduced segment always does: a ready one
+        # (e.g. seg_3) resumes only when the lead behind it drops below ahead / 2, which
+        # depends on how far ffmpeg overshot before SIGSTOP landed.
         produced = session.produced_max
-        assert (await media.client.get(f"/api/hls/{sid}/seg_3.m4s")).status_code == 200
+        response = await media.client.get(f"/api/hls/{sid}/seg_{produced + 1}.m4s")
+        assert response.status_code == 200
         deadline = time.monotonic() + 10
         while session.produced_max <= produced and time.monotonic() < deadline:
             await asyncio.sleep(0.05)
@@ -359,7 +369,9 @@ async def test_idle_cleanup_and_shutdown(make_media_app):
         body = (await media.play("h264_ac3_gop10.mkv", WEB_CAPS)).json()
         sid = body["session_id"]
         session = media.hls.sessions[sid]
-        await asyncio.sleep(1.2)
+        # Idle without sleeping: the last access moves past the timeout. The sweep may land
+        # while a segment is being finalized; stopping waits for that thread before rmtree.
+        session.last_access = media.hls.clock() - 2
         assert await media.hls.sweep_idle() == [sid]
         assert (await media.client.get(body["url"])).status_code == 404
         assert not session.dir.exists()

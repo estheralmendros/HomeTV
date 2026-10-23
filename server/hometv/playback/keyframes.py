@@ -24,7 +24,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete
 
 from hometv.config import Settings
 from hometv.db import models as m
@@ -501,15 +501,3 @@ class KeyframeService:
         finally:
             for task in tasks[1:]:
                 task.cancel()
-
-
-def keyframe_index_exists(db: Database, media_file_id: int) -> bool:
-    with db.read_session() as session:
-        return (
-            session.scalar(
-                select(m.KeyframeIndex.media_file_id).where(
-                    m.KeyframeIndex.media_file_id == media_file_id
-                )
-            )
-            is not None
-        )

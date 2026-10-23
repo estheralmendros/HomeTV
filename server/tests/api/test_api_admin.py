@@ -69,6 +69,32 @@ async def test_unlock_rate_limit(client, admin, clock):
     assert r.status_code == 200
 
 
+async def test_unlock_rate_limit_holds_under_concurrent_attempts(client, admin, monkeypatch):
+    # A slow verify keeps every attempt in flight at once: the limiter must count an attempt
+    # before awaiting scrypt, so parallel requests cannot all pass the check.
+    import time
+
+    from hometv.api import routes_admin
+
+    calls: list[str] = []
+
+    def slow_wrong_verify(pin: str, pin_hash: str) -> bool:
+        calls.append(pin)
+        time.sleep(0.05)
+        return False
+
+    monkeypatch.setattr(routes_admin, "verify_pin", slow_wrong_verify)
+    results = await asyncio.gather(
+        *(
+            client.post("/api/admin/unlock", json={"pin": "0000"}, headers=admin.headers)
+            for _ in range(10)
+        )
+    )
+    codes = sorted(_err(r) for r in results)
+    assert codes == [(401, "invalid_pin")] * 5 + [(429, "too_many_attempts")] * 5
+    assert len(calls) == 5
+
+
 async def test_unlock_success_clears_counter(client, admin):
     for _ in range(4):
         await client.post("/api/admin/unlock", json={"pin": "0000"}, headers=admin.headers)

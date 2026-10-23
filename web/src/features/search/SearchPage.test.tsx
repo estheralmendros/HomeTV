@@ -5,6 +5,7 @@ import * as f from '../../../tests/fixtures';
 import { API, apiError } from '../../../tests/msw/handlers';
 import { recordRequests, server } from '../../../tests/msw/server';
 import { currentUrl, renderWithProviders } from '../../../tests/renderWithProviders';
+import { setViewportWidth } from '../../../tests/viewport';
 import { NavSearch } from './NavSearch';
 import { SearchPage } from './SearchPage';
 
@@ -92,7 +93,13 @@ describe('SearchPage', () => {
     expect(currentUrl(router)).toBe('/search');
   });
 
-  it('NavSearch reflects the q of the URL, and the page input (mobile) edits it too', async () => {
+  it('desktop: no page input (the NavBar search is the only one)', () => {
+    renderSearch('/search?q=dune');
+    expect(screen.queryByRole('searchbox', { name: 'Buscar películas y series' })).not.toBeInTheDocument();
+  });
+
+  it('NavSearch reflects the q of the URL, and the page input (below 720 px) edits it too', async () => {
+    setViewportWidth(719);
     const { user, router } = renderSearch('/search?q=dune');
     expect(screen.getByRole('searchbox', { name: 'Buscar títulos' })).toHaveValue('dune');
     const pageInput = screen.getByRole('searchbox', { name: 'Buscar películas y series' });

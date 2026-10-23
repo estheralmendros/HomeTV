@@ -1,9 +1,11 @@
-import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as f from '../../tests/fixtures';
 import { apiError } from '../../tests/msw/handlers';
 import { recordRequests, server } from '../../tests/msw/server';
+import { advance, until } from '../../tests/flush';
+import { useFakePlayerTimers } from '../../tests/player';
 import { renderWithProviders } from '../../tests/renderWithProviders';
 import { adminUnlock } from './adminUnlock';
 import { AdminPinModal } from './AdminPinModal';
@@ -93,17 +95,17 @@ describe('AdminPinModal', () => {
   });
 
   it('429 disables the keypad with a countdown, then re-enables it', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+    useFakePlayerTimers();
     server.use(
       http.post('/api/admin/unlock', () => apiError(429, 'too_many_attempts', { headers: { 'Retry-After': '42' } })),
     );
-    setup({ userOptions: { advanceTimers: vi.advanceTimersByTime } });
+    setup();
     for (let i = 0; i < 4; i += 1) fireEvent.click(screen.getByRole('button', { name: '1' }));
-    expect(await screen.findByText('Demasiados intentos. Vuelve a intentarlo en 0:42')).toBeInTheDocument();
+    await until(() => expect(screen.getByText('Demasiados intentos. Vuelve a intentarlo en 0:42')).toBeInTheDocument());
     expect(screen.getByRole('button', { name: '5' })).toBeDisabled();
-    act(() => vi.advanceTimersByTime(1000));
+    await advance(1000);
     expect(screen.getByText('Demasiados intentos. Vuelve a intentarlo en 0:41')).toBeInTheDocument();
-    act(() => vi.advanceTimersByTime(41_000));
+    await advance(41_000);
     expect(screen.queryByText(/Demasiados intentos/)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '5' })).toBeEnabled();
     fireEvent.keyDown(document, { key: '7' });

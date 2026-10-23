@@ -6,7 +6,6 @@ import {
   formatCount,
   formatDate,
   formatDuration,
-  formatPercent,
   formatRating,
   formatRelative,
   formatRuntime,
@@ -14,9 +13,6 @@ import {
   parseEpisodeList,
   seasonLabel,
 } from './format';
-
-/** Intl uses NBSP/NNBSP in some es-ES outputs; compare with plain spaces. */
-const plain = (s: string) => s.replace(/[  ]/g, ' ');
 
 describe('format (es-ES)', () => {
   it('formatDuration: clock times', () => {
@@ -63,7 +59,6 @@ describe('format (es-ES)', () => {
     expect(formatCount(12)).toBe('12');
     expect(formatRating(7.8)).toBe('7,8');
     expect(formatRating(8)).toBe('8,0');
-    expect(plain(formatPercent(0.46))).toBe('46 %');
   });
 
   it('formatBytes', () => {

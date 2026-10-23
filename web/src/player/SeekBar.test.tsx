@@ -19,6 +19,60 @@ describe('SeekBar', () => {
     expect(onSeek).toHaveBeenCalledWith(600);
   });
 
+  it('dragging shows the dragged position but seeks once, on release', () => {
+    const onSeek = vi.fn();
+    const { rerender } = render(<SeekBar current={0} duration={1320} buffered={[]} onSeek={onSeek} />);
+    const slider = screen.getByRole('slider', { name: 'Posición' });
+    fireEvent.pointerDown(slider, { pointerType: 'mouse' });
+    fireEvent.change(slider, { target: { value: '600' } });
+    fireEvent.change(slider, { target: { value: '751' } });
+    expect(onSeek).not.toHaveBeenCalled();
+    // The clock keeps ticking while dragging: the dragged value wins.
+    rerender(<SeekBar current={3} duration={1320} buffered={[]} onSeek={onSeek} />);
+    expect(slider).toHaveValue('751');
+    expect(slider).toHaveAttribute('aria-valuetext', '12 minutos y 31 segundos de 22 minutos');
+    // Released outside the bar (pointerup reaches the document).
+    fireEvent.pointerUp(document.body, { pointerType: 'mouse' });
+    expect(onSeek).toHaveBeenCalledTimes(1);
+    expect(onSeek).toHaveBeenCalledWith(751);
+    rerender(<SeekBar current={751} duration={1320} buffered={[]} onSeek={onSeek} />);
+    expect(slider).toHaveValue('751');
+  });
+
+  it('a press and release without moving does not seek', () => {
+    const onSeek = vi.fn();
+    render(<SeekBar current={10} duration={1320} buffered={[]} onSeek={onSeek} />);
+    const slider = screen.getByRole('slider', { name: 'Posición' });
+    fireEvent.pointerDown(slider);
+    fireEvent.pointerUp(slider);
+    expect(onSeek).not.toHaveBeenCalled();
+  });
+
+  it('keyboard: a held arrow key commits once, on keyup', () => {
+    const onSeek = vi.fn();
+    render(<SeekBar current={600} duration={1320} buffered={[]} onSeek={onSeek} />);
+    const slider = screen.getByRole('slider', { name: 'Posición' });
+    fireEvent.keyDown(slider, { key: 'ArrowRight' });
+    fireEvent.change(slider, { target: { value: '601' } });
+    fireEvent.keyDown(slider, { key: 'ArrowRight', repeat: true });
+    fireEvent.change(slider, { target: { value: '602' } });
+    expect(onSeek).not.toHaveBeenCalled();
+    expect(slider).toHaveValue('602');
+    fireEvent.keyUp(slider, { key: 'ArrowRight' });
+    expect(onSeek).toHaveBeenCalledTimes(1);
+    expect(onSeek).toHaveBeenCalledWith(602);
+  });
+
+  it('a pending drag is committed on blur', () => {
+    const onSeek = vi.fn();
+    render(<SeekBar current={0} duration={1320} buffered={[]} onSeek={onSeek} />);
+    const slider = screen.getByRole('slider', { name: 'Posición' });
+    fireEvent.keyDown(slider, { key: 'End' });
+    fireEvent.change(slider, { target: { value: '1320' } });
+    fireEvent.blur(slider);
+    expect(onSeek).toHaveBeenCalledWith(1320);
+  });
+
   it('shows the buffered ranges', () => {
     render(<SeekBar current={0} duration={1000} buffered={[[0, 250]]} onSeek={vi.fn()} />);
     expect(screen.getByTestId('seek-buffered').getAttribute('style')).toContain('25%');

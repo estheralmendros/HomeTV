@@ -160,6 +160,14 @@ def test_empty_tmdb_key_env_means_not_configured(tmp_path):
     assert s.tmdb_configured is False
 
 
+def test_empty_optional_env_values_mean_unset(tmp_path):
+    s = load_settings(
+        {"HOMETV_DATA_DIR": str(tmp_path), "HOMETV_HLS_DIR": "", "HOMETV_SECRET_KEY": ""}
+    )
+    assert s.playback.hls_dir == tmp_path / "hls"
+    assert s.auth.secret_key is None
+
+
 def test_media_roots_normalized_absolute_without_trailing_slash(tmp_path):
     s = load_settings(
         {"HOMETV_DATA_DIR": str(tmp_path), "HOMETV_FILMS_PATHS": "/media//Films/,/media/x/../y"}

@@ -45,6 +45,12 @@ android {
         }
     }
 
+    // UI is Spanish only (prd3 §UI Language): every visible app string comes from values/. Keep only
+    // the default and `es` resources of the libraries (drops ~86 unused library locales from the APK).
+    androidResources {
+        localeFilters += "es"
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -134,7 +140,6 @@ dependencies {
     testRuntimeOnly(libs.junit.platform.launcher)
     testImplementation(libs.junit4)
     testImplementation(libs.kotlinx.coroutines.test)
-    testImplementation(libs.turbine)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.androidx.test.ext.junit)

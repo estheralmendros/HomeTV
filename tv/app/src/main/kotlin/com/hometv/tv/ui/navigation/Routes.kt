@@ -32,7 +32,7 @@ sealed interface Route {
     data class ShowDetail(val id: Long) : Route
 
     /**
-     * (9) Player (phase B2 replaces the placeholder screen; the arguments are final).
+     * (9) Player.
      * - [launchId]: UUID registered in `AppContainer.playerLaunches` when the route is pushed; an id
      *   that is not registered (process death + back-stack restore) → pop at once with no request.
      *   The registry also holds the optional Home episode payload (`PlayerLaunches.payload`).

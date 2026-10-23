@@ -7,6 +7,7 @@ before every comparison with the plan.
 
 import bisect
 import math
+import mmap
 import re
 import struct
 from dataclasses import dataclass, field
@@ -154,7 +155,11 @@ class Fmp4Error(ValueError):
     """Not a fragmented MP4 the splitter understands."""
 
 
-def _boxes(data: bytes, start: int = 0, end: int | None = None):
+# What the fMP4 helpers read: ``bytes`` or a read-only memory map of ``raw_k.mp4``.
+Buffer = bytes | mmap.mmap
+
+
+def _boxes(data: Buffer, start: int = 0, end: int | None = None):
     """Yield ``(type, box_start, payload_start, box_end)`` for the boxes in ``data[start:end]``."""
     end = len(data) if end is None else end
     pos = start
@@ -174,7 +179,7 @@ def _boxes(data: bytes, start: int = 0, end: int | None = None):
         pos += size
 
 
-def _child(data: bytes, start: int, end: int, kind: bytes) -> tuple[int, int] | None:
+def _child(data: Buffer, start: int, end: int, kind: bytes) -> tuple[int, int] | None:
     for k, _bs, ps, be in _boxes(data, start, end):
         if k == kind:
             return ps, be
@@ -225,11 +230,19 @@ def has_edit_list(init: bytes) -> bool:
 
 @dataclass(frozen=True)
 class Fmp4Split:
+    """``init`` is materialized (small); the media is ``media_ranges``, ``(start, end)`` byte
+    offsets of the ``moof``/``mdat`` boxes in the source buffer, so a large segment is never
+    copied in memory (``_finalize`` writes the ranges from a memory map)."""
+
     init: bytes
-    media: bytes
+    media_ranges: tuple[tuple[int, int], ...]
     tracks: dict[int, TrackInfo]
     first_tfdt: dict[int, int] = field(default_factory=dict)
     first_cto: dict[int, int] = field(default_factory=dict)
+
+    @property
+    def media_size(self) -> int:
+        return sum(end - start for start, end in self.media_ranges)
 
     def _start(self, handler: str, with_cto: bool) -> float | None:
         for track_id, info in self.tracks.items():
@@ -250,7 +263,7 @@ class Fmp4Split:
         return self._start("soun", False)
 
 
-def _parse_traf(data: bytes, start: int, end: int) -> tuple[int, int | None, int | None]:
+def _parse_traf(data: Buffer, start: int, end: int) -> tuple[int, int | None, int | None]:
     tfhd = _child(data, start, end, b"tfhd")
     if tfhd is None:
         raise Fmp4Error("traf without tfhd")
@@ -280,12 +293,13 @@ def _parse_traf(data: bytes, start: int, end: int) -> tuple[int, int | None, int
     return track_id, tfdt_value, cto
 
 
-def split_fmp4(data: bytes) -> Fmp4Split:
+def split_fmp4(data: Buffer) -> Fmp4Split:
     """Split a segment-muxer ``raw_k.mp4`` into its init section (everything up to the end of
     ``moov``) and its ``moof``/``mdat`` pairs (a trailing ``mfra`` is dropped); read each
-    track's first ``tfdt`` and first-sample composition offset."""
+    track's first ``tfdt`` and first-sample composition offset. ``data`` may be ``bytes`` or
+    an ``mmap`` (only the init and box headers are read)."""
     init_end: int | None = None
-    media = bytearray()
+    media: list[tuple[int, int]] = []
     first_tfdt: dict[int, int] = {}
     first_cto: dict[int, int] = {}
     for kind, bs, ps, be in _boxes(data):
@@ -302,15 +316,23 @@ def split_fmp4(data: bytes) -> Fmp4Split:
                     first_tfdt[track_id] = tfdt
                     if cto is not None:
                         first_cto[track_id] = cto
-            media += data[bs:be]
+            _extend(media, bs, be)
         elif kind == b"mdat" and init_end is not None and media:
-            media += data[bs:be]
+            _extend(media, bs, be)
     if init_end is None:
         raise Fmp4Error("no moov box")
     if not media:
         raise Fmp4Error("no movie fragment")
-    init = data[:init_end]
-    return Fmp4Split(init, bytes(media), parse_init(init), first_tfdt, first_cto)
+    init = bytes(data[:init_end])
+    return Fmp4Split(init, tuple(media), parse_init(init), first_tfdt, first_cto)
+
+
+def _extend(ranges: list[tuple[int, int]], start: int, end: int) -> None:
+    """Append a box range, merging it with the previous one when contiguous."""
+    if ranges and ranges[-1][1] == start:
+        ranges[-1] = (ranges[-1][0], end)
+    else:
+        ranges.append((start, end))
 
 
 def verify_tfdt(split: Fmp4Split, *, expected_start: float, frame: float) -> bool:
@@ -321,7 +343,7 @@ def verify_tfdt(split: Fmp4Split, *, expected_start: float, frame: float) -> boo
     return abs((video - TS_OFFSET_SECONDS) - expected_start) <= frame + 1e-6
 
 
-def _descriptor(data: bytes, pos: int) -> tuple[int, int, int]:
+def _descriptor(data: bytes | bytearray, pos: int) -> tuple[int, int, int]:
     """MPEG-4 descriptor at ``pos``: ``(tag, payload_start, payload_end)``."""
     tag = data[pos]
     pos += 1

@@ -41,6 +41,20 @@ describe('controls', () => {
     expect(p.video().currentTime).toBe(100);
     fireEvent.change(screen.getByRole('slider', { name: 'Posición' }), { target: { value: '600' } });
     expect(p.video().currentTime).toBe(600);
+    // Dragging seeks once, on release (no ffmpeg restart per input event in HLS mode).
+    const seek = screen.getByRole('slider', { name: 'Posición' });
+    fireEvent.pointerDown(seek);
+    fireEvent.change(seek, { target: { value: '900' } });
+    fireEvent.change(seek, { target: { value: '1200' } });
+    expect(p.video().currentTime).toBe(600);
+    fireEvent.pointerUp(seek);
+    expect(p.video().currentTime).toBe(1200);
+    // Keyboard on the focused bar commits on keyup.
+    fireEvent.keyDown(seek, { key: 'ArrowLeft' });
+    fireEvent.change(seek, { target: { value: '600' } });
+    expect(p.video().currentTime).toBe(1200);
+    fireEvent.keyUp(seek, { key: 'ArrowLeft' });
+    expect(p.video().currentTime).toBe(600);
     fireEvent.click(screen.getByRole('button', { name: 'Pausa' }));
     expect(pause).toHaveBeenCalled();
     p.fire('pause');

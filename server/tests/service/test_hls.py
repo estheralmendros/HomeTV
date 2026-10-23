@@ -164,6 +164,14 @@ def spec(
     )
 
 
+async def read_segment(mgr: HlsSessionManager, session_id: str, k: int) -> bytes:
+    opened = await mgr.open_segment(session_id, k)
+    with opened.file as fh:
+        data = fh.read()
+    assert len(data) == opened.size
+    return data
+
+
 async def expect_error(coro, status, code):
     with pytest.raises(ApiError) as exc:
         await coro
@@ -181,11 +189,11 @@ async def test_session_serves_playlist_init_and_segments(manager, stub):
     init = await manager.init_segment(session.session_id)
     assert init == fb.init_segment()
     for k in range(len(PLAN)):
-        data = await manager.segment(session.session_id, k)
+        data = await read_segment(manager, session.session_id, k)
         assert data[4:8] == b"moof"
     assert stub.count == 1
     await wait_until(lambda: session.state == "done")
-    await expect_error(manager.segment(session.session_id, 10), 404, "segment_not_found")
+    await expect_error(read_segment(manager, session.session_id, 10), 404, "segment_not_found")
 
 
 async def test_ffmpeg_argv_reference_command(manager, stub):
@@ -243,7 +251,7 @@ async def test_start_position_starts_the_run_at_its_segment(manager, stub):
     assert session.run_start_segment == 4
     assert session.produced_max == 3
     assert stub.procs[0].argv[stub.procs[0].argv.index("-ss") + 1] == f"{24.001 + 3 / 23:.6f}"
-    assert (await manager.segment(session.session_id, 4))[4:8] == b"moof"
+    assert (await read_segment(manager, session.session_id, 4))[4:8] == b"moof"
 
 
 # --- per-segment verification ------------------------------------------------------------------
@@ -253,16 +261,18 @@ async def test_missed_cut_restarts_then_fails(manager, stub, caplog):
     stub.rows_any[2] = (PLAN[2].start, PLAN[3].end)  # segments 2 and 3 merged
     session = await manager.create_session(spec())
     with caplog.at_level(logging.WARNING, logger="hometv"):
-        assert await manager.segment(session.session_id, 0)
-        assert await manager.segment(session.session_id, 1)
-        err = await expect_error(manager.segment(session.session_id, 2), 500, "transcoder_failed")
+        assert await read_segment(manager, session.session_id, 0)
+        assert await read_segment(manager, session.session_id, 1)
+        err = await expect_error(
+            read_segment(manager, session.session_id, 2), 500, "transcoder_failed"
+        )
     assert err.details["detail"] == "segment_plan_mismatch: 2"
     assert "plan_mismatch" in caplog.text
     assert stub.count == 2  # restarted once at 2
     assert stub.procs[1].argv[stub.procs[1].argv.index("-segment_start_number") + 1] == "2"
     assert 2 not in session.ready
     assert not (session.dir / "seg_2.m4s").exists()
-    await expect_error(manager.segment(session.session_id, 0), 500, "transcoder_failed")
+    await expect_error(read_segment(manager, session.session_id, 0), 500, "transcoder_failed")
     with pytest.raises(ApiError):
         manager.keepalive(session.session_id)
 
@@ -272,7 +282,7 @@ async def test_mismatch_once_then_correct_run_succeeds(manager, stub, caplog):
     session = await manager.create_session(spec())
     with caplog.at_level(logging.WARNING, logger="hometv"):
         for k in range(5):
-            assert await manager.segment(session.session_id, k)
+            assert await read_segment(manager, session.session_id, k)
     assert "plan_mismatch" in caplog.text
     assert stub.count == 2
 
@@ -291,7 +301,7 @@ async def test_row_rules(manager, stub, row, ok, caplog):
     session = await manager.create_session(spec())
     with caplog.at_level(logging.WARNING, logger="hometv"):
         for k in range(4):
-            await manager.segment(session.session_id, k) if ok else None
+            await read_segment(manager, session.session_id, k) if ok else None
     if ok:
         assert "plan_mismatch" not in caplog.text
         assert stub.count == 1
@@ -303,9 +313,9 @@ async def test_row_rules(manager, stub, row, ok, caplog):
 async def test_first_of_run_starting_early_is_accepted(manager, stub, caplog):
     stub.rows[(1, 5)] = (PLAN[5].start - 1.0, PLAN[5].end)
     session = await manager.create_session(spec())
-    assert await manager.segment(session.session_id, 0)
+    assert await read_segment(manager, session.session_id, 0)
     with caplog.at_level(logging.WARNING, logger="hometv"):
-        assert await manager.segment(session.session_id, 5)  # far seek -> run starts at 5
+        assert await read_segment(manager, session.session_id, 5)  # far seek -> run starts at 5
     assert "seek_mismatch" in caplog.text
     assert "plan_mismatch" not in caplog.text
 
@@ -315,7 +325,7 @@ async def test_last_segment_rules(manager, stub, caplog):
     session = await manager.create_session(spec())
     with caplog.at_level(logging.WARNING, logger="hometv"):
         for k in range(10):
-            assert await manager.segment(session.session_id, k)
+            assert await read_segment(manager, session.session_id, k)
     await wait_until(lambda: session.state == "done")
     assert "plan_mismatch" not in caplog.text
 
@@ -365,9 +375,9 @@ async def test_concurrent_far_requests_cause_one_restart(manager, stub):
     stub.interval = 0.05
     session = await manager.create_session(spec())
     sid = session.session_id
-    assert await manager.segment(sid, 0)
+    assert await read_segment(manager, sid, 0)
     results = await asyncio.gather(
-        manager.segment(sid, 7), manager.segment(sid, 7), manager.segment(sid, 8)
+        read_segment(manager, sid, 7), read_segment(manager, sid, 7), read_segment(manager, sid, 8)
     )
     assert all(r[4:8] == b"moof" for r in results)
     assert stub.count == 2
@@ -380,11 +390,11 @@ async def test_after_restart_a_nearby_request_waits(manager, stub):
     stub.interval = 0.1
     session = await manager.create_session(spec())
     sid = session.session_id
-    await manager.segment(sid, 0)
-    request = asyncio.create_task(manager.segment(sid, 6))
+    await read_segment(manager, sid, 0)
+    request = asyncio.create_task(read_segment(manager, sid, 6))
     await wait_until(lambda: stub.count == 2)
     assert session.produced_max == 5
-    assert await manager.segment(sid, 8)  # within produced_max + 3: waits, no restart
+    assert await read_segment(manager, sid, 8)  # within produced_max + 3: waits, no restart
     await request
     assert stub.count == 2
 
@@ -394,11 +404,11 @@ async def test_three_timeouts_fail_the_session(manager, stub):
     manager.wait_seconds = 0.2
     session = await manager.create_session(spec())
     sid = session.session_id
-    await manager.segment(sid, 0)
-    await manager.segment(sid, 1)
+    await read_segment(manager, sid, 0)
+    await read_segment(manager, sid, 1)
     for _ in range(3):
-        await expect_error(manager.segment(sid, 2), 504, "segment_timeout")
-    err = await expect_error(manager.segment(sid, 2), 500, "transcoder_failed")
+        await expect_error(read_segment(manager, sid, 2), 504, "segment_timeout")
+    err = await expect_error(read_segment(manager, sid, 2), 500, "transcoder_failed")
     assert err.details["detail"] == "segment_timeout_repeated"
     assert stub.procs[0].returncode is not None  # killed
     assert signal.SIGTERM in stub.procs[0].signals
@@ -409,10 +419,10 @@ async def test_ready_segment_resets_timeouts(manager, stub):
     manager.wait_seconds = 0.2
     session = await manager.create_session(spec())
     sid = session.session_id
-    await manager.segment(sid, 0)
-    await expect_error(manager.segment(sid, 3), 504, "segment_timeout")
+    await read_segment(manager, sid, 0)
+    await expect_error(read_segment(manager, sid, 3), 504, "segment_timeout")
     assert session.consecutive_timeouts == 1
-    await manager.segment(sid, 1)
+    await read_segment(manager, sid, 1)
     assert session.consecutive_timeouts == 0
 
 
@@ -425,7 +435,7 @@ async def test_nonzero_exit_fails_with_last_stderr_line(manager, stub):
     stub.spawner.scenario = crash
     session = await manager.create_session(spec())
     await wait_until(lambda: session.state == "failed")
-    err = await expect_error(manager.segment(session.session_id, 0), 500, "transcoder_failed")
+    err = await expect_error(read_segment(manager, session.session_id, 0), 500, "transcoder_failed")
     assert err.details["detail"] == "Error while decoding stream"
 
 
@@ -477,7 +487,7 @@ async def test_read_ahead_throttle_and_resume(make_settings, stub, clock):
     try:
         session = await mgr.create_session(spec(plan=long_plan, keyframes=long_keyframes))
         sid = session.session_id
-        await mgr.segment(sid, 0)
+        await read_segment(mgr, sid, 0)
         await wait_until(lambda: session.state == "throttled")
         proc = stub.procs[0]
         assert proc.stopped
@@ -487,7 +497,7 @@ async def test_read_ahead_throttle_and_resume(make_settings, stub, clock):
         assert ahead <= 20 + 2 * 6
         assert max(session.ready) <= 5
         # Requesting further resumes it (lead drops below ahead / 2).
-        await mgr.segment(sid, 4)
+        await read_segment(mgr, sid, 4)
         await wait_until(lambda: max(session.ready) >= 7)
         assert stub.count == 1
         # Teardown of a paused process: SIGCONT before SIGTERM.
@@ -515,14 +525,14 @@ async def test_overshoot_beyond_the_window_is_kept_when_contiguous(make_settings
     try:
         session = await mgr.create_session(spec(plan=long_plan, keyframes=long_keyframes))
         sid = session.session_id
-        await mgr.segment(sid, 0)
+        await read_segment(mgr, sid, 0)
         await wait_until(lambda: session.state == "throttled")
         await asyncio.sleep(0.1)
         ready = sorted(session.ready)
         assert ready == list(range(ready[0], ready[-1] + 1))  # no gap
         # Sequential playback is served by the same run, which pauses again ahead of it.
         for k in range(1, 9):
-            await mgr.segment(sid, k)
+            await read_segment(mgr, sid, k)
         assert stub.count == 1
         # ... and the read-ahead throttle still works: ffmpeg is paused again ahead of the
         # player instead of running to the end with every new segment evicted.
@@ -544,11 +554,11 @@ async def test_behind_and_far_ahead_eviction(make_settings, stub, clock):
         session = await mgr.create_session(spec())
         sid = session.session_id
         for k in range(6):
-            await mgr.segment(sid, k)
+            await read_segment(mgr, sid, k)
         assert min(session.ready) >= 4  # start(5) - 6 s = 24 s -> segments from 4 on
         assert not (session.dir / "seg_2.m4s").exists()
         # Backward seek to an evicted segment restarts; far-ahead segments are evicted.
-        assert await mgr.segment(sid, 1)
+        assert await read_segment(mgr, sid, 1)
         assert stub.count == 2
         await asyncio.sleep(0.1)
         assert all(PLAN[k].start <= PLAN[1].start + 12 + 6 for k in session.ready)
@@ -583,7 +593,7 @@ async def test_cap_livelock(make_settings, stub, clock):
     try:
         session = await mgr.create_session(spec(size=1000))
         sid = session.session_id
-        await mgr.segment(sid, 0)
+        await read_segment(mgr, sid, 0)
         await wait_until(lambda: session.state == "throttled", timeout=3)
         assert mgr.over_cap
         assert {1, 2} <= set(session.ready)
@@ -592,12 +602,12 @@ async def test_cap_livelock(make_settings, stub, clock):
         assert proc.stopped
         assert stub.count == 1
         assert 3 not in session.ready and not (session.dir / "seg_3.m4s").exists()
-        assert await mgr.segment(sid, 1)
-        assert await mgr.segment(sid, 2)
+        assert await read_segment(mgr, sid, 1)
+        assert await read_segment(mgr, sid, 2)
         assert stub.count == 1
         # Raise the cap: below 90 % -> normal target restored, production continues.
         mgr.settings.playback.hls_max_disk_mb = 100
-        await mgr.segment(sid, 2)
+        await read_segment(mgr, sid, 2)
         await wait_until(lambda: max(session.ready) == 9, timeout=3)
         assert not mgr.over_cap
     finally:
@@ -606,7 +616,7 @@ async def test_cap_livelock(make_settings, stub, clock):
 
 async def test_lead_ignores_segments_beyond_a_gap(manager, stub):
     session = await manager.create_session(spec())
-    await manager.segment(session.session_id, 0)
+    await read_segment(manager, session.session_id, 0)
     session.ready = {0: 1, 5: 1}
     session.last_requested = 0
     assert session.lead_seconds() == 0.0
@@ -625,9 +635,9 @@ async def test_waited_for_segment_resumes_a_throttled_session_over_cap(make_sett
     try:
         session = await mgr.create_session(spec(size=1000))
         sid = session.session_id
-        await mgr.segment(sid, 0)
+        await read_segment(mgr, sid, 0)
         await wait_until(lambda: session.state == "throttled", timeout=3)
-        assert await mgr.segment(sid, 3)  # waits for the next segment: resumes and is served
+        assert await read_segment(mgr, sid, 3)  # waits for the next segment: resumes and is served
         assert stub.count == 1
         assert 0 not in session.ready  # behind evicted while over the cap
     finally:
@@ -698,7 +708,7 @@ async def test_any_request_updates_last_access(manager, stub, clock):
     await manager.init_segment(session.session_id)
     assert session.last_access == clock.now
     clock.now += 5
-    await manager.segment(session.session_id, 0)
+    await read_segment(manager, session.session_id, 0)
     assert session.last_access == clock.now
 
 
@@ -743,3 +753,67 @@ def test_seek_position_by_container(make_settings, stub, clock):
     session_ts = type("S", (), {"plan": plan, "spec": ts})()
     assert mgr.seek_position(session_ts, 2) == pytest.approx(11.5)
     assert mgr.seek_position(session_ts, 1) == pytest.approx(5.5)
+
+
+async def test_stop_waits_for_an_in_flight_finalize(manager, stub, monkeypatch):
+    """A monitor cancelled while ``_finalize`` runs in its worker thread must not let the
+    session dir be removed under it (the thread would recreate files in it)."""
+    import threading
+
+    from hometv.playback import hls as hls_module
+
+    entered, release = threading.Event(), threading.Event()
+    real_split = hls_module.split_fmp4
+
+    def blocking_split(data):
+        entered.set()
+        release.wait(5)
+        return real_split(data)
+
+    monkeypatch.setattr(hls_module, "split_fmp4", blocking_split)
+    stub.stop_at = 1
+    session = await manager.create_session(spec())
+    await wait_until(entered.is_set)
+    stopping = asyncio.create_task(manager.delete(session.session_id))
+    try:
+        await asyncio.sleep(0.2)
+        assert not stopping.done()  # the stop waits for the finalize thread
+    finally:
+        release.set()
+    await stopping
+    assert not session.dir.exists()
+
+
+async def test_concurrent_creates_respect_max_sessions(make_settings, stub, clock):
+    import time
+
+    settings = make_settings(playback={"max_sessions": 2})
+    settings.hls_dir.mkdir(parents=True, exist_ok=True)
+    mgr = new_manager(settings, stub, clock)
+
+    def slow_free(path):
+        time.sleep(0.05)  # every create is suspended here at once without the create lock
+        return 10 * 1024**4
+
+    mgr.disk_free = slow_free
+    try:
+        results = await asyncio.gather(
+            *(mgr.create_session(spec()) for _ in range(5)), return_exceptions=True
+        )
+        errors = [r for r in results if isinstance(r, ApiError)]
+        assert len(mgr.sessions) == 2
+        assert [e.code for e in errors] == ["too_many_sessions"] * 3
+        assert stub.count == 2
+    finally:
+        await mgr.shutdown()
+
+
+async def test_an_opened_segment_survives_its_eviction(manager, stub):
+    """The fd is opened before the segment is released to eviction: unlinking it afterwards
+    (eviction, budget, stop) does not break the response that is streaming it."""
+    session = await manager.create_session(spec())
+    opened = await manager.open_segment(session.session_id, 0)
+    async with session.lock:
+        manager._drop(session, 0).unlink()
+    with opened.file as fh:
+        assert fh.read()[4:8] == b"moof"

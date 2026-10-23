@@ -12,6 +12,7 @@ import { ErrorState } from '@/components/ErrorState';
 import { SkeletonGrid } from '@/components/Skeleton';
 import { PosterGrid } from '@/features/library/PosterGrid';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
+import { COMPACT_NAV_QUERY, useMediaQuery } from '@/lib/useMediaQuery';
 import { S } from '@/strings.es';
 import { NavSearch } from './NavSearch';
 import styles from './SearchPage.module.css';
@@ -20,10 +21,12 @@ export function SearchPage() {
   useDocumentTitle(S.titles.search);
   const [searchParams] = useSearchParams();
   const q = (searchParams.get('q') ?? '').trim();
+  // Below 720 px the NavBar has no search field, so the page brings its own.
+  const compact = useMediaQuery(COMPACT_NAV_QUERY);
   return (
     <div className="page">
       <h1>{S.titles.search}</h1>
-      <NavSearch variant="page" />
+      {compact && <NavSearch variant="page" />}
       {q ? <SearchResults q={q} /> : <EmptyState message={S.search.hint} />}
     </div>
   );

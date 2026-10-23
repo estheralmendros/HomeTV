@@ -21,10 +21,17 @@ IDLE_PREFIX = ("nice", "-n", "10", "ionice", "-c", "3")
 class Proc(Protocol):
     """The subset of ``asyncio.subprocess.Process`` the playback code uses."""
 
-    pid: int
-    returncode: int | None
-    stdout: asyncio.StreamReader | None
-    stderr: asyncio.StreamReader | None
+    @property
+    def pid(self) -> int: ...
+
+    @property
+    def returncode(self) -> int | None: ...
+
+    @property
+    def stdout(self) -> asyncio.StreamReader | None: ...
+
+    @property
+    def stderr(self) -> asyncio.StreamReader | None: ...
 
     async def wait(self) -> int: ...
 

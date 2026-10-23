@@ -42,15 +42,10 @@ export function ProfilesAdminPage() {
   const items = profiles.data?.items;
   const atLimit = (items?.length ?? 0) >= MAX_PROFILES;
 
-  const afterMutation = (self: boolean) => {
-    void queryClient.invalidateQueries({ queryKey: queryKeys.profiles() });
-    if (self) void queryClient.invalidateQueries({ queryKey: queryKeys.me() });
-  };
-
   const onCreate = async (body: ProfileCreateRequest | ProfileUpdateRequest) => {
     await runAdmin(() => createProfile(body as ProfileCreateRequest), T.newProfile);
     setEditing(null);
-    afterMutation(false);
+    void runInvalidation(queryClient, { type: 'profilesChanged' });
   };
 
   const onEdit = (profile: Profile) => async (body: ProfileCreateRequest | ProfileUpdateRequest) => {
@@ -65,7 +60,7 @@ export function ProfilesAdminPage() {
       }
       adminUnlock.clear();
     }
-    afterMutation(self);
+    void runInvalidation(queryClient, { type: 'profilesChanged' });
   };
 
   const onDelete = async (profile: Profile) => {

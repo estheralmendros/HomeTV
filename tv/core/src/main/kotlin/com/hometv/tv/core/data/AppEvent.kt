@@ -10,7 +10,12 @@ sealed interface AppEvent {
     /** The renewal answered 404 `profile_not_found`: Profile Picker with the "Tu sesión ha caducado…" banner. */
     data object AuthExpired : AppEvent
 
-    /** A foreground call's renewal failed with an IOException: Connection Error screen. */
+    /**
+     * A foreground call's renewal failed with an IOException (prd3 §2.5, Technical Requirements
+     * "State"). Reserved: no subscriber acts on it today, because the foreground call that triggered
+     * it also throws and its screen shows the Connection Error. [Origin] still matters: background
+     * callers never emit it, which the player tests assert. Kept as the PRD's event contract.
+     */
     data class ServerUnreachable(val cause: ApiException.Unreachable) : AppEvent
 
     /** A detail/episode/season/playback request answered 404 `not_found`: drop the card, refresh Home. */

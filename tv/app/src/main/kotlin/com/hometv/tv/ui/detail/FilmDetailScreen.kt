@@ -29,6 +29,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -53,6 +55,7 @@ import com.hometv.tv.ui.theme.HomeTvDimens
 fun FilmDetailScreen(vm: FilmDetailViewModel, navigator: AppNavigator) {
     val state by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(vm) { vm.navigation.collect(navigator::handle) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.onVisible() }
     Box(Modifier.fillMaxSize().background(HomeTvColors.Background)) {
         when (val s = state) {
             FilmDetailUiState.Loading -> LoadingScreen()

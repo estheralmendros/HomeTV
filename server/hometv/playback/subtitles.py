@@ -136,15 +136,17 @@ class SubtitleService:
 
     async def get_vtt(self, src: SubtitleSource, track_id: str) -> Path:
         """Path of the cached WebVTT file for ``track_id`` (converting/extracting first)."""
+        # Cache files are named from the parsed id (``emb-02`` -> ``emb-2.vtt``), as the
+        # extraction job writes them.
         if track_id.startswith("emb-"):
             index = self._embedded_index(src, track_id)
-            path = self.cache_path(src.media_file_id, track_id)
+            path = self.cache_path(src.media_file_id, f"emb-{index}")
             if await asyncio.to_thread(path.is_file):
                 return path
             return await self._embedded(src, index, path)
         if track_id.startswith("ext-"):
             sidecar = self._sidecar(src, track_id)
-            path = self.cache_path(src.media_file_id, track_id)
+            path = self.cache_path(src.media_file_id, f"ext-{sidecar.id}")
             if await asyncio.to_thread(path.is_file):
                 return path
             await self._convert_external(sidecar, path)

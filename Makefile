@@ -15,14 +15,14 @@ export JAVA_HOME ANDROID_HOME
 
 .PHONY: install test lint format run perf docker-build compose-config \
 	server-install server-test server-lint \
-	web-install web-test web-typecheck web-build web-dev web-e2e \
+	web-install web-test web-typecheck web-lint web-build web-dev web-e2e \
 	tv-test tv-lint tv-build
 
 install: server-install web-install ## Install server (uv) and web (npm ci) dependencies
 
 test: server-test web-test tv-test ## Server tests, the web suite (Vitest, no network), then the TV JVM tests
 
-lint: server-lint web-typecheck tv-lint ## Ruff lint + format check, web typecheck, TV Android lint
+lint: server-lint web-typecheck web-lint tv-lint ## Ruff lint + format check + mypy, web typecheck + ESLint (react-hooks), TV Android lint
 
 server-install: ## Install server dependencies (uv)
 	cd $(SERVER_DIR) && uv sync
@@ -30,8 +30,8 @@ server-install: ## Install server dependencies (uv)
 server-test: ## Run server tests (unit + service + api; integration when ffmpeg is installed)
 	cd $(SERVER_DIR) && uv run pytest -m "not perf"
 
-server-lint: ## Ruff lint + format check
-	cd $(SERVER_DIR) && uv run ruff check . && uv run ruff format --check .
+server-lint: ## Ruff lint + format check + mypy (hometv/, pydantic plugin, unused ignores are errors)
+	cd $(SERVER_DIR) && uv run ruff check . && uv run ruff format --check . && uv run mypy
 
 format: ## Auto-fix lint issues and format (server)
 	cd $(SERVER_DIR) && uv run ruff check --fix . && uv run ruff format .
@@ -53,6 +53,9 @@ web-test: ## Web unit + component tests (Vitest + RTL + MSW)
 
 web-typecheck: ## Web TypeScript check (strict)
 	cd $(WEB_DIR) && npm run typecheck
+
+web-lint: ## Web ESLint (react-hooks rules only: rules-of-hooks, exhaustive-deps)
+	cd $(WEB_DIR) && npm run lint
 
 web-build: ## Build the SPA into web/dist (served by the server)
 	cd $(WEB_DIR) && npm run build

@@ -16,11 +16,21 @@ import secrets
 import shutil
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
+
+from hometv.text import empty_to_none
 
 logger = logging.getLogger("hometv.config")
 
@@ -29,6 +39,8 @@ DB_FILENAME = "hometv.db"
 SECRET_FILENAME = "secret.key"
 
 LogLevel = Literal["debug", "info", "warning", "error", "critical"]
+# ``""`` (e.g. an empty env var) means unset for optional values.
+EmptyIsNone = BeforeValidator(empty_to_none)
 
 
 class ConfigError(Exception):
@@ -68,16 +80,11 @@ class LibrariesSettings(BaseModel):
 
 
 class TmdbSettings(_Section):
-    api_key: str | None = None
+    api_key: Annotated[str | None, EmptyIsNone] = None
     language: str = "es-ES"
     fallback_language: str = "en-US"
     max_rps: int = Field(20, gt=0)
     cast_limit: int = Field(15, ge=0)
-
-    @field_validator("api_key", mode="before")
-    @classmethod
-    def _empty_is_none(cls, value: Any) -> Any:
-        return None if value == "" else value
 
 
 class ScanSettings(_Section):
@@ -89,28 +96,18 @@ class ScanSettings(_Section):
 
 class PlaybackSettings(_Section):
     max_sessions: int = Field(3, ge=0)
-    hls_dir: Path | None = None  # filled with {data_dir}/hls by Settings
+    hls_dir: Annotated[Path | None, EmptyIsNone] = None  # filled with {data_dir}/hls by Settings
     hls_segment_seconds: int = Field(6, ge=1)
     hls_ahead_seconds: int = Field(120, ge=0)
     hls_behind_seconds: int = Field(60, ge=0)
     hls_max_disk_mb: int = Field(4096, ge=0)
     session_idle_timeout_seconds: int = Field(120, ge=1)
 
-    @field_validator("hls_dir", mode="before")
-    @classmethod
-    def _empty_is_none(cls, value: Any) -> Any:
-        return None if value == "" else value
-
 
 class AuthSettings(_Section):
-    secret_key: str | None = None
+    secret_key: Annotated[str | None, EmptyIsNone] = None
     token_ttl_days: int = Field(30, ge=1)
     admin_token_ttl_minutes: int = Field(15, ge=1)
-
-    @field_validator("secret_key", mode="before")
-    @classmethod
-    def _empty_is_none(cls, value: Any) -> Any:
-        return None if value == "" else value
 
 
 class ServerSettings(_Section):

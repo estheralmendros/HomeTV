@@ -8,6 +8,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.job
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -29,9 +31,8 @@ class DataStoreSessionStoreTest {
 
     /** Only one DataStore may be active per file: close the previous ones before reopening. */
     private fun reopen(): DataStoreSessionStore {
-        scopes.forEach { it.cancel() }
+        runBlocking { scopes.forEach { it.coroutineContext.job.cancelAndJoin() } }
         scopes.clear()
-        Thread.sleep(50)
         return open()
     }
 
