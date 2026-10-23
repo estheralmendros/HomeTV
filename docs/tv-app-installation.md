@@ -10,7 +10,23 @@
 3. Go back to **Settings → System → Developer options**.
 4. Turn on **USB debugging** (or **Wireless debugging** on newer builds).
 
-## 2. Install the app with ADB (sideloading)
+## 2. Build the APK
+On your computer (JDK 21 and the Android SDK; see `tv/README.md`):
+
+1. Create a signing key once, and keep it safe. Updates with `adb install -r` need the same key:
+   ```bash
+   keytool -genkeypair -v -keystore ~/keys/hometv-tv.jks -alias hometv -keyalg RSA -keysize 4096 -validity 10000
+   ```
+2. `cp tv/keystore.properties.example tv/keystore.properties` and fill in `storeFile`,
+   `storePassword`, `keyAlias` and `keyPassword` (the file is gitignored).
+3. From the repo root, run `make tv-build`. The APK is
+   `tv/app/build/outputs/apk/release/app-release.apk` (about 3 MB).
+
+A debug build (`cd tv && ./gradlew :app:assembleDebug`, at `tv/app/build/outputs/apk/debug/app-debug.apk`)
+needs no key. It also accepts `http://10.0.2.2:<port>` and `http://localhost:<port>`, which only
+help on an emulator. On a real TV, use the `https://….ts.net` address in both builds.
+
+## 3. Install the app with ADB (sideloading)
 Prerequisites: Android Platform Tools (`adb`) on your computer; computer and TV on the same network.
 
 1. Find the TV's IP: **Settings → Network & Internet → (your Wi-Fi)**.
@@ -28,22 +44,37 @@ Prerequisites: Android Platform Tools (`adb`) on your computer; computer and TV 
 
 > **About Google's 2026 sideloading rules:** ADB installs do not require developer registration. Initial enforcement (from 30 Sept 2026) covers only Brazil, Indonesia, Singapore and Thailand; wider rollout is planned for 2027. A personal app installed via ADB is fine for now — re-check before 2027.
 
-## 3. Install Tailscale on the TV
+## 4. Install Tailscale on the TV
 Tailscale's official Android app supports Android TV (Android 8.0+).
 1. Install **Tailscale** from the Play Store on the TV.
 2. Open it and select **Log in**; note the code shown below the QR code.
 3. In the Tailscale admin console: **Machines → Add device → Client device → Android → Input code**, enter the code and **Submit** (or scan the QR code).
 4. Confirm the TV shows up in the Machines list.
 
-## 4. Make the server tailnet-only
-1. Install Tailscale on the server and join the same tailnet.
-2. Either bind the app to the server's Tailscale IP (`100.x.y.z`), or publish it with:
+## 5. Make the server tailnet-only
+1. Install Tailscale on the server and join the same tailnet. The Compose stack in `deploy/`
+   does this with a Tailscale sidecar (see `deploy/README.md`).
+2. Publish the server over HTTPS, for example with:
    ```bash
    tailscale serve --bg <app-port>
    ```
-   which exposes it at `https://<machine>.<tailnet>.ts.net` with a valid HTTPS certificate (Android blocks cleartext HTTP by default).
-3. Restrict access with tailnet **ACLs** so only your chosen devices can reach the server.
-4. Point the TV app to the `ts.net` URL. The app itself needs nothing Tailscale-specific — Tailscale runs as a system VPN.
+   This exposes it at `https://<machine>.<tailnet>.ts.net` with a valid certificate. The release
+   app accepts only `https://` addresses, so a bare Tailscale IP (`http://100.x.y.z`) does not work.
+3. Restrict access with tailnet **ACLs** so only your chosen devices can reach the server (tag
+   the TV `tag:media-client`, per prd.md).
+4. The app itself needs nothing Tailscale-specific: Tailscale runs as a system VPN.
+
+## 6. First launch
+1. Create the first profile from the web app (`https://<machine>.<tailnet>.ts.net`). The TV
+   never creates profiles; until one exists it says "Todavía no hay perfiles…".
+2. Open **HomeTV** from the apps row on the TV. In the "Dirección del servidor" field, type the address
+   (`https://hometv.<tailnet>.ts.net`; `https://` is added if you leave it out) and press
+   **Conectar**.
+3. Pick a profile. No PIN is asked on the TV, not even for the admin profile.
+4. To change the server or profile later, go to **Ajustes**.
+
+If you see "No se puede conectar con tu servidor HomeTV", open the Tailscale app on the TV
+(the **Abrir Tailscale** button does this) and check that it says *Connected*.
 
 ## Gotchas
 - After the TV reboots, check that Tailscale reconnects automatically; otherwise the app can't reach the server.

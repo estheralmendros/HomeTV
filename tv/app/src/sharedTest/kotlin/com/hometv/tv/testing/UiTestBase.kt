@@ -1,0 +1,159 @@
+package com.hometv.tv.testing
+
+import androidx.activity.ComponentActivity
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.nativeKeyCode
+import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.isRoot
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.pressKey
+import com.hometv.tv.core.api.CastMember
+import com.hometv.tv.core.api.EpisodeSummary
+import com.hometv.tv.core.api.FilmDetail
+import com.hometv.tv.core.api.FilmSummary
+import com.hometv.tv.core.api.HomeResponse
+import com.hometv.tv.core.api.Page
+import com.hometv.tv.core.api.Profile
+import com.hometv.tv.core.api.ProfileList
+import com.hometv.tv.core.api.Progress
+import com.hometv.tv.core.api.SearchResponse
+import com.hometv.tv.core.api.SeasonDetail
+import com.hometv.tv.core.api.SeasonSummary
+import com.hometv.tv.core.api.ShowDetail
+import com.hometv.tv.core.api.ShowSummary
+import com.hometv.tv.core.data.Session
+import com.hometv.tv.core.playback.F
+import com.hometv.tv.di.AppContainer
+import com.hometv.tv.ui.HomeTvRoot
+import java.time.Instant
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import org.junit.After
+import org.junit.Rule
+
+/**
+ * Compose focus/navigation tests over the whole app ([HomeTvRoot] + a container on a [ScriptedApi]):
+ * Robolectric on the JVM (`src/test`), the TV emulator in `androidTest`. Keys go to the focused node.
+ */
+abstract class UiTestBase {
+    @get:Rule
+    val rule = createAndroidComposeRule<ComponentActivity>()
+
+    protected val api = ScriptedApi()
+    protected var exited = false
+    protected lateinit var container: AppContainer
+
+    /** The player of the Player screen (no ExoPlayer in tests); its callbacks must run on the main thread. */
+    protected val player = FakePlayerController()
+
+    /** The activity-level key hook (`MainActivity.dispatchKeyEvent` offers keys to it before Compose focus). */
+    protected val keyDispatch = com.hometv.tv.ui.KeyDispatch()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+
+    protected val signedIn = Session(serverUrl = TEST_SERVER, profileId = 5, token = "tok", expiresAt = Instant.parse("2030-01-01T00:00:00Z"))
+
+    protected fun launch(session: Session = signedIn) {
+        container = testContainer(api, scope, session, cacheIo = Dispatchers.Unconfined, player = { player })
+        rule.setContent { HomeTvRoot(container, onExit = { exited = true }, keyDispatch = keyDispatch) }
+        settle()
+    }
+
+    protected fun settle() {
+        rule.waitForIdle()
+        UiTestPlatform.advance(50)
+        rule.waitForIdle()
+    }
+
+    /**
+     * One D-pad / remote key press: offered first to the activity's [keyDispatch] (as `MainActivity`
+     * does), then to the focused element of the topmost window (e.g. an open dialog).
+     */
+    protected fun press(key: Key, times: Int = 1) {
+        repeat(times) {
+            val code = key.nativeKeyCode
+            val down = rule.runOnUiThread<Boolean> { keyDispatch.dispatch(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, code)) }
+            if (down) {
+                rule.runOnUiThread { keyDispatch.dispatch(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, code)) }
+            } else {
+                rule.onAllNodes(isRoot()).onLast().performKeyInput { pressKey(key) }
+            }
+            settle()
+        }
+    }
+
+    /** Runs a player callback (READY, ENDED, a failure) on the main thread, as ExoPlayer does. */
+    protected fun onPlayer(block: FakePlayerController.() -> Unit) {
+        rule.runOnUiThread { player.block() }
+        settle()
+    }
+
+    /** System / remote Back, delivered to the focused window (a dialog first, else the activity). */
+    protected fun back() {
+        androidx.test.espresso.Espresso.pressBackUnconditionally()
+        settle()
+    }
+
+    protected fun node(tag: String): SemanticsNodeInteraction = rule.onNodeWithTag(tag, useUnmergedTree = true)
+
+    protected fun assertFocused(tag: String) {
+        try {
+            node(tag).assertIsFocused()
+        } catch (e: AssertionError) {
+            throw AssertionError("Expected focus on '$tag' but it is on ${focusedTags()}", e)
+        }
+    }
+
+    /** Test tags of the focused nodes (and of their ancestors), for failure messages. */
+    protected fun focusedTags(): List<String> = rule.onAllNodes(androidx.compose.ui.test.isFocused(), useUnmergedTree = true).fetchSemanticsNodes().map { node ->
+        generateSequence(node) { it.parent }
+            .mapNotNull { n -> n.config.getOrElseNullable(androidx.compose.ui.semantics.SemanticsProperties.TestTag) { null } }
+            .joinToString(" < ")
+            .ifEmpty { "(untagged ${node.config})" }
+    }
+
+    @After
+    fun cancelScope() = scope.cancel()
+
+    // ---- A small library ------------------------------------------------------------------
+
+    protected val dune = FilmSummary(12, "Dune", 2021, progress = Progress(position_seconds = 1200.0, duration_seconds = 9360.0, media_file_id = 1))
+    protected val alien = FilmSummary(13, "Alien", 1979)
+    protected val amelie = FilmSummary(14, "Amélie", 2001)
+    protected val office = ShowSummary(7, "The Office", 2005, unwatched_episode_count = 3)
+    protected val olympics = EpisodeSummary(
+        id = 203, show_id = 7, show_title = "The Office", season_number = 2, episode_number = 3, title = "Office Olympics",
+        progress = Progress(position_seconds = 600.0, duration_seconds = 1320.0, media_file_id = 2), media_files = listOf(F.file(2)),
+    )
+
+    protected fun useLibrary() {
+        api.onProfiles = { ProfileList(listOf(Profile(3, "Esther", "avatar-01"), Profile(5, "Javi", "avatar-02"), Profile(8, "Kids", "avatar-03"))) }
+        api.onHome = { HomeResponse(continue_watching = listOf(dune, olympics), recently_added = listOf(office, alien)) }
+        api.onFilms = { p, s, _, _ ->
+            val all = listOf(dune, alien, amelie) + (20L until 32L).map { FilmSummary(it, "Film $it", 2000) }
+            Page(all.drop((p - 1) * s).take(s), p, s, all.size)
+        }
+        api.onShows = { p, s, _, _ -> Page(listOf(office), p, s, 1) }
+        api.onFilm = { id ->
+            FilmDetail(id = id, title = "Film $id", year = 2021, runtime_minutes = 155, match_status = "matched", media_files = listOf(F.file(1)),
+                cast = listOf(CastMember(1, "Timothée", "Paul")))
+        }
+        api.onShow = {
+            ShowDetail(
+                id = 7, title = "The Office", year = 2005, status = "Ended", unwatched_episode_count = 3, next_episode = olympics,
+                seasons = listOf(SeasonSummary(1, 1, null, unwatched_episode_count = 1), SeasonSummary(2, 2, null, unwatched_episode_count = 2)),
+            )
+        }
+        api.onSeason = { _, n ->
+            SeasonDetail(n.toLong(), 7, "The Office", n, null, episodes = (1..3).map { e ->
+                if (n == 2 && e == 3) olympics else EpisodeSummary(id = n * 100L + e, show_id = 7, show_title = "The Office", season_number = n, episode_number = e, title = "Episode $e")
+            })
+        }
+        api.onSearch = { _, _ -> SearchResponse(films = listOf(dune, alien), shows = listOf(office)) }
+    }
+}

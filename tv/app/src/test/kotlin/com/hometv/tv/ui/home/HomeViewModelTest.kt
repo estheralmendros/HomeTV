@@ -1,0 +1,281 @@
+package com.hometv.tv.ui.home
+
+import com.hometv.tv.R
+import com.hometv.tv.core.api.ApiJson
+import com.hometv.tv.core.api.EpisodeSummary
+import com.hometv.tv.core.api.FilmSummary
+import com.hometv.tv.core.api.Fixtures
+import com.hometv.tv.core.api.HomeResponse
+import com.hometv.tv.core.api.Image
+import com.hometv.tv.core.api.LibraryCounts
+import com.hometv.tv.core.api.Page
+import com.hometv.tv.core.api.ShowSummary
+import com.hometv.tv.core.data.AppEvent
+import com.hometv.tv.core.data.FakeHomeTvApi.Companion.httpError
+import com.hometv.tv.core.util.EpisodeCode
+import com.hometv.tv.core.util.EpisodeTitle
+import com.hometv.tv.data.HomeCache
+import com.hometv.tv.data.HomePayload
+import com.hometv.tv.data.HomeRefresh
+import com.hometv.tv.testing.MainDispatcherExtension
+import com.hometv.tv.testing.TestRepos
+import com.hometv.tv.ui.common.ScreenError
+import com.hometv.tv.ui.navigation.Library
+import com.hometv.tv.ui.navigation.NavRequest
+import com.hometv.tv.ui.navigation.PlayRequest
+import com.hometv.tv.ui.text.UiText
+import java.net.UnknownHostException
+import java.nio.file.Files
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.extension.RegisterExtension
+
+class HomeViewModelTest {
+    @JvmField @RegisterExtension val main = MainDispatcherExtension()
+
+    private val repos = TestRepos()
+    private val cache = HomeCache(Files.createTempDirectory("home").toFile(), Dispatchers.Unconfined)
+    private val refresh = HomeRefresh()
+    private val home = ApiJson.decodeFromString(HomeResponse.serializer(), Fixtures.home)
+    private val dune = FilmSummary(12, "Dune", 2021, poster = Image("/p/dune.jpg"), backdrop = Image("/b/dune.jpg"), overview = "Arrakis.")
+    private val alien = FilmSummary(13, "Alien", 1979)
+    private val office = ShowSummary(7, "The Office", 2005, unwatched_episode_count = 1234)
+
+    init {
+        repos.api.onHome = { home }
+        repos.api.onFilms = { p, s, _, _ -> Page(listOf(dune, alien), p, s, 2) }
+        repos.api.onShows = { p, s, _, _ -> Page(listOf(office), p, s, 1) }
+    }
+
+    private fun vm() = HomeViewModel(repos.catalog, cache, repos.store, repos.events.events, refresh)
+
+    private fun HomeUiState.row(id: HomeRowId) = rows.first { it.id == id }
+
+    private fun HomeUiState.keys() = rows.associate { row -> row.id to row.cards.map { it.key } }
+
+    @Test
+    fun `loads home, films and shows in parallel and shows the rows in order, hiding empty ones`() = runTest(main.dispatcher) {
+        val vm = vm()
+        advanceUntilIdle()
+        val state = vm.state.value
+        assertEquals(listOf(HomeRowId.CONTINUE, HomeRowId.RECENT, HomeRowId.FILMS, HomeRowId.SHOWS), state.rows.map { it.id })
+        assertTrue("GET /api/home?limit=20" in repos.api.calls)
+        assertTrue("GET /api/films?page=1&page_size=20&sort=added&order=desc" in repos.api.calls)
+        assertTrue("GET /api/shows?page=1&page_size=20&sort=added&order=desc" in repos.api.calls)
+        assertEquals(listOf("continue:film:12", "continue:episode:345"), state.row(HomeRowId.CONTINUE).cards.map { it.key })
+        assertEquals(listOf("films:film:12", "films:film:13", "see_all:films"), state.row(HomeRowId.FILMS).cards.map { it.key })
+        assertEquals(SeeAllCard(Library.SHOWS), state.row(HomeRowId.SHOWS).cards.last())
+        assertFalse(state.libraryEmpty)
+        assertNull(state.error)
+    }
+
+    @Test
+    fun `cards carry images, progress, episode subtitles and unwatched badges`() = runTest(main.dispatcher) {
+        val vm = vm()
+        advanceUntilIdle()
+        val state = vm.state.value
+        val (film, episode) = state.row(HomeRowId.CONTINUE).cards.map { it as ItemCard }
+        assertEquals(CardStyle.LANDSCAPE, film.style)
+        assertEquals("/api/artwork/w780/b.jpg", film.image)
+        assertEquals(1234.5 / 9360.0, film.progress!!.toDouble(), 1e-6)
+        assertEquals("The Office", episode.title)
+        assertEquals("/api/artwork/w780/ob.jpg", episode.image, "still is null: falls back to show_backdrop.small")
+        assertEquals(UiText.Res(R.string.pair_space, listOf(EpisodeCode(2, 3), EpisodeTitle.Named("Office Olympics"))), episode.subtitle)
+        val show = state.row(HomeRowId.SHOWS).cards.first() as ItemCard
+        assertEquals(CardStyle.POSTER, show.style)
+        assertEquals("1.234", show.badge)
+    }
+
+    @Test
+    fun `an empty library shows the empty message`() = runTest(main.dispatcher) {
+        repos.api.onHome = { HomeResponse(library = LibraryCounts(empty = true)) }
+        repos.api.onFilms = { p, s, _, _ -> Page(emptyList(), p, s, 0) }
+        repos.api.onShows = { p, s, _, _ -> Page(emptyList(), p, s, 0) }
+        val vm = vm()
+        advanceUntilIdle()
+        assertTrue(vm.state.value.libraryEmpty)
+        assertEquals(emptyList<HomeRow>(), vm.state.value.rows)
+    }
+
+    @Test
+    fun `cached rows render before the network answers, then fresh data replaces them and is cached`() = runTest(main.dispatcher) {
+        cache.write(5, HomePayload(HomeResponse(recently_added = listOf(alien)), films = listOf(alien)))
+        repos.api.onHome = { delay(2_000); home }
+        val vm = vm()
+        runCurrent()
+        advanceTimeBy(100)
+        assertEquals(listOf("recent:film:13"), vm.state.value.row(HomeRowId.RECENT).cards.map { it.key })
+        assertTrue(vm.state.value.fromCache)
+        advanceUntilIdle()
+        assertFalse(vm.state.value.fromCache)
+        assertEquals(listOf("recent:show:7"), vm.state.value.row(HomeRowId.RECENT).cards.map { it.key })
+        assertEquals(listOf("show:7"), cache.read(5)!!.home.recently_added.map { it.key })
+    }
+
+    @Test
+    fun `a 401 on home renews the session silently and shows the content`() = runTest(main.dispatcher) {
+        repos.recordEvents(backgroundScope)
+        var first = true
+        repos.api.onHome = { if (first) { first = false; throw httpError(401, "unauthorized") } else home }
+        val vm = vm()
+        advanceUntilIdle()
+        assertEquals(1, repos.api.count("POST /api/profiles/5/session"))
+        assertEquals("tok-5", repos.store.session.value.token)
+        assertTrue(vm.state.value.rows.isNotEmpty())
+        assertNull(vm.state.value.error)
+        assertTrue(repos.received.none { it is AppEvent.AuthExpired })
+    }
+
+    @Test
+    fun `an unreachable server shows the Connection Error and Retry reloads`() = runTest(main.dispatcher) {
+        repos.api.onHome = { throw UnknownHostException("hometv") }
+        val vm = vm()
+        advanceUntilIdle()
+        assertEquals(ScreenError.Connection("hometv.tail1234.ts.net", false), vm.state.value.error)
+        repos.api.onHome = { home }
+        vm.retry()
+        advanceUntilIdle()
+        assertNull(vm.state.value.error)
+        assertTrue(vm.state.value.rows.isNotEmpty())
+    }
+
+    @Test
+    fun `episode cards play from the home payload's media files without fetching the episode`() = runTest(main.dispatcher) {
+        val vm = vm()
+        advanceUntilIdle()
+        val episode = vm.state.value.row(HomeRowId.CONTINUE).cards[1] as ItemCard
+        vm.onCardClick(episode)
+        val nav = vm.navigation.first() as NavRequest.Play
+        assertEquals("episode", nav.request.itemType)
+        assertEquals(345L, nav.request.itemId)
+        assertEquals(listOf(91L, 92L), nav.request.payload!!.media_files.map { it.id })
+        assertFalse(nav.request.fromStart)
+        assertTrue(repos.api.calls.none { it.startsWith("GET /api/episodes") })
+    }
+
+    @Test
+    fun `film cards of Continue Watching open the player without media files, the player fetches the film`() = runTest(main.dispatcher) {
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onCardClick(vm.state.value.row(HomeRowId.CONTINUE).cards[0])
+        assertEquals(NavRequest.Play(PlayRequest("film", 12)), vm.navigation.first())
+        assertTrue(repos.api.calls.none { it.startsWith("GET /api/films/") })
+    }
+
+    @Test
+    fun `poster cards open the detail, See all opens Browse, long press opens the detail`() = runTest(main.dispatcher) {
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onCardClick(vm.state.value.row(HomeRowId.RECENT).cards[0])
+        assertEquals(NavRequest.Detail("show", 7), vm.navigation.first())
+        vm.onCardClick(vm.state.value.row(HomeRowId.FILMS).cards.last())
+        assertEquals(NavRequest.Browse(Library.FILMS), vm.navigation.first())
+        vm.onCardLongClick(vm.state.value.row(HomeRowId.CONTINUE).cards[1])
+        assertEquals(NavRequest.Detail("show", 7), vm.navigation.first())
+        vm.onCardLongClick(vm.state.value.row(HomeRowId.CONTINUE).cards[0])
+        assertEquals(NavRequest.Detail("film", 12), vm.navigation.first())
+    }
+
+    @Test
+    fun `the hero follows the focused card 300 ms after focus settles`() = runTest(main.dispatcher) {
+        val vm = vm()
+        advanceUntilIdle()
+        val cards = vm.state.value.row(HomeRowId.CONTINUE).cards.map { it as ItemCard }
+        vm.onCardFocused(cards[0])
+        advanceTimeBy(100)
+        vm.onCardFocused(cards[1])
+        advanceTimeBy(299)
+        assertNull(vm.hero.value)
+        advanceTimeBy(2)
+        val hero = vm.hero.value!!
+        assertEquals("/api/artwork/w780/ob.jpg", hero.backdrop)
+        assertEquals("The Office", hero.title)
+        assertNull(hero.year)
+        assertEquals(UiText.Res(R.string.pair_space, listOf(EpisodeCode(2, 3), EpisodeTitle.Named("Office Olympics"))), hero.episodeLine)
+        assertEquals("Michael...", hero.overview)
+
+        vm.onCardFocused(vm.state.value.row(HomeRowId.FILMS).cards[0] as ItemCard)
+        advanceTimeBy(301)
+        assertEquals(HeroUi("/b/dune.jpg", "Dune", "2021", null, "Arrakis."), vm.hero.value)
+        vm.onCardFocused(vm.state.value.row(HomeRowId.FILMS).cards[1] as ItemCard)
+        advanceTimeBy(301)
+        assertEquals(HeroUi(null, "Alien", "1979", null, null), vm.hero.value, "null backdrop/overview degrade")
+    }
+
+    @Test
+    fun `fresh data keeps the focused item by key, else the same index of its row`() = runTest(main.dispatcher) {
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onCardFocused(vm.state.value.row(HomeRowId.FILMS).cards[1] as ItemCard)
+        repos.api.onFilms = { p, s, _, _ -> Page(listOf(FilmSummary(20, "Arrival", 2016), alien, dune), p, s, 3) }
+        vm.retry()
+        advanceUntilIdle()
+        val focus = vm.state.value.focus!!
+        assertEquals("films:film:13", focus.key)
+        assertEquals(1, focus.cardIndex)
+
+        repos.api.onFilms = { p, s, _, _ -> Page(listOf(FilmSummary(21, "Amélie", 2001), dune), p, s, 2) }
+        vm.retry()
+        advanceUntilIdle()
+        assertEquals("films:film:12", vm.state.value.focus!!.key, "item gone: same index of the row")
+    }
+
+    @Test
+    fun `ItemGone removes the card at once and reloads Home`() = runTest(main.dispatcher) {
+        val vm = vm()
+        advanceUntilIdle()
+        val homeCalls = repos.api.count("GET /api/home?limit=20")
+        repos.api.onHome = { delay(1_000); home.copy(continue_watching = home.continue_watching.drop(1)) }
+        repos.events.emit(AppEvent.ItemGone("film", 12))
+        runCurrent()
+        assertTrue(vm.state.value.keys().values.flatten().none { it.endsWith(":film:12") })
+        advanceUntilIdle()
+        assertEquals(homeCalls + 1, repos.api.count("GET /api/home?limit=20"))
+    }
+
+    @Test
+    fun `Home reloads when it becomes visible again only after something marked it stale`() = runTest(main.dispatcher) {
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onVisible()
+        advanceUntilIdle()
+        assertEquals(1, repos.api.count("GET /api/home?limit=20"))
+        refresh.markStale()
+        vm.onVisible()
+        advanceUntilIdle()
+        assertEquals(2, repos.api.count("GET /api/home?limit=20"))
+    }
+
+    @Test
+    fun `Back from a deep card returns to the first card, then exits`() = runTest(main.dispatcher) {
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onCardFocused(vm.state.value.row(HomeRowId.SHOWS).cards[0] as ItemCard)
+        assertTrue(vm.onBack())
+        assertEquals("continue:film:12", vm.state.value.focus!!.key)
+        vm.onCardFocused(vm.state.value.row(HomeRowId.CONTINUE).cards[0] as ItemCard)
+        assertFalse(vm.onBack())
+        vm.onNavFocused()
+        assertTrue(vm.onBack(), "focus on the top nav: back to the first card")
+    }
+
+    @Test
+    fun `cached episode payloads still contain their media files`() = runTest(main.dispatcher) {
+        cache.write(5, HomePayload(home))
+        repos.api.onHome = { delay(5_000); home }
+        val vm = vm()
+        runCurrent()
+        val episode = vm.state.value.row(HomeRowId.CONTINUE).cards[1] as ItemCard
+        assertEquals(2, (episode.summary as EpisodeSummary).media_files.size)
+    }
+}

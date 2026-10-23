@@ -1,0 +1,214 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The single UI string catalog (prd3 §UI Language): Spanish (es-ES, tú) only, no values-<lang>/ folders.
+  Numbers are always pre-formatted es-ES by core Format.kt and passed as %s (never %d / %f), also in
+  <plurals> (call shape: pluralStringResource(R.plurals.x, n, Format.count(n))).
+-->
+<resources>
+    <string name="app_name" translatable="false">HomeTV</string>
+
+    <!-- Separators and generic templates -->
+    <string name="separator_dot">" · "</string>
+    <string name="separator_comma">", "</string>
+    <string name="separator_space">" "</string>
+    <string name="separator_newline">"\n"</string>
+    <string name="pair_dot">%1$s · %2$s</string>
+    <string name="pair_space">%1$s %2$s</string>
+
+    <!-- Common actions -->
+    <string name="action_retry">Reintentar</string>
+    <string name="action_cancel">Cancelar</string>
+    <string name="action_back">Volver</string>
+    <string name="loading">Cargando…</string>
+
+    <!-- Top navigation -->
+    <string name="nav_home">Inicio</string>
+    <string name="nav_films">Películas</string>
+    <string name="nav_shows">Series</string>
+    <string name="nav_search">Buscar</string>
+    <string name="nav_settings">Ajustes</string>
+
+    <!-- (1) Server setup -->
+    <string name="setup_subtitle">Conéctate a tu servidor doméstico</string>
+    <string name="setup_url_label">Dirección del servidor</string>
+    <string name="setup_url_hint">https://hometv.tu-tailnet.ts.net</string>
+    <string name="setup_connect">Conectar</string>
+    <string name="setup_validating">Conectando…</string>
+    <string name="setup_tip">Consejo: usa la dirección https://…ts.net que muestra la consola de administración de Tailscale.</string>
+    <string name="setup_error_unreachable">No se puede conectar con este servidor. Comprueba que Tailscale está conectado en este televisor (abre la app de Tailscale y asegúrate de que indica «Connected») y que la dirección es correcta.</string>
+    <string name="setup_error_tls">No se ha podido establecer una conexión segura. Asegúrate de usar la dirección ….ts.net y de que los certificados HTTPS están activados en tu tailnet.</string>
+    <string name="setup_error_not_hometv">Esta dirección no parece de un servidor HomeTV.</string>
+    <string name="setup_error_unhealthy">El servidor está en marcha, pero su base de datos no está disponible. Inténtalo de nuevo más tarde.</string>
+    <string name="setup_error_cleartext">Usa la dirección https:// que muestra Tailscale (…ts.net).</string>
+    <string name="setup_error_empty">Escribe la dirección de tu servidor HomeTV.</string>
+    <string name="setup_error_invalid">Esta dirección no es válida. Comprueba que la has escrito bien.</string>
+    <string name="setup_needs_bootstrap">Todavía no hay perfiles. Crea el primer perfil desde la app web en %1$s y pulsa Reintentar.</string>
+
+    <!-- (2) Profiles -->
+    <string name="profiles_title">¿Quién está viendo?</string>
+    <string name="profiles_session_expired">Tu sesión ha caducado. Vuelve a elegir tu perfil.</string>
+    <string name="profiles_gone">Este perfil ya no existe</string>
+    <string name="profiles_switch">Cambiar de perfil</string>
+
+    <!-- (4) Home -->
+    <string name="home_continue_watching">Seguir viendo</string>
+    <string name="home_next_up">A continuación</string>
+    <string name="home_recently_added">Añadidos recientemente</string>
+    <string name="home_films">Películas</string>
+    <string name="home_shows">Series</string>
+    <string name="home_see_all">Ver todo</string>
+    <string name="home_library_empty">Tu biblioteca está vacía. Añade archivos y escanea la biblioteca desde la app web.</string>
+    <string name="watched">Visto</string>
+
+    <!-- (5) Browse -->
+    <string name="browse_sort">Ordenar: %1$s</string>
+    <string name="sort_title_asc">Título A–Z</string>
+    <string name="sort_title_desc">Título Z–A</string>
+    <string name="sort_year_desc">Año (más recientes)</string>
+    <string name="sort_year_asc">Año (más antiguos)</string>
+    <string name="sort_added_desc">Añadidos recientemente</string>
+
+    <!-- (6) Search -->
+    <string name="search_placeholder">Buscar películas y series</string>
+    <string name="search_voice_prompt">Buscar películas y series</string>
+    <string name="search_voice">Buscar por voz</string>
+    <string name="search_no_results">No hay resultados para «%1$s»</string>
+
+    <!-- (7) Film detail -->
+    <string name="detail_play">Reproducir</string>
+    <string name="detail_resume_from">Reanudar desde %1$s</string>
+    <string name="detail_play_from_start">Reproducir desde el principio</string>
+    <string name="detail_play_part">Reproducir parte %1$s</string>
+    <string name="mark_watched">Marcar como visto</string>
+    <string name="mark_unwatched">Marcar como no visto</string>
+    <string name="detail_version">Versión: %1$s</string>
+    <string name="detail_versions_title">Versiones</string>
+    <string name="detail_in_parts">En %1$s partes</string>
+    <string name="detail_part_of">Parte %1$s de %2$s</string>
+    <string name="detail_parts_title">Partes</string>
+    <string name="part_n">Parte %1$s</string>
+    <string name="detail_part_version">Versión de la parte: %1$s</string>
+    <string name="detail_part_versions_title">Versiones de la parte</string>
+    <string name="detail_unplayable">Esta película no se puede reproducir (no se ha podido leer el archivo)</string>
+    <string name="detail_metadata_unavailable">Metadatos no disponibles</string>
+    <string name="detail_cast">Reparto</string>
+    <string name="version_label_unknown">Desconocido</string>
+    <string name="item_gone">Este título ya no está disponible.</string>
+
+    <!-- Structured values (core Format / LanguageNames / TrackRules → ui/text/UiFormat.kt) -->
+    <string name="runtime_h_min">%1$s h %2$s min</string>
+    <string name="runtime_h">%1$s h</string>
+    <string name="runtime_min">%1$s min</string>
+    <string name="rating">★ %1$s</string>
+    <string name="episode_code">T%1$s · E%2$s</string>
+    <string name="season_numbered">Temporada %1$s</string>
+    <string name="season_specials">Especiales</string>
+    <string name="episode_numbered">Episodio %1$s</string>
+    <string name="language_unknown">Desconocido</string>
+    <string name="tag_forced">Forzados</string>
+    <string name="tag_sdh">SDH</string>
+    <string name="tag_external">Externo</string>
+    <string name="tag_image">Imagen (%1$s)</string>
+    <string name="tag_default">Predeterminado</string>
+    <string name="tag_converted">(convertido)</string>
+    <string name="tag_unavailable">(no disponible)</string>
+
+    <!-- (8) Show detail -->
+    <string name="show_status_ended">Finalizada</string>
+    <string name="show_status_returning">En emisión</string>
+    <string name="show_status_canceled">Cancelada</string>
+    <string name="show_status_in_production">En producción</string>
+    <string name="show_status_planned">Planificada</string>
+    <string name="show_status_pilot">Piloto</string>
+    <string name="show_play_episode">Reproducir %1$s</string>
+    <string name="show_resume_episode">Reanudar %1$s</string>
+    <string name="mark_show_watched">Marcar serie como vista</string>
+    <string name="mark_show_unwatched">Marcar serie como no vista</string>
+    <string name="mark_season_watched">Marcar temporada como vista</string>
+    <string name="mark_season_unwatched">Marcar temporada como no vista</string>
+    <string name="episode_row_title">%1$s. %2$s</string>
+    <plurals name="episode_count">
+        <item quantity="one">%1$s episodio</item>
+        <item quantity="other">%1$s episodios</item>
+    </plurals>
+    <plurals name="unwatched_count">
+        <item quantity="one">%1$s sin ver</item>
+        <item quantity="other">%1$s sin ver</item>
+    </plurals>
+
+    <!-- Settings / About -->
+    <string name="settings_server">Servidor</string>
+    <string name="settings_change_server">Cambiar servidor</string>
+    <string name="settings_profile">Perfil</string>
+    <string name="settings_switch_profile">Cambiar de perfil</string>
+    <string name="settings_about">Acerca de</string>
+    <string name="settings_app_version">Versión de la app: %1$s</string>
+    <string name="settings_server_version">Servidor: %1$s (versión %2$s)</string>
+    <string name="settings_caps">Vídeo: %1$s · Audio: %2$s</string>
+    <string name="tmdb_logo">Logotipo de TMDB</string>
+
+    <!-- Errors and connectivity (§10) -->
+    <string name="error_connection">No se puede conectar con tu servidor HomeTV en %1$s. Puede que Tailscale esté desconectado; suele pasar después de reiniciar el televisor.</string>
+    <string name="error_open_tailscale">Abrir Tailscale</string>
+    <string name="error_load_failed">No se ha podido cargar el contenido.</string>
+    <string name="error_unexpected">Se ha producido un error inesperado (%1$s).</string>
+    <string name="error_sign_in">No se ha podido iniciar sesión en el servidor</string>
+    <string name="error_icon">Aviso</string>
+
+    <!-- (9) Player (phase B2): overlay, chips, dialogs, countdown, preparing, errors -->
+    <string name="player_preparing">Preparando el vídeo…</string>
+    <string name="player_preparing_body">El servidor está preparando este archivo para emitirlo.</string>
+    <string name="less_than_a_minute_left">queda menos de un minuto</string>
+    <plurals name="minutes_left">
+        <item quantity="one">queda alrededor de %1$s min</item>
+        <item quantity="other">quedan unos %1$s min</item>
+    </plurals>
+    <string name="player_preparing_timeout">El servidor todavía está preparando este vídeo. Inténtalo de nuevo dentro de unos minutos.</string>
+    <string name="player_too_many_sessions">El servidor ya está emitiendo en el número máximo de dispositivos. Detén la reproducción en otro dispositivo y vuelve a intentarlo.</string>
+    <string name="player_hls_disk_full">Al servidor le queda poco espacio para emitir. Detén otra reproducción o inténtalo de nuevo más tarde.</string>
+    <string name="player_server_unavailable">El servidor no está disponible en este momento.</string>
+    <string name="player_keyframe_index_failed">El servidor no puede preparar esta versión para emitirla.</string>
+    <string name="player_unsupported">Este vídeo no se puede reproducir en este televisor</string>
+    <string name="reason_video_codec_unsupported">Este televisor no admite el códec de vídeo %1$s.</string>
+    <string name="reason_no_video_stream">El archivo no tiene pista de vídeo.</string>
+    <string name="reason_hls_not_supported">Este archivo no se puede convertir para este dispositivo.</string>
+    <string name="reason_probe_failed">No se ha podido leer el archivo.</string>
+    <string name="reason_duration_unknown">No se conoce la duración del archivo; solo se puede reproducir directamente.</string>
+    <string name="reason_keyframes_too_sparse">Los fotogramas clave del archivo están demasiado separados para convertirlo.</string>
+    <string name="reason_unknown">Este formato no es compatible.</string>
+    <string name="player_file_missing">Falta el archivo de este título en el disco del servidor. Puede que el disco esté desconectado.</string>
+    <string name="player_hls_failed">El servidor no ha podido preparar este vídeo.</string>
+    <string name="player_playback_failed">No se ha podido reproducir este vídeo.</string>
+    <string name="player_try_other_version">Probar otra versión</string>
+    <string name="player_retry_from_here">Reintentar desde aquí</string>
+    <string name="player_audio_subtitles">Audio y subtítulos</string>
+    <string name="player_next_episode">Siguiente episodio</string>
+    <string name="player_next_part">Siguiente parte</string>
+    <string name="player_rewind">Retroceder 10 segundos</string>
+    <string name="player_forward">Avanzar 10 segundos</string>
+    <string name="player_play">Reproducir</string>
+    <string name="player_pause">Pausa</string>
+    <string name="player_remaining">quedan %1$s</string>
+    <string name="player_progress">Progreso de la reproducción</string>
+    <string name="player_title_part">%1$s · Parte %2$s de %3$s</string>
+    <string name="player_subtitles_preparing">Preparando los subtítulos…</string>
+    <string name="player_subtitles_unavailable">Subtítulos no disponibles</string>
+    <string name="player_different_version">Reproduciendo otra versión desde el principio</string>
+    <string name="player_audio_switching">Cambiando el audio…</string>
+    <string name="player_audio_preparing">Preparando el audio…</string>
+    <string name="audio_change_cancelled">Cambio de audio cancelado</string>
+    <string name="audio_switch_failed">No se ha podido cambiar la pista de audio</string>
+    <string name="audio_track_unplayable">Esa pista de audio no se puede reproducir en este televisor</string>
+    <string name="audio_preparing_timeout">El servidor todavía está preparando esta pista de audio. Inténtalo de nuevo dentro de unos minutos.</string>
+    <string name="player_last_episode">Este es el último episodio</string>
+    <string name="track_dialog_audio">Audio</string>
+    <string name="track_dialog_subtitles">Subtítulos</string>
+    <string name="subtitles_off">Desactivados</string>
+    <string name="countdown_title">A continuación</string>
+    <string name="countdown_starts_in">Empieza en %1$s</string>
+    <string name="play_now">Reproducir ahora</string>
+    <string name="part_prompt">Continuando con la parte %1$s</string>
+    <string name="part_prompt_stopped">Continuar con la parte %1$s</string>
+    <string name="next_unplayable">El siguiente episodio no se puede reproducir en este televisor</string>
+    <string name="next_load_failed">No se ha podido cargar el siguiente episodio</string>
+</resources>

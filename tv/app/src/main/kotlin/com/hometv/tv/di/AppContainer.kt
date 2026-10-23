@@ -1,0 +1,270 @@
+package com.hometv.tv.di
+
+import android.content.Context
+import android.os.Build
+import coil.ImageLoader
+import coil.disk.DiskCache
+import coil.memory.MemoryCache
+import com.hometv.tv.BuildConfig
+import com.hometv.tv.core.api.ApiClientFactory
+import com.hometv.tv.core.api.ApiClients
+import com.hometv.tv.core.api.ClientCaps
+import com.hometv.tv.core.api.HomeTvApi
+import com.hometv.tv.core.api.apiCall
+import com.hometv.tv.core.data.AppEvent
+import com.hometv.tv.core.data.AppEvents
+import com.hometv.tv.core.data.CatalogRepository
+import com.hometv.tv.core.data.NextEpisodeResolver
+import com.hometv.tv.core.data.OkHttpSubtitleSource
+import com.hometv.tv.core.data.Origin
+import com.hometv.tv.core.data.PlaybackRepository
+import com.hometv.tv.core.data.ProfileRepository
+import com.hometv.tv.core.data.ServerRepository
+import com.hometv.tv.core.data.Session
+import com.hometv.tv.core.data.SessionGuard
+import com.hometv.tv.core.data.SessionStore
+import com.hometv.tv.core.data.SubtitleSource
+import com.hometv.tv.core.data.WatchRepository
+import com.hometv.tv.core.playback.CapsForFile
+import com.hometv.tv.core.playback.ClientCapsBuilder
+import com.hometv.tv.core.util.ServerUrl
+import com.hometv.tv.data.AccountState
+import com.hometv.tv.data.DataStoreSessionStore
+import com.hometv.tv.data.HomeCache
+import com.hometv.tv.data.HomeRefresh
+import com.hometv.tv.data.PlayerLaunches
+import com.hometv.tv.playback.AndroidCodecInventory
+import com.hometv.tv.playback.CodecSource
+import com.hometv.tv.playback.ExoPlayerController
+import com.hometv.tv.playback.PlayerFactory
+import com.hometv.tv.playback.SubtitleFileCache
+import com.hometv.tv.playback.SubtitleStore
+import com.hometv.tv.core.playback.PlayerController
+import com.hometv.tv.ui.player.PlayerDeps
+import com.hometv.tv.ui.player.PlayerViewModel
+import com.hometv.tv.ui.browse.BrowseSortMemory
+import com.hometv.tv.ui.browse.BrowseViewModel
+import com.hometv.tv.ui.detail.FilmDetailViewModel
+import com.hometv.tv.ui.detail.ShowDetailViewModel
+import com.hometv.tv.ui.home.HomeViewModel
+import com.hometv.tv.ui.navigation.Library
+import com.hometv.tv.ui.navigation.Route
+import com.hometv.tv.ui.profiles.ProfilesViewModel
+import com.hometv.tv.ui.search.SearchViewModel
+import com.hometv.tv.ui.settings.SettingsViewModel
+import com.hometv.tv.ui.setup.SetupViewModel
+import java.io.File
+import java.time.Clock
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import okhttp3.OkHttpClient
+
+data class AppConfig(
+    val versionName: String,
+    /** Debug builds also accept `http://10.0.2.2:<port>` and `http://localhost:<port>` (prd3 §1.3). */
+    val allowDebugCleartext: Boolean,
+)
+
+/**
+ * Manual DI (prd3 Implementation Decisions): one container per process, created by
+ * [com.hometv.tv.HomeTvApplication]. Everything Android-specific is injected, so the container
+ * also runs on the JVM in tests.
+ *
+ * Exposes: [store] (loaded before the API client is built: `AuthInterceptor` reads the token
+ * synchronously), [clients] (API + stream OkHttp clients and Retrofit, rebuilt when the server URL
+ * changes), [api], [guard], the repositories, [events] (global `AppEvent` bus), [appScope]
+ * (`SupervisorJob() + Dispatchers.IO`, process lifetime: final progress PUT, HLS DELETE),
+ * [codecs] + [capsForFile] (capability hook), [playerLaunches], [homeRefresh], [account],
+ * [imageLoader] and one factory function per ViewModel.
+ */
+class AppContainer(
+    val store: SessionStore,
+    val homeCache: HomeCache,
+    val appScope: CoroutineScope,
+    val config: AppConfig,
+    private val clientsFactory: (serverUrl: String) -> ApiClients,
+    validationClient: OkHttpClient,
+    val codecs: CodecSource,
+    clock: Clock = Clock.systemUTC(),
+    /** One player per Player screen, on the stream client of the current server (an ExoPlayer in the app, a fake in tests). */
+    private val playerControllers: (streamClient: OkHttpClient) -> PlayerController = { error("No player in this container") },
+    /** `cacheDir/subtitles` (side-loaded WebVTT files). */
+    val subtitleCache: SubtitleStore = SubtitleFileCache(File(System.getProperty("java.io.tmpdir"), "hometv-subtitles")),
+) {
+    val events = AppEvents()
+
+    private val clientsLock = Any()
+
+    @Volatile
+    private var current: ApiClients? = null
+
+    /** The clients for the stored server URL (rebuilt with the Coil loader when it changes). */
+    fun clients(): ApiClients {
+        val url = checkNotNull(store.session.value.serverUrl) { "No server URL stored" }
+        current?.takeIf { it.serverUrl == url }?.let { return it }
+        synchronized(clientsLock) {
+            current?.takeIf { it.serverUrl == url }?.let { return it }
+            return clientsFactory(url).also { current = it }
+        }
+    }
+
+    val api: () -> HomeTvApi = { clients().api }
+    val guard = SessionGuard(store, { id -> apiCall { api().createSession(id) } }, events, clock)
+    val catalog = CatalogRepository(api, guard)
+    val profiles = ProfileRepository(api, store, guard)
+    val watch = WatchRepository(api, guard)
+    val playback = PlaybackRepository(api, guard, appScope, SubtitleSource { url -> OkHttpSubtitleSource(clients().streamClient).fetch(url) })
+    val nextEpisodes = NextEpisodeResolver(fetch = { id -> catalog.episode(id, Origin.Background) })
+    val serverRepository = ServerRepository(validationClient)
+    val account = AccountState(profiles)
+    val homeRefresh = HomeRefresh()
+    val browseSorts = BrowseSortMemory()
+    val playerLaunches = PlayerLaunches()
+
+    private val _sessionExpired = MutableStateFlow(false)
+
+    /**
+     * Latched `AppEvent.AuthExpired` (the renewal answered 404 `profile_not_found`): `HomeTvRoot`
+     * navigates to the Picker and consumes it. A state, so an event emitted before the UI subscribed
+     * (e.g. during the first composition) is not lost.
+     */
+    val sessionExpired: StateFlow<Boolean> = _sessionExpired.asStateFlow()
+
+    fun consumeSessionExpired() {
+        _sessionExpired.value = false
+    }
+
+    init {
+        appScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            events.events.collect { event ->
+                when (event) {
+                    AppEvent.AuthExpired -> _sessionExpired.value = true
+                    // A removed title must not come back from the Home cache, even when Home is not alive (prd3 §3.7).
+                    is AppEvent.ItemGone -> homeCache.remove(event.type, event.id)
+                    is AppEvent.ServerUnreachable -> Unit
+                }
+            }
+        }
+    }
+
+    /** Launch routing (Screen / Navigation Map). */
+    fun startDestination(session: Session = store.session.value): Route = when {
+        session.serverUrl == null -> Route.Setup(initial = true)
+        session.token == null -> Route.Profiles()
+        else -> Route.Home
+    }
+
+    /**
+     * Activity `ON_START` (also at launch): proactive refresh within 24 h of `expiresAt`, which also
+     * silently replaces an expired token for the remembered profile (prd3 §2.5).
+     */
+    fun onActivityStart(): Job = appScope.launch {
+        if (store.session.value.serverUrl != null) guard.ensureFresh()
+    }
+
+    /** Per-file refined caps with the current audio route (Film detail, and every playback request in B2). */
+    suspend fun capsForFile(): CapsForFile {
+        val inventory = codecs.inventory()
+        val route = codecs.audioRoute()
+        return CapsForFile { file -> ClientCapsBuilder.build(inventory, route, forFile = file) }
+    }
+
+    /** The device caps without a file (Settings → Acerca de summary). */
+    suspend fun deviceCaps(): ClientCaps = ClientCapsBuilder.build(codecs.inventory(), codecs.audioRoute())
+
+    /** API-relative artwork path → absolute URL on the server (Coil sends the Bearer header; no `?token=`). */
+    fun artworkUrl(path: String?): String? {
+        if (path.isNullOrBlank()) return null
+        val server = store.session.value.serverUrl ?: return null
+        return runCatching { ServerUrl.resolve(server, path) }.getOrNull()
+    }
+
+    /** A different server: drop the Home cache and the in-memory account (the store already cleared the token). */
+    suspend fun onServerChanged() {
+        homeCache.clear()
+        account.clear()
+    }
+
+    private var images: Pair<ApiClients, ImageLoader>? = null
+
+    /** Coil on the API OkHttpClient (Bearer header), 25 % memory cache, 100 MB disk cache in `cacheDir/images`. */
+    fun imageLoader(context: Context): ImageLoader {
+        val clients = runCatching { clients() }.getOrNull()
+        images?.takeIf { it.first === clients }?.let { return it.second }
+        val builder = ImageLoader.Builder(context.applicationContext)
+            .memoryCache { MemoryCache.Builder(context.applicationContext).maxSizePercent(0.25).build() }
+            .diskCache { DiskCache.Builder().directory(File(context.cacheDir, "images")).maxSizeBytes(100L * 1024 * 1024).build() }
+            .crossfade(false)
+        clients?.let { builder.okHttpClient(it.apiClient) }
+        return builder.build().also { loader -> if (clients != null) images = clients to loader }
+    }
+
+    // ---- ViewModel factories -------------------------------------------------------------
+
+    fun setupViewModel() = SetupViewModel(serverRepository::validate, store, ::onServerChanged, config.allowDebugCleartext)
+
+    fun profilesViewModel(expired: Boolean) = ProfilesViewModel(profiles, store, account::signedIn, expired)
+
+    fun homeViewModel() = HomeViewModel(catalog, homeCache, store, events.events, homeRefresh)
+
+    fun browseViewModel(library: Library) = BrowseViewModel(library, catalog, store, browseSorts)
+
+    fun searchViewModel() = SearchViewModel(catalog, store)
+
+    fun filmDetailViewModel(id: Long) = FilmDetailViewModel(id, catalog, watch, store, ::capsForFile, events, homeRefresh)
+
+    fun showDetailViewModel(id: Long) = ShowDetailViewModel(id, catalog, watch, store, events, homeRefresh)
+
+    fun settingsViewModel() = SettingsViewModel(store, account, ::deviceCaps, config.versionName)
+
+    fun playerViewModel(route: Route.Player) = PlayerViewModel(
+        route,
+        playerLaunches,
+        PlayerDeps(
+            catalog = catalog,
+            playback = playback,
+            watch = watch,
+            guard = guard,
+            nextEpisodes = nextEpisodes,
+            events = events,
+            appScope = appScope,
+            codecs = codecs,
+            serverUrl = { store.session.value.serverUrl },
+            controller = playerControllers(clients().streamClient),
+            subtitles = subtitleCache,
+        ),
+    )
+
+    companion object {
+        /** Production wiring: DataStore loaded synchronously once (a few ms) before any client exists. */
+        fun create(context: Context): AppContainer {
+            val app = context.applicationContext
+            val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            val dataStore = DataStoreSessionStore.dataStore(File(app.filesDir, "datastore/session.preferences_pb"), appScope)
+            val store = runBlocking(Dispatchers.IO) { DataStoreSessionStore.load(dataStore) }
+            val userAgent = "HomeTV-Android/${BuildConfig.VERSION_NAME} (Android ${Build.VERSION.SDK_INT}; ${Build.MODEL})"
+            val base = OkHttpClient()
+            val subtitles = SubtitleFileCache(File(app.cacheDir, "subtitles"))
+            appScope.launch { subtitles.clear() } // nothing survives a process (Playback Flow rule 3)
+            return AppContainer(
+                store = store,
+                homeCache = HomeCache(File(app.filesDir, "home_cache")),
+                appScope = appScope,
+                config = AppConfig(BuildConfig.VERSION_NAME, allowDebugCleartext = BuildConfig.DEBUG),
+                clientsFactory = { url -> ApiClientFactory.create(url, token = { store.session.value.token }, userAgent = userAgent, base = base) },
+                validationClient = ApiClientFactory.validationClient(userAgent, base),
+                codecs = AndroidCodecInventory(app, appScope),
+                playerControllers = { streamClient -> ExoPlayerController(PlayerFactory.create(app, streamClient)) },
+                subtitleCache = subtitles,
+            )
+        }
+    }
+}

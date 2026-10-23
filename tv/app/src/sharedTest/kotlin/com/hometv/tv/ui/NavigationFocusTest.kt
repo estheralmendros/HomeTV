@@ -1,0 +1,177 @@
+package com.hometv.tv.ui
+
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performTextInput
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.hometv.tv.core.data.Session
+import com.hometv.tv.testing.TEST_SERVER
+import com.hometv.tv.testing.UiTestBase
+import com.hometv.tv.testing.UiTestPlatform
+import com.hometv.tv.testing.performLongClickCompat
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.runner.RunWith
+
+/** prd3 Testing Decisions "Compose UI tests": initial focus, D-pad moves, Back table, focus restoration. */
+@RunWith(AndroidJUnit4::class)
+class NavigationFocusTest : UiTestBase() {
+    @Test
+    fun setupStartsWithFocusOnTheUrlField() {
+        launch(Session())
+        assertFocused("setup_url")
+        rule.onNodeWithText("https://").assertIsDisplayed()
+        back()
+        assertTrue("Back on the first-launch Setup exits the app", exited)
+    }
+
+    @Test
+    fun profilePickerFocusesTheLastProfileAndOkGoesStraightToHome() {
+        useLibrary()
+        launch(Session(serverUrl = TEST_SERVER, profileId = 5))
+        assertFocused("profile_5")
+        press(Key.DirectionRight)
+        assertFocused("profile_8")
+        press(Key.DirectionCenter)
+        assertEquals(1, api.count("POST /api/profiles/8/session"))
+        assertTrue(api.calls.none { it.contains("unlock") })
+        node("card_continue:film:12").assertIsDisplayed()
+        assertFocused("card_continue:film:12")
+    }
+
+    @Test
+    fun homeRightMovesAlongARowAndUpFromTheFirstRowReachesTheNavBar() {
+        useLibrary()
+        launch()
+        assertFocused("card_continue:film:12")
+        press(Key.DirectionRight)
+        assertFocused("card_continue:episode:203")
+        press(Key.DirectionLeft)
+        press(Key.DirectionUp)
+        assertFocused("tab_HOME")
+        press(Key.DirectionDown)
+        assertFocused("card_continue:film:12")
+    }
+
+    @Test
+    fun homeBackFromADeepRowReturnsToTheFirstCardThenExits() {
+        useLibrary()
+        launch()
+        press(Key.DirectionDown, times = 2)
+        press(Key.DirectionRight)
+        back()
+        assertFocused("card_continue:film:12")
+        assertTrue(!exited)
+        back()
+        assertTrue(exited)
+    }
+
+    @Test
+    fun backFromFilmDetailRestoresTheHomeCard() {
+        useLibrary()
+        launch()
+        press(Key.DirectionDown)
+        press(Key.DirectionRight)
+        assertFocused("card_recent:film:13")
+        press(Key.DirectionCenter)
+        assertFocused("button_PLAY")
+        back()
+        assertFocused("card_recent:film:13")
+    }
+
+    @Test
+    fun browseBackFromDetailRestoresTheCardAndBackReturnsToTheFilmsTab() {
+        useLibrary()
+        launch()
+        press(Key.DirectionUp)
+        press(Key.DirectionRight)
+        press(Key.DirectionCenter)
+        assertFocused("grid_0")
+        press(Key.DirectionRight, times = 2)
+        assertFocused("grid_2")
+        press(Key.DirectionCenter)
+        assertFocused("button_PLAY")
+        back()
+        assertFocused("grid_2")
+        back()
+        assertFocused("tab_FILMS")
+    }
+
+    @Test
+    fun searchFocusesTheFieldAndBackFromDetailRestoresTheResult() {
+        useLibrary()
+        launch()
+        press(Key.DirectionUp)
+        press(Key.DirectionRight, times = 3)
+        press(Key.DirectionCenter)
+        assertFocused("search_field")
+        node("search_field").performTextInput("dune")
+        UiTestPlatform.advance(400)
+        settle()
+        assertEquals(1, api.calls.count { it.startsWith("GET /api/search?q=dune") })
+        press(Key.DirectionDown)
+        assertFocused("result_film:12")
+        press(Key.DirectionRight)
+        press(Key.DirectionCenter)
+        assertFocused("button_PLAY")
+        back()
+        assertFocused("result_film:13")
+        back()
+        assertFocused("tab_SEARCH")
+    }
+
+    @Test
+    fun showDetailRightEntersEpisodesAtNextEpisodeAndLeftReturnsToTheSeason() {
+        useLibrary()
+        launch()
+        press(Key.DirectionDown)
+        assertFocused("card_recent:show:7")
+        press(Key.DirectionCenter)
+        assertFocused("button_RESUME")
+        press(Key.DirectionDown)
+        assertFocused("season_1")
+        press(Key.DirectionDown)
+        assertFocused("season_2")
+        UiTestPlatform.advance(300)
+        settle()
+        press(Key.DirectionRight)
+        assertFocused("episode_203")
+        press(Key.DirectionLeft)
+        assertFocused("season_2")
+        back()
+        assertFocused("card_recent:show:7")
+    }
+
+    @Test
+    fun episodeLongPressDialogReturnsFocusToTheEpisode() {
+        useLibrary()
+        launch()
+        press(Key.DirectionDown)
+        press(Key.DirectionCenter)
+        press(Key.DirectionDown, times = 2)
+        UiTestPlatform.advance(300)
+        settle()
+        press(Key.DirectionRight)
+        assertFocused("episode_203")
+        rule.runOnIdle { }
+        node("episode_203").performLongClickCompat(rule)
+        settle()
+        assertFocused("episode_play_from_start")
+        back()
+        assertFocused("episode_203")
+    }
+
+    @Test
+    fun settingsOpensFromTheNavBarAndBackFocusesItsTab() {
+        useLibrary()
+        launch()
+        press(Key.DirectionUp)
+        press(Key.DirectionRight, times = 4)
+        press(Key.DirectionCenter)
+        assertFocused("settings_change_server")
+        back()
+        assertFocused("tab_SETTINGS")
+    }
+}
