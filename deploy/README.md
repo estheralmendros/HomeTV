@@ -1,5 +1,9 @@
 # Deploying HomeTV
 
+Operator reference. For step-by-step guides see
+[`docs/server-installation-linux.md`](../docs/server-installation-linux.md) and
+[`docs/server-installation-windows.md`](../docs/server-installation-windows.md).
+
 HomeTV runs as two containers that share one network namespace:
 
 - `tailscale`: joins your tailnet as `hometv` and runs `tailscale serve`, which terminates HTTPS

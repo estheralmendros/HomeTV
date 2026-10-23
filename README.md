@@ -18,7 +18,10 @@ The repo holds:
   [`docs/tv-app-installation.md`](docs/tv-app-installation.md).
 - `specs/HOMETV-1/hometv-app/`: the product specs. `prd.md` (server and deployment) is the
   source of truth and the API contract, `prd2.md` the web UI, `prd3.md` the TV app.
-- `docs/`: user guides (e.g. installing the TV app).
+- `docs/`: user guides: installing the server on
+  [Linux](docs/server-installation-linux.md) or [Windows](docs/server-installation-windows.md),
+  the [Android TV app](docs/tv-app-installation.md), and using HomeTV on an
+  [iPad](docs/ipad-installation.md).
 
 ## Development
 
@@ -56,7 +59,9 @@ TV app: `make tv-test` (JVM tests, including the Robolectric focus tests), `make
 
 ## Deployment
 
-See [`deploy/README.md`](deploy/README.md). In short: set up the tailnet ACL and an auth key,
+Step-by-step guides: [Linux](docs/server-installation-linux.md),
+[Windows](docs/server-installation-windows.md). Operator reference:
+[`deploy/README.md`](deploy/README.md). In short: set up the tailnet ACL and an auth key,
 `cp deploy/.env.example deploy/.env`, fill in `TS_AUTHKEY`, `TMDB_API_KEY` and `MEDIA_DIR`,
 then run `docker compose up -d --build` in `deploy/`. The app is served at
 `https://hometv.<tailnet>.ts.net`.
