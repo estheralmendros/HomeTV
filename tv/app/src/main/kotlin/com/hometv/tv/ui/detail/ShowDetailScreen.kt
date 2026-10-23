@@ -40,6 +40,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Icon
@@ -71,6 +73,7 @@ import kotlinx.coroutines.launch
 fun ShowDetailScreen(vm: ShowDetailViewModel, navigator: AppNavigator) {
     val state by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(vm) { vm.navigation.collect(navigator::handle) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.onVisible() }
     Box(Modifier.fillMaxSize().background(HomeTvColors.Background)) {
         when (val s = state) {
             ShowDetailUiState.Loading -> LoadingScreen()
@@ -95,7 +98,11 @@ private fun ShowContent(state: ShowDetailUiState.Content, vm: ShowDetailViewMode
     val scope = rememberCoroutineScope()
     var opener by remember { mutableStateOf<Long?>(null) }
 
-    LaunchedEffect(Unit) { buttons[state.buttons.first().id].requestFocusWhenReady() }
+    // Initial focus on the first button, again when a refetch replaced it (e.g. Resume → Play after
+    // the Player) and nothing else on the screen holds focus.
+    var contentHasFocus by remember { mutableStateOf(false) }
+    val firstButton = state.buttons.first().id
+    LaunchedEffect(firstButton) { if (!contentHasFocus) buttons[firstButton].requestFocusWhenReady() }
     LaunchedEffect(state.focusVersion) {
         val index = state.focusEpisodeIndex ?: return@LaunchedEffect
         val row = state.season?.episodes?.getOrNull(index) ?: return@LaunchedEffect
@@ -107,7 +114,10 @@ private fun ShowContent(state: ShowDetailUiState.Content, vm: ShowDetailViewMode
     }
 
     Backdrop(show.backdrop?.large, 360.dp)
-    Column(Modifier.fillMaxSize().padding(horizontal = HomeTvDimens.SafeHorizontal, vertical = HomeTvDimens.SafeVertical)) {
+    Column(
+        Modifier.fillMaxSize().onFocusChanged { contentHasFocus = it.hasFocus }
+            .padding(horizontal = HomeTvDimens.SafeHorizontal, vertical = HomeTvDimens.SafeVertical),
+    ) {
         Spacer(Modifier.height(96.dp))
         Text(show.title, style = MaterialTheme.typography.displaySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(state.meta.resolve(), style = MaterialTheme.typography.titleMedium, color = HomeTvColors.Muted, modifier = Modifier.padding(top = 6.dp))

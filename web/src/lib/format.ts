@@ -7,7 +7,6 @@ const dateFormat = new Intl.DateTimeFormat(LOCALE, { day: 'numeric', month: 'sho
 const dateOnlyFormat = new Intl.DateTimeFormat(LOCALE, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 const relativeFormat = new Intl.RelativeTimeFormat(LOCALE, { numeric: 'auto' });
 const ratingFormat = new Intl.NumberFormat(LOCALE, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-const percentFormat = new Intl.NumberFormat(LOCALE, { style: 'percent', maximumFractionDigits: 0 });
 const decimalFormat = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 1, useGrouping: 'always' });
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -87,11 +86,6 @@ export function formatCount(n: number): string {
 /** "7,8" */
 export function formatRating(value: number): string {
   return ratingFormat.format(value);
-}
-
-/** 0.46 → "46 %" */
-export function formatPercent(ratio: number): string {
-  return percentFormat.format(ratio);
 }
 
 const BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB'] as const;

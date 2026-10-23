@@ -94,6 +94,20 @@ async def test_embedded_extraction_single_job(settings, tmp_path):
     assert spawner.count == 1
 
 
+async def test_non_canonical_track_ids_use_the_canonical_cache_file(settings, tmp_path):
+    """``emb-02`` is track 2: the job writes ``emb-2.vtt``, the request must read that file."""
+    spawner = Spawner(extraction())
+    svc = service(settings, spawner)
+    src = source(tmp_path)
+    path = await svc.get_vtt(src, "emb-02")
+    assert path == settings.subtitles_dir / "7" / "emb-2.vtt"
+    assert path.read_bytes() == VTT
+    vtt = tmp_path / "film.vtt"
+    vtt.write_bytes(VTT)
+    ext = source(tmp_path, [Sidecar(3, str(vtt), "vtt", "text")])
+    assert await svc.get_vtt(ext, "ext-003") == settings.subtitles_dir / "7" / "ext-3.vtt"
+
+
 async def test_pending_after_wait_then_served(settings, tmp_path):
     spawner = Spawner(extraction(progress_steps=15, step=0.1))  # 1.5 s, progressing
     svc = service(settings, spawner)

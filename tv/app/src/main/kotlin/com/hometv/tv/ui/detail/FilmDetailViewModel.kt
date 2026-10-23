@@ -18,6 +18,7 @@ import com.hometv.tv.core.playback.Grouping
 import com.hometv.tv.core.playback.VersionGroup
 import com.hometv.tv.core.playback.VersionSelector
 import com.hometv.tv.core.util.Format
+import com.hometv.tv.data.DetailRefresh
 import com.hometv.tv.data.HomeRefresh
 import com.hometv.tv.ui.common.ScreenError
 import com.hometv.tv.ui.navigation.NavRequest
@@ -65,6 +66,7 @@ class FilmDetailViewModel(
     private val caps: suspend () -> CapsForFile,
     private val events: AppEventSink,
     private val refresh: HomeRefresh,
+    private val detailRefresh: DetailRefresh,
 ) : ViewModel() {
     private sealed interface Entry {
         data class Standalone(val fileId: Long) : Entry
@@ -88,12 +90,30 @@ class FilmDetailViewModel(
     private var focus: ButtonId? = null
     private var focusVersion = 0
     private var job: Job? = null
+    private var seenGeneration = detailRefresh.generation()
 
     init {
         load()
     }
 
     fun retry() = load()
+
+    /**
+     * The screen resumed (e.g. the Player popped back). When a Player was launched since the last
+     * fetch, the detail is refetched in place (no Loading, focus kept): progress, the D10 next part
+     * and the watched mark change while playing.
+     */
+    fun onVisible() {
+        if (detailRefresh.generation() == seenGeneration || job?.isActive == true) return
+        seenGeneration = detailRefresh.generation()
+        job = viewModelScope.launch {
+            try {
+                fetch(afterPlayback = true)
+            } catch (e: ApiException) {
+                fail(e)
+            }
+        }
+    }
 
     fun onButton(id: ButtonId) {
         val content = _state.value as? FilmDetailUiState.Content ?: return
@@ -170,6 +190,7 @@ class FilmDetailViewModel(
     private fun load() {
         job?.cancel()
         _state.value = FilmDetailUiState.Loading
+        seenGeneration = detailRefresh.generation()
         job = viewModelScope.launch {
             try {
                 fetch()
@@ -179,13 +200,19 @@ class FilmDetailViewModel(
         }
     }
 
-    private suspend fun fetch() {
+    /**
+     * Fetches the detail and recomputes the default choice. An explicit choice is kept while its file
+     * still exists; after playback an "in parts" choice follows the default when that is a part, so
+     * a finished part moves on to the next one (D10).
+     */
+    private suspend fun fetch(afterPlayback: Boolean = false) {
         val detail = catalog.film(filmId)
         val caps = capsForFile ?: caps().also { capsForFile = it }
         film = detail
         val files = detail.media_files
         choice = VersionSelector.defaultChoice(files, caps, detail.progress)
-        val keep = userChose && currentFile() != null
+        val followParts = afterPlayback && entry == Entry.InParts && choice?.group is VersionGroup.Part
+        val keep = userChose && currentFile() != null && !followParts
         if (!keep) {
             userChose = false
             choice?.let { c ->

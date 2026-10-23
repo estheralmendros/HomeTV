@@ -1,6 +1,13 @@
 import pytest
 
-from hometv.text import normalize_title, search_text, sort_title
+from hometv.text import (
+    empty_to_none,
+    is_blank,
+    normalize_title,
+    search_text,
+    sort_title,
+    str_or_none,
+)
 
 
 @pytest.mark.parametrize(
@@ -66,3 +73,17 @@ def test_search_text_without_original_title():
 
 def test_search_text_accents_and_ampersand():
     assert search_text("Amélie & Co", "Amélie") == "amelie and co amelie"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("Dune", "Dune"), (" Dune ", " Dune "), ("", None), ("   ", None), (None, None), (3, None)],
+)
+def test_str_or_none(value, expected):
+    assert str_or_none(value) == expected
+    assert is_blank(value) == (value is None or (isinstance(value, str) and not value.strip()))
+
+
+@pytest.mark.parametrize(("value", "expected"), [("", None), (" ", " "), ("x", "x"), (None, None)])
+def test_empty_to_none(value, expected):
+    assert empty_to_none(value) == expected

@@ -21,6 +21,7 @@ from typing import Any
 import httpx
 
 from hometv.config import Settings
+from hometv.text import is_blank
 
 logger = logging.getLogger("hometv.tmdb")
 
@@ -84,13 +85,9 @@ def _retry_after(response: httpx.Response) -> float:
         return DEFAULT_RETRY_AFTER
 
 
-def _empty(value: Any) -> bool:
-    return value is None or (isinstance(value, str) and not value.strip())
-
-
 def _fill_empty(target: dict[str, Any], source: dict[str, Any], keys: tuple[str, ...]) -> None:
     for key in keys:
-        if _empty(target.get(key)) and not _empty(source.get(key)):
+        if is_blank(target.get(key)) and not is_blank(source.get(key)):
             target[key] = source[key]
 
 
@@ -231,7 +228,7 @@ class TmdbClient:
         )
         if data is None:
             return None
-        if self._needs_fallback() and any(_empty(data.get(k)) for k in fields[:2]):
+        if self._needs_fallback() and any(is_blank(data.get(k)) for k in fields[:2]):
             fallback = await self._get_json(path, {"language": self.fallback_language})
             if fallback:
                 _fill_empty(data, fallback, fields)
@@ -244,9 +241,9 @@ class TmdbClient:
             return None
         episodes = data.get("episodes") or []
         incomplete = (
-            _empty(data.get("name"))
-            or _empty(data.get("overview"))
-            or any(_empty(e.get("name")) or _empty(e.get("overview")) for e in episodes)
+            is_blank(data.get("name"))
+            or is_blank(data.get("overview"))
+            or any(is_blank(e.get("name")) or is_blank(e.get("overview")) for e in episodes)
         )
         if self._needs_fallback() and incomplete:
             fallback = await self._get_json(path, {"language": self.fallback_language})

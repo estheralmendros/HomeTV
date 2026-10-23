@@ -39,6 +39,7 @@ from hometv.api.schemas import (
     ResolveRequest,
     ResolveResponse,
     ResolveTarget,
+    Responses,
     ScanStatus,
     ShowDetail,
     TmdbSearchResponse,
@@ -52,7 +53,7 @@ from hometv.db.models import UNMATCHED_REASONS
 from hometv.metadata import enrich
 from hometv.profiles import verify_pin
 
-_AUTH_ERRORS = {
+_AUTH_ERRORS: Responses = {
     401: {"model": ErrorResponse, "description": "unauthorized | admin_locked"},
     403: {"model": ErrorResponse, "description": "forbidden (profile is not admin)"},
 }
@@ -81,7 +82,9 @@ router = APIRouter(
 async def unlock(
     body: UnlockRequest, profile: AdminProfile, tokens: TokensDep, limiter: LimiterDep
 ) -> UnlockResponse:
-    retry_after = limiter.retry_after(profile.id)
+    # Check and reserve without an await in between (the attempt counts as a failure until the
+    # PIN verifies), so parallel requests cannot all slip past the limiter.
+    retry_after = limiter.acquire(profile.id)
     if retry_after is not None:
         raise ApiError(
             429,
@@ -92,7 +95,6 @@ async def unlock(
         )
     # scrypt runs in a worker thread so the event loop stays free.
     if not await asyncio.to_thread(verify_pin, body.pin, profile.pin_hash):
-        limiter.record_failure(profile.id)
         raise ApiError(401, "invalid_pin", "Invalid PIN")
     limiter.reset(profile.id)
     issued = tokens.issue_admin_token(profile.id, profile.admin_token_version)
@@ -126,7 +128,7 @@ Reason = Literal[UNMATCHED_REASONS]  # type: ignore[valid-type]
 def list_unmatched(
     session: ReadSession,
     library: Literal["films", "shows"] | None = None,
-    reason: Reason | None = None,  # type: ignore[valid-type]
+    reason: Reason | None = None,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> Page[UnmatchedEntry]:
@@ -168,7 +170,7 @@ async def resolve_unmatched(
 
 # --- TMDB proxies --------------------------------------------------------------------------------
 
-_TMDB_ERRORS = {
+_TMDB_ERRORS: Responses = {
     404: {"model": ErrorResponse, "description": "tmdb_not_found"},
     502: {"model": ErrorResponse, "description": "tmdb_unavailable"},
     503: {"model": ErrorResponse, "description": "tmdb_not_configured"},
@@ -188,7 +190,9 @@ async def tmdb_search(
 @router.get(
     "/tmdb/tv/{tmdb_id}/seasons", response_model=TmdbSeasonsResponse, responses=_TMDB_ERRORS
 )
-async def tmdb_tv_seasons(proxy: TmdbProxyDep, tmdb_id: Annotated[int, Path(gt=0)]):
+async def tmdb_tv_seasons(
+    proxy: TmdbProxyDep, tmdb_id: Annotated[int, Path(gt=0)]
+) -> TmdbSeasonsResponse:
     return await proxy.tv_seasons(tmdb_id)
 
 
@@ -201,13 +205,13 @@ async def tmdb_tv_season(
     proxy: TmdbProxyDep,
     tmdb_id: Annotated[int, Path(gt=0)],
     season_number: Annotated[int, Path(ge=0)],
-):
+) -> TmdbSeasonResponse:
     return await proxy.tv_season(tmdb_id, season_number)
 
 
 # --- Manual match --------------------------------------------------------------------------------
 
-_MATCH_ERRORS = {
+_MATCH_ERRORS: Responses = {
     404: {"model": ErrorResponse, "description": "not_found | tmdb_not_found"},
     502: {"model": ErrorResponse, "description": "tmdb_unavailable"},
     503: {"model": ErrorResponse, "description": "tmdb_not_configured"},

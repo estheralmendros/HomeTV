@@ -1,12 +1,16 @@
 import { useCallback } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { historyIndex } from './historyIndex';
 
-/** navigate(-1) when this tab has in-app history, else replace with `fallback`. */
+/**
+ * navigate(-1) when this tab has in-app history before the current entry, else replace with
+ * `fallback`. Uses React Router's history index (not `location.key`, which a replace changes
+ * without adding an entry, e.g. dropping `?t=` or auto-advancing on a deep-linked /watch page).
+ */
 export function useGoBack(fallback = '/') {
   const navigate = useNavigate();
-  const location = useLocation();
   return useCallback(() => {
-    if (location.key === 'default') navigate(fallback, { replace: true });
-    else navigate(-1);
-  }, [fallback, location.key, navigate]);
+    if (historyIndex.read() > 0) navigate(-1);
+    else navigate(fallback, { replace: true });
+  }, [fallback, navigate]);
 }

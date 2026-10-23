@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 
 export interface MediaClock {
   current: number;
@@ -21,15 +21,18 @@ function readBuffered(video: HTMLMediaElement): Array<[number, number]> {
 }
 
 function read(video: HTMLMediaElement): MediaClock {
-  const duration = video.duration;
   return {
     current: Number.isFinite(video.currentTime) ? video.currentTime : 0,
-    duration: Number.isFinite(duration) && duration > 0 ? duration : null,
+    duration: mediaDuration(video),
     buffered: readBuffered(video),
   };
 }
 
-/** The element's time/duration/buffered ranges for the controls (display only, never reported). */
+/**
+ * The element's time/duration/buffered ranges for the controls (display only, never reported).
+ * Re-renders its caller on every clock event (about 4/s while playing): use it in the controls,
+ * and `useMediaSelector` in components that only need a derived value.
+ */
 export function useMediaClock(video: HTMLMediaElement): MediaClock {
   const [clock, setClock] = useState<MediaClock>(() => read(video));
   useEffect(() => {
@@ -40,4 +43,27 @@ export function useMediaClock(video: HTMLMediaElement): MediaClock {
     };
   }, [video]);
   return clock;
+}
+
+/** The element's duration when finite and > 0. */
+export function mediaDuration(video: HTMLMediaElement): number | null {
+  const { duration } = video;
+  return Number.isFinite(duration) && duration > 0 ? duration : null;
+}
+
+/**
+ * A value derived from the element on every clock event; the caller re-renders only when it
+ * changes (`Object.is`), so `select` must return a primitive.
+ */
+export function useMediaSelector<T extends string | number | boolean | null>(video: HTMLMediaElement, select: (video: HTMLMediaElement) => T): T {
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      for (const type of CLOCK_EVENTS) video.addEventListener(type, onChange);
+      return () => {
+        for (const type of CLOCK_EVENTS) video.removeEventListener(type, onChange);
+      };
+    },
+    [video],
+  );
+  return useSyncExternalStore(subscribe, () => select(video));
 }

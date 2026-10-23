@@ -13,12 +13,11 @@ import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotSame
@@ -28,7 +27,9 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class AppContainerTest {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    /** Virtual time: the appScope and the Home cache I/O run on the test scheduler (no real sleeps). */
+    private val dispatcher = StandardTestDispatcher()
+    private val scope = CoroutineScope(SupervisorJob() + dispatcher)
     private val api = ScriptedApi()
     private val now = Instant.parse("2026-10-22T12:00:00Z")
     private val clock = Clock.fixed(now, ZoneOffset.UTC)
@@ -44,7 +45,7 @@ class AppContainerTest {
     }
 
     @Test
-    fun `an expired token is silently replaced at startup for the remembered profile`() = runBlocking {
+    fun `an expired token is silently replaced at startup for the remembered profile`() = runTest(dispatcher) {
         val expired = Session(serverUrl = TestRepos.SERVER, profileId = 5, token = "old", expiresAt = now.minusSeconds(60))
         val container = testContainer(api, scope, expired, clock)
         assertEquals(Route.Home, container.startDestination())
@@ -54,7 +55,7 @@ class AppContainerTest {
     }
 
     @Test
-    fun `ON_START renews only within 24 h of expiry`() = runBlocking {
+    fun `ON_START renews only within 24 h of expiry`() = runTest(dispatcher) {
         val fresh = testContainer(api, scope, Session(TestRepos.SERVER, 5, "tok", now.plusSeconds(3 * 86_400)), clock)
         fresh.onActivityStart().join()
         assertEquals(emptyList<String>(), api.calls)
@@ -64,7 +65,7 @@ class AppContainerTest {
     }
 
     @Test
-    fun `API clients are rebuilt when the server URL changes`() = runBlocking {
+    fun `API clients are rebuilt when the server URL changes`() = runTest(dispatcher) {
         val container = testContainer(api, scope)
         val first = container.clients()
         assertSame(first, container.clients())
@@ -74,21 +75,19 @@ class AppContainerTest {
     }
 
     @Test
-    fun `ItemGone also drops the card from the Home cache`() = runBlocking {
-        val container = testContainer(api, scope)
+    fun `ItemGone also drops the card from the Home cache`() = runTest(dispatcher) {
+        val container = testContainer(api, scope, cacheIo = dispatcher)
         container.homeCache.write(5, HomePayload(HomeResponse(), films = listOf(com.hometv.tv.core.api.FilmSummary(12, "Dune"))))
-        delay(50)
         container.events.emit(AppEvent.ItemGone("film", 12))
-        var tries = 0
-        while (container.homeCache.read(5)!!.films.isNotEmpty() && tries++ < 50) delay(20)
+        advanceUntilIdle()
         assertEquals(emptyList<Long>(), container.homeCache.read(5)!!.films.map { it.id })
     }
 
     @Test
-    fun `AuthExpired is latched until the UI consumes it`() = runBlocking {
+    fun `AuthExpired is latched until the UI consumes it`() = runTest(dispatcher) {
         val container = testContainer(api, scope)
         container.events.emit(AppEvent.AuthExpired)
-        kotlinx.coroutines.withTimeout(2_000) { container.sessionExpired.first { it } }
+        advanceUntilIdle()
         assertTrue(container.sessionExpired.value)
         container.consumeSessionExpired()
         assertTrue(!container.sessionExpired.value)
@@ -103,7 +102,7 @@ class AppContainerTest {
     }
 
     @Test
-    fun `caps come from the codec source, refined per file`() = runBlocking {
+    fun `caps come from the codec source, refined per file`() = runTest(dispatcher) {
         val container = testContainer(api, scope)
         val caps = container.capsForFile()
         assertTrue("hevc" in caps.capsFor(F.file(1, video = F.H264)).video_codecs)

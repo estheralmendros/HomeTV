@@ -100,6 +100,33 @@ class NavigationFocusTest : UiTestBase() {
     }
 
     @Test
+    fun aFailedBrowsePageShowsAnInlineRetryReachableWithDown() {
+        useLibrary()
+        var failPage2 = true
+        api.onFilms = { p, s, _, _ ->
+            if (p == 2 && failPage2) throw com.hometv.tv.core.data.FakeHomeTvApi.httpError(500, "internal_error")
+            val all = (1L..120L).map { com.hometv.tv.core.api.FilmSummary(it, "Film $it", 2000) }
+            com.hometv.tv.core.api.Page(all.drop((p - 1) * s).take(s), p, s, all.size)
+        }
+        launch()
+        press(Key.DirectionUp)
+        press(Key.DirectionRight)
+        press(Key.DirectionCenter)
+        assertFocused("grid_0")
+        press(Key.DirectionDown, times = 7)
+        assertFocused("grid_42")
+        val pages = api.calls.count { it.startsWith("GET /api/films?page=2") }
+        press(Key.DirectionDown, times = 2)
+        assertFocused("browse_retry")
+        rule.onNodeWithText("No se han podido cargar más títulos.", useUnmergedTree = true).assertExists()
+        assertEquals("no automatic retry on focus moves", pages, api.calls.count { it.startsWith("GET /api/films?page=2") })
+        failPage2 = false
+        press(Key.DirectionCenter)
+        assertEquals(pages + 1, api.calls.count { it.startsWith("GET /api/films?page=2") })
+        assertFocused("grid_50")
+    }
+
+    @Test
     fun searchFocusesTheFieldAndBackFromDetailRestoresTheResult() {
         useLibrary()
         launch()

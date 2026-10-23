@@ -5,7 +5,6 @@ import android.media.MediaCodecInfo
 import android.media.MediaCodecList
 import android.os.Build
 import androidx.annotation.OptIn
-import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.audio.AudioCapabilities
@@ -29,7 +28,7 @@ class AndroidCodecInventory(private val context: Context, scope: CoroutineScope)
     override suspend fun inventory(): CodecInventory = decoders.await()
 
     override fun audioRoute(): AudioRouteCaps {
-        val caps = AudioCapabilities.getCapabilities(context, AudioAttributes.DEFAULT, null)
+        val caps = AudioCapabilities.getCapabilities(context, PlayerFactory.AUDIO_ATTRIBUTES, null)
         val encodings = PASSTHROUGH.filter { caps.supportsEncoding(it) }.toSet()
         return AudioRouteCaps(encodings, caps.maxChannelCount.coerceAtLeast(2))
     }

@@ -93,38 +93,28 @@
 }
 
 .tabBar {
-  display: none;
+  position: fixed;
+  z-index: 100;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  height: var(--tabbar-height);
+  padding-bottom: env(safe-area-inset-bottom);
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
 }
 
-@media (max-width: 719px) {
-  .desktopOnly {
-    display: none;
-  }
+.tab {
+  display: grid;
+  place-items: center;
+  text-decoration: none;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
 
-  .tabBar {
-    position: fixed;
-    z-index: 100;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    height: var(--tabbar-height);
-    padding-bottom: env(safe-area-inset-bottom);
-    background: var(--color-surface);
-    border-top: 1px solid var(--color-border);
-  }
-
-  .tab {
-    display: grid;
-    place-items: center;
-    text-decoration: none;
-    color: var(--color-text-muted);
-    font-size: var(--font-size-sm);
-    font-weight: 600;
-  }
-
-  .tab[aria-current='page'] {
-    color: var(--color-text);
-  }
+.tab[aria-current='page'] {
+  color: var(--color-text);
 }

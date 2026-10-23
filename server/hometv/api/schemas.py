@@ -35,6 +35,10 @@ class ErrorBody(BaseModel):
     details: dict[str, Any] = Field(default_factory=dict)
 
 
+# OpenAPI ``responses=`` documentation of a route (status -> {"model", "description"}).
+Responses = dict[int | str, dict[str, Any]]
+
+
 class ErrorResponse(BaseModel):
     """Error envelope used by every 4xx/5xx JSON error (including validation, 422)."""
 

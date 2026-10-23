@@ -15,6 +15,13 @@ from hometv.metadata.artwork import (
 from hometv.metadata.tmdb import TmdbError
 
 ARTWORK_CACHE_CONTROL = "private, max-age=31536000, immutable"
+# TMDB serves some logos as SVG; opened directly from the app origin, a script inside one
+# would run there. The policy blocks scripts (and sandboxes the document) for every image.
+ARTWORK_HEADERS = {
+    "Cache-Control": ARTWORK_CACHE_CONTROL,
+    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+    "X-Content-Type-Options": "nosniff",
+}
 
 router = APIRouter(prefix="/api", tags=["media"])
 
@@ -45,5 +52,5 @@ async def get_artwork(
     return FileResponse(
         path,
         media_type=content_type(file_name),
-        headers={"Cache-Control": ARTWORK_CACHE_CONTROL},
+        headers=ARTWORK_HEADERS,
     )

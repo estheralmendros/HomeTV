@@ -15,7 +15,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import date
-from typing import Any, Literal, TypeVar
+from typing import Any, Literal, TypeVar, cast
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
@@ -35,7 +35,7 @@ from hometv.metadata.tmdb import (
 )
 from hometv.scan_report import ScanReport
 from hometv.scanner import PARSE_REASONS, link_episodes, unlink_file
-from hometv.text import normalize_title, search_text, sort_title
+from hometv.text import normalize_title, search_text, sort_title, str_or_none
 
 logger = logging.getLogger("hometv.enrich")
 
@@ -43,7 +43,11 @@ CIRCUIT_THRESHOLD = 5
 ItemKind = Literal["film", "show"]
 T = TypeVar("T")
 
-_MODELS: dict[str, type[m.Film] | type[m.Show]] = {"film": m.Film, "show": m.Show}
+_MODELS: dict[ItemKind, type[m.Film] | type[m.Show]] = {"film": m.Film, "show": m.Show}
+
+
+def _get_item(session: Session, kind: ItemKind, item_id: int) -> m.Film | m.Show | None:
+    return session.get(m.Film, item_id) if kind == "film" else session.get(m.Show, item_id)
 
 
 @dataclass(frozen=True)
@@ -78,10 +82,6 @@ def _parse_date(value: Any) -> date | None:
         return None
 
 
-def _str_or_none(value: Any) -> str | None:
-    return value if isinstance(value, str) and value.strip() else None
-
-
 # --- Writing TMDB details ------------------------------------------------------------------------
 
 
@@ -95,26 +95,26 @@ def write_details(
     """Store TMDB details on ``item`` (step 3), replacing genres and cast; mark it matched."""
     if kind == "film":
         assert isinstance(item, m.Film)
-        title = _str_or_none(details.get("title")) or item.title
-        original = _str_or_none(details.get("original_title"))
+        title = str_or_none(details.get("title")) or item.title
+        original = str_or_none(details.get("original_title"))
         released = _parse_date(details.get("release_date"))
-        item.imdb_id = _str_or_none(details.get("imdb_id"))
+        item.imdb_id = str_or_none(details.get("imdb_id"))
         item.release_date = released
-        item.tagline = _str_or_none(details.get("tagline"))
+        item.tagline = str_or_none(details.get("tagline"))
         runtime = details.get("runtime")
         item.runtime_minutes = runtime if isinstance(runtime, int) and runtime > 0 else None
     else:
         assert isinstance(item, m.Show)
-        title = _str_or_none(details.get("name")) or item.title
-        original = _str_or_none(details.get("original_name"))
+        title = str_or_none(details.get("name")) or item.title
+        original = str_or_none(details.get("original_name"))
         released = _parse_date(details.get("first_air_date"))
         item.first_air_date = released
-        item.status = _str_or_none(details.get("status"))
+        item.status = str_or_none(details.get("status"))
     item.tmdb_id = details["id"]
     item.title = title
     item.original_title = original
     item.year = released.year if released else item.year
-    item.overview = _str_or_none(details.get("overview"))
+    item.overview = str_or_none(details.get("overview"))
     vote = details.get("vote_average")
     item.vote_average = float(vote) if isinstance(vote, int | float) else None
     item.poster_path = tmdb_file_name(details.get("poster_path"))
@@ -157,7 +157,12 @@ def _write_cast(
     owner = m.CastCredit.film_id if kind == "film" else m.CastCredit.show_id
     session.execute(delete(m.CastCredit).where(owner == item_id))
     members = [c for c in cast if isinstance(c, dict) and isinstance(c.get("id"), int)]
-    members.sort(key=lambda c: c.get("order") if isinstance(c.get("order"), int) else 1_000_000)
+
+    def billing_order(member: dict[str, Any]) -> int:
+        value = member.get("order")
+        return value if isinstance(value, int) else 1_000_000
+
+    members.sort(key=billing_order)
     for position, member in enumerate(members[:cast_limit]):
         person = session.scalar(select(m.Person).where(m.Person.tmdb_id == member["id"]))
         if person is None:
@@ -173,7 +178,7 @@ def _write_cast(
                 person_id=person.id,
                 film_id=item_id if kind == "film" else None,
                 show_id=item_id if kind == "show" else None,
-                character=_str_or_none(member.get("character")),
+                character=str_or_none(member.get("character")),
                 order=order,
             )
         )
@@ -182,8 +187,8 @@ def _write_cast(
 def write_season(session: Session, season: m.Season, data: dict[str, Any] | None) -> None:
     """Season + library episodes from ``tv_season`` (step 4); absent episodes keep title=null."""
     if data:
-        season.name = _str_or_none(data.get("name"))
-        season.overview = _str_or_none(data.get("overview"))
+        season.name = str_or_none(data.get("name"))
+        season.overview = str_or_none(data.get("overview"))
         season.poster_path = tmdb_file_name(data.get("poster_path"))
         season.air_date = _parse_date(data.get("air_date"))
         by_number = {
@@ -193,8 +198,8 @@ def write_season(session: Session, season: m.Season, data: dict[str, Any] | None
             tmdb_episode = by_number.get(episode.episode_number)
             if tmdb_episode is None:
                 continue
-            episode.title = _str_or_none(tmdb_episode.get("name"))
-            episode.overview = _str_or_none(tmdb_episode.get("overview"))
+            episode.title = str_or_none(tmdb_episode.get("name"))
+            episode.overview = str_or_none(tmdb_episode.get("overview"))
             episode.still_path = tmdb_file_name(tmdb_episode.get("still_path"))
             episode.air_date = _parse_date(tmdb_episode.get("air_date"))
             runtime = tmdb_episode.get("runtime")
@@ -415,12 +420,15 @@ class Enricher:
         snapshots: list[_Snapshot] = []
         with self.db.read_session() as session:
             for kind, model in _MODELS.items():
-                for item in session.scalars(
-                    select(model).where(model.match_status == "pending").order_by(model.id)
-                ):
+                items: list[m.Film | m.Show] = list(
+                    session.scalars(
+                        select(model).where(model.match_status == "pending").order_by(model.id)
+                    )
+                )
+                for item in items:
                     snapshots.append(
                         _Snapshot(
-                            kind,  # type: ignore[arg-type]
+                            kind,
                             item.id,
                             item.library_id,
                             item.parsed_title,
@@ -445,7 +453,11 @@ class Enricher:
             )
             if show_id is not None:
                 query = query.where(m.Season.show_id == show_id)
-            return [_SeasonJob(*row) for row in session.execute(query)]
+            return [
+                _SeasonJob(season_id, show, show_tmdb_id, number)
+                for season_id, show, show_tmdb_id, number in session.execute(query)
+                if show_tmdb_id is not None  # excluded by the query; narrows the type
+            ]
 
     # -- items --
 
@@ -479,7 +491,7 @@ class Enricher:
     async def _search(self, snap: _Snapshot) -> MatchDecision:
         assert self.client is not None
         search = self.client.search_movie if snap.kind == "film" else self.client.search_tv
-        kind = "movie" if snap.kind == "film" else "tv"
+        kind: Literal["movie", "tv"] = "movie" if snap.kind == "film" else "tv"
         primary = await self._call(search, snap.parsed_title, snap.parsed_year)
         decision = choose_match(snap.parsed_title, snap.parsed_year, primary, kind)
         fallback_language = self.client.fallback_language
@@ -510,7 +522,7 @@ class Enricher:
 
     def _apply_unmatched(self, snap: _Snapshot, decision: MatchDecision) -> None:
         with self.db.write_session() as session:
-            item = session.get(_MODELS[snap.kind], snap.id)
+            item = _get_item(session, snap.kind, snap.id)
             if self._is_stale(item, snap):
                 return
             assert item is not None
@@ -531,7 +543,7 @@ class Enricher:
 
     def _apply_match(self, snap: _Snapshot, details: dict[str, Any]) -> int | None:
         with self.db.write_session() as session:
-            item = session.get(_MODELS[snap.kind], snap.id)
+            item = _get_item(session, snap.kind, snap.id)
             if self._is_stale(item, snap):
                 logger.info("enrich_discarded_stale: %s %d", snap.kind, snap.id)
                 return None
@@ -612,11 +624,10 @@ async def match_item(
     / 502 ``tmdb_unavailable`` / 503 ``tmdb_not_configured``.
     """
     tmdb = _require_client(client)
-    model = _MODELS[kind]
 
     def exists() -> bool:
         with db.read_session() as session:
-            return session.get(model, item_id) is not None
+            return _get_item(session, kind, item_id) is not None
 
     if not await asyncio.to_thread(exists):
         raise _not_found(kind, item_id)
@@ -626,7 +637,7 @@ async def match_item(
 
     def apply() -> int | None:
         with db.write_session() as session:
-            item = session.get(model, item_id)
+            item = _get_item(session, kind, item_id)
             if item is None:
                 return None
             survivor = _duplicate(session, kind, item, tmdb_id)
@@ -751,11 +762,15 @@ def _find_or_create_matched(
     session: Session, kind: ItemKind, row: m.MediaFile, details: dict[str, Any], cast_limit: int
 ) -> m.Film | m.Show:
     model = _MODELS[kind]
-    item = session.scalar(
-        select(model).where(model.library_id == row.library_id, model.tmdb_id == details["id"])
+    # SQLAlchemy types a select over a union of models as ``Base``.
+    existing = cast(
+        "m.Film | m.Show | None",
+        session.scalar(
+            select(model).where(model.library_id == row.library_id, model.tmdb_id == details["id"])
+        ),
     )
-    if item is not None:
-        return item
+    if existing is not None:
+        return existing
     parsed = row.parsed or {}
     tmdb_title = details.get("title") if kind == "film" else details.get("name")
     title = parsed.get("title") or parsed.get("show_title") or tmdb_title or "?"

@@ -67,7 +67,14 @@ class ProfilesViewModel(
             try {
                 val (list, serverInfo) = coroutineScope {
                     val list = async { profiles.list() }
-                    val serverInfo = async { runCatching { profiles.info() }.getOrNull() }
+                    // The avatar colors are optional: a failing /api/info only drops them.
+                    val serverInfo = async {
+                        try {
+                            profiles.info()
+                        } catch (e: ApiException) {
+                            null
+                        }
+                    }
                     list.await() to serverInfo.await()
                 }
                 info = serverInfo

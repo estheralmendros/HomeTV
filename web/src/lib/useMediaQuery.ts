@@ -3,6 +3,13 @@ import { useCallback, useSyncExternalStore } from 'react';
 /** Phone layout breakpoint (prd2 §5 step 6); keep in sync with the `max-width: 599px` CSS rules. */
 export const PHONE_QUERY = '(max-width: 599px)';
 
+/**
+ * Compact navigation breakpoint (prd2 §5): below 720 px the NavBar drops its section links and
+ * search for the bottom MobileTabBar, and /search shows its own input. Keep in sync with the
+ * `max-width: 719px` / `min-width: 720px` CSS rules (tab bar padding, toasts).
+ */
+export const COMPACT_NAV_QUERY = '(max-width: 719px)';
+
 /** Whether `query` matches now; re-renders when it starts or stops matching. False without matchMedia. */
 export function useMediaQuery(query: string): boolean {
   const subscribe = useCallback(

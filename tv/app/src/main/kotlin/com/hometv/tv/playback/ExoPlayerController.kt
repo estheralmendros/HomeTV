@@ -12,6 +12,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.LoadEventInfo
 import androidx.media3.exoplayer.source.MediaLoadData
+import androidx.media3.ui.PlayerView
 import com.hometv.tv.core.api.ApiErrors
 import com.hometv.tv.core.api.ApiException
 import com.hometv.tv.core.playback.MediaItemSpec
@@ -30,7 +31,7 @@ import java.io.IOException
  * `AnalyticsListener.onLoadError` (cleared on each new media item).
  */
 @OptIn(UnstableApi::class)
-class ExoPlayerController(val player: ExoPlayer) : PlayerController {
+class ExoPlayerController(private val player: ExoPlayer) : PlayerController {
     private var listener: PlayerController.Listener? = null
     private var spec: MediaItemSpec? = null
     private var wantedAudio: Int? = null
@@ -87,6 +88,15 @@ class ExoPlayerController(val player: ExoPlayer) : PlayerController {
     override val bufferedPositionMs: Long get() = player.bufferedPosition
     override val isPlaying: Boolean get() = player.isPlaying
     override val state: PlayerState get() = stateOf(player.playbackState)
+
+    /** Shows this player in [view] (the Player screen's `PlayerView`); the ExoPlayer never leaves this class. */
+    fun attach(view: PlayerView) {
+        if (view.player !== player) view.player = player
+    }
+
+    fun detach(view: PlayerView) {
+        if (view.player === player) view.player = null
+    }
 
     override fun setListener(listener: PlayerController.Listener?) {
         this.listener = listener
@@ -146,14 +156,17 @@ class ExoPlayerController(val player: ExoPlayer) : PlayerController {
             else -> PlayerState.IDLE
         }
 
-        /** prd3 §10 `urlKind`: `file` scheme or a text load → SUBTITLE; the stream URL → STREAM; `/api/hls/` → HLS. */
+        /**
+         * prd3 §10 `urlKind`: `file` scheme or a text load → SUBTITLE; `/api/hls/` → HLS (checked before
+         * the media item URL, which is the HLS playlist in HLS mode); the direct stream URL → STREAM.
+         */
         fun urlKind(load: LoadRecord?, streamUrl: String?): UrlKind {
             if (load == null) return UrlKind.OTHER
             val uri = load.uri
             return when {
                 uri.startsWith("file:") || load.trackType == C.TRACK_TYPE_TEXT -> UrlKind.SUBTITLE
-                streamUrl != null && uri == streamUrl -> UrlKind.STREAM
                 pathOf(uri).startsWith("/api/hls/") -> UrlKind.HLS
+                streamUrl != null && uri == streamUrl -> UrlKind.STREAM
                 else -> UrlKind.OTHER
             }
         }

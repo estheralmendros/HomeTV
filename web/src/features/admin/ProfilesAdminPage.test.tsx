@@ -77,6 +77,8 @@ describe('ProfilesAdminPage', () => {
       expect(post[0]!.headers.get('x-admin-token')).toBe('admin-token-1');
       // The initial load, then the refetch after the mutation.
       await waitFor(() => expect(rec.find('GET', '/api/profiles')).toHaveLength(2));
+      // The PRD invalidation table (profilesChanged): ['profiles'] and ['me'].
+      await waitFor(() => expect(rec.find('GET', '/api/me')).toHaveLength(1));
     });
 
     it('client validation: name, avatar, and a required, confirmed PIN for an admin', async () => {
@@ -182,6 +184,9 @@ describe('ProfilesAdminPage', () => {
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
       await rec.settled();
       expect(rec.find('PATCH', '/api/admin/profiles/2')[0]!.body).toEqual({ name: 'Peques' });
+      // profilesChanged: ['profiles'] and ['me'] even when editing another profile.
+      await waitFor(() => expect(rec.find('GET', '/api/profiles')).toHaveLength(2));
+      await waitFor(() => expect(rec.find('GET', '/api/me')).toHaveLength(1));
     });
 
     it('no change: closes without a request', async () => {

@@ -13,6 +13,7 @@ present files that need a background keyframe index (§4 step 5a), new/changed f
 """
 
 import asyncio
+import contextlib
 import errno as errno_mod
 import functools
 import logging
@@ -559,9 +560,9 @@ class Scanner:
             }
 
         present_by_root: dict[str, int] = defaultdict(int)
-        for row in rows.values():
-            if not row.missing:
-                present_by_root[row.root_path] += 1
+        for known in rows.values():
+            if not known.missing:
+                present_by_root[known.root_path] += 1
         for walk in walks:
             if walk.fully_walked and not walk.videos and present_by_root.get(walk.root, 0) > 0:
                 rep.add_error(f"root_empty_skipped_removal: {walk.root}")
@@ -601,11 +602,11 @@ class Scanner:
         for row in rows.values():
             if row.missing or row.path in seen:
                 continue
-            walk = configured.get(row.root_path)
-            if walk is None:
+            root_walk = configured.get(row.root_path)
+            if root_walk is None:
                 rep.add_error(f"root_unconfigured: {row.root_path}")
                 missing_ids.append(row.id)
-            elif walk.fully_walked and not walk.is_protected(row.path):
+            elif root_walk.fully_walked and not root_walk.is_protected(row.path):
                 missing_ids.append(row.id)
         return work, missing_ids
 
@@ -803,20 +804,20 @@ class Scanner:
             return
         with self.db.read_session() as session:
             ids: dict[str, int] = {}
-            for chunk in _chunks([v.path for v in all_videos], 500):
+            for paths in _chunks([v.path for v in all_videos], 500):
                 rows = session.execute(
                     select(m.MediaFile.path, m.MediaFile.id).where(
-                        m.MediaFile.path.in_(chunk), m.MediaFile.missing_since.is_(None)
+                        m.MediaFile.path.in_(paths), m.MediaFile.missing_since.is_(None)
                     )
                 )
                 ids.update((path, media_file_id) for path, media_file_id in rows)
             media_ids = list(ids.values())
             existing: dict[str, m.SubtitleFile] = {}
-            for chunk in _chunks(media_ids, 500):
-                for sub in session.scalars(
-                    select(m.SubtitleFile).where(m.SubtitleFile.media_file_id.in_(chunk))
+            for id_chunk in _chunks(media_ids, 500):
+                for row in session.scalars(
+                    select(m.SubtitleFile).where(m.SubtitleFile.media_file_id.in_(id_chunk))
                 ):
-                    existing[sub.path] = sub
+                    existing[row.path] = row
 
         desired: dict[str, dict[str, Any]] = {}
         for walk in walks:
@@ -853,18 +854,32 @@ class Scanner:
             if path not in existing
             or any(getattr(existing[path], k) != v for k, v in values.items())
         ]
-        for chunk in _chunks(to_delete, 500):
+        for delete_ids in _chunks(to_delete, 500):
             with self.db.write_session() as session:
-                session.execute(delete(m.SubtitleFile).where(m.SubtitleFile.id.in_(chunk)))
+                session.execute(delete(m.SubtitleFile).where(m.SubtitleFile.id.in_(delete_ids)))
         for upserts in _chunks(to_upsert, BATCH_SIZE):
             with self.db.write_session() as session:
                 for path, values in upserts:
-                    sub = session.scalar(select(m.SubtitleFile).where(m.SubtitleFile.path == path))
-                    if sub is None:
+                    stored = session.scalar(
+                        select(m.SubtitleFile).where(m.SubtitleFile.path == path)
+                    )
+                    if stored is None:
                         session.add(m.SubtitleFile(path=path, **values))
                     else:
                         for key, value in values.items():
-                            setattr(sub, key, value)
+                            setattr(stored, key, value)
+        # Cached conversions (``subtitles/{media_file_id}/ext-{id}.vtt``) of removed or changed
+        # sidecars are stale; ids are not AUTOINCREMENT, so a reused id must not inherit one.
+        stale = [(s.media_file_id, s.id) for p, s in existing.items() if p not in desired]
+        stale += [
+            (mid, existing[path].id)
+            for path, values in to_upsert
+            if path in existing
+            for mid in {existing[path].media_file_id, values["media_file_id"]}
+        ]
+        for media_file_id, sub_id in stale:
+            with contextlib.suppress(OSError):
+                (self.settings.subtitles_dir / str(media_file_id) / f"ext-{sub_id}.vtt").unlink()
 
     # -- step 5a: keyframe hook --
 

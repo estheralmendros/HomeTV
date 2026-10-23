@@ -1,4 +1,5 @@
 // Stale lazy chunks after a redeploy (prd2 §13): reload once, never loop.
+import type { createBrowserRouter } from 'react-router-dom';
 import { reloader } from './reload';
 
 export const CHUNK_RELOAD_KEY = 'hometv.chunkReloadAt';
@@ -15,10 +16,11 @@ export function isChunkLoadError(err: unknown): boolean {
 }
 
 /**
- * Reloads the page unless a reload already happened in the last 10 s (or sessionStorage is
- * unavailable). A second call within 10 s returns 'gave_up' with no side effects.
+ * Reloads the page (or loads `href`, the URL a pending navigation was heading to) unless a reload
+ * already happened in the last 10 s (or sessionStorage is unavailable). A second call within 10 s
+ * returns 'gave_up' with no side effects.
  */
-export function reloadOnce(): ReloadOutcome {
+export function reloadOnce(href?: string): ReloadOutcome {
   try {
     const storage = window.sessionStorage;
     const last = Number(storage.getItem(CHUNK_RELOAD_KEY));
@@ -28,7 +30,7 @@ export function reloadOnce(): ReloadOutcome {
   } catch {
     return 'gave_up';
   }
-  reloader.reload();
+  reloader.reload(href);
   return 'reloading';
 }
 
@@ -44,12 +46,23 @@ export function clearChunkReloadMarker(): void {
 /**
  * `vite:preloadError`: preventDefault() (the failed import then resolves to undefined) only
  * when the page is actually reloading; otherwise the import rejects and reaches the error UI.
+ * `href` is the pending navigation's target: a lazy route's chunk fails before the router
+ * commits the new location, so a plain reload would reopen the page being left.
  */
-export function handlePreloadError(event: Event): void {
-  if (reloadOnce() === 'reloading') event.preventDefault();
+export function handlePreloadError(event: Event, href?: string): void {
+  if (reloadOnce(href) === 'reloading') event.preventDefault();
 }
 
-export function registerChunkReload(target: Window = window): () => void {
-  target.addEventListener('vite:preloadError', handlePreloadError);
-  return () => target.removeEventListener('vite:preloadError', handlePreloadError);
+export function registerChunkReload(target: Window = window, pendingHref: () => string | undefined = () => undefined): () => void {
+  const listener = (event: Event) => handlePreloadError(event, pendingHref());
+  target.addEventListener('vite:preloadError', listener);
+  return () => target.removeEventListener('vite:preloadError', listener);
+}
+
+type AppRouter = Pick<ReturnType<typeof createBrowserRouter>, 'state' | 'createHref'>;
+
+/** The URL the router is navigating to (lazy route still loading), or undefined when idle. */
+export function pendingNavigationHref(router: AppRouter): string | undefined {
+  const { location } = router.state.navigation;
+  return location ? router.createHref(location) : undefined;
 }

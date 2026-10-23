@@ -33,6 +33,12 @@ object PlayerFactory {
     const val MIN_TARGET_BYTES = 48 * MIB
     const val MAX_TARGET_BYTES = 128 * MIB
 
+    /**
+     * Movie audio attributes: the player's, and the ones `AndroidCodecInventory` queries passthrough
+     * support with (prd3 Capability Detection), so both see the same audio route.
+     */
+    val AUDIO_ATTRIBUTES: AudioAttributes = AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build()
+
     /** `memoryClass × 1 MiB × 0.5`, clamped to 48–128 MiB. */
     fun targetBufferBytes(memoryClassMb: Int): Int = (memoryClassMb.toLong() * MIB / 2).coerceIn(MIN_TARGET_BYTES.toLong(), MAX_TARGET_BYTES.toLong()).toInt()
 
@@ -53,7 +59,7 @@ object PlayerFactory {
             .setMediaSourceFactory(mediaSources)
             .setLoadControl(loadControl)
             .setTrackSelector(trackSelector)
-            .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true)
+            .setAudioAttributes(AUDIO_ATTRIBUTES, true)
             .build()
     }
 }

@@ -30,8 +30,7 @@ class SeekAccumulator(private val commitDelayMs: Long = COMMIT_DELAY_MS) {
     }
 
     /** Commits at once after a long press; a short press keeps its timer from the key-down ([poll]). */
-    @Suppress("UNUSED_PARAMETER")
-    fun onKeyUp(nowMs: Long): Long? = if (target != null && longPress) take() else null
+    fun onKeyUp(): Long? = if (target != null && longPress) take() else null
 
     /** When [poll] will commit the pending target, or null. */
     fun commitDueAtMs(): Long? = if (target == null) null else lastEventMs + commitDelayMs

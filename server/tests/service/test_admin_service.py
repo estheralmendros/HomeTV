@@ -135,6 +135,40 @@ async def test_unmatched_entries_have_exact_shapes_and_filters(
         assert list_unmatched(s).total == 4
 
 
+async def test_unmatched_page_loads_show_parses_in_one_query(
+    mdb, media: MediaTree, media_settings, stub_probe
+):
+    from sqlalchemy import event
+
+    for title in ("The Office", "Lost", "Fargo", "Dark"):
+        media.show(f"{title}/Season 1/{title.replace(' ', '.')}.S01E02.mkv")
+        media.show(f"{title}/Season 1/{title.replace(' ', '.')}.S01E01.mkv")
+    await Scanner(mdb, media_settings(), probe_fn=stub_probe).run()
+    with mdb.write_session() as s:
+        for show in s.scalars(select(m.Show)):
+            s.add(m.UnmatchedEntry(show_id=show.id, reason="low_confidence", detail="x"))
+    statements: list[str] = []
+
+    def capture(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    event.listen(mdb.read_engine, "before_cursor_execute", capture)
+    try:
+        with mdb.read_session() as s:
+            page = list_unmatched(s, library="shows")
+    finally:
+        event.remove(mdb.read_engine, "before_cursor_execute", capture)
+    selects = [st for st in statements if st.lstrip().upper().startswith(("SELECT", "WITH"))]
+    assert len(selects) == 3  # total, page, show parses (batched, not one per show)
+    assert page.total == 4
+    for item in page.items:
+        assert item.parsed is not None
+        dumped = item.model_dump(mode="json")
+        assert dumped["parsed"]["show_title"] == dumped["target"]["title"]
+        assert dumped["parsed"]["season"] == 1
+        assert dumped["parsed"]["episodes"] in ([1], [2])
+
+
 @respx.mock
 async def test_tmdb_search_shape(client):
     respx.get(f"{TMDB_BASE_URL}/search/movie").respond(json=load("search_movie_dune.json"))

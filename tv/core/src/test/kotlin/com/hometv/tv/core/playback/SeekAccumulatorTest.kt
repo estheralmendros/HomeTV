@@ -13,7 +13,7 @@ class SeekAccumulatorTest {
         val seek = SeekAccumulator()
         assertEquals(70_000L, seek.onKeyDown(forward = true, repeatCount = 0, nowMs = 1_000, positionMs = 60_000, durationMs = duration))
         assertEquals(70_000L, seek.pendingTargetMs)
-        assertNull(seek.onKeyUp(nowMs = 1_100))
+        assertNull(seek.onKeyUp())
         assertEquals(1_600L, seek.commitDueAtMs())
         assertNull(seek.poll(1_599))
         assertEquals(70_000L, seek.poll(1_600))
@@ -25,9 +25,9 @@ class SeekAccumulatorTest {
     fun `rewind by 10 s, and quick presses accumulate into one commit`() {
         val seek = SeekAccumulator()
         seek.onKeyDown(false, 0, 0, 60_000, duration)
-        seek.onKeyUp(80)
+        seek.onKeyUp()
         seek.onKeyDown(false, 0, 300, 60_000, duration)
-        seek.onKeyUp(380)
+        seek.onKeyUp()
         assertNull(seek.poll(850))
         assertEquals(40_000L, seek.poll(900))
     }
@@ -50,7 +50,7 @@ class SeekAccumulatorTest {
         // 5 × 10 s + 10 × 30 s + 2 × 60 s
         assertEquals(470_000L, target)
         assertNull(seek.poll(16 * 50L + 100))
-        assertEquals(470_000L, seek.onKeyUp(16 * 50L + 200))
+        assertEquals(470_000L, seek.onKeyUp())
         assertNull(seek.pendingTargetMs)
     }
 

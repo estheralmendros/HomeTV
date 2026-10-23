@@ -204,14 +204,34 @@ def test_split_real_fixture():
     split = split_fmp4(data)
     assert split.init.startswith(data[:8])
     assert split.init[4:8] == b"ftyp"
-    assert split.media[4:8] == b"moof"
-    assert len(split.init) + len(split.media) < len(data)  # mfra dropped
-    assert b"mfra" not in split.media
+    media = b"".join(data[a:b] for a, b in split.media_ranges)
+    assert media[4:8] == b"moof"
+    assert split.media_size == len(media)
+    assert len(split.init) + split.media_size < len(data)  # mfra dropped
+    assert b"mfra" not in media
     assert split.video_start() == pytest.approx(11.0, abs=0.001)
     audio = split.audio_start()
     assert audio is not None
     assert 11.0 - 0.08 - 0.03 <= audio <= 11.0
     assert not has_edit_list(split.init)
+
+
+def test_split_reads_a_memory_map_without_copying_the_media(tmp_path):
+    """``_finalize`` maps ``raw_k.mp4``: only the small init is materialized, the media is
+    returned as byte ranges of the source."""
+    import mmap
+
+    path = tmp_path / "raw.mp4"
+    path.write_bytes(fb.raw_segment(25.0, video_cto=1024))
+    with open(path, "rb") as fh, mmap.mmap(fh.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+        split = split_fmp4(mm)
+        assert split.video_start() == pytest.approx(25.0)
+        assert isinstance(split.init, bytes) and split.init == fb.init_segment()
+        first = split.media_ranges[0][0]
+        assert first == len(split.init) and mm[first + 4 : first + 8] == b"moof"
+        assert len(split.media_ranges) == 1  # contiguous moof + mdat merged into one range
+        end = split.media_ranges[0][1]
+        assert mm[end + 4 : end + 8] == b"mfra"  # dropped
 
 
 def test_split_synthetic_with_composition_offset():

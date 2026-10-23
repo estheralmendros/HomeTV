@@ -4,10 +4,13 @@
   collapse spaces (PRD §5 Matching).
 - ``sort_title``: leading article removed, then ``normalize_title`` (PRD §10).
 - ``search_text``: ``normalize_title(title) + " " + normalize_title(original_title)`` (PRD §10).
+- ``str_or_none`` / ``is_blank``: TMDB string fields (blank or non-string -> missing).
+- ``empty_to_none``: config values where ``""`` (e.g. an empty env var) means unset.
 """
 
 import re
 import unicodedata
+from typing import Any
 
 _ARTICLE_RE = re.compile(r"^\s*(?:(?:the|a|an|el|la|los|las|un|una|le|les)\s+|l['’]\s*)", re.I)
 _SPACES_RE = re.compile(r"\s+")
@@ -33,3 +36,17 @@ def sort_title(title: str) -> str:
 def search_text(title: str, original_title: str | None) -> str:
     parts = [normalize_title(title), normalize_title(original_title or "")]
     return " ".join(p for p in parts if p)
+
+
+def str_or_none(value: Any) -> str | None:
+    """``value`` when it is a string with non-blank content, else ``None``."""
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def is_blank(value: Any) -> bool:
+    """``None`` or a blank string (a TMDB field that needs the fallback language)."""
+    return value is None or (isinstance(value, str) and not value.strip())
+
+
+def empty_to_none(value: Any) -> Any:
+    return None if value == "" else value

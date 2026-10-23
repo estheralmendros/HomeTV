@@ -48,6 +48,9 @@ data class BrowseUiState(
     val error: ScreenError? = null,
     val focus: GridFocus? = null,
 ) {
+    /** A next page failed while the grid has items: inline "No se han podido cargar más títulos." [Reintentar]. */
+    val pageFailed: Boolean get() = error != null && items.isNotEmpty()
+
     /** "Películas · 1.234". */
     val header: UiText
         get() = UiText.Res(R.string.pair_dot, listOf(UiText.Res(if (library == Library.FILMS) R.string.nav_films else R.string.nav_shows), Format.count(total)))
@@ -68,7 +71,8 @@ data class BrowseUiState(
 
 /**
  * Browse grid (prd3 §4): pages of 50, 6 columns, the next page when focus reaches the last two
- * loaded rows (one request in flight, until `items.size == total`), sort cycle. The grid state and
+ * loaded rows (one request in flight, until `items.size == total`; a failed page shows an inline
+ * error and waits for [retry]), sort cycle. The grid state and
  * the loaded pages live here, so Back from a detail restores the same card.
  */
 class BrowseViewModel(
@@ -90,7 +94,7 @@ class BrowseViewModel(
         reload(focusFirst = false)
     }
 
-    fun retry() = if (lastPage == 0) reload(focusFirst = false) else loadMore()
+    fun retry() = if (lastPage == 0) reload(focusFirst = false) else loadMore(focusNewPage = true)
 
     /** Changes the sort to the next option, reloads page 1 and focuses the first card. */
     fun cycleSort() {
@@ -104,7 +108,8 @@ class BrowseViewModel(
         lastFocused = index
         val state = _state.value
         val size = state.items.size
-        if (size == 0 || size >= state.total || job?.isActive == true) return
+        // A failed page waits for [Reintentar] (retry) instead of refetching on every focus move.
+        if (size == 0 || size >= state.total || job?.isActive == true || state.error != null) return
         if (index / COLUMNS >= (size - 1) / COLUMNS - 1) loadMore()
     }
 
@@ -130,12 +135,16 @@ class BrowseViewModel(
         }
     }
 
-    private fun loadMore() {
+    /** [focusNewPage]: [Reintentar] had focus and disappears with the error, so the first new card takes it. */
+    private fun loadMore(focusNewPage: Boolean = false) {
         val page = lastPage + 1
+        _state.update { it.copy(error = null) }
         job = viewModelScope.launch {
             fetch(page)?.let { (items, total) ->
                 lastPage = page
-                _state.update { it.copy(items = it.items + items, total = total, loading = false) }
+                val first = _state.value.items.size
+                val focus = if (focusNewPage && items.isNotEmpty()) GridFocus(first, ++focusVersion).also { lastFocused = first } else null
+                _state.update { it.copy(items = it.items + items, total = total, loading = false, focus = focus ?: it.focus) }
             }
         }
     }

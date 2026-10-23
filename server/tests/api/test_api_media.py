@@ -353,6 +353,9 @@ async def test_playback_hls_session_end_to_end(client, user, make_file, ffmpeg, 
         seg = await client.get(f"/api/hls/{sid}/seg_{k}.m4s")
         assert seg.status_code == 200
         assert seg.content[4:8] == b"moof"
+        assert seg.headers["content-length"] == str(len(seg.content))
+        assert seg.headers["cache-control"] == "no-cache"
+        assert seg.headers["content-type"] == "video/mp4"
     missing = await client.get(f"/api/hls/{sid}/seg_10.m4s")
     assert missing.json()["error"]["code"] == "segment_not_found"
     assert (await client.post(f"/api/hls/{sid}/keepalive")).status_code == 204

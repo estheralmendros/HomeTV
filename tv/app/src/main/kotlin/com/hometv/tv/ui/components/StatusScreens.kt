@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -41,7 +42,7 @@ fun ErrorScreen(message: String, actions: List<ErrorAction>, modifier: Modifier 
             if (detail != null) Text(detail, style = MaterialTheme.typography.bodyMedium, color = HomeTvColors.Muted, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp))
             Row(Modifier.padding(top = 24.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 actions.forEachIndexed { i, action ->
-                    ActionButton(action.label, action.onClick, Modifier.focusRequesterOf(requesters[i]))
+                    ActionButton(action.label, action.onClick, Modifier.focusRequester(requesters[i]))
                 }
             }
         }

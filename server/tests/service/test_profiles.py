@@ -118,6 +118,15 @@ def test_limiter_blocks_after_five_failures_in_window(clock: FakeClock):
     assert limiter.retry_after(1) is None  # the oldest failure left the rolling window
 
 
+def test_limiter_acquire_reserves_attempts_up_front(clock: FakeClock):
+    limiter = p.UnlockLimiter(clock=clock)
+    for _ in range(5):
+        assert limiter.acquire(1) is None  # nothing recorded after it: the reservation counts
+    assert limiter.acquire(1) == 60
+    limiter.reset(1)  # a verified PIN releases every reservation
+    assert limiter.acquire(1) is None
+
+
 def test_limiter_success_resets(clock: FakeClock):
     limiter = p.UnlockLimiter(clock=clock)
     for _ in range(4):
@@ -198,6 +207,16 @@ def test_bootstrap_once(mdb):
     assert _code(p.bootstrap, db=mdb, name="Other", avatar_id="avatar-01", pin="1111") == (
         "already_bootstrapped"
     )
+
+
+def test_bootstrap_after_setup_skips_scrypt(mdb, monkeypatch):
+    p.bootstrap(mdb, name="Esther", avatar_id="avatar-05", pin="1234")
+    hashed: list[str] = []
+    monkeypatch.setattr(p, "hash_pin", lambda pin: hashed.append(pin) or "x")
+    assert _code(p.bootstrap, db=mdb, name="Other", avatar_id="avatar-01", pin="1111") == (
+        "already_bootstrapped"
+    )
+    assert hashed == []  # the cheap read check refuses before hashing
 
 
 def test_create_rules(mdb):

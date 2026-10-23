@@ -3,6 +3,7 @@ import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/auth/AuthProvider';
 import { useCurrentProfile } from '@/auth/useCurrentProfile';
 import { NavSearch } from '@/features/search/NavSearch';
+import { COMPACT_NAV_QUERY, useMediaQuery } from '@/lib/useMediaQuery';
 import { S } from '@/strings.es';
 import { ProfileAvatar } from './Avatar';
 import styles from './NavBar.module.css';
@@ -13,8 +14,9 @@ const SECTIONS = [
   { to: '/shows', label: S.nav.shows, end: false },
 ] as const;
 
-/** Top bar: logo, section links, search and the avatar menu. Below 720 px see MobileTabBar. */
+/** Top bar: logo, section links, search and the avatar menu. Below 720 px: logo + avatar (see MobileTabBar). */
 export function NavBar() {
+  const compact = useMediaQuery(COMPACT_NAV_QUERY);
   return (
     <header className={styles.bar}>
       <Link to="/" className={styles.logo} aria-label={S.nav.logo}>
@@ -23,21 +25,21 @@ export function NavBar() {
         </span>
         <span aria-hidden="true">{S.app.name}</span>
       </Link>
-      <nav aria-label={S.nav.mainLabel} className={styles.desktopOnly}>
-        <ul className={styles.links}>
-          {SECTIONS.map((section) => (
-            <li key={section.to}>
-              <NavLink to={section.to} end={section.end} className={styles.link}>
-                {section.label}
-              </NavLink>
-            </li>
-          ))}
-        </ul>
-      </nav>
+      {!compact && (
+        <nav aria-label={S.nav.mainLabel}>
+          <ul className={styles.links}>
+            {SECTIONS.map((section) => (
+              <li key={section.to}>
+                <NavLink to={section.to} end={section.end} className={styles.link}>
+                  {section.label}
+                </NavLink>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      )}
       <span className={styles.spacer} />
-      <div className={styles.desktopOnly}>
-        <NavSearch />
-      </div>
+      {!compact && <NavSearch />}
       <AvatarMenu />
     </header>
   );
@@ -124,8 +126,10 @@ function AvatarMenu() {
   );
 }
 
-/** Below 720 px: bottom tab bar "Inicio", "Películas", "Series", "Buscar" (CSS shows it). */
+/** Below 720 px (COMPACT_NAV_QUERY): bottom tab bar "Inicio", "Películas", "Series", "Buscar". */
 export function MobileTabBar() {
+  const compact = useMediaQuery(COMPACT_NAV_QUERY);
+  if (!compact) return null;
   return (
     <nav aria-label={S.nav.tabsLabel} className={styles.tabBar}>
       {[...SECTIONS, { to: '/search', label: S.nav.search, end: false }].map((tab) => (

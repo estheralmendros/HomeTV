@@ -26,8 +26,3 @@ sealed interface UiText {
     /** Parts joined with a catalog separator (" · " by default). */
     data class Joined(val parts: List<UiText>, @param:StringRes val separator: Int = R.string.separator_dot) : UiText
 }
-
-fun uiText(@StringRes id: Int, vararg args: Any): UiText = UiText.Res(id, args.toList())
-
-/** The catalog plural call shape: the count chooses the form and is printed pre-formatted es-ES. */
-fun uiPlural(@PluralsRes id: Int, count: Int, formatted: String): UiText = UiText.Plural(id, count, listOf(formatted))

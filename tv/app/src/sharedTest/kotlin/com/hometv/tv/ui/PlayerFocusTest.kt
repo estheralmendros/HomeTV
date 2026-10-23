@@ -4,6 +4,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -151,6 +152,24 @@ class PlayerFocusTest : UiTestBase() {
         rule.onNodeWithText("Volver").assertIsFocused()
         back()
         assertFocused("card_continue:film:12")
+    }
+
+    @Test
+    fun tryOtherVersionOpensTheVersionsListWithNoEntryChecked() {
+        useLibrary()
+        api.onFilm = { id -> com.hometv.tv.core.api.FilmDetail(id = id, title = "Dune", media_files = listOf(F.file(1), F.file(2, label = "720p H264 · AAC 2.0"))) }
+        api.onPlayback = { id, _ ->
+            if (id == 1L) PlaybackResponse("unsupported", reason = "video_codec_unsupported")
+            else PlaybackResponse("direct", url = "/api/media-files/$id/stream", audio_stream_index = 1, duration_seconds = 9360.0)
+        }
+        launch()
+        press(Key.DirectionCenter)
+        assertTrue(api.calls.contains("POST /api/media-files/1/playback"))
+        rule.onNodeWithText("Probar otra versión").assertIsFocused()
+        press(Key.DirectionCenter)
+        node("list_dialog").assertIsDisplayed()
+        node("dialog_item_0").assertIsNotSelected()
+        assertFocused("dialog_item_0")
     }
 
     @Test

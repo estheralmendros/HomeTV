@@ -92,11 +92,12 @@ fun SearchScreen(vm: SearchViewModel, navigator: AppNavigator, avatar: AvatarUi?
             }
         }
         val error = state.error
+        val noResults = state.noResults
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
             when {
                 error != null -> ScreenErrorView(error, vm::retry, onBack = { navigator.backToHome(NavTab.SEARCH) }, onChangeServer = navigator::changeServer)
-                state.noResults != null -> Text(
-                    state.noResults!!.resolve(),
+                noResults != null -> Text(
+                    noResults.resolve(),
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(horizontal = HomeTvDimens.SafeHorizontal, vertical = 24.dp).testTag("search_no_results"),
                 )

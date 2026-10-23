@@ -8,6 +8,7 @@ import asyncio
 import re
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from typing import BinaryIO
 
 CHUNK_SIZE = 1024 * 1024
 CONTENT_TYPES = {
@@ -74,6 +75,16 @@ async def file_chunks(path: str, start: int, length: int) -> AsyncIterator[bytes
     fh = await asyncio.to_thread(open, path, "rb")
     try:
         await asyncio.to_thread(fh.seek, start)
+    except BaseException:
+        await asyncio.to_thread(fh.close)
+        raise
+    async for chunk in open_file_chunks(fh, length):
+        yield chunk
+
+
+async def open_file_chunks(fh: BinaryIO, length: int) -> AsyncIterator[bytes]:
+    """Stream ``length`` bytes from an already open file (from its position), then close it."""
+    try:
         remaining = length
         while remaining > 0:
             chunk = await asyncio.to_thread(fh.read, min(CHUNK_SIZE, remaining))

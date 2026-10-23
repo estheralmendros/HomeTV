@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -22,10 +23,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.hometv.tv.R
 import com.hometv.tv.ui.components.ActionButton
 import com.hometv.tv.ui.components.AvatarUi
 import com.hometv.tv.ui.components.LoadingScreen
@@ -88,6 +91,14 @@ fun BrowseScreen(vm: BrowseViewModel, library: Library, navigator: AppNavigator,
                         onClick = { vm.onCardClick(item) },
                         modifier = Modifier.focusRequester(cards[index]).testTag("grid_$index").onFocusChanged { if (it.isFocused) vm.onFocused(index) },
                     )
+                }
+                if (state.pageFailed) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            Text(stringResource(R.string.browse_load_more_failed), style = MaterialTheme.typography.bodyMedium, color = HomeTvColors.Error)
+                            ActionButton(stringResource(R.string.action_retry), vm::retry, Modifier.testTag("browse_retry"))
+                        }
+                    }
                 }
             }
         }

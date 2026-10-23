@@ -14,6 +14,7 @@ import com.hometv.tv.core.data.SessionStore
 import com.hometv.tv.core.data.WatchRepository
 import com.hometv.tv.core.data.WatchTarget
 import com.hometv.tv.core.util.Format
+import com.hometv.tv.data.DetailRefresh
 import com.hometv.tv.data.HomeRefresh
 import com.hometv.tv.ui.common.ScreenError
 import com.hometv.tv.ui.home.HomeViewModel
@@ -92,6 +93,7 @@ class ShowDetailViewModel(
     private val store: SessionStore,
     private val events: AppEventSink,
     private val refresh: HomeRefresh,
+    private val detailRefresh: DetailRefresh,
 ) : ViewModel() {
     private val _state = MutableStateFlow<ShowDetailUiState>(ShowDetailUiState.Loading)
     val state: StateFlow<ShowDetailUiState> = _state.asStateFlow()
@@ -107,12 +109,34 @@ class ShowDetailViewModel(
     private var seasonGone = false
     private var seasonJob: Job? = null
     private var job: Job? = null
+    private var seenGeneration = detailRefresh.generation()
 
     init {
         load()
     }
 
     fun retry() = load()
+
+    /**
+     * The screen resumed (e.g. the Player popped back). When a Player was launched since the last
+     * fetch, the show and the selected season are refetched in place (no Loading, selection and
+     * focus kept): `next_episode`, progress and watched marks change while playing (and autoplay may
+     * have moved on to other seasons, so every cached season is dropped).
+     */
+    fun onVisible() {
+        if (detailRefresh.generation() == seenGeneration || job?.isActive == true) return
+        seenGeneration = detailRefresh.generation()
+        job = viewModelScope.launch {
+            try {
+                seasonCache.clear()
+                show = catalog.show(showId)
+                selected?.let { fetchSeason(it) }
+                publish()
+            } catch (e: ApiException) {
+                fail(e)
+            }
+        }
+    }
 
     fun onButton(id: ButtonId) {
         val s = show ?: return
@@ -198,6 +222,7 @@ class ShowDetailViewModel(
     private fun load() {
         job?.cancel()
         _state.value = ShowDetailUiState.Loading
+        seenGeneration = detailRefresh.generation()
         job = viewModelScope.launch {
             try {
                 val detail = catalog.show(showId)
@@ -289,8 +314,8 @@ class ShowDetailViewModel(
 
     private fun row(e: EpisodeSummary): EpisodeRowUi = EpisodeRowUi(
         id = e.id,
-        title = if (e.title.isNullOrBlank()) UiText.Value(Format.episodeTitle(e.episode_number, null))
-        else UiText.Res(R.string.episode_row_title, listOf(e.episode_number.toString(), e.title!!)),
+        title = e.title?.takeIf { it.isNotBlank() }?.let { UiText.Res(R.string.episode_row_title, listOf(e.episode_number.toString(), it)) }
+            ?: UiText.Value(Format.episodeTitle(e.episode_number, null)),
         meta = UiText.Joined(
             listOfNotNull(
                 e.air_date?.let { d -> runCatching { Format.date(d) }.getOrNull()?.let { UiText.Data(it) } },

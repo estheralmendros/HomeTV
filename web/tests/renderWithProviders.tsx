@@ -14,6 +14,7 @@ import { queryKeys } from '@/api/queryKeys';
 import type { Info, Profile, UnlockResponse } from '@/api/types';
 import { AppProviders } from '@/AppProviders';
 import { adminUnlock } from '@/auth/adminUnlock';
+import { historyIndex } from '@/lib/historyIndex';
 import { SESSION_KEY, type StoredSession } from '@/auth/session';
 import { FullScreenSpinner } from '@/components/Spinner';
 import { RouteErrorBoundary } from '@/lib/RouteErrorBoundary';
@@ -77,6 +78,35 @@ export function currentUrl(router: { state: { location: { pathname: string; sear
   return router.state.location.pathname + router.state.location.search;
 }
 
+/**
+ * The memory router keeps window.history untouched, so mirror React Router's browser history
+ * index (`history.state.idx`, read by useGoBack) for it: PUSH +1, REPLACE same, POP by the
+ * delta passed to router.navigate(n) (clamped to the entries).
+ */
+function trackMemoryIndex(router: ReturnType<typeof createMemoryRouter>, initialLength: number) {
+  let index = initialLength - 1;
+  let length = initialLength;
+  let pendingDelta = 0;
+  let lastKey = router.state.location.key;
+  const navigate = router.navigate.bind(router);
+  router.navigate = ((to: unknown, opts?: unknown) => {
+    if (typeof to === 'number') pendingDelta = to;
+    return (navigate as (to: unknown, opts?: unknown) => Promise<void>)(to, opts);
+  }) as typeof router.navigate;
+  router.subscribe((state) => {
+    if (state.location.key === lastKey) return;
+    lastKey = state.location.key;
+    if (state.historyAction === 'PUSH') {
+      index += 1;
+      length = index + 1;
+    } else if (state.historyAction === 'POP') {
+      index = Math.min(Math.max(index + pendingDelta, 0), length - 1);
+      pendingDelta = 0;
+    }
+  });
+  historyIndex.read = () => index;
+}
+
 function mount(routes: RouteObject[], options: ProviderOptions): RenderWithProvidersResult {
   const profile = options.profile === undefined ? f.profile() : options.profile;
   const session =
@@ -90,10 +120,9 @@ function mount(routes: RouteObject[], options: ProviderOptions): RenderWithProvi
   if (profile && session) queryClient.setQueryData(queryKeys.me(), profile);
   if (options.adminUnlock) adminUnlock.set(options.adminUnlock);
 
-  const router = createMemoryRouter(routes, {
-    initialEntries: [...(options.history ?? []), options.route ?? '/'],
-    future: ROUTER_FUTURE,
-  });
+  const initialEntries = [...(options.history ?? []), options.route ?? '/'];
+  const router = createMemoryRouter(routes, { initialEntries, future: ROUTER_FUTURE });
+  trackMemoryIndex(router, initialEntries.length);
   const user = userEvent.setup(options.userOptions);
   const result = render(
     <AppProviders queryClient={queryClient} navigate={(to) => void router.navigate(to)}>

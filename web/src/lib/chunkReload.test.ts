@@ -69,6 +69,11 @@ describe('reloadOnce', () => {
     expect(reload).not.toHaveBeenCalled();
   });
 
+  it('passes the target URL to the reloader', () => {
+    expect(reloadOnce('/watch/film/2')).toBe('reloading');
+    expect(reload).toHaveBeenCalledWith('/watch/film/2');
+  });
+
   it('clearChunkReloadMarker removes the key', () => {
     reloadOnce();
     clearChunkReloadMarker();
@@ -89,6 +94,18 @@ describe('vite:preloadError handler', () => {
     expect(second.defaultPrevented).toBe(false);
     expect(reload).toHaveBeenCalledTimes(1);
     unregister();
+  });
+
+  it('reloads the pending navigation target when one is given, else the current page', () => {
+    const unregister = registerChunkReload(window, () => '/watch/film/2');
+    window.dispatchEvent(preloadEvent());
+    expect(reload).toHaveBeenCalledWith('/watch/film/2');
+    unregister();
+    sessionStorage.removeItem(CHUNK_RELOAD_KEY);
+    const plain = registerChunkReload(window, () => undefined);
+    window.dispatchEvent(preloadEvent());
+    expect(reload).toHaveBeenLastCalledWith(undefined);
+    plain();
   });
 
   it('does not call preventDefault() when sessionStorage throws', () => {

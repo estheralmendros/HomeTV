@@ -6,6 +6,7 @@ import { formatDuration } from '@/lib/format';
 import { S } from '@/strings.es';
 import styles from './Player.module.css';
 import { SeekBar } from './SeekBar';
+import { useMediaClock } from './useMediaClock';
 
 export interface ControlsProps {
   visible: boolean;
@@ -17,9 +18,11 @@ export interface ControlsProps {
   playing: boolean;
   onPlayPause: () => void;
   onSeekBy: (deltaSeconds: number) => void;
-  current: number;
+  /** The element whose clock (time, buffered ranges) the bar shows; re-renders only Controls. */
+  video: HTMLMediaElement;
+  /** While the element is detached/restarting: the tracked logical position instead of its clock. */
+  trackedPosition: (() => number) | null;
   duration: number | null;
-  buffered: ReadonlyArray<readonly [number, number]>;
   onSeek: (seconds: number) => void;
   volume: number;
   muted: boolean;
@@ -33,7 +36,9 @@ export interface ControlsProps {
 }
 
 export function Controls(props: ControlsProps) {
-  const { visible, title, watched, onBack, showBottom, playing, current, duration, fullscreen } = props;
+  const { visible, title, watched, onBack, showBottom, playing, duration, fullscreen } = props;
+  const clock = useMediaClock(props.video);
+  const current = props.trackedPosition ? props.trackedPosition() : clock.current;
   return (
     <div className={styles.chrome} data-hidden={!visible} data-testid="player-controls">
       <div className={styles.topBar}>
@@ -50,7 +55,7 @@ export function Controls(props: ControlsProps) {
       </div>
       {showBottom && (
         <div className={styles.bottomBar} role="group" aria-label={S.player.controls.label}>
-          <SeekBar current={current} duration={duration} buffered={props.buffered} onSeek={props.onSeek} />
+          <SeekBar current={current} duration={duration} buffered={clock.buffered} onSeek={props.onSeek} />
           <div className={styles.buttons}>
             <button
               type="button"

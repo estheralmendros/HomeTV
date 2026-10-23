@@ -97,7 +97,8 @@ fun PlayerScreen(vm: PlayerViewModel, onExit: () -> Unit) {
             onSubtitle = { vm.onSelectSubtitle(it.takeUnless { key -> key == PlayerViewModel.OFF_KEY }) },
             onDismiss = vm::onDialogDismiss,
         )
-        is PlayerDialog.Versions -> ListDialog(stringResource(R.string.detail_versions_title), dialog.labels, 0, vm::onVersionChosen, vm::onDialogDismiss)
+        // None of the alternatives is the current version: no check mark (focus starts on the first).
+        is PlayerDialog.Versions -> ListDialog(stringResource(R.string.detail_versions_title), dialog.labels, -1, vm::onVersionChosen, vm::onDialogDismiss)
         null -> Unit
     }
 }
@@ -145,7 +146,7 @@ private val SEEK_KEYS = setOf(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_
 @OptIn(UnstableApi::class)
 @Composable
 private fun VideoSurface(vm: PlayerViewModel, keepScreenOn: Boolean) {
-    val exo = (vm.playerController as? ExoPlayerController)?.player
+    val exo = vm.playerController as? ExoPlayerController
     AndroidView(
         factory = { context ->
             PlayerView(context).apply {
@@ -163,10 +164,10 @@ private fun VideoSurface(vm: PlayerViewModel, keepScreenOn: Boolean) {
             }
         },
         update = { view ->
-            if (view.player !== exo) view.player = exo
+            exo?.attach(view)
             view.keepScreenOn = keepScreenOn
         },
-        onRelease = { view -> view.player = null },
+        onRelease = { view -> exo?.detach(view) },
         modifier = Modifier.fillMaxSize().testTag("player_video"),
     )
 }

@@ -1,10 +1,11 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import * as f from '../../tests/fixtures';
 import { renderWithProviders } from '../../tests/renderWithProviders';
 import { setTokenGetter } from '@/api/client';
+import { Artwork } from './Artwork';
 import { Avatar, ProfileAvatar, avatarColor, initialOf } from './Avatar';
 import { EmptyState } from './EmptyState';
 import { EpisodeCard } from './EpisodeCard';
@@ -60,6 +61,19 @@ describe('PosterCard', () => {
   it('shows a badge such as "12 sin ver"', () => {
     renderWithProviders(<PosterCard to="/shows/7" title="The Office" poster={null} badge="12 sin ver" />);
     expect(screen.getByText('12 sin ver')).toBeInTheDocument();
+  });
+});
+
+describe('Artwork', () => {
+  it('falls back to the title placeholder when the image fails to load (e.g. 404, expired token)', () => {
+    const { container, rerender } = render(<Artwork image={f.image('dune')} title="Dune" />);
+    fireEvent.error(container.querySelector('img')!);
+    expect(screen.getByTestId('artwork-placeholder')).toHaveTextContent('Dune');
+    expect(container.querySelector('img')).toBeNull();
+    // Another image gets its own attempt.
+    rerender(<Artwork image={f.image('dune-2')} title="Dune" />);
+    expect(container.querySelector('img')).toHaveAttribute('src', expect.stringContaining('dune-2'));
+    expect(screen.queryByTestId('artwork-placeholder')).not.toBeInTheDocument();
   });
 });
 

@@ -203,6 +203,15 @@ class UnlockLimiter:
         now = self.clock()
         self._prune(profile_id, now).append(now)
 
+    def acquire(self, profile_id: int) -> int | None:
+        """Atomically check and reserve one attempt: returns ``retry_after`` when refused,
+        else counts the attempt as a failure up front (``reset`` clears it on success). Callers
+        reserve before awaiting the PIN check, so concurrent attempts cannot all pass."""
+        retry_after = self.retry_after(profile_id)
+        if retry_after is None:
+            self.record_failure(profile_id)
+        return retry_after
+
     def reset(self, profile_id: int) -> None:
         self._failures.pop(profile_id, None)
 
@@ -277,7 +286,11 @@ def list_profiles(session: Session) -> list[m.Profile]:
 
 def bootstrap(db: Database, *, name: str, avatar_id: str, pin: str) -> m.Profile:
     """Create the first (admin) profile; 409 ``already_bootstrapped`` unless none exist.
-    Checked and inserted in one ``BEGIN IMMEDIATE`` transaction."""
+    Checked and inserted in one ``BEGIN IMMEDIATE`` transaction; a cheap read check first
+    refuses repeated calls after setup without paying for scrypt."""
+    with db.read_session() as session:
+        if session.scalar(select(func.count()).select_from(m.Profile)):
+            raise ApiError(409, "already_bootstrapped", "Profiles already exist")
     pin_hash = hash_pin(pin)  # outside the write lock (scrypt is deliberately slow)
     with db.write_session() as session:
         if session.scalar(select(func.count()).select_from(m.Profile)):

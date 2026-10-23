@@ -29,6 +29,7 @@ class HomeCacheTest {
 
     @AfterEach
     fun tearDown() {
+        dir.setWritable(true)
         dir.deleteRecursively()
     }
 
@@ -64,6 +65,18 @@ class HomeCacheTest {
             assertEquals(listOf(13L), read.films.map { it.id })
             assertEquals(emptyList<Long>(), read.shows.map { it.id })
         }
+    }
+
+    @Test
+    fun `a failing disk write (e g full or read-only) is logged and swallowed, the old cache stays`() = runTest {
+        val logged = mutableListOf<String>()
+        val cache = HomeCache(dir, Dispatchers.Unconfined, log = { msg, _ -> logged += msg })
+        cache.write(5, payload)
+        assertTrue(dir.setWritable(false))
+        cache.write(5, payload.copy(films = emptyList()))
+        cache.remove("film", 12)
+        assertEquals(payload, cache.read(5))
+        assertEquals(2, logged.size)
     }
 
     @Test

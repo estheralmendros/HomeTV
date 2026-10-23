@@ -190,6 +190,7 @@ class PlayerViewModel(
     }
 
     private val controller = deps.controller
+    private val sessions = HlsSessionOwner(deps.appScope) { id -> deps.playback.deleteHlsSession(id) }
 
     /** The player behind the `PlayerView` (an `ExoPlayerController` in the app, a fake in tests). */
     val playerController: PlayerController get() = controller
@@ -216,7 +217,6 @@ class PlayerViewModel(
     private var loadJob: Job? = null
     private var itemJob: Job? = null
     private var inFlight: InFlightPlayback? = null
-    private var orphanJob: Job? = null
     private var capsFF: CapsForFile = CapsForFile { ClientCaps(emptyList(), emptyList(), emptyList(), 6, true, true) }
     private val history = HashMap<Long, FileHistory>()
     private val refused = mutableSetOf<Long>()
@@ -429,7 +429,7 @@ class PlayerViewModel(
         session = SessionState.Loading
         render()
         loadJob = viewModelScope.launch {
-            awaitOrphan()
+            sessions.awaitOrphans()
             refreshCaps() // the audio route is read fresh for every request
             val caps = capsFF.capsFor(spec.file)
             val body = PlaybackRequest(caps, spec.audioIndex, spec.startSec, spec.previousSessionId)
@@ -465,24 +465,9 @@ class PlayerViewModel(
         loadJob?.cancel()
         loadJob = null
         itemJob?.cancel()
-        inFlight?.let(::orphan)
+        inFlight?.let(sessions::adopt)
         inFlight = null
         preparing = null
-    }
-
-    private fun orphan(request: InFlightPlayback) {
-        val previous = orphanJob
-        orphanJob = deps.appScope.launch {
-            previous?.join()
-            val sessionId = request.await().getOrNull()?.session_id ?: return@launch
-            withTimeoutOrNull(FINAL_TIMEOUT_MS) { deps.playback.deleteHlsSession(sessionId) }
-        }
-    }
-
-    private suspend fun awaitOrphan() {
-        val job = orphanJob ?: return
-        withTimeoutOrNull(ORPHAN_WAIT_MS) { job.join() }
-        if (orphanJob === job) orphanJob = null
     }
 
     private suspend fun onResponse(spec: RequestSpec, response: PlaybackResponse, caps: ClientCaps) {
@@ -683,9 +668,10 @@ class PlayerViewModel(
         } else {
             a.reporter.stop()
         }
-        if (delete && a.holdsSession) {
+        val sessionId = a.sessionId
+        if (delete && a.holdsSession && sessionId != null) {
             a.released = true
-            deleteSession(a.sessionId!!)
+            deleteSession(sessionId)
         }
     }
 
@@ -697,9 +683,7 @@ class PlayerViewModel(
         return id
     }
 
-    private fun deleteSession(sessionId: String) {
-        deps.appScope.launch { withTimeoutOrNull(FINAL_TIMEOUT_MS) { deps.playback.deleteHlsSession(sessionId) } }
-    }
+    private fun deleteSession(sessionId: String) = sessions.delete(sessionId)
 
     private fun snapshot(a: Attachment): ProgressSnapshot? {
         if (!::item.isInitialized) return null
@@ -1333,7 +1317,8 @@ class PlayerViewModel(
     private fun subtitleUnavailable(fileId: Long, trackId: String) {
         unavailableSubtitles += trackId
         if (pendingSubtitle == trackId) pendingSubtitle = null
-        deps.subtitles.remove(fileId, trackId)
+        deps.subtitles.forget(fileId, trackId)
+        viewModelScope.launch(deps.io) { deps.subtitles.remove(fileId, trackId) } // the file delete runs off the main thread
         showToast(UiText.Res(R.string.player_subtitles_unavailable))
         if (selectedSubtitleId == trackId) {
             selectedSubtitleId = null
@@ -1552,7 +1537,7 @@ class PlayerViewModel(
     }
 
     fun onSeekKeyUp() {
-        seek.onKeyUp(deps.nowMs())?.let {
+        seek.onKeyUp()?.let {
             seekJob?.cancel()
             commitSeek(it)
         }

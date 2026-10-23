@@ -58,9 +58,9 @@ def scan_status(session: Session) -> ScanStatus:
         )
     return ScanStatus(
         id=run.id,
-        state=run.state,  # type: ignore[arg-type]
-        trigger=run.trigger,  # type: ignore[arg-type]
-        phase=run.phase,  # type: ignore[arg-type]
+        state=run.state,
+        trigger=run.trigger,
+        phase=run.phase,
         started_at=run.started_at,
         finished_at=run.finished_at,
         progress=ScanProgress(processed=run.processed, total=run.total),

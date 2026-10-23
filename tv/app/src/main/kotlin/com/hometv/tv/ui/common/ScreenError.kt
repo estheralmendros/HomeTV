@@ -38,10 +38,13 @@ sealed interface ScreenError {
             is ApiException.Unauthorized -> SignIn
             is ApiException.ProfileGone -> ProfileGone
             is ApiException.Decode -> LoadFailed
-            is ApiException.Http -> when {
-                e.status == 404 && e.code == "not_found" -> ItemGone
-                e.code != null && e.code !in KNOWN_CODES -> Unexpected(e.code!!)
-                else -> LoadFailed
+            is ApiException.Http -> {
+                val code = e.code
+                when {
+                    e.status == 404 && code == "not_found" -> ItemGone
+                    code != null && code !in KNOWN_CODES -> Unexpected(code)
+                    else -> LoadFailed
+                }
             }
         }
     }

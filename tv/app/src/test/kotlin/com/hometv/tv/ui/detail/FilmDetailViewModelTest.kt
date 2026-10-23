@@ -10,6 +10,7 @@ import com.hometv.tv.core.data.AppEvent
 import com.hometv.tv.core.playback.CapsForFile
 import com.hometv.tv.core.playback.F
 import com.hometv.tv.core.util.Runtime
+import com.hometv.tv.data.DetailRefresh
 import com.hometv.tv.data.HomeRefresh
 import com.hometv.tv.testing.MainDispatcherExtension
 import com.hometv.tv.testing.TestRepos
@@ -31,6 +32,7 @@ class FilmDetailViewModelTest {
 
     private val repos = TestRepos()
     private val refresh = HomeRefresh()
+    private val detailRefresh = DetailRefresh()
     private var caps = CapsForFile.of(F.caps)
     private var film = FilmDetail(id = 12, title = "Dune", match_status = "matched")
 
@@ -38,7 +40,7 @@ class FilmDetailViewModelTest {
         repos.api.onFilm = { film }
     }
 
-    private fun vm() = FilmDetailViewModel(12, repos.catalog, repos.watch, repos.store, { caps }, repos.events, refresh)
+    private fun vm() = FilmDetailViewModel(12, repos.catalog, repos.watch, repos.store, { caps }, repos.events, refresh, detailRefresh)
 
     private fun FilmDetailViewModel.content() = state.value as FilmDetailUiState.Content
 
@@ -187,6 +189,92 @@ class FilmDetailViewModelTest {
         assertEquals(UiText.Res(R.string.detail_play_part, listOf("2")), vm.text(ButtonId.PLAY_PART))
         vm.onButton(ButtonId.PLAY_PART)
         assertEquals(NavRequest.Play(PlayRequest("film", 12, mediaFileId = 22)), vm.navigation.first())
+    }
+
+    /** The navigator launched the Player (`AppNavigator.play` marks details stale), which then popped back. */
+    private fun returnFromPlayer(vm: FilmDetailViewModel) {
+        detailRefresh.markStale()
+        vm.onVisible()
+    }
+
+    @Test
+    fun `D10 back from the Player after Part 1 ended offers Play part 2 without a loading screen`() = runTest(main.dispatcher) {
+        withFiles(F.part(11, 1), F.part(21, 2), progress = F.progress(11, position = 600.0, duration = 3000.0))
+        val vm = vm()
+        advanceUntilIdle()
+        assertEquals(listOf(ButtonId.RESUME, ButtonId.PLAY_FROM_START, ButtonId.WATCHED, ButtonId.PART), vm.buttons())
+        vm.onButton(ButtonId.RESUME)
+        assertEquals(NavRequest.Play(PlayRequest("film", 12, mediaFileId = 11)), vm.navigation.first())
+
+        withFiles(F.part(11, 1), F.part(21, 2), progress = F.progress(11, position = 2990.0, duration = 3000.0))
+        returnFromPlayer(vm)
+        assertTrue(vm.state.value is FilmDetailUiState.Content, "refetched in place, never Loading")
+        advanceUntilIdle()
+        assertEquals(2, repos.api.count("GET /api/films/12"))
+        assertEquals(listOf(ButtonId.PLAY_PART, ButtonId.WATCHED, ButtonId.PART), vm.buttons())
+        assertEquals(UiText.Res(R.string.detail_play_part, listOf("2")), vm.text(ButtonId.PLAY_PART))
+        assertEquals(ButtonId.PLAY_PART, vm.content().focus, "focus moves to the button that replaced Resume")
+        vm.onButton(ButtonId.PLAY_PART)
+        assertEquals(NavRequest.Play(PlayRequest("film", 12, mediaFileId = 21)), vm.navigation.first())
+    }
+
+    @Test
+    fun `becoming visible without a Player launch does not refetch`() = runTest(main.dispatcher) {
+        withFiles(F.file(1))
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onVisible()
+        advanceUntilIdle()
+        assertEquals(1, repos.api.count("GET /api/films/12"))
+        returnFromPlayer(vm)
+        advanceUntilIdle()
+        vm.onVisible()
+        advanceUntilIdle()
+        assertEquals(2, repos.api.count("GET /api/films/12"), "each Player launch is seen once")
+    }
+
+    @Test
+    fun `back from the Player keeps an explicit version choice while its file still exists`() = runTest(main.dispatcher) {
+        val uhd = F.file(1, duration = 9360.0, label = "2160p H264")
+        val cut = F.file(2, duration = 8100.0, label = "1080p H264 · AC3 5.1")
+        withFiles(uhd, cut, progress = F.progress(1, position = 3723.0, duration = 9360.0))
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onButton(ButtonId.VERSION)
+        vm.onDialogSelect(1)
+        assertEquals(listOf(ButtonId.PLAY, ButtonId.WATCHED, ButtonId.VERSION), vm.buttons())
+        vm.onButton(ButtonId.VERSION)
+        vm.onDialogDismiss()
+
+        returnFromPlayer(vm)
+        advanceUntilIdle()
+        assertEquals(UiText.Res(R.string.detail_version, listOf("1080p H264 · AC3 5.1")), vm.text(ButtonId.VERSION))
+        assertEquals(ButtonId.VERSION, vm.content().focus, "focus stays where it was")
+        vm.onButton(ButtonId.PLAY)
+        assertEquals(NavRequest.Play(PlayRequest("film", 12, mediaFileId = 2)), vm.navigation.first())
+
+        withFiles(uhd, progress = F.progress(1, position = 3723.0, duration = 9360.0))
+        returnFromPlayer(vm)
+        advanceUntilIdle()
+        assertEquals(listOf(ButtonId.RESUME, ButtonId.PLAY_FROM_START, ButtonId.WATCHED), vm.buttons(), "the chosen file is gone: default choice")
+    }
+
+    @Test
+    fun `D10 an explicitly chosen Part 1 that ended moves on to Part 2`() = runTest(main.dispatcher) {
+        withFiles(F.part(11, 1), F.part(21, 2), progress = F.progress(21, position = 600.0, duration = 3000.0))
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onButton(ButtonId.PART)
+        vm.onDialogSelect(0)
+        vm.onButton(ButtonId.PLAY)
+        assertEquals(NavRequest.Play(PlayRequest("film", 12, mediaFileId = 11)), vm.navigation.first())
+
+        withFiles(F.part(11, 1), F.part(21, 2), progress = F.progress(11, position = 2990.0, duration = 3000.0))
+        returnFromPlayer(vm)
+        advanceUntilIdle()
+        assertEquals(listOf(ButtonId.PLAY_PART, ButtonId.WATCHED, ButtonId.PART), vm.buttons())
+        vm.onButton(ButtonId.PLAY_PART)
+        assertEquals(NavRequest.Play(PlayRequest("film", 12, mediaFileId = 21)), vm.navigation.first())
     }
 
     @Test

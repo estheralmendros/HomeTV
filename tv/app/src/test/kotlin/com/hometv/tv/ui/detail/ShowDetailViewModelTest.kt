@@ -14,6 +14,7 @@ import com.hometv.tv.core.util.EpisodeCode
 import com.hometv.tv.core.util.EpisodeTitle
 import com.hometv.tv.core.util.Runtime
 import com.hometv.tv.core.util.SeasonTitle
+import com.hometv.tv.data.DetailRefresh
 import com.hometv.tv.data.HomeRefresh
 import com.hometv.tv.testing.MainDispatcherExtension
 import com.hometv.tv.testing.TestRepos
@@ -36,6 +37,7 @@ class ShowDetailViewModelTest {
 
     private val repos = TestRepos()
     private val refresh = HomeRefresh()
+    private val detailRefresh = DetailRefresh()
 
     private fun episode(id: Long, season: Int, number: Int, title: String? = "Episode $number", progress: Progress? = null) = EpisodeSummary(
         id = id, show_id = 7, show_title = "The Office", season_number = season, episode_number = number, title = title,
@@ -63,7 +65,7 @@ class ShowDetailViewModelTest {
         repos.api.onSeason = { _, n -> seasons[n] ?: throw httpError(404, "not_found") }
     }
 
-    private fun vm() = ShowDetailViewModel(7, repos.catalog, repos.watch, repos.store, repos.events, refresh)
+    private fun vm() = ShowDetailViewModel(7, repos.catalog, repos.watch, repos.store, repos.events, refresh, detailRefresh)
 
     private fun ShowDetailViewModel.content() = state.value as ShowDetailUiState.Content
 
@@ -191,6 +193,46 @@ class ShowDetailViewModelTest {
         advanceUntilIdle()
         assertEquals(WatchedRequest("show", 7, true), repos.api.watchedBodies.last())
         assertEquals(4, repos.api.count("GET /api/shows/7"))
+    }
+
+    @Test
+    fun `back from the Player refetches the show and the selected season in place`() = runTest(main.dispatcher) {
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onSeasonFocused(3)
+        advanceUntilIdle()
+        vm.onSeasonFocused(2)
+        advanceUntilIdle()
+        vm.onButton(ButtonId.RESUME)
+        assertEquals(NavRequest.Play(PlayRequest("episode", 203)), vm.navigation.first())
+
+        // T2 E3 finished while playing; autoplay moved on to T3 E1, which is now next_episode.
+        val finished = nextUp.copy(progress = Progress(position_seconds = 1320.0, duration_seconds = 1320.0, watched = true))
+        val next = episode(301, 3, 1, progress = Progress(position_seconds = 120.0, duration_seconds = 1320.0))
+        show = show.copy(next_episode = next, unwatched_episode_count = 149)
+        seasons[2] = seasons.getValue(2).copy(episodes = listOf(episode(201, 2, 1), episode(202, 2, 2, title = null), finished))
+        seasons[3] = seasons.getValue(3).copy(episodes = listOf(next))
+        detailRefresh.markStale()
+        vm.onVisible()
+        assertTrue(vm.state.value is ShowDetailUiState.Content, "refetched in place, never Loading")
+        advanceUntilIdle()
+
+        assertEquals(2, repos.api.count("GET /api/shows/7"))
+        assertEquals(2, repos.api.count("GET /api/shows/7/seasons/2"), "the selected season is refetched")
+        val content = vm.content()
+        assertEquals(2, content.selectedSeason, "the selected season is kept")
+        assertEquals(listOf(ButtonId.RESUME, ButtonId.WATCHED), content.buttons.map { it.id })
+        assertEquals(UiText.Res(R.string.show_resume_episode, listOf(EpisodeCode(3, 1))), content.buttons[0].text)
+        assertTrue(content.season!!.episodes[2].watched, "T2 E3 shows its watched mark")
+        vm.onButton(ButtonId.RESUME)
+        assertEquals(NavRequest.Play(PlayRequest("episode", 301)), vm.navigation.first())
+
+        vm.onSeasonFocused(3)
+        advanceUntilIdle()
+        assertEquals(2, repos.api.count("GET /api/shows/7/seasons/3"), "other cached seasons are dropped too")
+        vm.onVisible()
+        advanceUntilIdle()
+        assertEquals(2, repos.api.count("GET /api/shows/7"), "no Player launch since: no refetch")
     }
 
     @Test

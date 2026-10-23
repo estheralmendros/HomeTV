@@ -7,6 +7,7 @@ import com.hometv.tv.core.api.ClientCaps
 import com.hometv.tv.core.data.SessionStore
 import com.hometv.tv.data.AccountState
 import com.hometv.tv.ui.text.UiText
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -51,7 +52,14 @@ class SettingsViewModel(
         }
         viewModelScope.launch { account.refresh() }
         viewModelScope.launch {
-            val c = runCatching { caps() }.getOrNull() ?: return@launch
+            // A codec scan failure (MediaCodecList) only hides the caps line; cancellation still propagates.
+            val c = try {
+                caps()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                return@launch
+            }
             _state.update { it.copy(caps = UiText.Res(R.string.settings_caps, listOf(c.video_codecs.joinToString(", "), c.audio_codecs.joinToString(", ")))) }
         }
     }

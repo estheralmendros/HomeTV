@@ -62,6 +62,7 @@
 
     <!-- (5) Browse -->
     <string name="browse_sort">Ordenar: %1$s</string>
+    <string name="browse_load_more_failed">No se han podido cargar más títulos.</string>
     <string name="sort_title_asc">Título A–Z</string>
     <string name="sort_title_desc">Título Z–A</string>
     <string name="sort_year_desc">Año (más recientes)</string>
@@ -155,7 +156,7 @@
     <string name="error_sign_in">No se ha podido iniciar sesión en el servidor</string>
     <string name="error_icon">Aviso</string>
 
-    <!-- (9) Player (phase B2): overlay, chips, dialogs, countdown, preparing, errors -->
+    <!-- (9) Player: overlay, chips, dialogs, countdown, preparing, errors -->
     <string name="player_preparing">Preparando el vídeo…</string>
     <string name="player_preparing_body">El servidor está preparando este archivo para emitirlo.</string>
     <string name="less_than_a_minute_left">queda menos de un minuto</string>

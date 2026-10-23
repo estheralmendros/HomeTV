@@ -144,6 +144,15 @@ describe('PlayerPage: one-shot ?t= (Rev 7/8)', () => {
     expect(p.rec.find('GET', '/api/films/12')).toHaveLength(1);
   });
 
+  it('deep link with ?t=: after the replace, [Volver] goes to Home (no in-app history), not navigate(-1)', async () => {
+    const p = renderPlayer('/watch/film/12?file=91&t=0', { history: [] });
+    await until(() => expect(currentUrl(p.router)).toBe('/watch/film/12?file=91'));
+    await p.startDirect(0);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Volver' })[0] as HTMLElement);
+    await until(() => expect(currentUrl(p.router)).toBe('/'));
+    expect(p.router.state.historyAction).toBe('REPLACE');
+  });
+
   it('a start without t (Continue Watching) causes no navigation and never adds file', async () => {
     const p = renderPlayer('/watch/film/12');
     await p.startDirect(0);

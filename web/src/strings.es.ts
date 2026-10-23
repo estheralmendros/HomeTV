@@ -73,14 +73,10 @@ export const S = {
     retry: 'Reintentar',
     cancel: 'Cancelar',
     back: 'Volver',
-    close: 'Cerrar',
-    accept: 'Aceptar',
     apply: 'Aplicar',
-    clear: 'Borrar',
     save: 'Guardar',
     edit: 'Editar',
     delete: 'Eliminar',
-    reload: 'Recargar',
     goHome: 'Ir a Inicio',
     previous: 'Anterior',
     next: 'Siguiente',
@@ -91,8 +87,6 @@ export const S = {
     unknown: 'Desconocido',
     episodes: (n: number) => plural(n, 'episodio', 'episodios'),
     seasons: (n: number) => plural(n, 'temporada', 'temporadas'),
-    films: (n: number) => plural(n, 'película', 'películas'),
-    shows: (n: number) => plural(n, 'serie', 'series'),
     unwatched: (n: number) => `${countFormat.format(n)} sin ver`,
     progressLabel: (percent: number) => `${countFormat.format(percent)} % visto`,
     titleWithYear: (title: string, year: number | null) => (year ? `${title} (${year})` : title),
@@ -134,10 +128,6 @@ export const S = {
     otherProfile: 'otro perfil',
     reload: 'Recargar',
     dismiss: 'Cerrar aviso',
-  },
-
-  boot: {
-    networkError: 'No se puede conectar con el servidor.',
   },
 
   profiles: {
@@ -419,7 +409,6 @@ export const S = {
     notFound:
       'Esta serie no está disponible. Puede que se haya eliminado o que sus archivos estén en un disco desconectado.',
     backToShows: 'Volver a Series',
-    fixMatch: 'Corregir identificación',
     status: {
       Ended: 'Finalizada',
       'Returning Series': 'En emisión',
@@ -460,8 +449,6 @@ export const S = {
       volume: 'Volumen',
       mute: 'Silenciar',
       unmute: 'Activar sonido',
-      subtitles: 'Subtítulos',
-      audio: 'Audio',
       fullscreen: 'Pantalla completa',
       exitFullscreen: 'Salir de pantalla completa',
       position: 'Posición',
@@ -551,7 +538,6 @@ export const S = {
   },
 
   cards: {
-    noImage: 'Sin imagen',
     unmatchedTag: 'Sin identificar',
   },
 
@@ -577,5 +563,3 @@ export const S = {
     unknown: (code: string) => `Se ha producido un error inesperado (${code}).`,
   },
 } as const;
-
-export type Strings = typeof S;

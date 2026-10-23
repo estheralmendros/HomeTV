@@ -27,16 +27,17 @@ class AppNavigator(
 
     /**
      * Pushes the Player: registers the launch (and the Home episode payload) in
-     * `AppContainer.playerLaunches` and marks Home stale (watch state changes while playing; Home
-     * reloads when it is visible again).
+     * `AppContainer.playerLaunches` and marks Home and the detail screens stale (watch state changes
+     * while playing; each reloads when it is visible again).
      */
     fun play(request: PlayRequest) {
         val launchId = container.playerLaunches.register(request.payload)
         container.homeRefresh.markStale()
+        container.detailRefresh.markStale()
         nav.navigate(Route.Player(launchId, request.itemType, request.itemId, request.mediaFileId, request.fromStart))
     }
 
-    /** Leaves the Player (B2 calls this on exit). */
+    /** Leaves the Player (the Player screen calls this on exit). */
     fun exitPlayer(launchId: String) {
         container.playerLaunches.finish(launchId)
         val current = nav.currentBackStackEntry ?: return
