@@ -1,9 +1,9 @@
 # HomeTV
 
 Self-hosted, single-household media server (films + TV shows on a local disk, TMDB metadata,
-playback on web and Android TV over Tailscale). The spec is the source of truth:
-`specs/HOMETV-1/hometv-app/prd.md` (server), `prd2.md` (web), `prd3.md` (TV). The REST API in
-prd.md is a contract: change the PRD first, then the code.
+playback on web and Android TV over Tailscale). The REST API (`/api/openapi.json`, `/api/docs`)
+is a contract shared by the web and TV clients: change it deliberately and update
+`web/src/api/types.ts` and `tv/core/.../api/ApiModels.kt` in the same change.
 
 ## Layout
 
@@ -58,7 +58,7 @@ prd.md is a contract: change the PRD first, then the code.
   tests) and `tsconfig.node.json` (configs + `tests/e2e`).
   - `src/strings.es.ts`: `S`, the only UI string catalog (es-ES; functions for values/plurals).
   - `src/api/`: `client.ts` (`apiFetch`, 401 hook, `X-Admin-Token`), `errors.ts` (`ApiError`,
-    `errorMessage`), `types.ts` (prd.md shapes, snake_case), one module per area,
+    `errorMessage`), `types.ts` (REST shapes, snake_case), one module per area,
     `queryKeys.ts` (`queryKeys`, `staleTimes`, `invalidateAfter(event)`), `queries.ts`.
   - `src/auth/`: per-tab session (`AuthProvider`, `session.ts`), `BootGate`/`RequireProfile`/
     `RequireAdmin`, in-memory `adminUnlock`, `useAdminAction` (keypad + one retry on
@@ -88,7 +88,7 @@ prd.md is a contract: change the PRD first, then the code.
 - `docs/`: user guides: `server-installation-linux.md`, `server-installation-windows.md` (Docker
   Desktop + WSL 2; no native Windows: HLS throttling uses SIGSTOP/SIGCONT), `tv-app-installation.md`,
   `ipad-installation.md` (the web app in Safari over Tailscale; there is no iOS app).
-- `tv/`: Android TV app (prd3), Gradle 8.14 wrapper, AGP 8.13, Kotlin 2.2, compile/target SDK 35,
+- `tv/`: Android TV app, Gradle 8.14 wrapper, AGP 8.13, Kotlin 2.2, compile/target SDK 35,
   minSdk 26, JDK 21 (bytecode 17). Versions in `gradle/libs.versions.toml` (Media3 1.5.1, Compose
   BOM, tv-material, Retrofit 3 + OkHttp 4.12, kotlinx.serialization, Coil 2, DataStore, JUnit 5,
   Robolectric). `local.properties` (sdk.dir) and `keystore.properties` are gitignored.
@@ -112,7 +112,7 @@ prd.md is a contract: change the PRD first, then the code.
     shared Coil cache base for the per-server `ImageLoader`s, one factory per ViewModel), `data/`
     (`DataStoreSessionStore`, `HomeCache` (write IOExceptions are logged and swallowed),
     `HomeRefresh`, `DetailRefresh` (generation counter marked by `AppNavigator.play`; Film/Show
-    detail `onVisible()` on `ON_RESUME` refetches in place, prd3 §6 step 7), `PlayerLaunches`),
+    detail `onVisible()` on `ON_RESUME` refetches in place), `PlayerLaunches`),
     `playback/` (`AndroidCodecInventory`, `PlayerFactory` (`AUDIO_ATTRIBUTES` shared with the
     passthrough query), `HomeTvLoadErrorHandlingPolicy`, `MediaItemBuilder`, `SubtitleFileCache`
     (`get` answers from an in-memory index, no disk I/O), `ExoPlayerController` (the ExoPlayer is
@@ -150,8 +150,6 @@ prd.md is a contract: change the PRD first, then the code.
   are lazy chunks), `make web-dev` (Vite on :5173, `/api` proxied to `HOMETV_API_TARGET`),
   `make web-typecheck`, `make web-e2e` (Playwright smoke, Chromium, against `HOMETV_E2E_URL`;
   `npx playwright install chromium` once; `HOMETV_E2E_FILM=Dune` for the demo library).
-- Demo server with a generated library and `web/dist`: `specs/HOMETV-1/hometv-app/create-environment.sh`
-  (127.0.0.1:8000, admin "Admin" PIN 1234, viewer "Invitado"; Ctrl-C / kill stops it).
 - Single test: `cd server && uv run pytest tests/unit/test_parser.py -k row11`;
   `cd web && npx vitest run src/player/versions.test.ts -t "D13"`;
   `cd tv && ./gradlew :core:test --tests '*VersionSelectorTest*'`.
@@ -185,7 +183,7 @@ prd.md is a contract: change the PRD first, then the code.
 - **Catalog visibility**: a file is hidden when `missing_since` is set; films/episodes need a
   present file, shows/seasons a visible episode (`watch.film_has_present_file`,
   `watch.present_file_exists`). Build responses in batches, never one query per item.
-- Service functions used by routes raise `ApiError` with the PRD codes (e.g. `match_item`,
+- Service functions used by routes raise `ApiError` with the documented error codes (e.g. `match_item`,
   `TmdbProxy`, `Scheduler.trigger`). TMDB is mocked with respx + `tests/fixtures/tmdb/*.json`;
   inject `sleep=` into `TmdbClient` so retries never wait. Scanner tests use the `mdb`, `media`,
   `stub_probe`, `media_settings` fixtures from `tests/service/conftest.py`.
@@ -202,8 +200,7 @@ prd.md is a contract: change the PRD first, then the code.
   container built FROM the image plus uv, then `uv sync --frozen && uv run pytest -m
   integration` (use `COPYFILE_DISABLE=1 tar --no-xattrs` on macOS). `segment_times_mode` probes
   `absolute` there. A restarted run of the B-frame MP4 with `aac_stereo` starts its audio about
-  11 ms below one AAC frame of reorder; prd.md Rev 10 sets the AAC re-encode lower bound to two
-  audio frames, so the integration suite passes on 5.1 too.
+  11 ms below one AAC frame of reorder; the AAC re-encode lower bound is two audio frames, so the integration suite passes on 5.1 too.
 - **Timing in tests**: never assume ffmpeg (or a stub) is slower than the HLS monitor. Tiny
   clips remux in milliseconds: wait for a settled run (`wait_for_settled_run`) or evict
   explicitly before asserting restarts; the stub ffmpeg has `lockstep` (producer slower than the
