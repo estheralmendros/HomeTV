@@ -1,5 +1,5 @@
 // Library grid state lives in the URL (prd2 §5 step 1): q, sort, order, genre, year_from,
-// year_to. Defaults (sort=title, the sort's default order, no filters) are left out of the URL.
+// year_to, watched. Defaults (sort=title, the sort's default order, no filters) are left out of the URL.
 import { useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { LibraryQuery, SortField, SortOrder } from '@/api/types';
@@ -11,6 +11,8 @@ export interface LibraryParams {
   genre: number | null;
   yearFrom: number | null;
   yearTo: number | null;
+  /** true: only watched, false: only not watched, null: all (prd.md §10 `watched`). */
+  watched: boolean | null;
 }
 
 export const DEFAULT_ORDER: Readonly<Record<SortField, SortOrder>> = { title: 'asc', year: 'desc', added: 'desc' };
@@ -22,6 +24,7 @@ export const DEFAULT_LIBRARY_PARAMS: LibraryParams = {
   genre: null,
   yearFrom: null,
   yearTo: null,
+  watched: null,
 };
 
 export const MAX_QUERY_LENGTH = 100;
@@ -30,6 +33,10 @@ export const MAX_YEAR = 2100;
 
 const SORTS: readonly SortField[] = ['title', 'year', 'added'];
 const ORDERS: readonly SortOrder[] = ['asc', 'desc'];
+
+function parseWatched(raw: string | null): boolean | null {
+  return raw === 'true' ? true : raw === 'false' ? false : null;
+}
 
 function parseInteger(raw: string | null, min: number, max: number): number | null {
   if (raw === null || !/^\d+$/.test(raw)) return null;
@@ -54,6 +61,7 @@ export function parseLibraryParams(search: URLSearchParams): LibraryParams {
     genre: parseInteger(search.get('genre'), 1, Number.MAX_SAFE_INTEGER),
     yearFrom: parseYear(search.get('year_from')),
     yearTo: parseYear(search.get('year_to')),
+    watched: parseWatched(search.get('watched')),
   };
 }
 
@@ -65,6 +73,7 @@ export function libraryParamsToSearch(p: LibraryParams): URLSearchParams {
   if (p.genre !== null) search.set('genre', String(p.genre));
   if (p.yearFrom !== null) search.set('year_from', String(p.yearFrom));
   if (p.yearTo !== null) search.set('year_to', String(p.yearTo));
+  if (p.watched !== null) search.set('watched', String(p.watched));
   return search;
 }
 
@@ -72,9 +81,9 @@ export function isYearRangeInvalid(p: LibraryParams): boolean {
   return p.yearFrom !== null && p.yearTo !== null && p.yearFrom > p.yearTo;
 }
 
-/** Title, genre or year filters (sort and order are not filters). */
+/** Title, genre, year or watched filters (sort and order are not filters). */
 export function hasFilters(p: LibraryParams): boolean {
-  return p.q !== '' || p.genre !== null || p.yearFrom !== null || p.yearTo !== null;
+  return p.q !== '' || p.genre !== null || p.yearFrom !== null || p.yearTo !== null || p.watched !== null;
 }
 
 /** GET /api/films|shows params without paging (also the infinite query's key part). */
@@ -84,6 +93,7 @@ export function toLibraryQuery(p: LibraryParams): Omit<LibraryQuery, 'page' | 'p
   if (p.genre !== null) query.genre = p.genre;
   if (p.yearFrom !== null) query.year_from = p.yearFrom;
   if (p.yearTo !== null) query.year_to = p.yearTo;
+  if (p.watched !== null) query.watched = p.watched;
   return query;
 }
 
@@ -98,7 +108,7 @@ export function useLibraryParams() {
   );
   const setSort = useCallback((sort: SortField) => update({ sort, order: DEFAULT_ORDER[sort] }), [update]);
   const toggleOrder = useCallback(() => update({ order: params.order === 'asc' ? 'desc' : 'asc' }), [params.order, update]);
-  const clearFilters = useCallback(() => update({ q: '', genre: null, yearFrom: null, yearTo: null }), [update]);
+  const clearFilters = useCallback(() => update({ q: '', genre: null, yearFrom: null, yearTo: null, watched: null }), [update]);
 
   return {
     params,

@@ -38,8 +38,8 @@ describe('writeProgress', () => {
     qc.setQueryData(queryKeys.film(12), f.filmDetail({ progress: f.progress({ position_seconds: 100 }) }));
     qc.setQueryData(queryKeys.episode(345), f.episodeDetail());
     const home = f.homeResponse({
-      continue_watching: [f.filmSummary({ id: 12 }), f.homeEpisode({ id: 345 }), f.homeEpisode({ id: 999 })],
-      next_up: [f.homeEpisode({ id: 345 })],
+      // 345 is a Next Up episode (no progress) inside Continue Watching (prd.md Rev 13).
+      continue_watching: [f.filmSummary({ id: 12 }), f.homeEpisode({ id: 345, progress: null }), f.homeEpisode({ id: 999 })],
     });
     qc.setQueryData(queryKeys.home(), home);
 
@@ -50,7 +50,7 @@ describe('writeProgress', () => {
     expect(qc.getQueryData<EpisodeDetail>(queryKeys.episode(345))?.progress).toEqual(fresh);
     const patched = qc.getQueryData<HomeResponse>(queryKeys.home());
     expect(patched?.continue_watching.map((x) => x.progress)).toEqual([fresh, fresh, home.continue_watching[2]?.progress]);
-    expect(patched?.next_up[0]?.progress).toEqual(fresh);
+    expect(patched).not.toHaveProperty('next_up');
   });
 
   it('creates no entry when nothing is cached', () => {
@@ -64,7 +64,7 @@ describe('writeProgress', () => {
 
   it('does not touch a home film entry with the same id as an episode', () => {
     const qc = client();
-    const home = f.homeResponse({ continue_watching: [f.filmSummary({ id: 345 })], next_up: [] });
+    const home = f.homeResponse({ continue_watching: [f.filmSummary({ id: 345 })] });
     qc.setQueryData(queryKeys.home(), home);
     writeProgress(qc, episode, fresh);
     expect(qc.getQueryData<HomeResponse>(queryKeys.home())?.continue_watching[0]?.progress).toEqual(
@@ -161,12 +161,11 @@ describe('awaitFinalBarrier', () => {
 });
 
 describe('findHomeEpisode', () => {
-  it('finds a Continue Watching or Next Up episode, never a film', () => {
+  it('finds a Continue Watching episode (in progress or Next Up), never a film', () => {
     const home = f.homeResponse({
-      continue_watching: [f.filmSummary({ id: 345 }), f.homeEpisode({ id: 1 })],
-      next_up: [f.homeEpisode({ id: 345 })],
+      continue_watching: [f.filmSummary({ id: 345 }), f.homeEpisode({ id: 1 }), f.homeEpisode({ id: 345, progress: null })],
     });
-    expect(findHomeEpisode(home, 345)).toBe(home.next_up[0]);
+    expect(findHomeEpisode(home, 345)).toBe(home.continue_watching[2]);
     expect(findHomeEpisode(home, 1)).toBe(home.continue_watching[1]);
     expect(findHomeEpisode(home, 2)).toBeNull();
     expect(findHomeEpisode(undefined, 1)).toBeNull();

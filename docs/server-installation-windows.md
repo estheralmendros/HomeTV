@@ -7,7 +7,7 @@ reachable only from your own devices at `https://hometv.<your-tailnet>.ts.net`, 
 
 > **Why Docker?** The server can't run directly on Windows: while streaming, it pauses and
 > resumes ffmpeg with POSIX signals that Windows doesn't have. Docker Desktop runs it inside a
-> small Linux VM, which is also how it is tested.
+> small Linux VM.
 
 > **Status:** these steps use the same Compose stack as Linux, but they haven't been tested on a
 > Windows PC yet. If something differs, the Troubleshooting section lists the likely fixes.

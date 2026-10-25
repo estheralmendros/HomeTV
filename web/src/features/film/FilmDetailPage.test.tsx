@@ -40,15 +40,15 @@ describe('FilmDetailPage', () => {
   it('without progress: a single Reproducir with ?file= and no version picker', async () => {
     renderFilm();
     expect(await screen.findByRole('link', { name: 'Reproducir' })).toHaveAttribute('href', '/watch/film/12?file=91');
-    expect(screen.queryByRole('link', { name: 'Reproducir desde el principio' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Ver desde el principio' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Versión')).not.toBeInTheDocument();
   });
 
-  it('with resumable progress: Reanudar (no t) + Reproducir desde el principio (t=0) and the progress bar', async () => {
+  it('with resumable progress: Reanudar (no t) + Ver desde el principio (t=0) and the progress bar', async () => {
     serveFilm({ progress: f.progress({ media_file_id: 91, position_seconds: 4325, duration_seconds: 9360 }) });
     renderFilm();
     expect(await screen.findByRole('link', { name: 'Reanudar desde 1:12:05' })).toHaveAttribute('href', '/watch/film/12?file=91');
-    expect(link('Reproducir desde el principio')).toHaveAttribute('href', '/watch/film/12?file=91&t=0');
+    expect(link('Ver desde el principio')).toHaveAttribute('href', '/watch/film/12?file=91&t=0');
     expect(screen.getByRole('progressbar', { name: '46 % visto' })).toBeInTheDocument();
   });
 
@@ -88,7 +88,7 @@ describe('FilmDetailPage', () => {
       serveFilm({ media_files: hevcFirst, progress: f.progress({ media_file_id: 91, position_seconds: 4325, duration_seconds: 9360 }) });
       renderFilm();
       expect(await screen.findByRole('link', { name: 'Reanudar desde 1:12:05' })).toHaveAttribute('href', '/watch/film/12?file=92');
-      expect(link('Reproducir desde el principio')).toHaveAttribute('href', '/watch/film/12?file=92&t=0');
+      expect(link('Ver desde el principio')).toHaveAttribute('href', '/watch/film/12?file=92&t=0');
     });
 
     it('the label follows the picker: non-matching → Reproducir, last-played → Reanudar', async () => {
@@ -97,7 +97,7 @@ describe('FilmDetailPage', () => {
       const picker = await screen.findByLabelText('Versión');
       await user.selectOptions(picker, '93');
       expect(link('Reproducir')).toHaveAttribute('href', '/watch/film/12?file=93');
-      expect(screen.queryByRole('link', { name: 'Reproducir desde el principio' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Ver desde el principio' })).not.toBeInTheDocument();
       await user.selectOptions(picker, '91');
       expect(link('Reanudar desde 1:12:05')).toHaveAttribute('href', '/watch/film/12?file=91');
     });

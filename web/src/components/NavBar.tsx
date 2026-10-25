@@ -6,6 +6,7 @@ import { NavSearch } from '@/features/search/NavSearch';
 import { COMPACT_NAV_QUERY, useMediaQuery } from '@/lib/useMediaQuery';
 import { S } from '@/strings.es';
 import { ProfileAvatar } from './Avatar';
+import { PLAY_GLYPH } from './glyphs';
 import styles from './NavBar.module.css';
 
 const SECTIONS = [
@@ -21,7 +22,7 @@ export function NavBar() {
     <header className={styles.bar}>
       <Link to="/" className={styles.logo} aria-label={S.nav.logo}>
         <span className={styles.logoMark} aria-hidden="true">
-          ▶
+          {PLAY_GLYPH}
         </span>
         <span aria-hidden="true">{S.app.name}</span>
       </Link>

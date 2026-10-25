@@ -1,7 +1,8 @@
 // Player keyboard shortcuts (prd2 §9 step 12): Space/K play-pause, ←/→ ∓10 s, ↑/↓ volume ±10 %,
 // F fullscreen, M mute, Esc closes an open menu (the browser handles the fullscreen exit), N next
 // episode/part while its prompt is visible. In `blocked`, Space/Enter/K activate "Toca para
-// reproducir" (synchronously, inside the key gesture). Ignored while typing or with a menu open.
+// reproducir" (synchronously, inside the key gesture). Ignored while typing or with a menu open,
+// except the media keys (MediaPlayPause toggles, MediaPlay / MediaPause; prd2 §9 step 12).
 import { useEffect, useRef } from 'react';
 
 export interface ShortcutHandlers {
@@ -13,6 +14,9 @@ export interface ShortcutHandlers {
   closeMenu: () => void;
   next?: () => void;
   activateBlocked?: () => void;
+  /** MediaPlay / MediaPause (MediaPlayPause uses togglePlay). */
+  play?: () => void;
+  pause?: () => void;
 }
 
 export interface ShortcutOptions {
@@ -23,10 +27,17 @@ export interface ShortcutOptions {
   volumeEnabled: boolean;
   /** A next-episode/next-part prompt is visible. */
   nextAvailable: boolean;
+  /**
+   * Handle the MediaPlayPause / MediaPlay / MediaPause keys (default true). False when the Media Session
+   * API is present: its handlers are then the only path, so one press never toggles twice.
+   */
+  mediaKeys?: boolean;
 }
 
 export const SEEK_STEP_SECONDS = 10;
 export const VOLUME_STEP = 0.1;
+
+const MEDIA_KEYS: ReadonlySet<string> = new Set(['MediaPlayPause', 'MediaPlay', 'MediaPause']);
 
 function isTyping(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -48,8 +59,17 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers, options: Shortc
     if (!enabled) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
-      if (isTyping(event.target)) return;
       const { handlers: h, options: o } = latest.current;
+      if (MEDIA_KEYS.has(event.key)) {
+        if (o.mediaKeys === false) return;
+        if (o.blocked && event.key !== 'MediaPause') h.activateBlocked?.();
+        else if (event.key === 'MediaPlay') h.play?.();
+        else if (event.key === 'MediaPause') h.pause?.();
+        else h.togglePlay();
+        event.preventDefault();
+        return;
+      }
+      if (isTyping(event.target)) return;
       const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
       const native = (key === ' ' || key === 'Enter') && activatesNatively(event.target);
 

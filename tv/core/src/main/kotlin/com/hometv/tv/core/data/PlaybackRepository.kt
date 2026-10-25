@@ -5,8 +5,9 @@ import com.hometv.tv.core.api.ApiException
 import com.hometv.tv.core.api.HomeTvApi
 import com.hometv.tv.core.api.PlaybackRequest
 import com.hometv.tv.core.api.PlaybackResponse
+import com.hometv.tv.core.api.ResponseTooLargeException
 import com.hometv.tv.core.api.apiCall
-import com.hometv.tv.core.api.await
+import com.hometv.tv.core.api.fetch
 import com.hometv.tv.core.api.stringField
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -211,31 +212,34 @@ class PlaybackRepository(
     }
 }
 
+/**
+ * Body cap of one subtitle GET. The server's WebVTT of a long film's dialogue is a few hundred KB; 16 MiB
+ * leaves room for dense SDH tracks and still keeps a misbehaving answer off the heap.
+ */
+const val SUBTITLE_MAX_BODY_BYTES: Long = 16L shl 20
+
 /** [SubtitleSource] over the stream client (Bearer from its `AuthInterceptor`, read timeout 45 s > the server's 30 s hold). */
 class OkHttpSubtitleSource(private val client: OkHttpClient) : SubtitleSource {
     override suspend fun fetch(url: String): SubtitleFetch {
+        // fetch() reads the body on OkHttp's thread: this may resume on the main thread.
         val response = try {
-            client.newCall(Request.Builder().url(url).build()).await()
+            client.newCall(Request.Builder().url(url).build()).fetch(SUBTITLE_MAX_BODY_BYTES)
+        } catch (e: ResponseTooLargeException) {
+            // Not a network failure: retrying would read the same oversized body again.
+            return SubtitleFetch.Unavailable(null)
         } catch (e: IOException) {
             throw ApiException.Unreachable(e)
         }
-        return response.use {
-            val body = try {
-                it.body?.bytes() ?: ByteArray(0)
-            } catch (e: IOException) {
-                throw ApiException.Unreachable(e)
-            }
-            if (it.isSuccessful) return@use SubtitleFetch.Ready(body)
-            when (val error = ApiErrors.fromResponse(it.code, body.decodeToString(), it.header("Retry-After"))) {
-                is ApiException.Unauthorized -> throw error
-                is ApiException.Http ->
-                    if (error.status == 503 && error.code == "subtitle_pending") {
-                        SubtitleFetch.Pending(error.retryAfterSeconds ?: PlaybackRepository.SUBTITLE_DEFAULT_RETRY_AFTER_SECONDS)
-                    } else {
-                        SubtitleFetch.Unavailable(error.code)
-                    }
-                else -> SubtitleFetch.Unavailable(null)
-            }
+        if (response.isSuccessful) return SubtitleFetch.Ready(response.body)
+        return when (val error = ApiErrors.fromResponse(response.code, response.body.decodeToString(), response.header("Retry-After"))) {
+            is ApiException.Unauthorized -> throw error
+            is ApiException.Http ->
+                if (error.status == 503 && error.code == "subtitle_pending") {
+                    SubtitleFetch.Pending(error.retryAfterSeconds ?: PlaybackRepository.SUBTITLE_DEFAULT_RETRY_AFTER_SECONDS)
+                } else {
+                    SubtitleFetch.Unavailable(error.code)
+                }
+            else -> SubtitleFetch.Unavailable(null)
         }
     }
 }

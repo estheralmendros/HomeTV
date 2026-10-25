@@ -337,8 +337,8 @@ export function seasonDetail(overrides: Partial<SeasonDetail> = {}): SeasonDetai
 
 export function homeResponse(overrides: Partial<HomeResponse> = {}): HomeResponse {
   return {
-    continue_watching: [filmSummary({ progress: progress() })],
-    next_up: [homeEpisode({ id: 346, episode_number: 4, title: 'The Fire' })],
+    // An in-progress film and a Next Up episode (no progress), prd.md Rev 13.
+    continue_watching: [filmSummary({ progress: progress() }), homeEpisode({ id: 346, episode_number: 4, title: 'The Fire', progress: null })],
     recently_added: [filmSummary({ id: 13, title: 'Heat', year: 1995 }), showSummary()],
     library: { films: 1234, shows: 87, empty: false },
     ...overrides,
@@ -348,7 +348,6 @@ export function homeResponse(overrides: Partial<HomeResponse> = {}): HomeRespons
 export function emptyHomeResponse(): HomeResponse {
   return homeResponse({
     continue_watching: [],
-    next_up: [],
     recently_added: [],
     library: { films: 0, shows: 0, empty: true },
   });

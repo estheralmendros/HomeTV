@@ -75,6 +75,8 @@ private fun AppNavHost(container: AppContainer, onExit: () -> Unit) {
     val profile by container.account.profile.collectAsStateWithLifecycle()
     val info by container.account.info.collectAsStateWithLifecycle()
     val avatar = profile?.let { p -> AvatarUi(p.name.trim().take(1).uppercase(), info?.avatars?.firstOrNull { it.id == p.avatar_id }?.color) }
+    // "Ajustes" is an admin-only tab (prd3 §3 step 1); hidden while the profile is still unknown.
+    val showSettings = profile?.is_admin == true
 
     val expired by container.sessionExpired.collectAsStateWithLifecycle()
     LaunchedEffect(expired) {
@@ -85,6 +87,7 @@ private fun AppNavHost(container: AppContainer, onExit: () -> Unit) {
     }
     val session by container.store.session.collectAsStateWithLifecycle()
     // The top-nav avatar after a cold start (no Picker this time): `GET /api/me` + `/api/info` in the background.
+    // If this fails (server unreachable), `HomeViewModel` retries via `AccountState.ensureLoaded` after its next fresh load.
     LaunchedEffect(session.token != null) { if (session.token != null && profile == null) container.account.refresh() }
 
     NavHost(nav, startDestination = start, modifier = Modifier.fillMaxSize().background(HomeTvColors.Background)) {
@@ -102,7 +105,6 @@ private fun AppNavHost(container: AppContainer, onExit: () -> Unit) {
                 vm = viewModel { container.profilesViewModel(route.expired) },
                 onSignedIn = navigator::signedIn,
                 onBack = { if (route.switching) navigator.back() else navigator.exit() },
-                onChangeServer = navigator::changeServer,
             )
         }
         composable<Route.Home> { entry ->
@@ -111,19 +113,20 @@ private fun AppNavHost(container: AppContainer, onExit: () -> Unit) {
                 vm = viewModel { container.homeViewModel() },
                 navigator = navigator,
                 avatar = avatar,
+                showSettings = showSettings,
                 focusTab = focusTab?.let { name -> NavTab.entries.firstOrNull { it.name == name } },
                 onFocusTabConsumed = { entry.savedStateHandle[AppNavigator.FOCUS_TAB] = null },
             )
         }
         composable<Route.Browse> { entry ->
             val library = Library.fromWire(entry.toRoute<Route.Browse>().library)
-            BrowseScreen(viewModel { container.browseViewModel(library) }, library, navigator, avatar)
+            BrowseScreen(viewModel { container.browseViewModel(library) }, library, navigator, avatar, showSettings)
         }
         composable<Route.Search> {
-            SearchScreen(viewModel { container.searchViewModel() }, navigator, avatar)
+            SearchScreen(viewModel { container.searchViewModel() }, navigator, avatar, showSettings)
         }
         composable<Route.Settings> {
-            SettingsScreen(viewModel { container.settingsViewModel() }, navigator, avatar)
+            SettingsScreen(viewModel { container.settingsViewModel() }, navigator, avatar, showSettings)
         }
         composable<Route.FilmDetail> { entry ->
             val id = entry.toRoute<Route.FilmDetail>().id

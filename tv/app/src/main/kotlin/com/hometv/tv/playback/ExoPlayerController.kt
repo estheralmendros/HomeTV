@@ -12,6 +12,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.LoadEventInfo
 import androidx.media3.exoplayer.source.MediaLoadData
+import androidx.media3.session.MediaSession
 import androidx.media3.ui.PlayerView
 import com.hometv.tv.core.api.ApiErrors
 import com.hometv.tv.core.api.ApiException
@@ -22,13 +23,16 @@ import com.hometv.tv.core.playback.PlayerState
 import com.hometv.tv.core.playback.RendererType
 import com.hometv.tv.core.playback.UrlKind
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * [PlayerController] over Media3 ExoPlayer (prd3 Playback Flow). Keeps the wanted audio/subtitle
  * selection and re-applies it on the first non-empty `Tracks` of every media item (rule 5), then
  * reports the `TrackCheck` input once per item (rule 10) after the overrides took effect. Every
  * `PlaybackException` becomes a pure [PlayerFailure]; `urlKind` comes from the most recent
- * `AnalyticsListener.onLoadError` (cleared on each new media item).
+ * `AnalyticsListener.onLoadError` (cleared on each new media item). While a `PlayerView` shows the
+ * player, a Media3 [MediaSession] over a [RemoteCommandPlayer] receives headset / Bluetooth / media
+ * controller commands and hands them to the listener (prd3 §8 "Headset and Bluetooth play/pause").
  */
 @OptIn(UnstableApi::class)
 class ExoPlayerController(private val player: ExoPlayer) : PlayerController {
@@ -38,6 +42,7 @@ class ExoPlayerController(private val player: ExoPlayer) : PlayerController {
     private var wantedSubtitle: String? = null
     private var checkPending = false
     private var lastLoad: LoadRecord? = null
+    private var mediaSession: MediaSession? = null
 
     private val playerListener = object : Player.Listener {
         override fun onTracksChanged(tracks: Tracks) {
@@ -89,13 +94,29 @@ class ExoPlayerController(private val player: ExoPlayer) : PlayerController {
     override val isPlaying: Boolean get() = player.isPlaying
     override val state: PlayerState get() = stateOf(player.playbackState)
 
+    /** The id of the live `MediaSession`, null while no `PlayerView` shows the player (tests). */
+    @androidx.annotation.VisibleForTesting
+    internal val sessionId: String? get() = mediaSession?.id
+
     /** Shows this player in [view] (the Player screen's `PlayerView`); the ExoPlayer never leaves this class. */
     fun attach(view: PlayerView) {
         if (view.player !== player) view.player = player
+        if (mediaSession == null) {
+            mediaSession = MediaSession.Builder(view.context, RemoteCommandPlayer(player) { listener })
+                .setId("hometv-player-${sessionIds.incrementAndGet()}")
+                .setCallback(RemoteOnlyCallback)
+                .build()
+        }
     }
 
     fun detach(view: PlayerView) {
         if (view.player === player) view.player = null
+        releaseSession()
+    }
+
+    private fun releaseSession() {
+        mediaSession?.release()
+        mediaSession = null
     }
 
     override fun setListener(listener: PlayerController.Listener?) {
@@ -120,6 +141,7 @@ class ExoPlayerController(private val player: ExoPlayer) : PlayerController {
     override fun stop() = player.stop()
 
     override fun release() {
+        releaseSession()
         player.removeListener(playerListener)
         player.removeAnalyticsListener(analytics)
         player.release()
@@ -148,7 +170,18 @@ class ExoPlayerController(private val player: ExoPlayer) : PlayerController {
     /** The URI and track type of the most recent load error. */
     data class LoadRecord(val uri: String, val trackType: Int)
 
+    /** Every controller (AVRCP, the system, apps) gets only the [RemoteCommandPlayer] commands and no custom ones. */
+    private object RemoteOnlyCallback : MediaSession.Callback {
+        override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult =
+            MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+                .setAvailablePlayerCommands(RemoteCommandPlayer.ALLOWED_COMMANDS)
+                .build()
+    }
+
     companion object {
+        /** MediaSession ids must be unique within the process (one per Player screen). */
+        private val sessionIds = AtomicLong()
+
         fun stateOf(playbackState: Int): PlayerState = when (playbackState) {
             Player.STATE_BUFFERING -> PlayerState.BUFFERING
             Player.STATE_READY -> PlayerState.READY

@@ -9,6 +9,7 @@ import { queryKeys } from '@/api/queryKeys';
 import type { ScanCounts, ScanStatus } from '@/api/types';
 import { isAdminActionCancelled, useAdminAction } from '@/auth/useAdminAction';
 import { ErrorState } from '@/components/ErrorState';
+import { WARNING_GLYPH } from '@/components/glyphs';
 import { ProgressBar } from '@/components/ProgressBar';
 import { Skeleton } from '@/components/Skeleton';
 import { useToast } from '@/components/Toast';
@@ -52,7 +53,7 @@ export function ScanPage() {
     <div className={styles.panel}>
       {info?.tmdb_configured === false && (
         <p className={styles.warning} role="note">
-          <span aria-hidden="true">⚠ </span>
+          <span aria-hidden="true">{WARNING_GLYPH} </span>
           {T.tmdbNotConfigured}
         </p>
       )}
@@ -131,7 +132,7 @@ function ScanCard({ scan, onScanNow }: { scan: ScanStatus; onScanNow: () => void
 
       {counts && counts.missing > 0 && (
         <p className={styles.warning}>
-          <span aria-hidden="true">⚠ </span>
+          <span aria-hidden="true">{WARNING_GLYPH} </span>
           {T.missingWarning(counts.missing)}
         </p>
       )}

@@ -52,7 +52,6 @@
 
     <!-- (4) Home -->
     <string name="home_continue_watching">Seguir viendo</string>
-    <string name="home_next_up">A continuación</string>
     <string name="home_recently_added">Añadidos recientemente</string>
     <string name="home_films">Películas</string>
     <string name="home_shows">Series</string>
@@ -62,6 +61,21 @@
 
     <!-- (5) Browse -->
     <string name="browse_sort">Ordenar: %1$s</string>
+    <string name="browse_genre">Género: %1$s</string>
+    <string name="browse_decade">Años: %1$s</string>
+    <string name="filter_all_genres">Todos</string>
+    <string name="filter_all_decades">Todos</string>
+    <string name="browse_watched">Estado: %1$s</string>
+    <string name="filter_all_watched">Todas</string>
+    <string name="filter_watched">Vistas</string>
+    <string name="filter_unwatched">No vistas</string>
+    <string name="decade_range">%1$s–%2$s</string>
+    <string name="decade_before">Antes de %1$s</string>
+    <string name="browse_no_matches">Ningún título coincide con estos filtros.</string>
+    <string name="dialog_sort">Ordenar</string>
+    <string name="dialog_genre">Género</string>
+    <string name="dialog_decade">Años</string>
+    <string name="dialog_watched">Estado</string>
     <string name="browse_load_more_failed">No se han podido cargar más títulos.</string>
     <string name="sort_title_asc">Título A–Z</string>
     <string name="sort_title_desc">Título Z–A</string>
@@ -78,7 +92,7 @@
     <!-- (7) Film detail -->
     <string name="detail_play">Reproducir</string>
     <string name="detail_resume_from">Reanudar desde %1$s</string>
-    <string name="detail_play_from_start">Reproducir desde el principio</string>
+    <string name="detail_play_from_start">Ver desde el principio</string>
     <string name="detail_play_part">Reproducir parte %1$s</string>
     <string name="mark_watched">Marcar como visto</string>
     <string name="mark_unwatched">Marcar como no visto</string>
@@ -140,6 +154,13 @@
     <!-- Settings / About -->
     <string name="settings_server">Servidor</string>
     <string name="settings_change_server">Cambiar servidor</string>
+    <string name="pin_title">Introduce el PIN de administrador</string>
+    <string name="pin_subtitle">Cambiar de servidor necesita el PIN de un perfil de administrador.</string>
+    <string name="pin_wrong">PIN incorrecto.</string>
+    <string name="pin_locked">Demasiados intentos. Vuelve a intentarlo en %1$s</string>
+    <string name="pin_check_failed">No se ha podido comprobar el PIN. Inténtalo de nuevo.</string>
+    <string name="pin_delete">Borrar</string>
+    <string name="pin_entered">%1$s de 4 dígitos</string>
     <string name="settings_profile">Perfil</string>
     <string name="settings_switch_profile">Cambiar de perfil</string>
     <string name="settings_about">Acerca de</string>

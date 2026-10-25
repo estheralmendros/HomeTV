@@ -4,7 +4,7 @@
 //   for ≤ 3 s; on timeout the decision waits for the item query's first fetch after this mount
 //   and the home fallback is not used.
 // - Source: the candidate with the newest dataUpdatedAt among the item query and, for episodes,
-//   the read-only home entry (Continue Watching / Next Up), so a home start never waits for
+//   the read-only home entry (Continue Watching, in progress or Next Up), so a home start never waits for
 //   GET /api/episodes/{id}.
 // - File: `?file=` when it belongs to the item, else selectVersion(). Start: `?t=` (one-shot),
 //   else startPosition() (D10/D11) with its "different version" flag.

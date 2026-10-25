@@ -2,6 +2,7 @@
 // time, volume + mute, subtitle/audio menus and fullscreen at the bottom. Every control has a
 // Spanish aria-label from the catalog.
 import type { ReactNode } from 'react';
+import { PLAY_GLYPH } from '@/components/glyphs';
 import { formatDuration } from '@/lib/format';
 import { S } from '@/strings.es';
 import styles from './Player.module.css';
@@ -63,7 +64,7 @@ export function Controls(props: ControlsProps) {
               aria-label={playing ? S.player.controls.pause : S.player.controls.play}
               onClick={props.onPlayPause}
             >
-              <span aria-hidden="true">{playing ? '❚❚' : '▶'}</span>
+              <span aria-hidden="true">{playing ? '❚❚' : PLAY_GLYPH}</span>
             </button>
             <button type="button" className={styles.controlButton} aria-label={S.player.controls.rewind} onClick={() => props.onSeekBy(-10)}>
               <span aria-hidden="true">⟲10</span>
@@ -83,7 +84,7 @@ export function Controls(props: ControlsProps) {
                 aria-pressed={props.muted}
                 onClick={props.onToggleMute}
               >
-                <span aria-hidden="true">{props.muted ? '🔇' : '🔊'}</span>
+                <SpeakerIcon muted={props.muted} />
               </button>
               {props.volumeSlider && (
                 <input
@@ -114,5 +115,25 @@ export function Controls(props: ControlsProps) {
         </div>
       )}
     </div>
+  );
+}
+
+/** Monochrome speaker in the text colour (prd2 §9 step 11 Icons): sound waves when audible, a cross when muted. */
+function SpeakerIcon({ muted }: { muted: boolean }) {
+  return (
+    <svg className={styles.icon} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M3 9v6h4l5 4V5L7 9H3z" fill="currentColor" />
+      {muted ? (
+        <path d="M16 9l6 6M22 9l-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" />
+      ) : (
+        <path
+          d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          fill="none"
+        />
+      )}
+    </svg>
   );
 }

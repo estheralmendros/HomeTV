@@ -1,5 +1,5 @@
 // Library toolbar (prd2 §5 step 2, step 6): title filter (debounced 300 ms), sort + order toggle,
-// genre and year range. Below 600 px (PHONE_QUERY) only the title filter and a "Filtros" button
+// genre, year range and watched state. Below 600 px (PHONE_QUERY) only the title filter and a "Filtros" button
 // render; the button opens a bottom sheet with the other controls and "Borrar" / "Aplicar".
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
@@ -30,6 +30,12 @@ const SORT_OPTIONS: ReadonlyArray<{ value: SortField; label: string }> = [
   { value: 'added', label: S.library.sortAdded },
 ];
 
+const WATCHED_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
+  { value: '', label: S.library.watchedAll },
+  { value: 'true', label: S.library.watchedOnly },
+  { value: 'false', label: S.library.unwatchedOnly },
+];
+
 const flip = (order: SortOrder): SortOrder => (order === 'asc' ? 'desc' : 'asc');
 
 export function LibraryToolbar({ type, library }: { type: LibraryType; library: Library }) {
@@ -55,6 +61,7 @@ export function LibraryToolbar({ type, library }: { type: LibraryType; library: 
             from={<CommittedYearInput label={S.library.yearFrom} value={params.yearFrom} onCommit={(yearFrom) => update({ yearFrom })} />}
             to={<CommittedYearInput label={S.library.yearTo} value={params.yearTo} onCommit={(yearTo) => update({ yearTo })} />}
           />
+          <WatchedField value={params.watched} onChange={(watched) => update({ watched })} />
           {hasFilters && (
             <button type="button" className="button" onClick={clearFilters}>
               {S.library.clearFilters}
@@ -173,6 +180,27 @@ function GenreField({
   );
 }
 
+function WatchedField({ value, onChange }: { value: boolean | null; onChange: (watched: boolean | null) => void }) {
+  const id = useId();
+  return (
+    <label className={styles.field} htmlFor={id}>
+      {S.library.watched}
+      <select
+        id={id}
+        className={styles.select}
+        value={value === null ? '' : String(value)}
+        onChange={(event) => onChange(event.target.value === '' ? null : event.target.value === 'true')}
+      >
+        {WATCHED_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function YearRange({ from, to }: { from: ReactNode; to: ReactNode }) {
   return (
     <fieldset className={styles.yearRange}>
@@ -243,6 +271,7 @@ interface Draft {
   genre: number | null;
   yearFrom: string;
   yearTo: string;
+  watched: boolean | null;
 }
 
 /** Mobile bottom sheet: edits a draft, applied to the URL on "Aplicar". */
@@ -254,6 +283,7 @@ function FilterSheet({ library, genres, onClose }: { library: Library; genres: G
     genre: params.genre,
     yearFrom: params.yearFrom === null ? '' : String(params.yearFrom),
     yearTo: params.yearTo === null ? '' : String(params.yearTo),
+    watched: params.watched,
   });
   const yearFrom = parseYear(draft.yearFrom);
   const yearTo = parseYear(draft.yearTo);
@@ -276,6 +306,7 @@ function FilterSheet({ library, genres, onClose }: { library: Library; genres: G
           from={<YearInput label={S.library.yearFrom} value={draft.yearFrom} onChange={(yearFrom) => patch({ yearFrom })} />}
           to={<YearInput label={S.library.yearTo} value={draft.yearTo} onChange={(yearTo) => patch({ yearTo })} />}
         />
+        <WatchedField value={draft.watched} onChange={(watched) => patch({ watched })} />
         {invalid && (
           <p className={styles.error} role="alert">
             {S.library.yearRangeError}
@@ -298,7 +329,7 @@ function FilterSheet({ library, genres, onClose }: { library: Library; genres: G
           className="button button-primary"
           disabled={invalid}
           onClick={() => {
-            update({ sort: draft.sort, order: draft.order, genre: draft.genre, yearFrom, yearTo });
+            update({ sort: draft.sort, order: draft.order, genre: draft.genre, yearFrom, yearTo, watched: draft.watched });
             onClose();
           }}
         >

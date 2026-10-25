@@ -64,6 +64,18 @@ class ServerRepositoryTest {
     }
 
     @Test
+    fun `an answer over the 1 MiB cap is NotHomeTvServer, even if it would decode`() = runTest {
+        val pad = "a".repeat(2 shl 20)
+        t.route("GET", "/api/health") { t.json("""{"status": "ok", "pad": "$pad"}""") }
+        t.route("GET", "/api/info") { t.json(info) }
+        assertEquals(ServerValidation.NotHomeTvServer, repo.validate(t.url))
+
+        t.route("GET", "/api/health") { t.json("""{"status": "ok"}""") }
+        t.route("GET", "/api/info") { t.json("""{"name": "HomeTV", "pad": "$pad"}""") }
+        assertEquals(ServerValidation.NotHomeTvServer, repo.validate(t.url))
+    }
+
+    @Test
     fun `connection failures are Unreachable and TLS failures TlsError`() = runTest {
         t.shutdown()
         assertTrue(repo.validate(t.url) is ServerValidation.Unreachable)

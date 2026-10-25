@@ -31,7 +31,6 @@ export function writeProgress(queryClient: QueryClient, item: ItemRef, progress:
     return {
       ...old,
       continue_watching: old.continue_watching.map((entry) => (matches(entry) ? { ...entry, progress } : entry)),
-      next_up: old.next_up.map((entry) => (matches(entry) ? { ...entry, progress } : entry)),
     };
   });
 }
@@ -78,11 +77,11 @@ export function awaitFinalBarrier(item: ItemRef, timeoutMs = BARRIER_TIMEOUT_MS)
   });
 }
 
-/** The read-only home fallback of an episode (Continue Watching or Next Up; never a film). */
+/** The read-only home fallback of an episode (Continue Watching, in progress or Next Up; never a film). */
 export function findHomeEpisode(home: HomeResponse | undefined, id: number): HomeEpisode | null {
   if (!home) return null;
   const isEpisode = (entry: { type: string; id: number }): entry is HomeEpisode => entry.type === 'episode' && entry.id === id;
-  return home.continue_watching.find(isEpisode) ?? home.next_up.find(isEpisode) ?? null;
+  return home.continue_watching.find(isEpisode) ?? null;
 }
 
 /** Test helper: forget pending reports. */

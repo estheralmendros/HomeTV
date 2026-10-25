@@ -336,7 +336,8 @@ def update_profile(db: Database, profile_id: int, changes: Mapping[str, Any]) ->
         profile = session.get(m.Profile, profile_id)
         if profile is None:
             raise ApiError(404, "not_found", f"Profile {profile_id} not found")
-        if profile.is_admin != was_admin:  # changed concurrently: re-plan on fresh state
+        if profile.is_admin != was_admin:  # changed concurrently: 409, the client retries
+            # (re-planning here would hash the PIN under the write lock)
             raise ApiError(409, "conflict", "Profile changed concurrently; retry")
         if "name" in changes:
             name = _clean_name(changes["name"])

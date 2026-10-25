@@ -225,7 +225,7 @@ class AppContainer(
 
     fun profilesViewModel(expired: Boolean) = ProfilesViewModel(profiles, store, account::signedIn, expired)
 
-    fun homeViewModel() = HomeViewModel(catalog, homeCache, store, events.events, homeRefresh)
+    fun homeViewModel() = HomeViewModel(catalog, homeCache, store, events.events, homeRefresh, account::ensureLoaded)
 
     fun browseViewModel(library: Library) = BrowseViewModel(library, catalog, store, browseSorts)
 
@@ -235,7 +235,7 @@ class AppContainer(
 
     fun showDetailViewModel(id: Long) = ShowDetailViewModel(id, catalog, watch, store, events, homeRefresh, detailRefresh)
 
-    fun settingsViewModel() = SettingsViewModel(store, account, ::deviceCaps, config.versionName)
+    fun settingsViewModel() = SettingsViewModel(store, account, profiles, ::deviceCaps, config.versionName)
 
     fun playerViewModel(route: Route.Player) = PlayerViewModel(
         route,

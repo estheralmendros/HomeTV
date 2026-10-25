@@ -286,6 +286,26 @@ def test_update_promote_demote_and_versions(mdb):
     assert p.update_profile(mdb, admin.id, {"name": "ESTHER"}).name == "ESTHER"
 
 
+def test_update_conflicts_when_is_admin_changes_between_plan_and_write(mdb, monkeypatch):
+    p.bootstrap(mdb, name="Esther", avatar_id="avatar-05", pin="1234")
+    kids = p.create_profile(mdb, name="Kids", avatar_id="avatar-04", is_admin=False, pin=None)
+    real_hash = p.hash_pin
+
+    def hash_then_promote_concurrently(pin: str) -> str:
+        # Runs after the plan (read on is_admin=False) and before the write transaction.
+        with mdb.write_session() as s:
+            other = s.get(m.Profile, kids.id)
+            other.is_admin, other.pin_hash = True, real_hash("1111")
+        return real_hash(pin)
+
+    monkeypatch.setattr(p, "hash_pin", hash_then_promote_concurrently)
+    assert _code(
+        p.update_profile, db=mdb, profile_id=kids.id, changes={"is_admin": True, "pin": "4321"}
+    ) == ("conflict")
+    # Nothing from the refused plan was applied: the concurrent PIN stands.
+    assert p.verify_pin("1111", _get(mdb, kids.id).pin_hash)
+
+
 def test_delete_rules(mdb):
     admin = p.bootstrap(mdb, name="Esther", avatar_id="avatar-05", pin="1234")
     kids = p.create_profile(mdb, name="Kids", avatar_id="avatar-04", is_admin=False, pin=None)

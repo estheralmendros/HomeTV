@@ -25,6 +25,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.intl.LocaleList
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -32,6 +33,8 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import com.hometv.tv.ui.theme.HomeTvColors
 import com.hometv.tv.ui.theme.HomeTvDimens
+
+private val SPANISH = LocaleList("es-ES")
 
 /** A single-line D-pad friendly text field with the app's focus ring (OK opens the system keyboard). */
 @Composable
@@ -52,7 +55,8 @@ fun TvTextField(
         singleLine = true,
         textStyle = TextStyle(color = HomeTvColors.OnBackground, fontSize = 18.sp),
         cursorBrush = SolidColor(HomeTvColors.Primary),
-        keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction, autoCorrectEnabled = false),
+        // The app is Spanish-only: ask the IME for its Spanish layout (with "ñ") whatever the TV's language (prd3 §5 step 1).
+        keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction, autoCorrectEnabled = false, hintLocales = SPANISH),
         keyboardActions = KeyboardActions(onAny = { onImeAction() }),
         modifier = modifier
             .onPreviewKeyEvent { event ->

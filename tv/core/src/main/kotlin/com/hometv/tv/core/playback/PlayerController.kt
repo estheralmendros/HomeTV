@@ -137,5 +137,18 @@ interface PlayerController {
         fun onDurationChanged(durationMs: Long?)
 
         fun onFailure(failure: PlayerFailure)
+
+        /**
+         * A play command from outside the app's key handling (prd3 §8 "Headset and Bluetooth
+         * play/pause": the Player's media session, i.e. Bluetooth AVRCP, the headset button or any
+         * media controller). The controller never plays by itself: the listener decides.
+         */
+        fun onRemotePlay() {}
+
+        /** A pause command from the media session (see [onRemotePlay]). */
+        fun onRemotePause() {}
+
+        /** A seek back/forward command from the media session (see [onRemotePlay]). */
+        fun onRemoteSeek(forward: Boolean) {}
     }
 }

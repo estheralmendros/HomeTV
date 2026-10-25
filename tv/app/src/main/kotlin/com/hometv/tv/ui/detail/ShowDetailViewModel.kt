@@ -56,7 +56,7 @@ data class SeasonPaneUi(
     val entryIndex: Int,
 )
 
-/** Episode actions dialog (long-press): [Reproducir desde el principio] [Marcar como visto | no visto]. */
+/** Episode actions dialog (long-press): [Ver desde el principio] [Marcar como visto | no visto]. */
 data class EpisodeActionsUi(val episodeId: Long, val watchedText: UiText)
 
 sealed interface ShowDetailUiState {

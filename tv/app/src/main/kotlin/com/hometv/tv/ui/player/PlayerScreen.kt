@@ -113,16 +113,19 @@ internal fun handlePlayerKey(vm: PlayerViewModel, state: PlayerUiState, event: K
     }
     if (event.action != KeyEvent.ACTION_DOWN) return false
     if (state.dialog != null || state.screen != PlayerScreenUi.Video) return false
+    // Play/pause keys act on the first ACTION_DOWN only; the autorepeats of a held key are consumed
+    // (so they never reach the system media session) but toggle nothing.
+    val first = event.repeatCount == 0
     val handled = when (code) {
-        KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> true.also { vm.onPlayPause(); vm.onShowOverlay() }
-        KeyEvent.KEYCODE_MEDIA_PLAY -> true.also { vm.onPlay(); vm.onShowOverlay() }
-        KeyEvent.KEYCODE_MEDIA_PAUSE -> true.also { vm.onPause() }
+        KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_HEADSETHOOK -> true.also { if (first) { vm.onPlayPause(); vm.onShowOverlay() } }
+        KeyEvent.KEYCODE_MEDIA_PLAY -> true.also { if (first) { vm.onPlay(); vm.onShowOverlay() } }
+        KeyEvent.KEYCODE_MEDIA_PAUSE -> true.also { if (first) vm.onPause() }
         KeyEvent.KEYCODE_MEDIA_REWIND -> true.also { vm.onSeekKey(forward = false, repeatCount = event.repeatCount) }
         KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> true.also { vm.onSeekKey(forward = true, repeatCount = event.repeatCount) }
         else -> if (state.overlay != OverlayMode.FULL) {
             when (code) {
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> true.also {
-                    if (event.repeatCount == 0) {
+                    if (first) {
                         vm.onPlayPause()
                         vm.onShowOverlay()
                     }

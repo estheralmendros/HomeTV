@@ -34,7 +34,6 @@ object Fixtures {
               "still": null, "air_date": "2005-10-04", "runtime_minutes": 22, "duration_seconds": 1320.4,
               "show_poster": null, "show_backdrop": { "small": "/api/artwork/w780/ob.jpg", "large": "/api/artwork/w1280/ob.jpg" },
               "progress": $progressJson, "media_files": [ ${mediaFileJson(91, partNumber = null)}, ${mediaFileJson(92, partNumber = 2)} ] } ],
-          "next_up": [],
           "recently_added": [
             { "type": "show", "id": 7, "title": "The Office", "year": 2005, "poster": null, "backdrop": null,
               "overview": null, "match_status": "matched", "added_at": "2026-10-01T10:00:00Z",

@@ -117,5 +117,12 @@ class FakePlayerController : PlayerController {
         listener?.onFailure(failure)
     }
 
+    /** A play / pause / seek command from the media session (Bluetooth headphones, any media controller). */
+    fun remotePlay() = listener?.onRemotePlay()
+
+    fun remotePause() = listener?.onRemotePause()
+
+    fun remoteSeek(forward: Boolean) = listener?.onRemoteSeek(forward)
+
     fun clearLog() = log.clear()
 }

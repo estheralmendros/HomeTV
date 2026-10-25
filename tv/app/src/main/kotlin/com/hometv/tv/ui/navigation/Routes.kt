@@ -40,7 +40,7 @@ sealed interface Route {
      * - [mediaFileId]: the file the viewer chose on Film detail (version / part / part version), or
      *   null to let `VersionSelector` pick (`defaultChoice` for films, `select`/`candidates` with
      *   `progress` for episodes).
-     * - [fromStart]: "Reproducir desde el principio" (start at 0, no "different version" chip);
+     * - [fromStart]: "Ver desde el principio" (start at 0, no "different version" chip);
      *   false = resume per `VersionSelector.startFor` (D10/D11).
      */
     @Serializable

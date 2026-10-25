@@ -93,8 +93,15 @@ describe('volume (hometv.volume)', () => {
     await p.startDirect(0);
     expect(p.video().volume).toBe(0.4);
     expect(p.video().muted).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: 'Activar sonido' }));
+    // prd2 §9 step 11 (Icons): the mute button draws an SVG speaker, never an emoji, in both states.
+    const muteButton = screen.getByRole('button', { name: 'Activar sonido' });
+    expect(muteButton.querySelector('svg')).not.toBeNull();
+    expect(muteButton.textContent).not.toMatch(/\p{Emoji_Presentation}/u);
+    fireEvent.click(muteButton);
     expect(p.video().muted).toBe(false);
+    const soundButton = screen.getByRole('button', { name: 'Silenciar' });
+    expect(soundButton.querySelector('svg')).not.toBeNull();
+    expect(soundButton.textContent).not.toMatch(/\p{Emoji_Presentation}/u);
     fireEvent.change(screen.getByRole('slider', { name: 'Volumen' }), { target: { value: '0.75' } });
     expect(p.video().volume).toBe(0.75);
     expect(JSON.parse(localStorage.getItem('hometv.volume') ?? 'null')).toEqual({ volume: 0.75, muted: false });

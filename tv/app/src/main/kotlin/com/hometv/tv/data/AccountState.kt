@@ -33,6 +33,14 @@ class AccountState(private val profiles: ProfileRepository) {
         return _info.value?.avatars?.firstOrNull { it.id == avatar }?.color
     }
 
+    /**
+     * [refresh] while the profile is still unknown (a cold-start `/api/me` failed, e.g. before
+     * Tailscale was up): called after a foreground load succeeds, so the avatar and "Ajustes" follow.
+     */
+    suspend fun ensureLoaded() {
+        if (_profile.value == null) refresh()
+    }
+
     /** `GET /api/info` + `GET /api/me` as background calls: failures keep the previous values. */
     suspend fun refresh() {
         try {

@@ -24,26 +24,25 @@ describe('HomePage', () => {
   it('renders the non-empty rows in order and sets the title', async () => {
     renderHome();
     const headings = await screen.findAllByRole('heading', { level: 2 });
-    expect(headings.map((h) => h.textContent)).toEqual(['Seguir viendo', 'A continuación', 'Añadidos recientemente']);
+    expect(headings.map((h) => h.textContent)).toEqual(['Seguir viendo', 'Añadidos recientemente']);
     expect(document.title).toBe('Inicio · HomeTV');
   });
 
   it('hides empty rows', async () => {
-    serveHome(f.homeResponse({ continue_watching: [], next_up: [] }));
+    serveHome(f.homeResponse({ continue_watching: [] }));
     renderHome();
     expect(await screen.findByRole('heading', { name: 'Añadidos recientemente' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Seguir viendo' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'A continuación' })).not.toBeInTheDocument();
   });
 
-  it('shows three skeleton rows of 8 cards while loading', async () => {
+  it('shows two skeleton rows of 8 cards while loading', async () => {
     server.use(http.get(`${API}/home`, async () => {
       await delay('infinite');
       return HttpResponse.json(f.homeResponse());
     }));
     renderHome();
-    expect(await screen.findAllByRole('progressbar', { name: 'Cargando…' })).toHaveLength(3);
-    expect(screen.getAllByTestId('skeleton-card')).toHaveLength(24);
+    expect(await screen.findAllByRole('progressbar', { name: 'Cargando…' })).toHaveLength(2);
+    expect(screen.getAllByTestId('skeleton-card')).toHaveLength(16);
   });
 
   it('empty library: admins get the scan hint and link, without list requests', async () => {
@@ -66,7 +65,7 @@ describe('HomePage', () => {
   });
 
   it('library not empty but every row empty: links to Películas and Series', async () => {
-    serveHome(f.homeResponse({ continue_watching: [], next_up: [], recently_added: [] }));
+    serveHome(f.homeResponse({ continue_watching: [], recently_added: [] }));
     renderHome();
     expect(await screen.findByRole('link', { name: 'Películas' })).toHaveAttribute('href', '/films');
     expect(screen.getByRole('link', { name: 'Series' })).toHaveAttribute('href', '/shows');
@@ -148,18 +147,30 @@ describe('HomePage', () => {
     });
   });
 
-  it('Next Up cards open the player without ?file=', async () => {
-    renderHome();
-    const row = await screen.findByRole('region', { name: 'A continuación' });
-    const card = within(row).getByRole('link', { name: 'The Office · T2 · E4 · The Fire' });
-    expect(card).toHaveAttribute('href', '/watch/episode/346');
-  });
+  describe('Next Up episodes (prd.md Rev 13: part of Continue Watching)', () => {
+    it('one "Seguir viendo" row holds the in-progress film and the Next Up episode; no "A continuación" row', async () => {
+      const nextUp = f.homeEpisode({ id: 346, episode_number: 4, title: 'The Fire', progress: null });
+      serveHome(f.homeResponse({ continue_watching: [f.filmSummary({ progress: f.progress() }), nextUp] }));
+      const { user } = renderHome();
+      const row = await screen.findByRole('region', { name: 'Seguir viendo' });
+      expect(within(row).getByRole('link', { name: 'Dune (2021)' })).toHaveAttribute('href', '/watch/film/12');
+      const card = within(row).getByRole('link', { name: 'The Office · T2 · E4 · The Fire' });
+      expect(card).toHaveAttribute('href', '/watch/episode/346');
+      expect(within(card).queryByRole('progressbar')).not.toBeInTheDocument();
+      expect(within(row).getAllByRole('progressbar')).toHaveLength(1);
+      expect(within(row).getByRole('link', { name: 'Detalles de The Office' })).toHaveAttribute('href', '/shows/7');
+      expect(screen.queryByRole('heading', { name: 'A continuación' })).not.toBeInTheDocument();
+      expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(['Seguir viendo', 'Añadidos recientemente']);
+      await user.click(card);
+      expect(await findProbedLocation()).toBe('/watch/episode/346');
+    });
 
-  it('Next Up falls back to "Episodio N" without a title', async () => {
-    serveHome(f.homeResponse({ next_up: [f.homeEpisode({ id: 350, episode_number: 9, title: null })] }));
-    renderHome();
-    const row = await screen.findByRole('region', { name: 'A continuación' });
-    expect(within(row).getByRole('link', { name: 'The Office · T2 · E9 · Episodio 9' })).toBeInTheDocument();
+    it('falls back to "Episodio N" without a title', async () => {
+      serveHome(f.homeResponse({ continue_watching: [f.homeEpisode({ id: 350, episode_number: 9, title: null, progress: null })] }));
+      renderHome();
+      const row = await screen.findByRole('region', { name: 'Seguir viendo' });
+      expect(within(row).getByRole('link', { name: 'The Office · T2 · E9 · Episodio 9' })).toHaveAttribute('href', '/watch/episode/350');
+    });
   });
 
   it('Recently Added cards open the detail pages; shows carry an "N sin ver" badge', async () => {

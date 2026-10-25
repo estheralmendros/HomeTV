@@ -196,7 +196,10 @@ export interface EpisodeSummary {
   progress: Progress | null;
 }
 
-/** Continue Watching / Next Up episode entry: same version order as GET /api/episodes/{id}. */
+/**
+ * Continue Watching episode entry (in progress, or a started show's Next Up episode with
+ * `progress` null or below 30 s, prd.md Rev 13): same version order as GET /api/episodes/{id}.
+ */
 export type HomeEpisode = EpisodeSummary & { media_files: MediaFile[]; show_backdrop: Image | null };
 
 export interface LibraryCounts {
@@ -206,8 +209,8 @@ export interface LibraryCounts {
 }
 
 export interface HomeResponse {
+  /** In-progress films/episodes plus each started show's Next Up episode, newest first (Rev 13). */
   continue_watching: Array<FilmSummary | HomeEpisode>;
-  next_up: HomeEpisode[];
   recently_added: Array<FilmSummary | ShowSummary>;
   library: LibraryCounts;
 }
@@ -325,6 +328,7 @@ export interface LibraryQuery {
   genre?: number;
   year_from?: number;
   year_to?: number;
+  watched?: boolean;
 }
 
 // --- Watch state ---------------------------------------------------------------------------

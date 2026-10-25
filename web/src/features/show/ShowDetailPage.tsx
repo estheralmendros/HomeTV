@@ -16,6 +16,7 @@ import { CastRow } from '@/components/CastRow';
 import { DetailHero } from '@/components/DetailHero';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
+import { PLAY_GLYPH } from '@/components/glyphs';
 import { NotAvailable } from '@/components/NotAvailable';
 import { SkeletonDetail, SkeletonRow } from '@/components/Skeleton';
 import { useToast } from '@/components/Toast';
@@ -161,7 +162,7 @@ function NextEpisodeButton({ show }: { show: ShowDetail }) {
   const inProgress = p !== null && !p.watched && p.position_seconds > 0;
   return (
     <Link to={playerUrl('episode', next.id)} className="button button-primary">
-      <span aria-hidden="true">▶</span>
+      <span aria-hidden="true">{PLAY_GLYPH}</span>
       {inProgress ? S.show.resume(code) : S.show.play(code)}
     </Link>
   );

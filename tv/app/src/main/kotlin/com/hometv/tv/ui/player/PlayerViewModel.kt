@@ -22,7 +22,6 @@ import com.hometv.tv.core.data.CatalogRepository
 import com.hometv.tv.core.data.InFlightPlayback
 import com.hometv.tv.core.data.KeepAliveResult
 import com.hometv.tv.core.data.NextEpisodeResolver
-import com.hometv.tv.core.data.NextEpisodeResult
 import com.hometv.tv.core.data.Origin
 import com.hometv.tv.core.data.PlaybackProgress
 import com.hometv.tv.core.data.PlaybackRepository
@@ -171,18 +170,6 @@ class PlayerViewModel(
         var containerRetried = false
     }
 
-    private sealed interface NextState {
-        data object NotStarted : NextState
-
-        data object Running : NextState
-
-        data class Found(val episode: EpisodeDetail, val plan: List<MediaFile>) : NextState
-
-        data object None : NextState
-
-        data object Failed : NextState
-    }
-
     private sealed interface NextTarget {
         data class Episode(val episode: EpisodeDetail, val plan: List<MediaFile>) : NextTarget
 
@@ -253,9 +240,8 @@ class PlayerViewModel(
     private var idleAfterResolve = false
 
     // Next episode / part.
-    private var next: NextState = NextState.NotStarted
-    private var nextFailures = 0
-    private var nextJob: Job? = null
+    private val nextResolution = NextEpisodeResolution(viewModelScope, deps.nextEpisodes, deps.log)
+    private val next: NextState get() = nextResolution.state
     private var countdownTarget: NextTarget? = null
     private var countdownSeconds: Int? = null
     private var resolvingForButton = false
@@ -792,6 +778,17 @@ class PlayerViewModel(
 
     override fun onDurationChanged(durationMs: Long?) = render()
 
+    // The media session's commands (headset, Bluetooth AVRCP, media controllers; prd3 §8) are the
+    // remote's Play / Pause keys and the overlay's 10 s seek buttons.
+    override fun onRemotePlay() {
+        onPlay()
+        onShowOverlay()
+    }
+
+    override fun onRemotePause() = onPause()
+
+    override fun onRemoteSeek(forward: Boolean) = onSeekButton(forward)
+
     override fun onFailure(failure: PlayerFailure) {
         val attached = session == SessionState.Playing || session == SessionState.Paused || switchBase != null
         if (!attached) return
@@ -949,32 +946,18 @@ class PlayerViewModel(
     /** Prefetch / resolution with `NextEpisodeResolver` (D12); a failure is retried once (at `STATE_ENDED`). */
     private fun resolveNext() {
         if (item.type != "episode" || next == NextState.Running) return
-        next = NextState.Running
-        val current = file ?: return
         val target = item
-        nextJob = viewModelScope.launch {
-            var result: NextState
-            while (true) {
-                result = resolveOnce(target, current)
-                if (result != NextState.Failed) break
-                nextFailures++
-                if (nextFailures >= MAX_NEXT_FAILURES || session != SessionState.EndedResolving) break
-            }
-            next = result
-            onNextResolved()
-        }
-    }
+        val current = object : NextEpisodeResolution.Current {
+            override suspend fun ensureDetail(): Boolean = target.detailLoaded || loadEpisodeDetail(target)
 
-    private suspend fun resolveOnce(target: Item, current: MediaFile): NextState {
-        if (!target.detailLoaded && !loadEpisodeDetail(target)) return NextState.Failed
-        return when (val result = deps.nextEpisodes.resolve(target.nextEpisodeId, current.id)) {
-            is NextEpisodeResult.Found -> {
+            override fun nextEpisodeId(): Long? = target.nextEpisodeId
+
+            override suspend fun plan(episode: EpisodeDetail): List<MediaFile> {
                 refreshCaps()
-                NextState.Found(result.episode, VersionSelector.candidates(result.episode.media_files, capsFF, VersionGroup.Standalone, result.episode.progress))
+                return VersionSelector.candidates(episode.media_files, capsFF, VersionGroup.Standalone, episode.progress)
             }
-            NextEpisodeResult.None -> NextState.None
-            is NextEpisodeResult.Failed -> NextState.Failed.also { deps.log("next episode failed", result.cause) }
         }
+        nextResolution.start(current, file, keepRetrying = { session == SessionState.EndedResolving }, onResolved = ::onNextResolved)
     }
 
     private fun onNextResolved() {
@@ -1068,8 +1051,7 @@ class PlayerViewModel(
 
     private fun beginItem(nextItem: Item) {
         item = nextItem
-        next = NextState.NotStarted
-        nextFailures = 0
+        nextResolution.reset()
         refused.clear()
         history.clear()
         lastRecoveryAtMs = null
@@ -1359,7 +1341,7 @@ class PlayerViewModel(
                 resolvingForButton = true
                 render()
                 if (n != NextState.Running) {
-                    nextFailures = 0
+                    nextResolution.clearFailures()
                     resolveNext()
                 }
             }
@@ -1381,7 +1363,7 @@ class PlayerViewModel(
                 render()
             }
             else -> {
-                next = NextState.NotStarted
+                nextResolution.forget()
                 showToast(UiText.Res(R.string.next_load_failed))
             }
         }
@@ -1415,8 +1397,7 @@ class PlayerViewModel(
         if (session != SessionState.EndScreen || endScreen?.canRetry != true) return
         // Row 28: resolve again; a countdown then starts with no session held.
         endScreen = null
-        next = NextState.NotStarted
-        nextFailures = MAX_NEXT_FAILURES - 1
+        nextResolution.prepareLastAttempt()
         session = SessionState.EndedResolving
         render()
         resolveNext()
@@ -1639,7 +1620,7 @@ class PlayerViewModel(
     /** Stop and exit from any state, releasing whatever is held exactly once. */
     private fun leave() {
         countdownJob?.cancel()
-        nextJob?.takeIf { session == SessionState.EndedResolving }?.cancel()
+        if (session == SessionState.EndedResolving) nextResolution.cancel()
         stopHeldTimers()
         stopTicker()
         when (session) {
@@ -1932,7 +1913,6 @@ class PlayerViewModel(
         const val PREFETCH_WINDOW_MS = 30_000L
         const val EPISODE_COUNTDOWN_SECONDS = 10
         const val PART_PROMPT_SECONDS = 5
-        const val MAX_NEXT_FAILURES = 2
         const val DEFAULT_SUBTITLE_BUDGET_MS = 3_000L
         const val SWITCH_END_MARGIN_MS = 2_000L
         const val FINAL_TIMEOUT_MS = 10_000L

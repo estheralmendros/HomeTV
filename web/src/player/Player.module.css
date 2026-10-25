@@ -108,6 +108,12 @@
   font-weight: 700;
 }
 
+/* SVG icons inside control buttons: the size of the text glyphs, in the text colour. */
+.icon {
+  width: 1.25em;
+  height: 1.25em;
+}
+
 .controlButton:hover:not(:disabled) {
   background: rgb(255 255 255 / 0.12);
 }

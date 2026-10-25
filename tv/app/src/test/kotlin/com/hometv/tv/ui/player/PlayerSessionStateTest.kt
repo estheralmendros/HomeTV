@@ -242,6 +242,123 @@ class PlayerSessionStateTest : PlayerTestBase() {
         assertEquals(610.0, bodies().single().start_position_seconds)
     }
 
+    // ---- §8 Headset and Bluetooth play/pause (the media session's commands) ----------------
+
+    @Test
+    fun `a media-session pause is row 1 - PUT, keep-alive and the 30 min timer, then a media-session play is row 2`() = playerTest {
+        val vm = startHls()
+        clearCalls()
+        controller.clearLog()
+        controller.remotePause()
+        runCurrent()
+        assertEquals(SessionState.Paused, vm.session)
+        assertEquals(listOf("pause"), controller.log)
+        assertEquals(listOf("PUT /api/progress"), api.calls)
+        assertEquals(OverlayMode.FULL, vm.state.value.overlay)
+        advance(30_000)
+        assertEquals(listOf("POST /api/hls/S1/keepalive"), keepAlives())
+        controller.remotePlay()
+        runCurrent()
+        assertEquals(SessionState.Playing, vm.session)
+        assertTrue(controller.playWhenReady)
+        clearCalls()
+        advance(PlayerViewModel.PAUSE_RELEASE_MS)
+        assertEquals(emptyList<String>(), keepAlives())
+        assertEquals(emptyList<String>(), deletes())
+    }
+
+    @Test
+    fun `a media-session play while released runs the recovery (row 6)`() = playerTest {
+        val vm = released()
+        answerWith(hls("S2"))
+        controller.remotePlay()
+        runCurrent()
+        assertEquals(600.0, bodies().single().start_position_seconds)
+        assertEquals(SessionState.Playing, vm.session)
+    }
+
+    @Test
+    fun `a media-session play while playing and a pause while paused change nothing`() = playerTest {
+        val vm = startDirect()
+        controller.clearLog()
+        controller.remotePlay()
+        runCurrent()
+        assertEquals(SessionState.Playing, vm.session)
+        controller.remotePause()
+        controller.remotePause()
+        runCurrent()
+        assertEquals(SessionState.Paused, vm.session)
+        assertEquals(listOf("pause"), controller.log)
+    }
+
+    @Test
+    fun `a media-session seek forward is the 10 s step of the overlay button`() = playerTest {
+        val vm = startDirect()
+        controller.positionMs = 100_000
+        controller.remoteSeek(forward = true)
+        advance(600)
+        assertEquals(110_000, controller.positionMs)
+        assertEquals(SessionState.Playing, vm.session)
+    }
+
+    /** Every media-session command, then the 600 ms seek commit: nothing may reach the player or the API. */
+    private fun TestScope.allRemoteCommands() {
+        controller.clearLog()
+        clearCalls()
+        controller.remotePlay()
+        controller.remoteSeek(forward = true)
+        controller.remoteSeek(forward = false)
+        controller.remotePause()
+        runCurrent()
+        advance(600)
+    }
+
+    private fun assertNoPlaybackCommand() {
+        assertEquals(emptyList<String>(), controller.log.filter { it == "play" || it.startsWith("seekTo") || it.startsWith("setMediaItem") || it == "prepare" })
+    }
+
+    @Test
+    fun `media-session commands in the background change nothing`() = playerTest {
+        val vm = startHls()
+        controller.positionMs = 120_000
+        vm.onStop()
+        runCurrent()
+        assertEquals(SessionState.Background, vm.session)
+        allRemoteCommands()
+        assertNoPlaybackCommand()
+        assertEquals(emptyList<String>(), api.calls)
+        assertEquals(SessionState.Background, vm.session)
+    }
+
+    @Test
+    fun `media-session commands during the next-episode countdown change nothing`() = playerTest {
+        val vm = episodePlaying()
+        prefetch(vm)
+        controller.end()
+        runCurrent()
+        assertEquals(SessionState.Countdown, vm.session)
+        allRemoteCommands()
+        assertNoPlaybackCommand()
+        assertEquals(emptyList<String>(), api.calls.filter { !it.endsWith("/keepalive") })
+        assertEquals(SessionState.Countdown, vm.session)
+        assertTrue(vm.state.value.screen is PlayerScreenUi.Countdown)
+    }
+
+    @Test
+    fun `media-session commands on the error screen change nothing`() = playerTest {
+        val vm = startDirect()
+        answer({ throw httpError(500, "transcoder_failed", """{"detail": "keyframe_index_failed: x"}""") })
+        controller.fail(PlayerFailure(PlaybackErrorCodes.PARSING_CONTAINER_MALFORMED, urlKind = UrlKind.STREAM))
+        runCurrent()
+        assertTrue(vm.state.value.screen is PlayerScreenUi.Error)
+        val session = vm.session
+        allRemoteCommands()
+        assertNoPlaybackCommand()
+        assertEquals(emptyList<String>(), api.calls)
+        assertEquals(session, vm.session)
+        assertTrue(vm.state.value.screen is PlayerScreenUi.Error)
+    }
+
     @Test
     fun `row 8 - an audio change while released sends one recovery request and stays paused on the new session`() = playerTest {
         film(twoAudio)

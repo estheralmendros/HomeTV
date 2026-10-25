@@ -10,6 +10,7 @@ import { runInvalidation } from '@/api/queryClient';
 import type { EpisodeSummary, SeasonDetail } from '@/api/types';
 import { setWatched } from '@/api/watch';
 import { Artwork } from '@/components/Artwork';
+import { PLAY_GLYPH } from '@/components/glyphs';
 import { ProgressBar } from '@/components/ProgressBar';
 import { useToast } from '@/components/Toast';
 import { WatchedToggle } from '@/components/WatchedToggle';
@@ -115,7 +116,7 @@ function EpisodeRow({
       </div>
       <div className={styles.episodeActions}>
         <Link to={to} className={cx('button', styles.play)} aria-label={S.show.playEpisode(code)}>
-          ▶
+          {PLAY_GLYPH}
         </Link>
         <WatchedToggle compact watched={p?.watched === true} disabled={pending} onToggle={onToggleWatched} />
       </div>

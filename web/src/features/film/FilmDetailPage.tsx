@@ -14,6 +14,7 @@ import { useIsAdmin } from '@/auth/useCurrentProfile';
 import { CastRow } from '@/components/CastRow';
 import { DetailHero } from '@/components/DetailHero';
 import { ErrorState } from '@/components/ErrorState';
+import { PLAY_GLYPH } from '@/components/glyphs';
 import { NotAvailable } from '@/components/NotAvailable';
 import { ProgressBar } from '@/components/ProgressBar';
 import { SkeletonDetail } from '@/components/Skeleton';
@@ -122,7 +123,7 @@ function PlayButtons({ film, fileId }: { film: FilmDetail; fileId: number }) {
     return (
       <>
         <Link to={playerUrl('film', film.id, { file: fileId })} className="button button-primary">
-          <span aria-hidden="true">▶</span>
+          <span aria-hidden="true">{PLAY_GLYPH}</span>
           {part !== null ? S.film.resumePart(part, time) : S.film.resume(time)}
         </Link>
         <Link to={playerUrl('film', film.id, { file: fileId, t: 0 })} className="button">
@@ -133,7 +134,7 @@ function PlayButtons({ film, fileId }: { film: FilmDetail; fileId: number }) {
   }
   return (
     <Link to={playerUrl('film', film.id, { file: fileId })} className="button button-primary">
-      <span aria-hidden="true">▶</span>
+      <span aria-hidden="true">{PLAY_GLYPH}</span>
       {part !== null ? S.film.playPart(part) : S.film.play}
     </Link>
   );
@@ -143,7 +144,7 @@ function NoPlayableFile() {
   return (
     <>
       <button type="button" className="button button-primary" disabled>
-        <span aria-hidden="true">▶</span>
+        <span aria-hidden="true">{PLAY_GLYPH}</span>
         {S.film.play}
       </button>
       <p className={styles.hint}>{S.film.noPlayableFile}</p>

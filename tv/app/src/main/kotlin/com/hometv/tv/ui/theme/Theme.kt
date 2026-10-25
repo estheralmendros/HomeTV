@@ -4,12 +4,14 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Border
+import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Typography
 import androidx.tv.material3.darkColorScheme
@@ -20,8 +22,14 @@ object HomeTvColors {
     val Surface = Color(0xFF1A1F27)
     val SurfaceVariant = Color(0xFF262C36)
     val Primary = Color(0xFF4FA3FF)
+
+    /** Text and icons drawn on [Primary] (the card badges). */
+    val OnPrimary = Color(0xFF06121F)
     val OnBackground = Color(0xFFECEFF4)
     val Muted = Color(0xFF9AA4B2)
+
+    /** Secondary text over artwork (lighter than [Muted]; ≥ 4.5:1 over the hero/detail scrims on any image). */
+    val SecondaryOnArt = Color(0xFFC9D1DC)
     val Error = Color(0xFFFF8A80)
 
     /** The focus ring: light, 3 dp (prd3 Focus & navigation AC). */
@@ -46,6 +54,10 @@ object HomeTvFocus {
 
 private val colors = darkColorScheme(
     primary = HomeTvColors.Primary,
+    onPrimary = HomeTvColors.OnPrimary,
+    // Used by the tv-material TabRow: the selected tab's label and the dimmed pill (no library default colors).
+    onPrimaryContainer = HomeTvColors.OnBackground,
+    secondaryContainer = HomeTvColors.SurfaceVariant,
     background = HomeTvColors.Background,
     surface = HomeTvColors.Surface,
     surfaceVariant = HomeTvColors.SurfaceVariant,
@@ -63,7 +75,13 @@ private val typography = Typography(
     labelLarge = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Medium),
 )
 
+/**
+ * The screens paint the background themselves (no root `Surface`), so the default text color is
+ * provided here: without it a `Text` with no `color` falls back to Compose's black.
+ */
 @Composable
 fun HomeTvTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = colors, typography = typography, content = content)
+    MaterialTheme(colorScheme = colors, typography = typography) {
+        CompositionLocalProvider(LocalContentColor provides HomeTvColors.OnBackground, content = content)
+    }
 }

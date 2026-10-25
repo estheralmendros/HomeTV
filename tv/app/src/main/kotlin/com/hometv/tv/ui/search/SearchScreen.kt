@@ -26,6 +26,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
@@ -54,11 +55,12 @@ import com.hometv.tv.ui.theme.HomeTvDimens
 
 /** (6) Search: field (initial focus), mic (hidden without a recognizer; also KEYCODE_SEARCH), Películas / Series rows. */
 @Composable
-fun SearchScreen(vm: SearchViewModel, navigator: AppNavigator, avatar: AvatarUi?) {
+fun SearchScreen(vm: SearchViewModel, navigator: AppNavigator, avatar: AvatarUi?, showSettings: Boolean) {
     val state by vm.state.collectAsStateWithLifecycle()
     val tabs = rememberFocusRequesters<NavTab>()
     val focus = rememberFocusRequesters<String>()
     val voice = rememberVoiceInput(vm::onVoiceResult)
+    val keyboard = LocalSoftwareKeyboardController.current
     BackHandler { navigator.backToHome(NavTab.SEARCH) }
     LaunchedEffect(vm) { vm.navigation.collect(navigator::handle) }
     LaunchedEffect(Unit) { (focus[lastFocused(vm)]).requestFocusWhenReady() }
@@ -70,7 +72,7 @@ fun SearchScreen(vm: SearchViewModel, navigator: AppNavigator, avatar: AvatarUi?
             } else false
         },
     ) {
-        TopNav(NavTab.SEARCH, navigator::openTab, avatar, navigator::switchProfile, tabs)
+        TopNav(NavTab.SEARCH, navigator::openTab, avatar, navigator::switchProfile, tabs, showSettings)
         // Down from the field enters the first non-empty row at its first card.
         val firstResult = (state.films.firstOrNull() ?: state.shows.firstOrNull())?.key
         Row(Modifier.padding(horizontal = HomeTvDimens.SafeHorizontal, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -79,7 +81,8 @@ fun SearchScreen(vm: SearchViewModel, navigator: AppNavigator, avatar: AvatarUi?
                 onValueChange = vm::onQueryChange,
                 hint = stringResource(R.string.search_placeholder),
                 imeAction = ImeAction.Search,
-                onImeAction = {},
+                // The keyboard's search (lens) key closes it; results already follow the text (prd3 §5 step 1).
+                onImeAction = { keyboard?.hide() },
                 modifier = Modifier
                     .width(640.dp)
                     .focusRequester(focus[FIELD])
@@ -95,7 +98,7 @@ fun SearchScreen(vm: SearchViewModel, navigator: AppNavigator, avatar: AvatarUi?
         val noResults = state.noResults
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
             when {
-                error != null -> ScreenErrorView(error, vm::retry, onBack = { navigator.backToHome(NavTab.SEARCH) }, onChangeServer = navigator::changeServer)
+                error != null -> ScreenErrorView(error, vm::retry, onBack = { navigator.backToHome(NavTab.SEARCH) })
                 noResults != null -> Text(
                     noResults.resolve(),
                     style = MaterialTheme.typography.titleMedium,

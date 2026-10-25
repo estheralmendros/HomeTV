@@ -1,10 +1,14 @@
 package com.hometv.tv.ui
 
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.hometv.tv.core.api.Profile
 import com.hometv.tv.core.data.Session
 import com.hometv.tv.testing.TEST_SERVER
 import com.hometv.tv.testing.UiTestBase
@@ -131,7 +135,8 @@ class NavigationFocusTest : UiTestBase() {
         useLibrary()
         launch()
         press(Key.DirectionUp)
-        press(Key.DirectionRight, times = 3)
+        // Search is the lens at the left end of the bar, before Inicio (prd3 §3 step 1).
+        press(Key.DirectionLeft)
         press(Key.DirectionCenter)
         assertFocused("search_field")
         node("search_field").performTextInput("dune")
@@ -193,12 +198,45 @@ class NavigationFocusTest : UiTestBase() {
     @Test
     fun settingsOpensFromTheNavBarAndBackFocusesItsTab() {
         useLibrary()
+        api.onMe = { Profile(5, "Esther", "avatar-05", is_admin = true) }
         launch()
         press(Key.DirectionUp)
-        press(Key.DirectionRight, times = 4)
+        press(Key.DirectionRight, times = 3)
+        assertFocused("tab_SETTINGS")
         press(Key.DirectionCenter)
+        // An admin's Settings starts on [Cambiar servidor] (prd3 §11 step 3).
         assertFocused("settings_change_server")
         back()
         assertFocused("tab_SETTINGS")
+    }
+
+    @Test
+    fun aProfileThatFailedAtColdStartIsFetchedAgainOnceHomeLoads() {
+        useLibrary()
+        val home = api.onHome
+        api.onHome = { throw java.net.ConnectException("refused") }
+        api.onMe = { throw java.net.ConnectException("refused") }
+        launch()
+        assertTrue(rule.onAllNodes(hasTestTag("tab_SETTINGS"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
+        // Tailscale is up now: [Reintentar] loads Home, and the admin's profile follows (prd3 §10).
+        api.onHome = home
+        api.onMe = { Profile(5, "Esther", "avatar-05", is_admin = true) }
+        press(Key.DirectionCenter)
+        node("card_continue:film:12").assertIsDisplayed()
+        node("tab_SETTINGS").assertExists()
+        node("nav_avatar").assertExists()
+    }
+
+    @Test
+    fun aViewerHasNoSettingsTabAndRightFromSeriesGoesToTheAvatar() {
+        useLibrary() // the default test profile is a viewer
+        launch()
+        press(Key.DirectionUp)
+        press(Key.DirectionRight, times = 2)
+        assertFocused("tab_SHOWS")
+        assertTrue("no Ajustes tab for a viewer (prd3 §3 step 1)", rule.onAllNodes(hasTestTag("tab_SETTINGS"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
+        rule.onAllNodesWithText("Ajustes", useUnmergedTree = true).assertCountEquals(0)
+        press(Key.DirectionRight)
+        assertFocused("nav_avatar")
     }
 }

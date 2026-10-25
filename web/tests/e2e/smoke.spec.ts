@@ -43,7 +43,9 @@ test('profile → films grid → play a direct film → back → Continue Watchi
 
   await page.getByRole('main').getByRole('link', { name: new RegExp(FILM) }).first().click();
   await expect(page).toHaveURL(/\/films\/\d+/);
-  await page.getByRole('link', { name: 'Reproducir desde el principio' }).or(page.getByRole('link', { name: /^▶?\s*Reproducir/ })).first().click();
+  // A first run sees "Reproducir"; a later one (progress ≈ 35 s left by this test) sees "Reanudar
+  // desde 0:35" and "Ver desde el principio". The ▶ glyph is aria-hidden, but tolerate it.
+  await page.getByRole('link', { name: /^▶?\uFE0E?\s*(Ver desde el principio|Reproducir)/ }).first().click();
   await expect(page).toHaveURL(/\/watch\/film\/\d+/);
   await expect.poll(() => currentTime(page), { timeout: 10_000 }).toBeGreaterThan(2);
 

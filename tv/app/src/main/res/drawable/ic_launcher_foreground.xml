@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- The web app's logo mark: the accent-red play triangle, centered in the adaptive-icon safe zone (prd3 Brand). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#FF4FA3FF" android:pathData="M54,30a24,24 0,1 1,0 48a24,24 0,1 1,0 -48z" />
-    <path android:fillColor="#FF0E1116" android:pathData="M48,42v24l19,-12z" />
+    <path android:fillColor="#FFE50914" android:pathData="M42,35v38l32,-19z" />
 </vector>

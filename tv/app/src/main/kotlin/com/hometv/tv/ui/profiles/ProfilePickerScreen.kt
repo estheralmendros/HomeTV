@@ -40,14 +40,14 @@ import com.hometv.tv.ui.theme.HomeTvFocus
 
 /** (2) "¿Quién está viendo?": up to 2 rows of 6 avatars, focus on the last used profile, OK signs in (no PIN). */
 @Composable
-fun ProfilePickerScreen(vm: ProfilesViewModel, onSignedIn: () -> Unit, onBack: () -> Unit, onChangeServer: () -> Unit) {
+fun ProfilePickerScreen(vm: ProfilesViewModel, onSignedIn: () -> Unit, onBack: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     BackHandler(onBack = onBack)
     LaunchedEffect(vm) { vm.events.collect { if (it is ProfilesEvent.SignedIn) onSignedIn() } }
     Box(Modifier.fillMaxSize().background(HomeTvColors.Background)) {
         when (val s = state) {
             ProfilesUiState.Loading -> LoadingScreen()
-            is ProfilesUiState.Error -> ScreenErrorView(s.error, onRetry = vm::retry, onBack = onBack, onChangeServer = onChangeServer)
+            is ProfilesUiState.Error -> ScreenErrorView(s.error, onRetry = vm::retry, onBack = onBack)
             is ProfilesUiState.Content -> Profiles(s, vm::select)
         }
     }

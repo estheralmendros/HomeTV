@@ -471,3 +471,23 @@ async def test_film_detail_cast_limit(client, db, user, app):
 async def test_film_detail_404(client, user):
     r = await client.get("/api/films/999", headers=user.headers)
     assert r.status_code == 404 and r.json()["error"]["code"] == "not_found"
+
+
+async def test_watched_filter_is_per_profile(client, db, user, admin):
+    """PRD §10 list filters: `watched` (in-progress counts as not watched)."""
+    with db.write_session() as s:
+        seen = add_film(s, "Alien")
+        started = add_film(s, "Blade Runner")
+        add_film(s, "Casablanca")
+        add_progress(s, user.id, film_id=seen.id, watched=True, watched_at=T0)
+        add_progress(s, user.id, film_id=started.id, position=600.0)
+        add_progress(s, admin.id, film_id=started.id, watched=True, watched_at=T0)
+    watched = await _list(client, user, "?watched=true")
+    assert (_titles(watched), watched["total"]) == (["Alien"], 1)
+    unwatched = await _list(client, user, "?watched=false")
+    assert (_titles(unwatched), unwatched["total"]) == (["Blade Runner", "Casablanca"], 2)
+    assert _titles(await _list(client, user)) == ["Alien", "Blade Runner", "Casablanca"]
+    assert _titles(await _list(client, admin, "?watched=true")) == ["Blade Runner"]
+    for value in ("maybe", "1", "yes", "on", "True"):  # only the literal true|false
+        r = await client.get(f"/api/films?watched={value}", headers=user.headers)
+        assert (r.status_code, r.json()["error"]["code"]) == (422, "validation_error"), value

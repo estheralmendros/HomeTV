@@ -1,7 +1,9 @@
 package com.hometv.tv.ui
 
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.hometv.tv.core.data.FakeHomeTvApi.Companion.httpError
@@ -27,7 +29,8 @@ open class LanguageAndErrorsTest : UiTestBase() {
         launch()
         text("Seguir viendo").assertIsDisplayed()
         text("Inicio").assertIsDisplayed()
-        text("Ajustes").assertIsDisplayed()
+        // The default test profile is a viewer: "Ajustes" is admin-only (prd3 §3 step 1, TopNavFocusTest).
+        rule.onAllNodesWithText("Ajustes", useUnmergedTree = true).assertCountEquals(0)
         press(Key.DirectionDown)
         press(Key.DirectionRight)
         press(Key.DirectionCenter)
@@ -44,7 +47,7 @@ open class LanguageAndErrorsTest : UiTestBase() {
         api.onHome = { throw ConnectException("refused") }
         launch()
         text("No se puede conectar con tu servidor HomeTV en hometv.tail1234.ts.net. Puede que Tailscale esté desconectado; suele pasar después de reiniciar el televisor.").assertIsDisplayed()
-        text("Cambiar servidor").assertIsDisplayed()
+        assertTrue("no [Cambiar servidor] on the Connection Error (prd3 §10)", rule.onAllNodes(androidx.compose.ui.test.hasText("Cambiar servidor")).fetchSemanticsNodes().isEmpty())
         assertTrue("Tailscale is not installed: no [Abrir Tailscale]", rule.onAllNodes(androidx.compose.ui.test.hasText("Abrir Tailscale")).fetchSemanticsNodes().isEmpty())
         api.onHome = home
         press(Key.DirectionCenter)

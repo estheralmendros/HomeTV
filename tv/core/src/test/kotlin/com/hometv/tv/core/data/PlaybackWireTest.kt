@@ -93,6 +93,10 @@ class PlaybackWireTest {
         t.route("GET", path) { MockResponse().setResponseCode(502) }
         assertEquals(SubtitleFetch.Unavailable(null), source.fetch(url))
 
+        // Over the 16 MiB subtitle cap: not a network failure (no retries), the track is unavailable.
+        t.route("GET", path) { MockResponse().setBody("WEBVTT\n\n" + "a".repeat(17 shl 20)) }
+        assertEquals(SubtitleFetch.Unavailable(null), source.fetch(url))
+
         t.route("GET", path) { t.error(401, "unauthorized") }
         assertThrows<ApiException.Unauthorized> { source.fetch(url) }
         t.route("GET", path) { t.networkFailure() }

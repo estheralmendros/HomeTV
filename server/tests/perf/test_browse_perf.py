@@ -200,7 +200,9 @@ async def test_browse_p95(client, app, db, capsys):
             f"/api/films?q={rng.choice(WORDS)}&genre=18&year_from=1960&sort=year"
         ),
         "GET /api/films/{id}": lambda: f"/api/films/{rng.randint(1, FILMS)}",
+        "GET /api/films?watched=false&sort=added": lambda: "/api/films?watched=false&sort=added",
         "GET /api/shows": lambda: f"/api/shows?page={rng.randint(1, 4)}",
+        "GET /api/shows?watched=true": lambda: "/api/shows?watched=true",
         "GET /api/shows/{id}": lambda: f"/api/shows/{rng.randint(1, SHOWS)}",
         "GET /api/shows/{id}/seasons/{n}": lambda: (
             f"/api/shows/{rng.randint(1, SHOWS)}/seasons/{rng.randint(1, SEASONS)}"

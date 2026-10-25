@@ -520,8 +520,9 @@ class LibraryCounts(BaseModel):
 
 
 class HomeResponse(BaseModel):
+    # In-progress films + exactly one card per show (its latest in-progress episode or its Next Up
+    # episode, whichever has the latest activity), newest first (prd.md §9, Rev 13/14).
     continue_watching: list[Annotated[FilmSummary | HomeEpisode, Field(discriminator="type")]]
-    next_up: list[HomeEpisode]
     recently_added: list[Annotated[FilmSummary | ShowSummary, Field(discriminator="type")]]
     library: LibraryCounts
 

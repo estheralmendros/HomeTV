@@ -55,17 +55,16 @@ Tailscale's official Android app supports Android TV (Android 8.0+).
 3. In the Tailscale admin console: **Machines → Add device → Client device → Android → Input code**, enter the code and **Submit** (or scan the QR code).
 4. Confirm the TV shows up in the Machines list.
 
-## 5. Make the server tailnet-only
-1. Install Tailscale on the server and join the same tailnet. The Compose stack in `deploy/`
-   does this with a Tailscale sidecar (see the server installation guides linked at the top).
-2. Publish the server over HTTPS, for example with:
-   ```bash
-   tailscale serve --bg <app-port>
-   ```
-   This exposes it at `https://<machine>.<tailnet>.ts.net` with a valid certificate. The release
-   app accepts only `https://` addresses, so a bare Tailscale IP (`http://100.x.y.z`) does not work.
-3. Restrict access with tailnet **ACLs** so only your chosen devices can reach the server (tag
-   the TV `tag:media-client`, per prd.md).
+## 5. Let the TV reach the server
+1. Nothing to install on the server: the Compose stack in `deploy/` already runs Tailscale as a
+   sidecar and publishes HomeTV over HTTPS at `https://hometv.<tailnet>.ts.net` (see the server
+   installation guide linked at the top). Don't install Tailscale or run `tailscale serve` on the
+   server host as well: that would add a second node.
+2. In the Tailscale admin console, tag the TV `tag:media-client` (**Machines → … → Edit ACL
+   tags**). The server guide's ACL only lets devices with that tag (and the admin's own) reach
+   the server.
+3. The release app accepts only `https://` addresses, so a bare Tailscale IP
+   (`http://100.x.y.z`) does not work.
 4. The app itself needs nothing Tailscale-specific: Tailscale runs as a system VPN.
 
 ## 6. First launch
@@ -75,7 +74,10 @@ Tailscale's official Android app supports Android TV (Android 8.0+).
    (`https://hometv.<tailnet>.ts.net`; `https://` is added if you leave it out) and press
    **Conectar**.
 3. Pick a profile. No PIN is asked on the TV, not even for the admin profile.
-4. To change the server or profile later, go to **Ajustes**.
+4. To change the profile later, select your avatar at the right end of the top bar → **Cambiar de perfil** (admins
+   also find it in **Ajustes**). The **Ajustes** tab, and its **Cambiar servidor** button, are shown only to admin
+   profiles; **Cambiar servidor** asks for the admin PIN (the server checks it, so it must be reachable). If the old server is gone for
+   good, clear the app's data (Settings → Apps → HomeTV → Clear data) or reinstall it to start from the setup screen.
 
 If you see "No se puede conectar con tu servidor HomeTV", open the Tailscale app on the TV
 (the **Abrir Tailscale** button does this) and check that it says *Connected*.
@@ -83,8 +85,8 @@ If you see "No se puede conectar con tu servidor HomeTV", open the Tailscale app
 ## Gotchas
 - After the TV reboots, check that Tailscale reconnects automatically; otherwise the app can't reach the server.
 - At home, Tailscale connects TV and server directly over the LAN, so there's no performance penalty.
-- If you use **casting** instead of the native app, the Chromecast fetches the video itself, so it must have Tailscale installed too.
 - Hotel / captive-portal Wi-Fi may block Tailscale when travelling.
+- **Spanish keyboard (ñ)**: the app asks the keyboard for Spanish, but Gboard only switches to it when Spanish is one of its languages. Add it once in the TV's settings (Settings → System → Keyboard → Gboard settings → Languages → add "Español (España)"; menu names vary by TV). Without it, "ñ" is still there: long-press OK on "n".
 
 ## Sources
 - [Install Tailscale on Android – Tailscale docs](https://tailscale.com/docs/install/android.md)
