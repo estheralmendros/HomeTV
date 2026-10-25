@@ -37,8 +37,11 @@ open class ScriptedApi : FakeHomeTvApi() {
     var onProfiles: suspend () -> ProfileList = { ProfileList(emptyList()) }
     var onCreateSession: suspend (Long) -> SessionResponse = { id -> session("tok-$id", id) }
     var onMe: suspend () -> Profile = { Profile(5, "Esther", "avatar-05") }
+    /** `POST /api/admin/unlock`: the PIN check behind the server change (prd3 §11 step 3). */
+    var onUnlock: suspend (pin: String) -> com.hometv.tv.core.api.UnlockResponse = { throw httpError(401, "invalid_pin") }
     var onHome: suspend (Int) -> HomeResponse = { HomeResponse() }
     var onFilms: suspend (page: Int, pageSize: Int, sort: String, order: String) -> Page<FilmSummary> = { p, s, _, _ -> Page(emptyList(), p, s, 0) }
+    var onGenres: suspend (type: String) -> com.hometv.tv.core.api.GenreList = { com.hometv.tv.core.api.GenreList() }
     var onShows: suspend (page: Int, pageSize: Int, sort: String, order: String) -> Page<ShowSummary> = { p, s, _, _ -> Page(emptyList(), p, s, 0) }
     var onFilm: suspend (Long) -> FilmDetail = { throw httpError(404, "not_found") }
     var onShow: suspend (Long) -> ShowDetail = { throw httpError(404, "not_found") }
@@ -62,11 +65,17 @@ open class ScriptedApi : FakeHomeTvApi() {
     override suspend fun profiles(): ProfileList = log("GET /api/profiles") { onProfiles() }
     override suspend fun createSession(profileId: Long): SessionResponse = log("POST /api/profiles/$profileId/session") { onCreateSession(profileId) }
     override suspend fun me(): Profile = log("GET /api/me") { onMe() }
+    override suspend fun unlock(body: com.hometv.tv.core.api.UnlockRequest): com.hometv.tv.core.api.UnlockResponse = log("POST /api/admin/unlock") { onUnlock(body.pin) }
     override suspend fun home(limit: Int): HomeResponse = log("GET /api/home?limit=$limit") { onHome(limit) }
-    override suspend fun films(page: Int, pageSize: Int, sort: String, order: String): Page<FilmSummary> =
-        log("GET /api/films?page=$page&page_size=$pageSize&sort=$sort&order=$order") { onFilms(page, pageSize, sort, order) }
-    override suspend fun shows(page: Int, pageSize: Int, sort: String, order: String): Page<ShowSummary> =
-        log("GET /api/shows?page=$page&page_size=$pageSize&sort=$sort&order=$order") { onShows(page, pageSize, sort, order) }
+    override suspend fun films(page: Int, pageSize: Int, sort: String, order: String, genre: Long?, yearFrom: Int?, yearTo: Int?, watched: Boolean?): Page<FilmSummary> =
+        log("GET /api/films?page=$page&page_size=$pageSize&sort=$sort&order=$order${filters(genre, yearFrom, yearTo, watched)}") { onFilms(page, pageSize, sort, order) }
+    override suspend fun shows(page: Int, pageSize: Int, sort: String, order: String, genre: Long?, yearFrom: Int?, yearTo: Int?, watched: Boolean?): Page<ShowSummary> =
+        log("GET /api/shows?page=$page&page_size=$pageSize&sort=$sort&order=$order${filters(genre, yearFrom, yearTo, watched)}") { onShows(page, pageSize, sort, order) }
+    override suspend fun genres(type: String): com.hometv.tv.core.api.GenreList = log("GET /api/genres?type=$type") { onGenres(type) }
+
+    /** The optional list filters, in the order the server's query string uses them. */
+    private fun filters(genre: Long?, yearFrom: Int?, yearTo: Int?, watched: Boolean?): String =
+        listOfNotNull(genre?.let { "&genre=$it" }, yearFrom?.let { "&year_from=$it" }, yearTo?.let { "&year_to=$it" }, watched?.let { "&watched=$it" }).joinToString("")
     override suspend fun film(id: Long): FilmDetail = log("GET /api/films/$id") { onFilm(id) }
     override suspend fun show(id: Long): ShowDetail = log("GET /api/shows/$id") { onShow(id) }
     override suspend fun season(showId: Long, seasonNumber: Int): SeasonDetail = log("GET /api/shows/$showId/seasons/$seasonNumber") { onSeason(showId, seasonNumber) }

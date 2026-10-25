@@ -67,7 +67,8 @@ prd.md is a contract: change the PRD first, then the code.
     D10–D13), `playerMachine` (reducer), `tracks`, `nextEpisode`, `progressSync`; I/O hooks
     `usePlaybackSession` (POST/preparing/attach/keep-alive/D9/recovery/exit), `attachSource`
     (direct, hls.js, native iOS HLS), `useProgressReporter` (`PositionTracker` attach
-    generations), `subtitleLoader` (Bearer fetch → blob `<track>`); `PlayerRoute` is the stable
+    generations), `subtitleLoader` (Bearer fetch → blob `<track>`), `useMediaSession` (headset/
+    lock-screen play/pause/seek handlers + metadata, feature-detected); `PlayerRoute` is the stable
     shell (fullscreen root + the single `<video>`, `PlayerShellContext`), `PlayerPage` is keyed by
     `pathname + ?file=` and holds all per-playback state.
   - `src/features/<screen>/` (setup, profiles, home, library, search, film, show, admin, about),
@@ -96,10 +97,12 @@ prd.md is a contract: change the PRD first, then the code.
     `AuthInterceptor` Bearer for the server host only), `data/` (`SessionStore` StateFlow +
     `InMemorySessionStore`, `SessionGuard` single-flight `renew` → Renewed|ProfileGone|Unreachable,
     `withRenewal(Origin.Foreground|Background)`, repositories, `AppEvents`, `NextEpisodeResolver`
-    (D12), `PlaybackRepository` (`preparing` loop as a `Flow<PlaybackProgress>`, POSTs in
+    (D12), `ProfileRepository.verifyAdminPin` → `PinCheck` (the only PIN on the TV: server change; an
+    expired token renews once, `invalid_pin` never renews), `PlaybackRepository` (`preparing` loop as a `Flow<PlaybackProgress>`, POSTs in
     `appScope`; `subtitleLoop`, keep-alive, DELETE)), `playback/` (pure `ClientCapsBuilder`,
     `VersionSelector` (D10–D13), `TrackRules`, `TrackCheck`, `PlaybackErrorMapper`,
-    `PlaybackPlanner`, `SeekAccumulator`, `ProgressReporter`, the `PlayerController` interface),
+    `PlaybackPlanner`, `SeekAccumulator`, `ProgressReporter`, the `PlayerController` interface (its `Listener.onRemote*` carry
+    media-session commands, no Media3 types in `core`)),
     `util/` (`ServerUrl`, `Format` (constant es-ES), `LanguageNames`).
     `src/testFixtures`: `FakeHomeTvApi`, `TestServer` (MockWebServer routing), `F` media files.
   - `app/` (`com.hometv.tv`): `MainActivity` (offers every key to `KeyDispatch` before Compose
@@ -113,11 +116,12 @@ prd.md is a contract: change the PRD first, then the code.
     `playback/` (`AndroidCodecInventory`, `PlayerFactory` (`AUDIO_ATTRIBUTES` shared with the
     passthrough query), `HomeTvLoadErrorHandlingPolicy`, `MediaItemBuilder`, `SubtitleFileCache`
     (`get` answers from an in-memory index, no disk I/O), `ExoPlayerController` (the ExoPlayer is
-    private; `attach/detach(PlayerView)`), `ExoTrackMapper`), `ui/`
+    private; `attach/detach(PlayerView)`; owns a Media3 `MediaSession` over `RemoteCommandPlayer`
+    while attached), `ExoTrackMapper`), `ui/`
     (`HomeTvRoot` NavHost, `navigation/` (`Route`, `AppNavigator`), `text/` (`UiText`,
     `UiFormat`, `StringResolver`), `components/`, one package per screen; `player/`
-    (`PlayerViewModel` session state machine, `HlsSessionOwner` (HLS DELETEs and row-33 orphans in
-    `appScope`), `PlayerScreen` with Media3 `PlayerView`, overlay, track dialog, countdown, error
+    (`PlayerViewModel` session state machine, `NextEpisodeResolution` (next-episode state + retry),
+    `HlsSessionOwner` (HLS DELETEs and row-33 orphans in `appScope`), `PlayerScreen` with Media3 `PlayerView`, overlay, track dialog, countdown, error
     screen)). `res/values/strings.xml` is the only catalog; the APK keeps only `es` resources
     (`localeFilters`).
   - Tests: `app/src/test` (ViewModel/glue tests, JUnit 5; `ui/player/PlayerSessionStateTest` covers
@@ -249,11 +253,16 @@ prd.md is a contract: change the PRD first, then the code.
   Compose through `ui/text/UiFormat`. Composables read text only via `stringResource` /
   `pluralStringResource`; `NoHardcodedUiTextTest` scans `Text(`, `text =`, `contentDescription =`…
   and ViewModel literals.
+- **Colors**: `HomeTvTheme` provides `LocalContentColor = HomeTvColors.OnBackground` (the screens paint their own
+  background, there is no root `Surface`), so a `Text` without `color` is light. Content drawn on a light fill
+  (`HomeTvColors.Primary`) sets `HomeTvColors.OnPrimary` explicitly. `ThemeLegibilityTest` checks contrast.
 - **Catalog**: Spanish only, `values/strings.xml`, no `values-<lang>/`. Templates use `%1$s` only
   (never `%d`/`%f`, `StringsCatalogTest`); numbers are pre-formatted by `Format` (es-ES). Plurals:
   `pluralStringResource(R.plurals.x, n, Format.count(n))`.
 - **Tests**: JUnit 5 + coroutines-test with virtual time (no real sleeps); core fakes come from
   `testFixtures`. Focus/navigation tests live in `src/sharedTest` and run on the JVM with
   Robolectric (`UiTestBase.press(Key…)`, `back()`, `assertFocused(tag)`); keep them there so they
-  stay runnable without an emulator. Drive the player through `FakePlayerController`; never touch
+  stay runnable without an emulator. The app JVM suite runs with Robolectric **native graphics**
+  (`robolectric.graphicsMode=NATIVE` in `app/build.gradle.kts`): real text metrics, so layout and focus
+  bugs that only show on a device fail here too. Drive the player through `FakePlayerController`; never touch
   ExoPlayer outside `ExoPlayerController`.

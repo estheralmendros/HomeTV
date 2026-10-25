@@ -282,7 +282,7 @@ async def create_profile(body: ProfileCreateRequest, db: Db) -> Profile:
     response_model=Profile,
     responses={
         404: {"model": ErrorResponse, "description": "not_found"},
-        409: {"model": ErrorResponse, "description": "name_taken | last_admin"},
+        409: {"model": ErrorResponse, "description": "name_taken | last_admin | conflict"},
     },
 )
 async def update_profile(profile_id: int, body: ProfileUpdateRequest, db: Db) -> Profile:

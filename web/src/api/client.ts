@@ -123,7 +123,13 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
   if (response.status === 204) return undefined as T;
   if (responseType === 'text') return (await response.text()) as T;
   const text = await response.text();
-  return (text === '' ? undefined : JSON.parse(text)) as T;
+  if (text === '') return undefined as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    // A 2xx that is not JSON (a proxy page, the SPA's index.html…).
+    throw new ApiError({ status: response.status, code: 'invalid_response', message: 'Response body is not JSON' });
+  }
 }
 
 /** Wait before a retry: `retryAfter ?? fallback`, clamped to 1–60 s. */

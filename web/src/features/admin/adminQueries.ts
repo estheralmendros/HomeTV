@@ -49,6 +49,8 @@ export function useUnmatchedQuery(params: UnmatchedQuery) {
 // The dialog also opens from detail pages (no RequireAdmin around it), so these run through
 // useAdminAction: a missing/expired admin token prompts the keypad instead of disabling them.
 // No client retries: the server already retries TMDB, and errors must show (and fall back) at once.
+// They are not gated by `enabled: token !== null` either, so no background refetch (window focus,
+// reconnect) may run them: it could pop the PIN keypad unprompted after the token was cleared.
 
 export interface TmdbSearchParams {
   type: TmdbType;
@@ -62,6 +64,8 @@ export const tmdbSearchQuery = (run: RunAdminAction, params: TmdbSearchParams) =
     queryFn: ({ signal }) => run(() => tmdbSearch(params.type, params.q, params.year, signal), S.fixMatch.action),
     staleTime: staleTimes.adminTmdb,
     retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
 export const tmdbSeasonsQuery = (run: RunAdminAction, tmdbId: number) =>
@@ -70,6 +74,8 @@ export const tmdbSeasonsQuery = (run: RunAdminAction, tmdbId: number) =>
     queryFn: ({ signal }) => run(() => tmdbSeasons(tmdbId, signal), S.fixMatch.action),
     staleTime: staleTimes.adminTmdb,
     retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
 export const tmdbSeasonQuery = (run: RunAdminAction, tmdbId: number, seasonNumber: number) =>
@@ -78,4 +84,6 @@ export const tmdbSeasonQuery = (run: RunAdminAction, tmdbId: number, seasonNumbe
     queryFn: ({ signal }) => run(() => tmdbSeason(tmdbId, seasonNumber, signal), S.fixMatch.action),
     staleTime: staleTimes.adminTmdb,
     retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });

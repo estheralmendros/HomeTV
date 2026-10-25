@@ -45,6 +45,15 @@ class HomeCacheTest {
     }
 
     @Test
+    fun `an old cache file that still has next_up (prd md Rev 12 and earlier) reads without failing`() = runTest {
+        val legacy = Fixtures.home.replace("\"recently_added\": [", "\"next_up\": [ { \"type\": \"episode\", \"id\": 346, \"show_id\": 7, \"show_title\": \"The Office\", \"season_number\": 2, \"episode_number\": 4 } ], \"recently_added\": [")
+        File(dir, "5.json").writeText("""{ "home": $legacy, "films": [], "shows": [] }""")
+        val read = cache.read(5)!!
+        assertEquals(listOf("film:12", "episode:345"), read.home.continue_watching.map { it.key })
+        assertEquals(listOf("show:7"), read.home.recently_added.filterNot { it is com.hometv.tv.core.api.UnknownSummary }.map { it.key })
+    }
+
+    @Test
     fun `a missing or corrupt file reads as no cache`() = runTest {
         assertNull(cache.read(9))
         File(dir, "9.json").writeText("{ not json")

@@ -69,8 +69,9 @@ Naming rules that give the best matches:
 - **Series**: `Show/Season NN/Show SxxEyy.ext`. Double episodes (`S01E01E02`) and absolute
   numbers (`One Piece - 105.mkv` inside `Season 05`) also work.
 - **Subtitles**: next to the video, named like it plus a language and an optional `forced`
-  flag: `Movie (2020).es.srt`, `Movie (2020).en.forced.srt`. `.srt`, `.ass`, `.ssa`, `.vtt`,
-  `.sup` and `.idx/.sub` are recognized; subtitles inside the video file are found automatically.
+  flag: `Movie (2020).es.srt`, `Movie (2020).en.forced.srt`. `.srt`, `.ass`, `.ssa` and `.vtt`
+  are recognized; subtitles inside the video file are found automatically. Image subtitle files
+  (`.sup`, `.idx/.sub`) are listed in the subtitle menu but can't be displayed.
 - Extras are ignored: folders named `Extras`, `Featurettes`, `Behind the Scenes`, `Deleted Scenes`,
   `Trailers` or `Sample`, and files ending in `-trailer` or `-sample`.
 
@@ -223,6 +224,7 @@ Without it, `hometv` registers again as a new machine (and may get a different n
 - **A film or episode is missing or misnamed.** Look in *Administración → Sin identificar*,
   rename the file following step 2 and rescan, or use **Corregir identificación** (needs a TMDB
   key).
-- **"El servidor ya está emitiendo en el número máximo de dispositivos".** By default, 3 screens
-  can watch converted (HLS) video at the same time. Raise `HOMETV_MAX_SESSIONS` if the machine
+- **"El servidor ya está convirtiendo el número máximo de vídeos"** (web) **or "El servidor ya
+  está emitiendo en el número máximo de dispositivos"** (TV). By default, 4 screens can watch
+  converted (HLS) video at the same time. Raise `HOMETV_MAX_SESSIONS` if the machine
   can take it.

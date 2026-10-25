@@ -95,7 +95,7 @@ class ScanSettings(_Section):
 
 
 class PlaybackSettings(_Section):
-    max_sessions: int = Field(3, ge=0)
+    max_sessions: int = Field(4, ge=0)
     hls_dir: Annotated[Path | None, EmptyIsNone] = None  # filled with {data_dir}/hls by Settings
     hls_segment_seconds: int = Field(6, ge=1)
     hls_ahead_seconds: int = Field(120, ge=0)

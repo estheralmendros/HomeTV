@@ -7,6 +7,7 @@ import { renderWithProviders } from '../../tests/renderWithProviders';
 import { setTokenGetter } from '@/api/client';
 import { Artwork } from './Artwork';
 import { Avatar, ProfileAvatar, avatarColor, initialOf } from './Avatar';
+import { CastRow } from './CastRow';
 import { EmptyState } from './EmptyState';
 import { EpisodeCard } from './EpisodeCard';
 import { ErrorState } from './ErrorState';
@@ -17,6 +18,21 @@ import { Row } from './Row';
 import { SkeletonGrid, SkeletonRow } from './Skeleton';
 import { ToastProvider, useToast } from './Toast';
 import { WatchedToggle } from './WatchedToggle';
+
+describe('CastRow', () => {
+  it('renders a person listed twice (two characters) without a duplicate-key warning', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const cast = [
+      f.castMember({ person_id: 7, name: 'Tom Hardy', character: 'Ronnie Kray', profile_image: null }),
+      f.castMember({ person_id: 7, name: 'Tom Hardy', character: 'Reggie Kray', profile_image: null }),
+    ];
+    renderWithProviders(<CastRow cast={cast} />);
+    expect(screen.getByText('Ronnie Kray')).toBeInTheDocument();
+    expect(screen.getByText('Reggie Kray')).toBeInTheDocument();
+    expect(errors).not.toHaveBeenCalled();
+    errors.mockRestore();
+  });
+});
 
 describe('PosterCard', () => {
   it('is a link named "Dune (2021)" with a lazy tokenized poster and 2x srcset', () => {

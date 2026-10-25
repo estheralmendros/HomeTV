@@ -3,6 +3,7 @@ package com.hometv.tv.core.data
 import com.hometv.tv.core.api.EpisodeDetail
 import com.hometv.tv.core.api.FilmDetail
 import com.hometv.tv.core.api.FilmSummary
+import com.hometv.tv.core.api.Genre
 import com.hometv.tv.core.api.HomeResponse
 import com.hometv.tv.core.api.HomeTvApi
 import com.hometv.tv.core.api.Page
@@ -20,10 +21,10 @@ enum class BrowseSort(val sort: String, val order: String) {
     YEAR_DESC("year", "desc"),
     YEAR_ASC("year", "asc"),
     ADDED_DESC("added", "desc"),
-    ;
-
-    fun next(): BrowseSort = entries[(ordinal + 1) % entries.size]
 }
+
+/** Browse filters (prd3 §4 step 2): a TMDB genre id and an inclusive year range; null = not set. */
+data class BrowseFilter(val genreId: Long? = null, val yearFrom: Int? = null, val yearTo: Int? = null, val watched: Boolean? = null)
 
 /** Catalog reads (prd3 §3–§7). Every call renews the session silently on a 401 (§2.5). */
 class CatalogRepository(
@@ -37,17 +38,19 @@ class CatalogRepository(
     suspend fun home(limit: Int = HOME_ROW_LIMIT): HomeResponse = call { home(limit) }.let { home ->
         home.copy(
             continue_watching = home.continue_watching.filterNot { it is UnknownSummary },
-            next_up = home.next_up.filterNot { it is UnknownSummary },
             recently_added = home.recently_added.filterNot { it is UnknownSummary },
         )
     }
 
     /** Home's Films row uses `films(1, 20, ADDED_DESC)`; Browse uses pages of 50. */
-    suspend fun films(page: Int = 1, pageSize: Int = BROWSE_PAGE_SIZE, sort: BrowseSort = BrowseSort.TITLE_ASC): Page<FilmSummary> =
-        call { films(page, pageSize, sort.sort, sort.order) }
+    suspend fun films(page: Int = 1, pageSize: Int = BROWSE_PAGE_SIZE, sort: BrowseSort = BrowseSort.TITLE_ASC, filter: BrowseFilter = BrowseFilter()): Page<FilmSummary> =
+        call { films(page, pageSize, sort.sort, sort.order, filter.genreId, filter.yearFrom, filter.yearTo, filter.watched) }
 
-    suspend fun shows(page: Int = 1, pageSize: Int = BROWSE_PAGE_SIZE, sort: BrowseSort = BrowseSort.TITLE_ASC): Page<ShowSummary> =
-        call { shows(page, pageSize, sort.sort, sort.order) }
+    suspend fun shows(page: Int = 1, pageSize: Int = BROWSE_PAGE_SIZE, sort: BrowseSort = BrowseSort.TITLE_ASC, filter: BrowseFilter = BrowseFilter()): Page<ShowSummary> =
+        call { shows(page, pageSize, sort.sort, sort.order, filter.genreId, filter.yearFrom, filter.yearTo, filter.watched) }
+
+    /** `GET /api/genres?type=films|shows` (the Browse genre filter). */
+    suspend fun genres(type: String): List<Genre> = call { genres(type) }.items
 
     suspend fun film(id: Long): FilmDetail = call { film(id) }
 

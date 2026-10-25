@@ -18,18 +18,20 @@ const parse = (search: string) => parseLibraryParams(new URLSearchParams(search)
 describe('parseLibraryParams / libraryParamsToSearch', () => {
   it('defaults to sort=title&order=asc with no filters', () => {
     expect(parse('')).toEqual(DEFAULT_LIBRARY_PARAMS);
-    expect(DEFAULT_LIBRARY_PARAMS).toEqual({ q: '', sort: 'title', order: 'asc', genre: null, yearFrom: null, yearTo: null });
+    expect(DEFAULT_LIBRARY_PARAMS).toEqual({ q: '', sort: 'title', order: 'asc', genre: null, yearFrom: null, yearTo: null, watched: null });
   });
 
   it('reads every param', () => {
-    expect(parse('q=dune&sort=year&order=asc&genre=878&year_from=1990&year_to=2009')).toEqual({
+    expect(parse('q=dune&sort=year&order=asc&genre=878&year_from=1990&year_to=2009&watched=false')).toEqual({
       q: 'dune',
       sort: 'year',
       order: 'asc',
       genre: 878,
       yearFrom: 1990,
       yearTo: 2009,
+      watched: false,
     });
+    expect(parse('watched=true').watched).toBe(true);
   });
 
   it('applies the default order of the sort when order is absent (title→asc, year→desc, added→desc)', () => {
@@ -39,7 +41,7 @@ describe('parseLibraryParams / libraryParamsToSearch', () => {
   });
 
   it('ignores invalid values', () => {
-    expect(parse('sort=rating&order=up&genre=abc&year_from=1800&year_to=20x9&q=%20%20')).toEqual(DEFAULT_LIBRARY_PARAMS);
+    expect(parse('sort=rating&order=up&genre=abc&year_from=1800&year_to=20x9&q=%20%20&watched=yes')).toEqual(DEFAULT_LIBRARY_PARAMS);
     expect(parse('genre=-3&year_from=2101').genre).toBeNull();
   });
 
@@ -50,9 +52,9 @@ describe('parseLibraryParams / libraryParamsToSearch', () => {
 
   it('writes only non-default values and round-trips', () => {
     expect(libraryParamsToSearch(DEFAULT_LIBRARY_PARAMS).toString()).toBe('');
-    const p: LibraryParams = { q: 'blade runner', sort: 'year', order: 'asc', genre: 18, yearFrom: 1980, yearTo: null };
+    const p: LibraryParams = { q: 'blade runner', sort: 'year', order: 'asc', genre: 18, yearFrom: 1980, yearTo: null, watched: true };
     const search = libraryParamsToSearch(p);
-    expect(search.toString()).toBe('q=blade+runner&sort=year&order=asc&genre=18&year_from=1980');
+    expect(search.toString()).toBe('q=blade+runner&sort=year&order=asc&genre=18&year_from=1980&watched=true');
     expect(parseLibraryParams(search)).toEqual(p);
     expect(libraryParamsToSearch({ ...DEFAULT_LIBRARY_PARAMS, sort: 'added', order: 'desc' }).toString()).toBe('sort=added');
   });
@@ -70,17 +72,21 @@ describe('filters and API query', () => {
     expect(hasFilters({ ...DEFAULT_LIBRARY_PARAMS, q: 'x' })).toBe(true);
     expect(hasFilters({ ...DEFAULT_LIBRARY_PARAMS, genre: 18 })).toBe(true);
     expect(hasFilters({ ...DEFAULT_LIBRARY_PARAMS, yearTo: 2000 })).toBe(true);
+    expect(hasFilters({ ...DEFAULT_LIBRARY_PARAMS, watched: false })).toBe(true);
   });
 
   it('maps to the API params, omitting empty values', () => {
     expect(toLibraryQuery(DEFAULT_LIBRARY_PARAMS)).toEqual({ sort: 'title', order: 'asc' });
-    expect(toLibraryQuery({ q: 'dune', sort: 'added', order: 'desc', genre: 878, yearFrom: 1990, yearTo: 2009 })).toEqual({
+    expect(
+      toLibraryQuery({ q: 'dune', sort: 'added', order: 'desc', genre: 878, yearFrom: 1990, yearTo: 2009, watched: false }),
+    ).toEqual({
       q: 'dune',
       sort: 'added',
       order: 'desc',
       genre: 878,
       year_from: 1990,
       year_to: 2009,
+      watched: false,
     });
   });
 });

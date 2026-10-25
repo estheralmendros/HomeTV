@@ -8,7 +8,7 @@ from pathlib import Path
 import httpx
 import pytest
 import respx
-from sqlalchemy import func, select
+from sqlalchemy import event, func, select
 
 from hometv.api.errors import ApiError
 from hometv.db import models as m
@@ -159,6 +159,70 @@ async def test_film_enrichment_stores_details_genres_cast_and_artwork(
     for size in ("w780", "w1280"):
         assert (art / size / "jYEW5xZkZk2WTrdbMGAPFuBqbDc.jpg").exists()
     assert not (art / "w185").exists()  # profiles are lazy
+
+
+async def test_cast_keeps_one_credit_per_person_first_by_billing_order(
+    mdb, media: MediaTree, settings, stub_probe, tmdb, client, artwork
+):
+    """TMDB can credit one person twice (two roles): ``cast`` must not repeat a person_id."""
+    media.add("Dune (2021)/Dune (2021).mkv")
+    details = load("movie_438631.json")
+    cast = details["credits"]["cast"]
+    # Actor 19 (order 0) also plays a later role; actor 0 (order 19) also appears earlier.
+    cast.append({**cast[19], "character": "Second role", "order": 5})
+    cast.append({**cast[0], "character": "Cameo", "order": 1})
+    tmdb.on_search("movie", "Dune", load("search_movie_dune.json")["results"])
+    tmdb.details("/movie/438631", details, "es-ES")
+    tmdb.details("/movie/438631", load("movie_438631_en.json"), "en-US")
+    await _scan(mdb, settings, stub_probe)
+
+    await _enrich(mdb, settings, client, artwork)
+
+    [film] = _all(mdb, m.Film)
+    credits = _all(mdb, m.CastCredit, m.CastCredit.film_id == film.id)
+    person_ids = [c.person_id for c in credits]
+    assert len(person_ids) == len(set(person_ids)) == 15
+    with mdb.read_session() as s:
+        by_tmdb = {
+            p.tmdb_id: c for c in credits for p in [s.get(m.Person, c.person_id)] if p is not None
+        }
+    assert (by_tmdb[cast[19]["id"]].character, by_tmdb[cast[19]["id"]].order) == (
+        cast[19]["character"],
+        0,
+    )
+    assert (by_tmdb[1000].character, by_tmdb[1000].order) == ("Cameo", 1)
+
+
+async def test_cast_persons_are_loaded_and_inserted_in_batches(
+    mdb, media: MediaTree, settings, stub_probe, tmdb, client, artwork
+):
+    """``_write_cast`` loads the cast's persons with one SELECT (no query per member) and inserts
+    the new ones in one statement; known persons are updated in place."""
+    media.add("Dune (2021)/Dune (2021).mkv")
+    _dune_routes(tmdb)
+    known = min(load("movie_438631.json")["credits"]["cast"], key=lambda c: c["order"])
+    with mdb.write_session() as s:
+        s.add(m.Person(tmdb_id=known["id"], name="Old name"))
+    await _scan(mdb, settings, stub_probe)
+    statements: list[str] = []
+
+    def capture(_conn, _cursor, statement, *_args):
+        statements.append(" ".join(statement.split()).lower())
+
+    event.listen(mdb.write_engine, "before_cursor_execute", capture)
+    try:
+        report = await _enrich(mdb, settings, client, artwork)
+    finally:
+        event.remove(mdb.write_engine, "before_cursor_execute", capture)
+
+    assert report.errors == []
+    assert len([q for q in statements if q.startswith("select") and "from person" in q]) == 1
+    assert len([q for q in statements if q.startswith("insert into person")]) == 1
+    assert _count(mdb, m.Person) == 15
+    [person] = _all(mdb, m.Person, m.Person.tmdb_id == known["id"])
+    assert person.name == known["name"]
+    [film] = _all(mdb, m.Film)
+    assert len(_all(mdb, m.CastCredit, m.CastCredit.film_id == film.id)) == 15
 
 
 async def test_spirited_away_matches_via_fallback_language_search(

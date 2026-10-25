@@ -10,6 +10,7 @@ type ErrorText = string | ((retryAfterSeconds: number | null) => string);
 
 const errorTexts = {
   network_error: 'No se puede conectar con el servidor.',
+  invalid_response: 'El servidor ha enviado una respuesta no válida.',
   not_found: 'Este contenido no está disponible. Puede que se haya eliminado o que su disco esté desconectado.',
   forbidden: 'Solo para administradores.',
   unauthorized: 'Tu sesión ha caducado. Elige un perfil para continuar.',
@@ -107,11 +108,6 @@ export const S = {
     admin: 'Administración',
     about: 'Acerca de',
     signOut: 'Cerrar sesión',
-  },
-
-  footer: {
-    tmdbLogoAlt: 'Logotipo de TMDB',
-    aboutLink: 'Acerca de HomeTV y TMDB',
   },
 
   about: {
@@ -265,7 +261,6 @@ export const S = {
       limitReached: 'Se ha alcanzado el máximo de 12 perfiles.',
       editLabel: (name: string) => `Editar ${name}`,
       deleteLabel: (name: string) => `Eliminar ${name}`,
-      you: '(tú)',
       deleteTitle: (name: string) => `¿Eliminar ${name}?`,
       deleteBody: 'Se perderá su historial de reproducción.',
     },
@@ -293,7 +288,6 @@ export const S = {
 
   home: {
     continueWatching: 'Seguir viendo',
-    nextUp: 'A continuación',
     recentlyAdded: 'Añadidos recientemente',
     details: 'Detalles',
     detailsOf: (title: string) => `Detalles de ${title}`,
@@ -320,6 +314,10 @@ export const S = {
     yearFrom: 'Desde',
     yearTo: 'Hasta',
     yearRangeError: 'El año inicial no puede ser posterior al final.',
+    watched: 'Estado',
+    watchedAll: 'Todas',
+    watchedOnly: 'Vistas',
+    unwatchedOnly: 'No vistas',
     clearFilters: 'Borrar filtros',
     count: (n: number, type: 'films' | 'shows') =>
       type === 'films' ? plural(n, 'película', 'películas') : plural(n, 'serie', 'series'),
@@ -350,7 +348,7 @@ export const S = {
     resumePart: (part: number, time: string) => `Reanudar parte ${part} desde ${time}`,
     play: 'Reproducir',
     playPart: (part: number) => `Reproducir parte ${part}`,
-    playFromStart: 'Reproducir desde el principio',
+    playFromStart: 'Ver desde el principio',
     noPlayableFile: 'No hay ningún archivo reproducible',
     version: 'Versión',
     cast: 'Reparto',

@@ -15,7 +15,7 @@ export interface EpisodeCardProps {
   progress?: { position: number; duration: number } | null;
 }
 
-/** 16:9 episode card (Continue Watching / Next Up). */
+/** 16:9 episode card (Continue Watching). */
 export function EpisodeCard({ to, still, showTitle, line, ariaLabel, progress }: EpisodeCardProps) {
   return (
     <Link to={to} className={styles.card} aria-label={ariaLabel}>

@@ -1,10 +1,9 @@
 import { useId, useRef, type ReactNode } from 'react';
 import { S } from '@/strings.es';
-import { cx } from '@/lib/cx';
 import styles from './Row.module.css';
 
 /** Horizontal row with scroll-snap; ‹ › buttons (pointer devices) scroll by one viewport width. */
-export function Row({ title, children, wide = false }: { title: string; children: ReactNode; wide?: boolean }) {
+export function Row({ title, children }: { title: string; children: ReactNode }) {
   const headingId = useId();
   const trackRef = useRef<HTMLDivElement>(null);
   const scroll = (direction: -1 | 1) => {
@@ -29,7 +28,7 @@ export function Row({ title, children, wide = false }: { title: string; children
           </button>
         </div>
       </div>
-      <div ref={trackRef} className={cx(styles.track, wide && styles.wide)} data-testid="row-track">
+      <div ref={trackRef} className={styles.track} data-testid="row-track">
         {children}
       </div>
     </section>

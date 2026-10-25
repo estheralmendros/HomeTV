@@ -387,34 +387,40 @@ async def test_background_queue_scan_promotion_join_and_session_gate(
             else None
         )
 
+    # Lockstep: a "session" holds the worker (it pops nothing) until the queue and the promotion
+    # have been checked, so no background build can race the assertions (CLAUDE.md "Timing").
+    session = {"running": True}
     spawner = Spawner(scenario)
-    svc = service(mdb, settings, spawner, container_reader=reader)
+    svc = service(
+        mdb,
+        settings,
+        spawner,
+        container_reader=reader,
+        session_running=lambda: session["running"],
+    )
     svc.start()
     try:
         scanner = Scanner(mdb, settings, probe_fn=stub_probe, keyframe_hook=svc.enqueue)
         report = await scanner.run()
-        assert spawner.exits == 0  # the scan finished before any ffprobe exited
+        assert spawner.count == 0  # nothing built during the scan
         assert report.counts["new"] == 5
         await svc.settle()
         with mdb.read_session() as s:
             ids = {row.path.rsplit("/", 1)[1]: row.id for row in s.query(m.MediaFile)}
         queued = {ids[n] for n in ("a.ts", "b.ts", "nocues.mkv", "cues.mkv")}
-        # Queued, being built, or (on a slow machine) already built by the worker: the first
-        # 0.3 s build may finish between the end of the scan and this check.
-        done = {i for i in queued if stored(mdb, i)}
-        assert set(svc.queue) | set(svc.builds) | done == queued
-        assert len(done) < len(queued)
+        assert set(svc.queue) == queued and not svc.builds
+        assert not any(stored(mdb, i) for i in queued)
         assert ids["film.mp4"] not in svc.queue
 
-        # Promotion: the file at the back of the queue is built at once.
+        # Promotion: the file at the back of the queue is built at once, despite the session.
         last = svc.queue[-1]
         info = svc._load_info(last)
         times = await svc.times_for_playback(info, wait=5)
         assert times
-        built_before = {i for i in queued if stored(mdb, i)}
-        assert last in built_before
-        assert len(built_before) < len(queued)
+        assert {i for i in queued if stored(mdb, i)} == {last}
+        assert set(svc.queue) == queued - {last}
 
+        session["running"] = False  # the session ends: the worker drains the queue
         # Everything finishes; one stub ffprobe at a time from the worker (+1 promoted).
         await wait_until(lambda: all(stored(mdb, i) for i in queued), timeout=10)
         assert spawner.max_active <= 2

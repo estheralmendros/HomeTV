@@ -66,25 +66,27 @@ fun tailscaleIntent(context: Context): Intent? {
 
 const val TAILSCALE_PACKAGE = "com.tailscale.ipn"
 
-/** Connection Error (prd3 §10): [Reintentar] (focused), [Abrir Tailscale] (only when installed), [Cambiar servidor]. */
+/**
+ * Connection Error (prd3 §10): [Reintentar] (focused), [Abrir Tailscale] (only when installed). No
+ * [Cambiar servidor]: it needs the admin PIN, which can't be checked while the server is unreachable.
+ */
 @Composable
-fun ConnectionErrorScreen(error: ScreenError.Connection, onRetry: () -> Unit, onChangeServer: () -> Unit, modifier: Modifier = Modifier) {
+fun ConnectionErrorScreen(error: ScreenError.Connection, onRetry: () -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val tailscale = remember { tailscaleIntent(context) }
     val message = if (error.tls) stringResource(R.string.setup_error_tls) else stringResource(R.string.error_connection, error.host)
     val actions = buildList {
         add(ErrorAction(stringResource(R.string.action_retry), onRetry))
         if (tailscale != null) add(ErrorAction(stringResource(R.string.error_open_tailscale)) { runCatching { context.startActivity(tailscale) } })
-        add(ErrorAction(stringResource(R.string.settings_change_server), onChangeServer))
     }
     ErrorScreen(message, actions, modifier)
 }
 
 /** Renders a [ScreenError] with the screen's own retry/back behavior. */
 @Composable
-fun ScreenErrorView(error: ScreenError, onRetry: () -> Unit, onBack: () -> Unit, onChangeServer: () -> Unit, modifier: Modifier = Modifier) {
+fun ScreenErrorView(error: ScreenError, onRetry: () -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier) {
     when (error) {
-        is ScreenError.Connection -> ConnectionErrorScreen(error, onRetry, onChangeServer, modifier)
+        is ScreenError.Connection -> ConnectionErrorScreen(error, onRetry, modifier)
         ScreenError.ItemGone -> ErrorScreen(stringResource(R.string.item_gone), listOf(ErrorAction(stringResource(R.string.action_back), onBack)), modifier)
         ScreenError.SignIn -> ErrorScreen(stringResource(R.string.error_sign_in), listOf(ErrorAction(stringResource(R.string.action_retry), onRetry)), modifier)
         is ScreenError.Unexpected -> ErrorScreen(stringResource(R.string.error_unexpected, error.code), listOf(ErrorAction(stringResource(R.string.action_retry), onRetry)), modifier)

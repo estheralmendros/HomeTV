@@ -29,7 +29,6 @@ data class HomePayload(
         return copy(
             home = home.copy(
                 continue_watching = home.continue_watching.filterNot(gone),
-                next_up = home.next_up.filterNot(gone),
                 recently_added = home.recently_added.filterNot(gone),
             ),
             films = films.filterNot(gone),

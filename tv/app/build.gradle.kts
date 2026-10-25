@@ -78,6 +78,9 @@ android {
         unitTests.all {
             it.useJUnitPlatform()
             it.maxHeapSize = "2g"
+            // Robolectric's native graphics measure text like a device (legacy mode gives text no size) and run
+            // Compose focus like a device: the Back-to-tab focus and PIN dialog fit bugs only showed there.
+            it.systemProperty("robolectric.graphicsMode", "NATIVE")
             it.testLogging {
                 events("failed")
                 exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
@@ -130,6 +133,7 @@ dependencies {
     implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.datasource.okhttp)
     implementation(libs.media3.ui)
+    implementation(libs.media3.session)
     implementation(libs.coil.compose)
 
     testImplementation(testFixtures(project(":core")))

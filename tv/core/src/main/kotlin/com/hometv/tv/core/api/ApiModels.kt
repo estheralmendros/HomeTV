@@ -38,6 +38,17 @@ data class Profile(
 @Serializable
 data class ProfileList(val items: List<Profile>)
 
+/** `POST /api/admin/unlock` (prd.md §8): the TV only uses it to check an admin PIN (prd3 §11 step 3). */
+@Serializable
+data class UnlockRequest(val pin: String)
+
+@Serializable
+data class UnlockResponse(val admin_token: String, val expires_at: String)
+
+/** `GET /api/genres` (prd.md): the library's genres, each with its item `count`. */
+@Serializable
+data class GenreList(val items: List<Genre> = emptyList())
+
 @Serializable
 data class SessionResponse(val profile: Profile, val token: String, val expires_at: String)
 
@@ -198,7 +209,6 @@ data class LibraryCounts(val films: Long = 0, val shows: Long = 0, val empty: Bo
 @Serializable
 data class HomeResponse(
     val continue_watching: List<Summary> = emptyList(),
-    val next_up: List<Summary> = emptyList(),
     val recently_added: List<Summary> = emptyList(),
     val library: LibraryCounts = LibraryCounts(),
 )
@@ -206,8 +216,9 @@ data class HomeResponse(
 @Serializable
 data class Page<T>(val items: List<T>, val page: Int, val page_size: Int, val total: Int)
 
+/** A TMDB genre; `count` is only sent by `GET /api/genres`. */
 @Serializable
-data class Genre(val id: Long, val name: String)
+data class Genre(val id: Long, val name: String, val count: Int = 0)
 
 @Serializable
 data class CastMember(

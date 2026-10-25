@@ -44,7 +44,8 @@ class HomeViewModelTest {
     @JvmField @RegisterExtension val main = MainDispatcherExtension()
 
     private val repos = TestRepos()
-    private val cache = HomeCache(Files.createTempDirectory("home").toFile(), Dispatchers.Unconfined)
+    private val cacheDir = Files.createTempDirectory("home").toFile()
+    private val cache = HomeCache(cacheDir, Dispatchers.Unconfined)
     private val refresh = HomeRefresh()
     private val home = ApiJson.decodeFromString(HomeResponse.serializer(), Fixtures.home)
     private val dune = FilmSummary(12, "Dune", 2021, poster = Image("/p/dune.jpg"), backdrop = Image("/b/dune.jpg"), overview = "Arrakis.")
@@ -77,6 +78,45 @@ class HomeViewModelTest {
         assertEquals(SeeAllCard(Library.SHOWS), state.row(HomeRowId.SHOWS).cards.last())
         assertFalse(state.libraryEmpty)
         assertNull(state.error)
+    }
+
+    @Test
+    fun `one Seguir viendo row holds the in-progress items and the Next Up episodes, OK on a Next Up card starts from the beginning`() = runTest(main.dispatcher) {
+        val inProgress = home.continue_watching[0]
+        val nextUp = (home.continue_watching[1] as EpisodeSummary).copy(id = 346, episode_number = 4, title = "The Fire", progress = null)
+        repos.api.onHome = { home.copy(continue_watching = listOf(inProgress, nextUp)) }
+        val vm = vm()
+        advanceUntilIdle()
+        val state = vm.state.value
+        assertEquals(listOf("continue", "recent", "films", "shows"), HomeRowId.entries.map { it.prefix }, "no A continuación row")
+        assertEquals(listOf(HomeRowId.CONTINUE, HomeRowId.RECENT, HomeRowId.FILMS, HomeRowId.SHOWS), state.rows.map { it.id })
+        assertEquals(listOf("continue:film:12", "continue:episode:346"), state.row(HomeRowId.CONTINUE).cards.map { it.key })
+        val card = state.row(HomeRowId.CONTINUE).cards[1] as ItemCard
+        assertNull(card.progress, "no progress strip without progress")
+        assertEquals(CardStyle.LANDSCAPE, card.style)
+        assertEquals(UiText.Res(R.string.pair_space, listOf(EpisodeCode(2, 4), EpisodeTitle.Named("The Fire"))), card.subtitle)
+        vm.onCardClick(card)
+        val nav = vm.navigation.first() as NavRequest.Play
+        assertEquals("episode", nav.request.itemType)
+        assertEquals(346L, nav.request.itemId)
+        assertNull(nav.request.payload!!.progress, "no progress: the Player starts from the beginning")
+        assertEquals(listOf(91L, 92L), nav.request.payload!!.media_files.map { it.id })
+        assertTrue(repos.api.calls.none { it.startsWith("GET /api/episodes") })
+    }
+
+    @Test
+    fun `an old cached payload that still has next_up renders without an A continuación row`() = runTest(main.dispatcher) {
+        val legacyEpisode = """
+            { "type": "episode", "id": 346, "show_id": 7, "show_title": "The Office", "season_id": 70,
+              "season_number": 2, "episode_number": 4, "title": "The Fire", "progress": null, "media_files": [] }
+        """.trimIndent()
+        val legacyHome = Fixtures.home.replace("\"recently_added\": [", "\"next_up\": [ $legacyEpisode ], \"recently_added\": [")
+        java.io.File(cacheDir, "5.json").writeText("""{ "home": $legacyHome, "films": [], "shows": [] }""")
+        repos.api.onHome = { delay(5_000); home }
+        val vm = vm()
+        runCurrent()
+        assertTrue(vm.state.value.fromCache)
+        assertEquals(listOf(HomeRowId.CONTINUE, HomeRowId.RECENT), vm.state.value.rows.map { it.id })
     }
 
     @Test
@@ -198,7 +238,8 @@ class HomeViewModelTest {
         assertNull(vm.hero.value)
         advanceTimeBy(2)
         val hero = vm.hero.value!!
-        assertEquals("/api/artwork/w780/ob.jpg", hero.backdrop)
+        // The full-bleed hero uses the large backdrop (prd3 §3 step 4).
+        assertEquals("/api/artwork/w1280/ob.jpg", hero.backdrop)
         assertEquals("The Office", hero.title)
         assertNull(hero.year)
         assertEquals(UiText.Res(R.string.pair_space, listOf(EpisodeCode(2, 3), EpisodeTitle.Named("Office Olympics"))), hero.episodeLine)

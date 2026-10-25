@@ -4,6 +4,11 @@
   min-height: 100vh;
 }
 
+/* Room for the fixed bottom tab bar (< 720 px), which pads itself by the safe-area inset. */
+.withTabBar {
+  padding-bottom: calc(var(--tabbar-height) + env(safe-area-inset-bottom) + var(--space-5));
+}
+
 .main {
   flex: 1;
 }

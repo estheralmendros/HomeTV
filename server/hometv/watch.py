@@ -256,6 +256,9 @@ def _target_episode_ids(session: Session, target: str, item_id: int) -> Sequence
     ).all()
 
 
+_IN_CHUNK = 500  # stays under SQLite's bound-parameter limit
+
+
 def mark_watched(db: Database, profile_id: int, target: str, item_id: int, watched: bool) -> int:
     """Manual mark; returns the number of film/episode rows changed. ``media_file_id`` is left
     unchanged. Unwatching an item without a progress row changes nothing."""
@@ -264,16 +267,35 @@ def mark_watched(db: Database, profile_id: int, target: str, item_id: int, watch
         if target == "film":
             if session.get(m.Film, item_id) is None:
                 raise ApiError(404, "not_found", f"Film {item_id} not found")
-            keys: list[dict[str, int]] = [{"film_id": item_id}]
+            column = m.PlaybackProgress.film_id
+            ids: Sequence[int] = [item_id]
         else:
-            keys = [{"episode_id": e} for e in _target_episode_ids(session, target, item_id)]
+            column = m.PlaybackProgress.episode_id
+            ids = _target_episode_ids(session, target, item_id)
+        existing: dict[int, m.PlaybackProgress] = {}
+        for chunk_start in range(0, len(ids), _IN_CHUNK):
+            chunk = ids[chunk_start : chunk_start + _IN_CHUNK]
+            for key_id, found in session.execute(
+                select(column, m.PlaybackProgress).where(
+                    m.PlaybackProgress.profile_id == profile_id, column.in_(chunk)
+                )
+            ):
+                if key_id is not None:
+                    existing[key_id] = found
         updated = 0
-        for key in keys:
+        for target_id in ids:
+            row = existing.get(target_id)
             if watched:
-                _set_watched(_row_for(session, profile_id, **key), now)
+                if row is None:
+                    row = m.PlaybackProgress(profile_id=profile_id)
+                    if target == "film":
+                        row.film_id = target_id
+                    else:
+                        row.episode_id = target_id
+                    session.add(row)
+                _set_watched(row, now)
                 updated += 1
                 continue
-            row = _get_row(session, profile_id, **key)
             if row is None or (not row.watched and row.position_seconds == 0):
                 continue
             row.watched = False

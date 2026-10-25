@@ -43,10 +43,6 @@
   scroll-snap-align: start;
 }
 
-.wide {
-  grid-auto-columns: minmax(240px, 300px);
-}
-
 @media (pointer: fine) {
   .controls {
     display: flex;

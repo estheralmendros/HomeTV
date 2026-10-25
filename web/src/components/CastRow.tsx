@@ -10,8 +10,8 @@ export function CastRow({ cast }: { cast: CastMember[] }) {
   if (cast.length === 0) return null;
   return (
     <Row title={S.film.cast}>
-      {cast.map((member) => (
-        <div key={member.person_id} className={styles.member}>
+      {cast.map((member, index) => (
+        <div key={`${member.person_id}:${index}`} className={styles.member}>
           {member.profile_image ? (
             <Artwork image={member.profile_image} title={member.name} kind="profile" className={styles.photo} />
           ) : (

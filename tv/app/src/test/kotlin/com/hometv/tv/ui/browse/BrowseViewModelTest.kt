@@ -37,7 +37,7 @@ class BrowseViewModelTest {
         }
     }
 
-    private fun vm(library: Library = Library.FILMS) = BrowseViewModel(library, repos.catalog, repos.store, memory)
+    private fun vm(library: Library = Library.FILMS) = BrowseViewModel(library, repos.catalog, repos.store, memory, currentYear = 2026)
 
     private fun filmCalls() = repos.api.calls.filter { it.startsWith("GET /api/films?") }
 
@@ -54,27 +54,131 @@ class BrowseViewModelTest {
     }
 
     @Test
-    fun `the sort button cycles through the five options and reloads page 1 focused on the first card`() = runTest(main.dispatcher) {
+    fun `the sort button opens a list of the five orders, and a pick reloads page 1 focused on the first card`() = runTest(main.dispatcher) {
         val vm = vm()
         advanceUntilIdle()
-        val expected = listOf(
-            BrowseSort.TITLE_DESC to "sort=title&order=desc",
-            BrowseSort.YEAR_DESC to "sort=year&order=desc",
-            BrowseSort.YEAR_ASC to "sort=year&order=asc",
-            BrowseSort.ADDED_DESC to "sort=added&order=desc",
-            BrowseSort.TITLE_ASC to "sort=title&order=asc",
+        vm.openSortDialog()
+        val dialog = vm.state.value.dialog!!
+        assertEquals(BrowseDialogKind.SORT, dialog.kind)
+        assertEquals(
+            listOf(R.string.sort_title_asc, R.string.sort_title_desc, R.string.sort_year_desc, R.string.sort_year_asc, R.string.sort_added_desc).map { UiText.Res(it) },
+            dialog.items,
         )
-        val labels = listOf(R.string.sort_title_desc, R.string.sort_year_desc, R.string.sort_year_asc, R.string.sort_added_desc, R.string.sort_title_asc)
-        expected.forEachIndexed { i, (sort, query) ->
-            vm.onFocused(20)
-            vm.cycleSort()
-            advanceUntilIdle()
-            assertEquals(sort, vm.state.value.sort)
-            assertEquals("GET /api/films?page=1&page_size=50&$query", filmCalls().last())
-            assertEquals(UiText.Res(R.string.browse_sort, listOf(UiText.Res(labels[i]))), vm.state.value.sortLabel)
-            assertEquals(0, vm.state.value.focus!!.index)
-            assertEquals(50, vm.state.value.items.size)
-        }
+        assertEquals(0, dialog.selected)
+        vm.onFocused(20)
+        vm.onDialogSelect(4)
+        advanceUntilIdle()
+        assertNull(vm.state.value.dialog)
+        assertEquals(BrowseSort.ADDED_DESC, vm.state.value.sort)
+        assertEquals("GET /api/films?page=1&page_size=50&sort=added&order=desc", filmCalls().last())
+        assertEquals(UiText.Res(R.string.browse_sort, listOf(UiText.Res(R.string.sort_added_desc))), vm.state.value.sortLabel)
+        assertEquals(0, vm.state.value.focus!!.index)
+    }
+
+    @Test
+    fun `picking the current entry only closes the dialog, Back closes it unchanged`() = runTest(main.dispatcher) {
+        val vm = vm()
+        advanceUntilIdle()
+        val before = filmCalls().size
+        vm.openSortDialog()
+        vm.onDialogSelect(0)
+        advanceUntilIdle()
+        assertNull(vm.state.value.dialog)
+        vm.openDecadeDialog()
+        vm.onDialogDismiss()
+        assertNull(vm.state.value.dialog)
+        assertEquals(before, filmCalls().size)
+    }
+
+    @Test
+    fun `the genre list comes from the server once, and a genre filters the grid`() = runTest(main.dispatcher) {
+        repos.api.onGenres = { com.hometv.tv.core.api.GenreList(listOf(com.hometv.tv.core.api.Genre(18, "Drama", 3), com.hometv.tv.core.api.Genre(35, "Comedia", 1))) }
+        val vm = vm()
+        advanceUntilIdle()
+        assertEquals(UiText.Res(R.string.browse_genre, listOf(UiText.Res(R.string.filter_all_genres))), vm.state.value.genreLabel)
+        vm.openGenreDialog()
+        advanceUntilIdle()
+        assertEquals(listOf(UiText.Res(R.string.filter_all_genres), UiText.Data("Drama"), UiText.Data("Comedia")), vm.state.value.dialog!!.items)
+        vm.onDialogSelect(1)
+        advanceUntilIdle()
+        assertEquals("GET /api/films?page=1&page_size=50&sort=title&order=asc&genre=18", filmCalls().last())
+        assertEquals(UiText.Res(R.string.browse_genre, listOf(UiText.Data("Drama"))), vm.state.value.genreLabel)
+        vm.openGenreDialog()
+        advanceUntilIdle()
+        assertEquals(1, vm.state.value.dialog!!.selected)
+        assertEquals(1, repos.api.calls.count { it == "GET /api/genres?type=films" })
+    }
+
+    @Test
+    fun `a failed genre load offers only Todos`() = runTest(main.dispatcher) {
+        repos.api.onGenres = { throw java.net.ConnectException("refused") }
+        val vm = vm()
+        advanceUntilIdle()
+        vm.openGenreDialog()
+        advanceUntilIdle()
+        assertEquals(listOf(UiText.Res(R.string.filter_all_genres)), vm.state.value.dialog!!.items)
+        assertNull(vm.state.value.error)
+    }
+
+    @Test
+    fun `decades run from the current one to the 1950s, then before 1950`() = runTest(main.dispatcher) {
+        val vm = vm()
+        advanceUntilIdle()
+        vm.openDecadeDialog()
+        val items = vm.state.value.dialog!!.items
+        assertEquals(UiText.Res(R.string.filter_all_decades), items.first())
+        assertEquals(UiText.Res(R.string.decade_range, listOf("2020", "2029")), items[1])
+        assertEquals(UiText.Res(R.string.decade_range, listOf("1950", "1959")), items[items.size - 2])
+        assertEquals(UiText.Res(R.string.decade_before, listOf("1950")), items.last())
+        assertEquals(10, items.size)
+        vm.onDialogSelect(4)
+        advanceUntilIdle()
+        assertEquals("GET /api/films?page=1&page_size=50&sort=title&order=asc&year_from=1990&year_to=1999", filmCalls().last())
+        assertEquals(UiText.Res(R.string.browse_decade, listOf(UiText.Res(R.string.decade_range, listOf("1990", "1999")))), vm.state.value.decadeLabel)
+        vm.openDecadeDialog()
+        vm.onDialogSelect(9)
+        advanceUntilIdle()
+        assertEquals("GET /api/films?page=1&page_size=50&sort=title&order=asc&year_to=1949", filmCalls().last())
+    }
+
+    @Test
+    fun `the watched filter offers Todas, Vistas and No vistas and sends watched`() = runTest(main.dispatcher) {
+        val vm = vm()
+        advanceUntilIdle()
+        assertEquals(UiText.Res(R.string.browse_watched, listOf(UiText.Res(R.string.filter_all_watched))), vm.state.value.watchedLabel)
+        vm.openWatchedDialog()
+        val dialog = vm.state.value.dialog!!
+        assertEquals(UiText.Res(R.string.dialog_watched), dialog.title)
+        assertEquals(listOf(UiText.Res(R.string.filter_all_watched), UiText.Res(R.string.filter_watched), UiText.Res(R.string.filter_unwatched)), dialog.items)
+        assertEquals(0, dialog.selected)
+        vm.onDialogSelect(2)
+        advanceUntilIdle()
+        assertEquals("GET /api/films?page=1&page_size=50&sort=title&order=asc&watched=false", filmCalls().last())
+        assertEquals(UiText.Res(R.string.browse_watched, listOf(UiText.Res(R.string.filter_unwatched))), vm.state.value.watchedLabel)
+        vm.openWatchedDialog()
+        assertEquals(2, vm.state.value.dialog!!.selected)
+        vm.onDialogSelect(1)
+        advanceUntilIdle()
+        assertEquals("GET /api/films?page=1&page_size=50&sort=title&order=asc&watched=true", filmCalls().last())
+        vm.openWatchedDialog()
+        vm.onDialogSelect(0)
+        advanceUntilIdle()
+        assertEquals("GET /api/films?page=1&page_size=50&sort=title&order=asc", filmCalls().last())
+    }
+
+    @Test
+    fun `no match with filters shows the message and requests no card focus`() = runTest(main.dispatcher) {
+        repos.api.onGenres = { com.hometv.tv.core.api.GenreList(listOf(com.hometv.tv.core.api.Genre(18, "Drama"))) }
+        val vm = vm()
+        advanceUntilIdle()
+        repos.api.onFilms = { p, s, _, _ -> Page(emptyList(), p, s, 0) }
+        val focus = vm.state.value.focus
+        vm.openGenreDialog()
+        advanceUntilIdle()
+        vm.onDialogSelect(1)
+        advanceUntilIdle()
+        assertTrue(vm.state.value.noMatches)
+        assertEquals(focus, vm.state.value.focus)
     }
 
     @Test
@@ -134,23 +238,104 @@ class BrowseViewModelTest {
     }
 
     @Test
+    fun `a page that overlaps the loaded items (the library shifted) appends only new keys`() = runTest(main.dispatcher) {
+        val vm = vm()
+        advanceUntilIdle()
+        // A scan added a title before offset 50: page 2 starts with the last item of page 1.
+        repos.api.onFilms.let { real -> repos.api.onFilms = { p, s, so, o -> if (p == 2) { val pg = real(p, s, so, o); pg.copy(items = listOf(FilmSummary(50, "Film 50", 2010)) + pg.items.dropLast(1), total = 121) } else real(p, s, so, o) } }
+        vm.onFocused(45)
+        advanceUntilIdle()
+        val keys = vm.state.value.items.map { it.key }
+        assertEquals(keys.distinct(), keys, "the grid is keyed by item.key: no duplicates")
+        assertEquals(99, keys.size)
+    }
+
+    @Test
+    fun `a page with no new items stops paging instead of refetching on every focus move`() = runTest(main.dispatcher) {
+        filmsTotal = 60
+        val vm = vm()
+        advanceUntilIdle()
+        // The library shrank between pages: page 2 only repeats an item already loaded.
+        repos.api.onFilms.let { real -> repos.api.onFilms = { p, s, so, o -> if (p == 2) Page(listOf(FilmSummary(50, "Film 50", 2010)), p, s, 60) else real(p, s, so, o) } }
+        vm.onFocused(45)
+        advanceUntilIdle()
+        vm.onFocused(49)
+        advanceUntilIdle()
+        assertEquals(2, filmCalls().size)
+        assertEquals(50, vm.state.value.items.size)
+    }
+
+    @Test
+    fun `a filter change keeps the previous total until page 1 arrives`() = runTest(main.dispatcher) {
+        val vm = vm()
+        advanceUntilIdle()
+        repos.api.onFilms.let { real -> repos.api.onFilms = { p, s, so, o -> delay(500); real(p, s, so, o).copy(total = 30) } }
+        vm.openWatchedDialog()
+        vm.onDialogSelect(2)
+        runCurrent()
+        assertTrue(vm.state.value.loading)
+        assertEquals(120, vm.state.value.total, "no \"Películas · 0\" flash while page 1 loads")
+        advanceUntilIdle()
+        assertEquals(30, vm.state.value.total)
+    }
+
+    @Test
+    fun `OK on Genero while the genres load opens one dialog, and a late load does not replace another dialog`() = runTest(main.dispatcher) {
+        repos.api.onGenres = { delay(500); com.hometv.tv.core.api.GenreList(listOf(com.hometv.tv.core.api.Genre(18, "Drama", 3))) }
+        val vm = vm()
+        advanceUntilIdle()
+        vm.openGenreDialog()
+        runCurrent()
+        vm.openGenreDialog()
+        runCurrent()
+        advanceUntilIdle()
+        assertEquals(1, repos.api.calls.count { it == "GET /api/genres?type=films" })
+        assertEquals(BrowseDialogKind.GENRE, vm.state.value.dialog!!.kind)
+        vm.onDialogDismiss()
+
+        // A second screen (genres not loaded yet): "Ordenar" opened while "Género" loads stays open.
+        val other = vm(Library.SHOWS)
+        advanceUntilIdle()
+        other.openGenreDialog()
+        runCurrent()
+        other.openSortDialog()
+        advanceUntilIdle()
+        assertEquals(BrowseDialogKind.SORT, other.state.value.dialog!!.kind)
+    }
+
+    @Test
     fun `a sort change while a page is loading drops the stale page`() = runTest(main.dispatcher) {
         val vm = vm()
         advanceUntilIdle()
         repos.api.onFilms.let { real -> repos.api.onFilms = { p, s, so, o -> if (p == 2) delay(1_000); real(p, s, so, o) } }
         vm.onFocused(45)
         runCurrent()
-        vm.cycleSort()
+        vm.openSortDialog()
+        vm.onDialogSelect(1)
         advanceUntilIdle()
         assertEquals(50, vm.state.value.items.size)
         assertEquals(BrowseSort.TITLE_DESC, vm.state.value.sort)
     }
 
     @Test
-    fun `the chosen sort is remembered per library for the app session`() = runTest(main.dispatcher) {
-        vm().cycleSort()
+    fun `the sort is remembered per library for the session, the filters only while the screen is open`() = runTest(main.dispatcher) {
+        val first = vm()
         advanceUntilIdle()
-        assertEquals(BrowseSort.TITLE_DESC, vm(Library.FILMS).state.value.sort)
+        first.openSortDialog()
+        first.onDialogSelect(1)
+        first.openDecadeDialog()
+        first.onDialogSelect(4)
+        first.openWatchedDialog()
+        first.onDialogSelect(1)
+        advanceUntilIdle()
+        // A new screen (left for another tab, then back): the sort is remembered, the filters reset.
+        val films = vm(Library.FILMS)
+        advanceUntilIdle()
+        assertEquals(BrowseSort.TITLE_DESC, films.state.value.sort)
+        assertNull(films.state.value.decade)
+        assertNull(films.state.value.genre)
+        assertNull(films.state.value.watched)
+        assertEquals("GET /api/films?page=1&page_size=50&sort=title&order=desc", filmCalls().last())
         assertEquals(BrowseSort.TITLE_ASC, vm(Library.SHOWS).state.value.sort)
     }
 

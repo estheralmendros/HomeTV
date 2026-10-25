@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { WARNING_GLYPH } from './glyphs';
 import { S } from '@/strings.es';
 import styles from './State.module.css';
 
@@ -16,7 +17,7 @@ export function ErrorState({ message, onRetry, children }: ErrorStateProps) {
     <div className={styles.state} role="alert">
       <p className={styles.message}>
         <span className={styles.icon} aria-hidden="true">
-          ⚠
+          {WARNING_GLYPH}
         </span>
         {message}
       </p>

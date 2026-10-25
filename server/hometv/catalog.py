@@ -15,10 +15,10 @@ import os
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Literal
 
-from sqlalchemy import and_, case, exists, func, or_, select
+from sqlalchemy import and_, case, exists, func, select
 from sqlalchemy.orm import Session
 
 from hometv.api.errors import ApiError
@@ -48,6 +48,7 @@ from hometv.db import models as m
 from hometv.metadata.artwork import image
 from hometv.text import normalize_title
 from hometv.watch import (
+    IN_PROGRESS_MIN_SECONDS,
     EpisodeKey,
     EpisodeState,
     film_has_present_file,
@@ -423,11 +424,43 @@ class ListParams:
     year_from: int | None = None
     year_to: int | None = None
     genre: int | None = None
+    watched: bool | None = None
     page: int = 1
     page_size: int = 50
 
 
-def _filtered(model: Any, genre_model: Any, genre_fk: Any, params: ListParams) -> list[Any]:
+def _film_watched(profile_id: int) -> Any:
+    return exists().where(
+        m.PlaybackProgress.profile_id == profile_id,
+        m.PlaybackProgress.film_id == m.Film.id,
+        m.PlaybackProgress.watched.is_(True),
+    )
+
+
+def _show_has_episode(profile_id: int, *, watched: bool) -> Any:
+    """EXISTS(listed non-special episode of ``m.Show`` that the profile has / hasn't watched)."""
+    flag = func.coalesce(_watched_flag(profile_id), False)
+    episode = select(m.Episode.id).where(
+        m.Episode.show_id == m.Show.id,
+        m.Episode.season_number > 0,
+        present_file_exists(),
+        flag.is_(True) if watched else flag.is_(False),
+    )
+    return exists(episode)
+
+
+def _watched_condition(model: Any, profile_id: int, watched: bool) -> Any:
+    if model is m.Film:
+        return _film_watched(profile_id) if watched else ~_film_watched(profile_id)
+    unwatched = _show_has_episode(profile_id, watched=False)
+    if not watched:
+        return unwatched
+    return and_(_show_has_episode(profile_id, watched=True), ~unwatched)
+
+
+def _filtered(
+    model: Any, genre_model: Any, genre_fk: Any, profile_id: int, params: ListParams
+) -> list[Any]:
     conds: list[Any] = [film_has_present_file() if model is m.Film else _show_visible()]
     if params.q is not None:
         conds.append(model.search_text.like(f"%{normalize_title(params.q)}%"))
@@ -439,6 +472,8 @@ def _filtered(model: Any, genre_model: Any, genre_fk: Any, params: ListParams) -
         conds.append(model.year <= params.year_to)
     if params.genre is not None:
         conds.append(exists().where(genre_fk == model.id, genre_model.genre_id == params.genre))
+    if params.watched is not None:
+        conds.append(_watched_condition(model, profile_id, params.watched))
     return conds
 
 
@@ -467,7 +502,7 @@ def _page(session: Session, model: Any, conds: list[Any], params: ListParams) ->
 
 
 def list_films(session: Session, profile_id: int, params: ListParams) -> Page[FilmSummary]:
-    conds = _filtered(m.Film, m.FilmGenre, m.FilmGenre.film_id, params)
+    conds = _filtered(m.Film, m.FilmGenre, m.FilmGenre.film_id, profile_id, params)
     films, total = _page(session, m.Film, conds, params)
     return Page[FilmSummary](
         items=film_summaries(session, profile_id, films),
@@ -478,7 +513,7 @@ def list_films(session: Session, profile_id: int, params: ListParams) -> Page[Fi
 
 
 def list_shows(session: Session, profile_id: int, params: ListParams) -> Page[ShowSummary]:
-    conds = _filtered(m.Show, m.ShowGenre, m.ShowGenre.show_id, params)
+    conds = _filtered(m.Show, m.ShowGenre, m.ShowGenre.show_id, profile_id, params)
     shows, total = _page(session, m.Show, conds, params)
     return Page[ShowSummary](
         items=show_summaries(session, profile_id, shows),
@@ -726,46 +761,73 @@ def genres(session: Session, library: Literal["films", "shows"]) -> list[GenreCo
 # --- Home ----------------------------------------------------------------------------------------
 
 
-def _continue_watching(session: Session, profile_id: int, limit: int) -> list[Any]:
+# A NULL ``watched_at`` (legacy data) sorts as the oldest activity; aware, like ``UTCDateTime``.
+_OLDEST = datetime.min.replace(tzinfo=UTC)
+_IN_PROGRESS, _NEXT_UP = 1, 0  # card kinds; in-progress wins ties (reverse sort)
+
+
+def _in_progress_condition() -> Any:
+    """SQL twin of ``watch.is_in_progress`` for ``m.PlaybackProgress`` rows."""
+    return and_(
+        m.PlaybackProgress.watched.is_(False),
+        m.PlaybackProgress.position_seconds >= IN_PROGRESS_MIN_SECONDS,
+    )
+
+
+def _in_progress_films(session: Session, profile_id: int, limit: int) -> list[tuple[datetime, int]]:
+    """In-progress visible films, newest first: ``(updated_at, film_id)``."""
     film_visible = exists().where(
         m.MediaFile.film_id == m.PlaybackProgress.film_id, m.MediaFile.missing_since.is_(None)
     )
-    episode_visible = exists().where(
-        m.MediaFileEpisode.episode_id == m.PlaybackProgress.episode_id,
-        m.MediaFile.id == m.MediaFileEpisode.media_file_id,
-        m.MediaFile.missing_since.is_(None),
-    )
     rows = session.execute(
-        select(m.PlaybackProgress.film_id, m.PlaybackProgress.episode_id)
+        select(m.PlaybackProgress.updated_at, m.PlaybackProgress.film_id)
         .where(
             m.PlaybackProgress.profile_id == profile_id,
-            m.PlaybackProgress.watched.is_(False),
-            m.PlaybackProgress.position_seconds >= 30,
-            or_(
-                and_(m.PlaybackProgress.film_id.is_not(None), film_visible),
-                and_(m.PlaybackProgress.episode_id.is_not(None), episode_visible),
-            ),
+            m.PlaybackProgress.film_id.is_not(None),
+            _in_progress_condition(),
+            film_visible,
         )
         .order_by(m.PlaybackProgress.updated_at.desc(), m.PlaybackProgress.id.desc())
         .limit(limit)
     ).all()
-    film_ids = [f for f, _ in rows if f is not None]
-    episode_ids = [e for _, e in rows if e is not None]
-    films = {f.id: f for f in session.scalars(select(m.Film).where(m.Film.id.in_(film_ids)))}
-    episodes = list(session.scalars(select(m.Episode).where(m.Episode.id.in_(episode_ids))))
-    film_out = {s.id: s for s in film_summaries(session, profile_id, list(films.values()))}
-    episode_out = {s.id: s for s in home_episodes(session, profile_id, episodes)}
-    items: list[Any] = []
-    for film_id, episode_id in rows:  # exactly one is set (the query's or_)
-        if film_id is not None:
-            items.append(film_out[film_id])
-        elif episode_id is not None:
-            items.append(episode_out[episode_id])
-    return items
+    return [(at, film_id) for at, film_id in rows if film_id is not None]  # never None (WHERE)
 
 
-def _next_up(session: Session, profile_id: int, limit: int) -> list[HomeEpisode]:
-    latest = session.execute(
+def _in_progress_episodes(session: Session, profile_id: int) -> dict[int, tuple[datetime, int]]:
+    """``show_id -> (updated_at, episode_id)`` of each show's most recently updated in-progress
+    visible episode (deduped in SQL: older in-progress episodes of a show are no candidates)."""
+    rank = (
+        func.row_number()
+        .over(
+            partition_by=m.Episode.show_id,
+            order_by=(m.PlaybackProgress.updated_at.desc(), m.PlaybackProgress.id.desc()),
+        )
+        .label("rank")
+    )
+    ranked = (
+        select(
+            m.Episode.show_id,
+            m.Episode.id.label("episode_id"),
+            m.PlaybackProgress.updated_at,
+            rank,
+        )
+        .join(m.PlaybackProgress, m.PlaybackProgress.episode_id == m.Episode.id)
+        .where(
+            m.PlaybackProgress.profile_id == profile_id,
+            _in_progress_condition(),
+            present_file_exists(),
+        )
+        .subquery()
+    )
+    rows = session.execute(
+        select(ranked.c.show_id, ranked.c.updated_at, ranked.c.episode_id).where(ranked.c.rank == 1)
+    ).all()
+    return {show_id: (at, episode_id) for show_id, at, episode_id in rows}
+
+
+def _latest_watched(session: Session, profile_id: int) -> dict[int, datetime]:
+    """``show_id -> latest watched_at`` over regular episodes with a present file."""
+    rows = session.execute(
         select(m.Episode.show_id, func.max(m.PlaybackProgress.watched_at))
         .join(m.PlaybackProgress, m.PlaybackProgress.episode_id == m.Episode.id)
         .where(
@@ -776,10 +838,13 @@ def _next_up(session: Session, profile_id: int, limit: int) -> list[HomeEpisode]
         )
         .group_by(m.Episode.show_id)
     ).all()
-    if not latest:
-        return []
-    shows = sorted(latest, key=lambda r: (r[1] or datetime.min, r[0]), reverse=True)
-    show_ids = [sid for sid, _ in shows]
+    return {show_id: at or _OLDEST for show_id, at in rows}
+
+
+def _next_up_ids(session: Session, profile_id: int, show_ids: Sequence[int]) -> dict[int, int]:
+    """``show_id -> Next Up episode id`` (§9 rule) for the shows that have one."""
+    if not show_ids:
+        return {}
     episodes = _visible_episodes(
         session, m.Episode.show_id.in_(show_ids), m.Episode.season_number > 0
     )
@@ -789,15 +854,55 @@ def _next_up(session: Session, profile_id: int, limit: int) -> list[HomeEpisode]
     states = _episode_states(
         _progress_rows(session, profile_id, episode_ids=[e.id for e in episodes])
     )
-    by_id = {e.id: e for e in episodes}
-    chosen: list[m.Episode] = []
-    for show_id in show_ids:
-        next_id = next_up(_keys(by_show[show_id]), states)
-        if next_id is not None:
-            chosen.append(by_id[next_id])
-            if len(chosen) >= limit:
-                break
-    return home_episodes(session, profile_id, chosen)
+    found = ((sid, next_up(_keys(eps), states)) for sid, eps in by_show.items())
+    return {sid: episode_id for sid, episode_id in found if episode_id is not None}
+
+
+def _show_cards(session: Session, profile_id: int) -> list[tuple[datetime, int, int]]:
+    """Exactly one ``(date, kind, episode_id)`` card per show (§9 Rev 14, latest activity wins):
+    the in-progress episode (dated by its ``updated_at``) unless the show's latest ``watched_at``
+    is newer and the show has a Next Up episode (dated by that ``watched_at``)."""
+    in_progress = _in_progress_episodes(session, profile_id)
+    watched = _latest_watched(session, profile_id)
+    wants_next = [
+        sid for sid, at in watched.items() if sid not in in_progress or at > in_progress[sid][0]
+    ]
+    next_ids = _next_up_ids(session, profile_id, wants_next)
+    cards = [(watched[sid], _NEXT_UP, episode_id) for sid, episode_id in next_ids.items()]
+    cards += [
+        (at, _IN_PROGRESS, episode_id)
+        for sid, (at, episode_id) in in_progress.items()
+        if sid not in next_ids
+    ]
+    return cards
+
+
+def _continue_watching(session: Session, profile_id: int, limit: int) -> list[Any]:
+    """One row (Rev 13): in-progress films + one card per show (Rev 14), newest first.
+
+    Fixed number of queries per call: the per-show choice is made in memory over the profile's
+    started shows, then only the ``limit`` picked items are loaded and summarized in batches."""
+    cards = [
+        (at, _IN_PROGRESS, "film", fid)
+        for at, fid in _in_progress_films(session, profile_id, limit)
+    ]
+    cards += [(at, kind, "episode", eid) for at, kind, eid in _show_cards(session, profile_id)]
+    # Ties: in-progress first, then film before episode, then the higher id (deterministic).
+    cards.sort(reverse=True)
+    picked = cards[:limit]
+    film_ids = [i for _, _, t, i in picked if t == "film"]
+    episode_ids = [i for _, _, t, i in picked if t == "episode"]
+    films = list(session.scalars(select(m.Film).where(m.Film.id.in_(film_ids)))) if film_ids else []
+    episodes = (
+        list(session.scalars(select(m.Episode).where(m.Episode.id.in_(episode_ids))))
+        if episode_ids
+        else []
+    )
+    out: dict[tuple[str, int], Any] = {
+        ("film", x.id): x for x in film_summaries(session, profile_id, films)
+    }
+    out |= {("episode", x.id): x for x in home_episodes(session, profile_id, episodes)}
+    return [out[(t, i)] for _, _, t, i in picked]
 
 
 def _recently_added(session: Session, profile_id: int, limit: int) -> list[Any]:
@@ -835,7 +940,6 @@ def library_counts(session: Session) -> LibraryCounts:
 def home(session: Session, profile_id: int, limit: int) -> HomeResponse:
     return HomeResponse(
         continue_watching=_continue_watching(session, profile_id, limit),
-        next_up=_next_up(session, profile_id, limit),
         recently_added=_recently_added(session, profile_id, limit),
         library=library_counts(session),
     )

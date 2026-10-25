@@ -1,4 +1,5 @@
 import type { ItemType, MediaFile } from '@/api/types';
+import { WARNING_GLYPH } from '@/components/glyphs';
 import { S } from '@/strings.es';
 import { OtherVersions, TechnicalDetails } from './OtherVersions';
 import styles from './Player.module.css';
@@ -26,7 +27,7 @@ export function PlayerErrorScreen({ error, itemType, alternatives, onRetry, onTr
     <div className={styles.screen}>
       <div className={styles.screenBox} role="alert">
         <p className={styles.screenHeading}>
-          <span aria-hidden="true">⚠ </span>
+          <span aria-hidden="true">{WARNING_GLYPH} </span>
           {gone ? S.player.gone[itemType] : error.message}
         </p>
         {gone && error.code === 'file_missing' && <p className={styles.screenText}>{error.message}</p>}

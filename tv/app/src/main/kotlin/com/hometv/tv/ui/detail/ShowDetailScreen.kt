@@ -77,7 +77,7 @@ fun ShowDetailScreen(vm: ShowDetailViewModel, navigator: AppNavigator) {
     Box(Modifier.fillMaxSize().background(HomeTvColors.Background)) {
         when (val s = state) {
             ShowDetailUiState.Loading -> LoadingScreen()
-            is ShowDetailUiState.Error -> ScreenErrorView(s.error, vm::retry, onBack = navigator::back, onChangeServer = navigator::changeServer)
+            is ShowDetailUiState.Error -> ScreenErrorView(s.error, vm::retry, onBack = navigator::back)
             is ShowDetailUiState.Content -> if (s.seasonGone) {
                 BackHandler { vm.onSeasonGoneBack() }
                 ErrorScreen(stringResource(R.string.item_gone), listOf(ErrorAction(stringResource(R.string.action_back), vm::onSeasonGoneBack)))
@@ -120,7 +120,7 @@ private fun ShowContent(state: ShowDetailUiState.Content, vm: ShowDetailViewMode
     ) {
         Spacer(Modifier.height(96.dp))
         Text(show.title, style = MaterialTheme.typography.displaySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(state.meta.resolve(), style = MaterialTheme.typography.titleMedium, color = HomeTvColors.Muted, modifier = Modifier.padding(top = 6.dp))
+        Text(state.meta.resolve(), style = MaterialTheme.typography.titleMedium, color = DetailText.secondary, modifier = Modifier.padding(top = 6.dp))
         show.overview?.let { Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp).fillMaxWidth(0.7f)) }
         Row(Modifier.padding(vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             state.buttons.forEach { button ->

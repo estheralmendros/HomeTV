@@ -112,15 +112,31 @@ describe('NavBar', () => {
   });
 });
 
-describe('Footer', () => {
-  it('shows the TMDB logo and the Spanish attribution, linking to /about', () => {
+describe('Tab bar spacer', () => {
+  it('below 720 px the shell reserves room for the fixed tab bar', () => {
+    setViewportWidth(360);
+    const { container } = renderWithProviders(<AppShell />);
+    expect(screen.getByRole('navigation', { name: 'Secciones' })).toBeInTheDocument();
+    expect(container.querySelector('.shell')).toHaveClass('withTabBar');
+  });
+
+  it('desktop (1280 px): no tab bar, no spacer', () => {
+    const { container } = renderWithProviders(<AppShell />);
+    expect(container.querySelector('.shell')).not.toHaveClass('withTabBar');
+  });
+
+  it('follows viewport changes', () => {
+    const { container } = renderWithProviders(<AppShell />);
+    act(() => setViewportWidth(360));
+    expect(container.querySelector('.shell')).toHaveClass('withTabBar');
+  });
+});
+
+describe('No footer', () => {
+  it('AppShell pages show no TMDB banner (the attribution lives on /about only)', () => {
     renderWithProviders(<AppShell />);
-    const footer = screen.getByRole('contentinfo');
-    const link = within(footer).getByRole('link');
-    expect(link).toHaveAttribute('href', '/about');
-    expect(within(footer).getByRole('img', { name: 'Logotipo de TMDB' })).toBeInTheDocument();
-    expect(footer).toHaveTextContent(
-      'Este producto utiliza la API de TMDB, pero no está respaldado ni certificado por TMDB.',
-    );
+    expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: 'Logotipo de TMDB' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Este producto utiliza la API de TMDB/)).not.toBeInTheDocument();
   });
 });

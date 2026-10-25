@@ -4,7 +4,7 @@ import { apiError } from '../../tests/msw/handlers';
 import { recordRequests, server } from '../../tests/msw/server';
 import { adminUnlock } from '@/auth/adminUnlock';
 import { apiFetch, retryDelaySeconds, setTokenGetter, setUnauthorizedHandler } from './client';
-import { ApiError } from './errors';
+import { ApiError, errorMessage } from './errors';
 import { getScan } from './admin';
 import { getInfo } from './system';
 import { getMe } from './profiles';
@@ -77,6 +77,14 @@ describe('apiFetch', () => {
   it('uses http_<status> when the body is not an envelope', async () => {
     server.use(http.get('/api/info', () => new HttpResponse('<html>bad gateway</html>', { status: 502 })));
     await expect(getInfo()).rejects.toMatchObject({ status: 502, code: 'http_502' });
+  });
+
+  it('turns a 2xx body that is not JSON into invalid_response', async () => {
+    server.use(http.get('/api/info', () => new HttpResponse('<html>proxy page</html>', { status: 200, headers: { 'Content-Type': 'text/html' } })));
+    const err = await getInfo().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err).toMatchObject({ status: 200, code: 'invalid_response' });
+    expect(errorMessage(err)).toBe('El servidor ha enviado una respuesta no válida.');
   });
 
   it('turns a network failure into network_error (status 0)', async () => {

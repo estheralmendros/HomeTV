@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any, Literal, TypeVar, cast
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.orm import Session
 
 from hometv.api.errors import ApiError
@@ -163,19 +163,42 @@ def _write_cast(
         return value if isinstance(value, int) else 1_000_000
 
     members.sort(key=billing_order)
-    for position, member in enumerate(members[:cast_limit]):
-        person = session.scalar(select(m.Person).where(m.Person.tmdb_id == member["id"]))
+    seen: set[int] = set()
+    unique = []  # one credit per person (TMDB can list a person twice): first by billing order
+    for member in members:
+        if member["id"] not in seen:
+            seen.add(member["id"])
+            unique.append(member)
+    billed = unique[:cast_limit]
+    # One SELECT for the whole cast and one multi-row INSERT for the new persons (never one
+    # statement per member inside the write transaction).
+    known = {
+        p.tmdb_id: p
+        for p in session.scalars(
+            select(m.Person).where(m.Person.tmdb_id.in_([c["id"] for c in billed]))
+        )
+    }
+    person_ids = {tmdb_id: p.id for tmdb_id, p in known.items()}
+    new_rows = []
+    for member in billed:
+        profile_path = tmdb_file_name(member.get("profile_path"))
+        person = known.get(member["id"])
         if person is None:
-            person = m.Person(tmdb_id=member["id"], name=member.get("name") or "")
-            session.add(person)
+            name = member.get("name") or ""
+            new_rows.append({"tmdb_id": member["id"], "name": name, "profile_path": profile_path})
         else:
             person.name = member.get("name") or person.name
-        person.profile_path = tmdb_file_name(member.get("profile_path"))
-        session.flush()
+            person.profile_path = profile_path
+    if new_rows:
+        inserted = session.execute(
+            insert(m.Person).values(new_rows).returning(m.Person.tmdb_id, m.Person.id)
+        )
+        person_ids.update({tmdb_id: pid for tmdb_id, pid in inserted})
+    for position, member in enumerate(billed):
         order = member.get("order") if isinstance(member.get("order"), int) else position
         session.add(
             m.CastCredit(
-                person_id=person.id,
+                person_id=person_ids[member["id"]],
                 film_id=item_id if kind == "film" else None,
                 show_id=item_id if kind == "show" else None,
                 character=str_or_none(member.get("character")),

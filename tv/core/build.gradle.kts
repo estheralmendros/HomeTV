@@ -45,6 +45,12 @@ tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>("compileTestKotlin"
 
 tasks.test {
     useJUnitPlatform()
+    // BrandAssetsTest checks the app's banner and launcher icon on a plain JVM (javax.imageio); the path
+    // comes from Gradle, not from the working directory, and the files are inputs for up-to-date checks.
+    val appRes = rootProject.file("app/src/main/res")
+    inputs.files(appRes.resolve("drawable-xhdpi/banner.png"), appRes.resolve("drawable/ic_launcher_foreground.xml"), appRes.resolve("values/colors.xml"))
+        .withPropertyName("brandAssets").withPathSensitivity(PathSensitivity.RELATIVE)
+    systemProperty("hometv.appRes", appRes.absolutePath)
     testLogging {
         events("failed")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL

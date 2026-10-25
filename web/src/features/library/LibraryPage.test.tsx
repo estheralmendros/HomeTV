@@ -2,6 +2,7 @@ import { act, screen, waitFor, within } from '@testing-library/react';
 import { delay, http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FilmSummary, LibraryType, ShowSummary } from '@/api/types';
+import { queryKeys } from '@/api/queryKeys';
 import * as f from '../../../tests/fixtures';
 import { API, apiError } from '../../../tests/msw/handlers';
 import { recordRequests, server } from '../../../tests/msw/server';
@@ -89,7 +90,7 @@ describe('LibraryPage (films)', () => {
 
   it('toolbar changes are sent as request params and reflected in the URL', async () => {
     const rec = recordRequests();
-    const { user, router } = renderLibrary();
+    const { user, router, queryClient } = renderLibrary();
     await screen.findByRole('link', { name: 'Dune (2021)' });
 
     await user.type(screen.getByRole('searchbox', { name: 'Filtrar por título' }), '  dune ');
@@ -118,12 +119,26 @@ describe('LibraryPage (films)', () => {
     await waitFor(() => expect(lastListParams(rec)).toMatchObject({ year_from: '1990', year_to: '2009' }));
     expect(currentUrl(router)).toBe('/films?q=dune&sort=year&order=asc&genre=18&year_from=1990&year_to=2009');
     expect(rec.find('GET', '/api/genres')[0]?.url.searchParams.get('type')).toBe('films');
+
+    // prd2 §5 step 2: "Estado" (Todas / Vistas / No vistas) → watched omitted / true / false.
+    const state = screen.getByLabelText('Estado');
+    expect(within(state).getAllByRole('option').map((o) => o.textContent)).toEqual(['Todas', 'Vistas', 'No vistas']);
+    await user.selectOptions(state, 'No vistas');
+    await waitFor(() => expect(lastListParams(rec).watched).toBe('false'));
+    expect(currentUrl(router)).toBe('/films?q=dune&sort=year&order=asc&genre=18&year_from=1990&year_to=2009&watched=false');
+    await user.selectOptions(state, 'Vistas');
+    await waitFor(() => expect(lastListParams(rec).watched).toBe('true'));
+    // Drop the cached unfiltered page so "Todas" sends a request: it must omit `watched`.
+    queryClient.removeQueries({ queryKey: queryKeys.libraryAll('films'), type: 'inactive' });
+    await user.selectOptions(state, 'Todas');
+    await waitFor(() => expect(currentUrl(router)).toBe('/films?q=dune&sort=year&order=asc&genre=18&year_from=1990&year_to=2009'));
+    await waitFor(() => expect(lastListParams(rec)).toEqual({ page: '1', page_size: '60', q: 'dune', sort: 'year', order: 'asc', genre: '18', year_from: '1990', year_to: '2009' }));
     rec.dispose();
   });
 
   it('restores the toolbar from the URL', async () => {
     const rec = recordRequests();
-    renderLibrary('films', '/films?q=dune&sort=added&order=asc&genre=35&year_from=1990&year_to=2009');
+    renderLibrary('films', '/films?q=dune&sort=added&order=asc&genre=35&year_from=1990&year_to=2009&watched=true');
     await screen.findByRole('link', { name: 'Dune (2021)' });
     expect(screen.getByText('1 película')).toBeInTheDocument();
     expect(screen.getByRole('searchbox', { name: 'Filtrar por título' })).toHaveValue('dune');
@@ -132,8 +147,9 @@ describe('LibraryPage (films)', () => {
     await waitFor(() => expect(screen.getByLabelText('Género')).toHaveValue('35'));
     expect(screen.getByLabelText('Desde')).toHaveValue(1990);
     expect(screen.getByLabelText('Hasta')).toHaveValue(2009);
+    expect(screen.getByLabelText('Estado')).toHaveValue('true');
     expect(lastListParams(rec)).toEqual({
-      page: '1', page_size: '60', q: 'dune', sort: 'added', order: 'asc', genre: '35', year_from: '1990', year_to: '2009',
+      page: '1', page_size: '60', q: 'dune', sort: 'added', order: 'asc', genre: '35', year_from: '1990', year_to: '2009', watched: 'true',
     });
     rec.dispose();
   });
@@ -249,7 +265,7 @@ describe('LibraryPage (films)', () => {
     expect(within(toolbar).getByLabelText('Orden')).toBeInTheDocument();
   });
 
-  it('mobile filter sheet: Aplicar writes sort, order, genre and years to the URL', async () => {
+  it('mobile filter sheet: Aplicar writes sort, order, genre, years and watched to the URL', async () => {
     setViewportWidth(360);
     const { user, router } = renderLibrary();
     await screen.findByRole('link', { name: 'Dune (2021)' });
@@ -259,14 +275,15 @@ describe('LibraryPage (films)', () => {
     await waitFor(() => expect(within(sheet).getByRole('option', { name: 'Comedia (40)' })).toBeInTheDocument());
     await user.selectOptions(within(sheet).getByLabelText('Género'), 'Comedia (40)');
     await user.type(within(sheet).getByLabelText('Desde'), '2000');
+    await user.selectOptions(within(sheet).getByLabelText('Estado'), 'Vistas');
     await user.click(within(sheet).getByRole('button', { name: 'Aplicar' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(currentUrl(router)).toBe('/films?sort=year&genre=35&year_from=2000');
+    expect(currentUrl(router)).toBe('/films?sort=year&genre=35&year_from=2000&watched=true');
   });
 
   it('mobile filter sheet: From > To blocks Aplicar; Borrar clears the filters', async () => {
     setViewportWidth(360);
-    const { user, router } = renderLibrary('films', '/films?genre=18');
+    const { user, router } = renderLibrary('films', '/films?genre=18&watched=false');
     await screen.findByRole('link', { name: 'Dune (2021)' });
     await user.click(screen.getByRole('button', { name: 'Filtros' }));
     const sheet = await screen.findByRole('dialog', { name: 'Filtros' });

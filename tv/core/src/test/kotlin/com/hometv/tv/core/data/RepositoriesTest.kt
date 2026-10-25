@@ -72,6 +72,67 @@ class RepositoriesTest {
     }
 
     @Test
+    fun `verifyAdminPin posts the PIN with the profile token and discards the admin token`() = runTest {
+        t.route("POST", "/api/admin/unlock") { t.json("""{"admin_token": "adm", "expires_at": "2026-10-23T18:00:00Z"}""") }
+        assertEquals(PinCheck.Ok, profiles.verifyAdminPin("1234"))
+        val request = t.requests.single()
+        assertEquals("Bearer old", request.getHeader("Authorization"))
+        assertEquals("1234", body()["pin"].toString().trim('"'))
+        assertEquals("old", t.store.session.value.token)
+    }
+
+    @Test
+    fun `verifyAdminPin 401 invalid_pin is a wrong PIN, never a session renewal`() = runTest {
+        t.route("POST", "/api/admin/unlock") { t.error(401, "invalid_pin") }
+        assertEquals(PinCheck.Wrong, profiles.verifyAdminPin("0000"))
+        assertEquals(listOf("/api/admin/unlock"), t.requests.map { it.path })
+    }
+
+    @Test
+    fun `verifyAdminPin renews an expired profile token once and retries the check`() = runTest {
+        t.route("POST", "/api/admin/unlock") { r ->
+            if (r.getHeader("Authorization") == "Bearer old") t.error(401, "unauthorized")
+            else t.json("""{"admin_token": "adm", "expires_at": "2026-10-23T18:00:00Z"}""")
+        }
+        t.route("POST", "/api/profiles/5/session") { t.json(t.sessionJson("new")) }
+        assertEquals(PinCheck.Ok, profiles.verifyAdminPin("1234"))
+        assertEquals(listOf("/api/admin/unlock", "/api/profiles/5/session", "/api/admin/unlock"), t.requests.map { it.path })
+        assertEquals("Bearer new", t.requests.last().getHeader("Authorization"))
+        assertEquals("new", t.store.session.value.token)
+    }
+
+    @Test
+    fun `verifyAdminPin after a renewal still maps invalid_pin to a wrong PIN`() = runTest {
+        t.route("POST", "/api/admin/unlock") { r ->
+            if (r.getHeader("Authorization") == "Bearer old") t.error(401, "unauthorized") else t.error(401, "invalid_pin")
+        }
+        t.route("POST", "/api/profiles/5/session") { t.json(t.sessionJson("new")) }
+        assertEquals(PinCheck.Wrong, profiles.verifyAdminPin("0000"))
+        assertEquals(1, t.requests.count { it.path == "/api/profiles/5/session" })
+    }
+
+    @Test
+    fun `verifyAdminPin with a token rejected twice renews only once and fails the check`() = runTest {
+        t.route("POST", "/api/admin/unlock") { t.error(401, "unauthorized") }
+        t.route("POST", "/api/profiles/5/session") { t.json(t.sessionJson("new")) }
+        assertEquals(PinCheck.Failed, profiles.verifyAdminPin("1234"))
+        assertEquals(listOf("/api/admin/unlock", "/api/profiles/5/session", "/api/admin/unlock"), t.requests.map { it.path })
+        assertTrue(events.isEmpty(), "no Connection Error / Picker event for a failed check: $events")
+    }
+
+    @Test
+    fun `verifyAdminPin 429 is a lockout with its retry delay`() = runTest {
+        t.route("POST", "/api/admin/unlock") { t.error(429, "too_many_attempts", """{"retry_after_seconds": 42}""") }
+        assertEquals(PinCheck.Locked(42), profiles.verifyAdminPin("0000"))
+    }
+
+    @Test
+    fun `verifyAdminPin maps any other answer to Failed`() = runTest {
+        t.route("POST", "/api/admin/unlock") { t.error(403, "forbidden") }
+        assertEquals(PinCheck.Failed, profiles.verifyAdminPin("1234"))
+    }
+
+    @Test
     fun `home drops summaries of unknown types`() = runTest {
         t.route("GET", "/api/home?limit=20") { t.json(Fixtures.home) }
         val home = catalog.home()
@@ -97,13 +158,31 @@ class RepositoriesTest {
     }
 
     @Test
-    fun `browse sort options cycle in the PRD order`() {
+    fun `browse sort options are listed in the PRD order`() {
         assertEquals(
             listOf("title" to "asc", "title" to "desc", "year" to "desc", "year" to "asc", "added" to "desc"),
             BrowseSort.entries.map { it.sort to it.order },
         )
-        assertEquals(BrowseSort.TITLE_DESC, BrowseSort.TITLE_ASC.next())
-        assertEquals(BrowseSort.TITLE_ASC, BrowseSort.ADDED_DESC.next())
+    }
+
+    @Test
+    fun `browse filters add genre, year bounds and watched, and are omitted when not set`() = runTest {
+        val page = """{"items": [], "page": 1, "page_size": 50, "total": 0}"""
+        t.route("GET", "/api/shows?page=1&page_size=50&sort=title&order=asc&genre=35&watched=false") { t.json(page) }
+        t.route("GET", "/api/films?page=1&page_size=50&sort=title&order=asc&genre=18&year_from=1990&year_to=1999") { t.json(page) }
+        t.route("GET", "/api/shows?page=1&page_size=50&sort=title&order=asc&year_to=1949") { t.json(page) }
+        t.route("GET", "/api/films?page=1&page_size=50&sort=title&order=asc") { t.json(page) }
+        catalog.films(filter = BrowseFilter(genreId = 18, yearFrom = 1990, yearTo = 1999))
+        catalog.shows(filter = BrowseFilter(yearTo = 1949))
+        catalog.films(filter = BrowseFilter())
+        catalog.shows(filter = BrowseFilter(genreId = 35, watched = false))
+        assertEquals(4, t.requests.size)
+    }
+
+    @Test
+    fun `genres of a library, by name`() = runTest {
+        t.route("GET", "/api/genres?type=shows") { t.json("""{"items": [{"id": 18, "name": "Drama", "count": 3}, {"id": 35, "name": "Comedia", "count": 1}]}""") }
+        assertEquals(listOf(18L to "Drama", 35L to "Comedia"), catalog.genres("shows").map { it.id to it.name })
     }
 
     @Test

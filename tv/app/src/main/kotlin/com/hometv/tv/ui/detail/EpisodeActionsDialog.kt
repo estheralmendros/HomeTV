@@ -19,7 +19,7 @@ import com.hometv.tv.ui.components.rememberFocusRequesters
 import com.hometv.tv.ui.text.resolve
 import com.hometv.tv.ui.theme.HomeTvColors
 
-/** Long-press on an episode (prd3 §7.5): [Reproducir desde el principio] [Marcar como visto | no visto]. */
+/** Long-press on an episode (prd3 §7.5): [Ver desde el principio] [Marcar como visto | no visto]. */
 @Composable
 fun EpisodeActionsDialog(actions: EpisodeActionsUi, onPlayFromStart: () -> Unit, onToggleWatched: () -> Unit, onDismiss: () -> Unit) {
     val requesters = rememberFocusRequesters<Int>()

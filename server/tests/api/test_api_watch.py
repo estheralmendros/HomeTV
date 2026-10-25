@@ -285,3 +285,44 @@ async def test_mark_watched_targets(client, db, user):
             headers=user.headers,
         )
         assert r.status_code == 404 and r.json()["error"]["code"] == "not_found"
+
+
+async def test_mark_watched_many_episode_show_keeps_one_row_per_episode(client, db, user, admin):
+    with db.write_session() as s:
+        show, eps = add_show(s, "Long", episodes={1: 60, 2: 60, 3: 60})
+        ids = sorted(e.id for e in eps.values())
+        in_progress = ids[::7]
+        for ep_id in in_progress:
+            file_id = s.scalar(
+                select(m.MediaFileEpisode.media_file_id).where(
+                    m.MediaFileEpisode.episode_id == ep_id
+                )
+            )
+            add_progress(s, user.id, episode_id=ep_id, position=300.0, media_file_id=file_id)
+        add_progress(s, admin.id, episode_id=ids[0], position=100.0)  # another profile's row
+        show_id = show.id
+
+    async def mark(watched):
+        r = await client.post(
+            "/api/watched",
+            json={"target": "show", "id": show_id, "watched": watched},
+            headers=user.headers,
+        )
+        assert r.status_code == 200, r.text
+        return r.json()["updated"]
+
+    assert await mark(True) == 180
+    with db.read_session() as s:
+        rows = s.scalars(
+            select(m.PlaybackProgress).where(m.PlaybackProgress.profile_id == user.id)
+        ).all()
+        assert sorted(r.episode_id for r in rows) == ids  # existing rows reused, no duplicates
+        assert all(r.watched and r.position_seconds == 0.0 for r in rows)
+        kept = {r.episode_id: r.media_file_id for r in rows if r.media_file_id is not None}
+        assert sorted(kept) == in_progress  # manual marks keep the version
+        other = s.scalar(
+            select(m.PlaybackProgress).where(m.PlaybackProgress.profile_id == admin.id)
+        )
+        assert other is not None and not other.watched and other.position_seconds == 100.0
+    assert await mark(False) == 180
+    assert await mark(False) == 0

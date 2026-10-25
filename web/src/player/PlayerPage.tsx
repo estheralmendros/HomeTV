@@ -37,6 +37,7 @@ import { UnsupportedMessage } from './UnsupportedMessage';
 import { useAutoHide } from './useAutoHide';
 import { useFullscreen } from './useFullscreen';
 import { useKeyboardShortcuts } from './useKeyboardShortcuts';
+import { mediaSessionInfo, useMediaSession } from './useMediaSession';
 import { mediaDuration, useMediaSelector } from './useMediaClock';
 import { isWithinLead, useNextUp } from './useNextUp';
 import { usePlaybackSession } from './usePlaybackSession';
@@ -240,6 +241,8 @@ export function PlayerPage({ type, id }: PlayerPageProps) {
 
   const screen = SCREEN_STATES.has(state.name) || appUpdated;
   const hideControls = useAutoHide(state.name === 'playing' && menu === null);
+  const shortcutsEnabled = !screen && state.name !== 'preparing';
+  const title = playerTitle(type, source, currentFile);
 
   useKeyboardShortcuts(
     {
@@ -251,15 +254,31 @@ export function PlayerPage({ type, id }: PlayerPageProps) {
       closeMenu: () => setMenu(null),
       next: goNext,
       activateBlocked: session.play,
+      play: session.play,
+      pause: session.pause,
     },
     {
-      enabled: !screen && state.name !== 'preparing',
+      enabled: shortcutsEnabled,
       menuOpen: menu !== null,
       blocked: state.name === 'blocked',
       volumeEnabled: !platform.ios,
       nextAvailable: goNext !== undefined,
+      // With the Media Session API its handlers (useMediaSession) are the only media-key path.
+      mediaKeys: !('mediaSession' in navigator),
     },
   );
+
+  // Headset / Bluetooth / OS media keys and Now Playing: the same play, pause and ∓10 s paths.
+  const nowPlaying = useMemo(() => mediaSessionInfo(type, source, title), [type, source, title]);
+  useMediaSession({
+    // Gone (item or file 404): no Now Playing card for something that is no longer there.
+    info: isGone ? null : nowPlaying,
+    playing,
+    enabled: shortcutsEnabled,
+    onPlay: session.play,
+    onPause: session.pause,
+    onSeekBy: seekBy,
+  });
 
   // Touch: a tap toggles the controls, a double tap on the left/right third seeks ∓10 s.
   const lastTap = useRef<{ at: number; zone: number } | null>(null);
@@ -278,10 +297,9 @@ export function PlayerPage({ type, id }: PlayerPageProps) {
     hideControls.toggle();
   };
 
-  useDocumentTitle(source ? playerTitle(type, source, currentFile) : null);
+  useDocumentTitle(source ? title : null);
 
   // --- render --------------------------------------------------------------------------------
-  const title = playerTitle(type, source, currentFile);
   const loadFailed = decision === null && query.isError && !itemGone && state.name === 'idle';
   const crossTabToast: PlayerToast[] = crossTabNotice
     ? [

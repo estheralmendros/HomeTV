@@ -32,15 +32,23 @@ interface HomeTvApi {
     @GET("api/me")
     suspend fun me(): Profile
 
+    @POST("api/admin/unlock")
+    suspend fun unlock(@Body body: UnlockRequest): UnlockResponse
+
     @GET("api/home")
     suspend fun home(@Query("limit") limit: Int): HomeResponse
 
+    /** Null filters are omitted from the query (prd.md list filters). */
     @GET("api/films")
     suspend fun films(
         @Query("page") page: Int,
         @Query("page_size") pageSize: Int,
         @Query("sort") sort: String,
         @Query("order") order: String,
+        @Query("genre") genre: Long? = null,
+        @Query("year_from") yearFrom: Int? = null,
+        @Query("year_to") yearTo: Int? = null,
+        @Query("watched") watched: Boolean? = null,
     ): Page<FilmSummary>
 
     @GET("api/films/{id}")
@@ -52,7 +60,15 @@ interface HomeTvApi {
         @Query("page_size") pageSize: Int,
         @Query("sort") sort: String,
         @Query("order") order: String,
+        @Query("genre") genre: Long? = null,
+        @Query("year_from") yearFrom: Int? = null,
+        @Query("year_to") yearTo: Int? = null,
+        @Query("watched") watched: Boolean? = null,
     ): Page<ShowSummary>
+
+    /** `type` = `films` or `shows`; ordered by name. */
+    @GET("api/genres")
+    suspend fun genres(@Query("type") type: String): GenreList
 
     @GET("api/shows/{id}")
     suspend fun show(@Path("id") id: Long): ShowDetail

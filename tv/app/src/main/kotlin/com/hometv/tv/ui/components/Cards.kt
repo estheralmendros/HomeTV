@@ -136,12 +136,14 @@ private fun androidx.compose.foundation.layout.BoxScope.CardBadges(progress: Flo
             painterResource(R.drawable.ic_check),
             contentDescription = stringResource(R.string.watched),
             modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).size(24.dp).background(HomeTvColors.Primary, RoundedCornerShape(12.dp)).padding(3.dp),
+            tint = HomeTvColors.OnPrimary,
         )
     }
     if (badge != null) {
         Text(
             badge,
             style = MaterialTheme.typography.labelLarge,
+            color = HomeTvColors.OnPrimary,
             modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).background(HomeTvColors.Primary, RoundedCornerShape(10.dp)).padding(horizontal = 7.dp, vertical = 2.dp),
         )
     }

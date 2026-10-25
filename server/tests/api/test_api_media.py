@@ -386,7 +386,8 @@ async def test_keepalive_updates_last_access_and_failed_is_500(
 
 async def test_too_many_sessions_and_previous_session(client, user, make_file, ffmpeg, app):
     fid = make_file(keyframes=KF)
-    sids = [(await play(client, user, fid)).json()["session_id"] for _ in range(3)]
+    limit = app.state.settings.playback.max_sessions
+    sids = [(await play(client, user, fid)).json()["session_id"] for _ in range(limit)]
     response = await play(client, user, fid)
     assert (response.status_code, response.json()["error"]["code"]) == (503, "too_many_sessions")
     response = await play(client, user, fid, previous_session_id=sids[0])
@@ -443,8 +444,8 @@ async def test_previous_session_is_stopped_whatever_the_outcome(
     await check_stopped(sid)
     hls.disk_free = lambda path: 10 * 1024**4
 
-    # 503 too_many_sessions: the old one is stopped first, so it frees a slot -> fill all 3.
-    others = [await new_session() for _ in range(3)]
+    # 503 too_many_sessions: the old one is stopped first, so it frees a slot -> fill all of them.
+    others = [await new_session() for _ in range(app.state.settings.playback.max_sessions)]
     other_user = profile_factory("Otro")
     response = await play(client, other_user, fid, previous_session_id=others[0])
     assert response.json()["error"]["code"] == "too_many_sessions"  # foreign id ignored

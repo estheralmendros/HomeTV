@@ -2,8 +2,9 @@ package com.hometv.tv.core.data
 
 import com.hometv.tv.core.api.ApiJson
 import com.hometv.tv.core.api.Health
+import com.hometv.tv.core.api.ResponseTooLargeException
 import com.hometv.tv.core.api.ServerInfo
-import com.hometv.tv.core.api.await
+import com.hometv.tv.core.api.fetch
 import com.hometv.tv.core.util.ServerUrl
 import java.io.IOException
 import javax.net.ssl.SSLException
@@ -47,6 +48,9 @@ class ServerRepository(private val client: OkHttpClient) {
         }
     } catch (e: CancellationException) {
         throw e
+    } catch (e: ResponseTooLargeException) {
+        // Over the 1 MiB cap of fetch(): a HomeTV server never answers that much here.
+        ServerValidation.NotHomeTvServer
     } catch (e: SSLException) {
         ServerValidation.TlsError
     } catch (e: IOException) {
@@ -57,7 +61,8 @@ class ServerRepository(private val client: OkHttpClient) {
 
     private suspend fun get(serverUrl: String, path: String): Answer {
         val request = Request.Builder().url(ServerUrl.resolve(serverUrl, path)).header("Accept", "application/json").build()
-        return client.newCall(request).await().use { Answer(it.code, it.body?.string().orEmpty()) }
+        // fetch() reads the body on OkHttp's thread: validate() may run on the main thread.
+        return client.newCall(request).fetch().let { Answer(it.code, it.body.decodeToString()) }
     }
 
     private fun <T> decode(body: String, block: (String) -> T): T? = runCatching { block(body) }.getOrNull()

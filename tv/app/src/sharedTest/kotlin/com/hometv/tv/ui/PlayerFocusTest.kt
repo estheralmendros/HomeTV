@@ -87,6 +87,42 @@ class PlayerFocusTest : UiTestBase() {
     }
 
     @Test
+    fun theHeadsetHookKeyTogglesPlayPauseLikeMediaPlayPause() {
+        openFilm()
+        press(Key.HeadsetHook)
+        assertFalse(player.playWhenReady)
+        assertTrue(api.calls.contains("PUT /api/progress"))
+        press(Key.HeadsetHook)
+        assertTrue(player.playWhenReady)
+    }
+
+    /** One held key: ACTION_DOWN with repeatCount 0..repeats, then ACTION_UP; the answers of [keyDispatch]. */
+    private fun hold(code: Int, repeats: Int): List<Boolean> {
+        val answers = (0..repeats).map { n ->
+            rule.runOnUiThread<Boolean> { keyDispatch.dispatch(android.view.KeyEvent(0L, 0L, android.view.KeyEvent.ACTION_DOWN, code, n)) }
+        } + rule.runOnUiThread<Boolean> { keyDispatch.dispatch(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, code)) }
+        settle()
+        return answers
+    }
+
+    @Test
+    fun holdingAPlayPauseKeyTogglesOnceAndConsumesTheRepeats() {
+        openFilm()
+        player.clearLog()
+        val answers = hold(android.view.KeyEvent.KEYCODE_HEADSETHOOK, repeats = 2)
+        assertEquals("the repeats never reach the system media session", listOf(true, true, true, true), answers)
+        assertEquals(listOf("pause"), player.log.filter { it == "pause" || it == "play" })
+        assertEquals(1, api.count("PUT /api/progress"))
+        player.clearLog()
+        hold(android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, repeats = 2)
+        assertEquals(listOf("play"), player.log.filter { it == "pause" || it == "play" })
+        player.clearLog()
+        hold(android.view.KeyEvent.KEYCODE_MEDIA_PAUSE, repeats = 2)
+        hold(android.view.KeyEvent.KEYCODE_MEDIA_PLAY, repeats = 2)
+        assertEquals(listOf("pause", "play"), player.log.filter { it == "pause" || it == "play" })
+    }
+
+    @Test
     fun okWhilePlayingPausesAndShowsTheOverlayAndBackHidesItThenExitsToTheCard() {
         openFilm()
         press(Key.DirectionCenter)

@@ -290,3 +290,26 @@ async def test_episode_detail_versions_and_neighbours(client, db, user):
 @pytest.mark.parametrize("path", ["/api/shows", "/api/shows/1", "/api/episodes/1"])
 async def test_auth_required(client, path):
     assert (await client.get(path)).status_code == 401
+
+
+async def test_show_list_watched_filter(client, db, user, admin):
+    """PRD §10 list filters: shows by unwatched_episode_count (specials ignored)."""
+    with db.write_session() as s:
+        _, done = add_show(s, "Dark", episodes={0: 1, 1: 2})
+        _, half = add_show(s, "Lost", episodes={1: 2})
+        add_show(s, "Monk", episodes={1: 1})
+        add_show(s, "Specials Only", episodes={0: 2})
+        for key in [(1, 1), (1, 2)]:  # the unwatched special does not count
+            add_progress(s, user.id, episode_id=done[key].id, watched=True, watched_at=T0)
+        add_progress(s, user.id, episode_id=half[(1, 1)].id, watched=True, watched_at=T0)
+        for episode in half.values():
+            add_progress(s, admin.id, episode_id=episode.id, watched=True, watched_at=T0)
+    titles = lambda page: [x["title"] for x in page["items"]]  # noqa: E731
+    watched = await _get(client, user, "/api/shows?watched=true")
+    assert (titles(watched), watched["total"]) == (["Dark"], 1)
+    unwatched = await _get(client, user, "/api/shows?watched=false")
+    assert (titles(unwatched), unwatched["total"]) == (["Lost", "Monk"], 2)
+    assert len((await _get(client, user, "/api/shows"))["items"]) == 4
+    assert titles(await _get(client, admin, "/api/shows?watched=true")) == ["Lost"]
+    r = await client.get("/api/shows?watched=0", headers=user.headers)
+    assert (r.status_code, r.json()["error"]["code"]) == (422, "validation_error")

@@ -1,4 +1,5 @@
 import type { MediaFile } from '@/api/types';
+import { WARNING_GLYPH } from '@/components/glyphs';
 import { S } from '@/strings.es';
 import { OtherVersions, TechnicalDetails } from './OtherVersions';
 import styles from './Player.module.css';
@@ -31,7 +32,7 @@ export function UnsupportedMessage({ reason, detail, codec, alternatives, onTry,
     <div className={styles.screen}>
       <div className={styles.screenBox}>
         <h2 className={styles.screenHeading}>
-          <span aria-hidden="true">⚠ </span>
+          <span aria-hidden="true">{WARNING_GLYPH} </span>
           {row.heading}
         </h2>
         {body && <p className={styles.screenText}>{body}</p>}

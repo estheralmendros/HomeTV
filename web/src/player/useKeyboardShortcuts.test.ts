@@ -12,6 +12,8 @@ function setup(options: Partial<ShortcutOptions> = {}, overrides: Partial<Shortc
     closeMenu: vi.fn(),
     next: vi.fn(),
     activateBlocked: vi.fn(),
+    play: vi.fn(),
+    pause: vi.fn(),
     ...overrides,
   };
   const opts: ShortcutOptions = { menuOpen: false, blocked: false, volumeEnabled: true, nextAvailable: false, ...options };
@@ -148,5 +150,35 @@ describe('useKeyboardShortcuts', () => {
     press('k');
     expect(first).not.toHaveBeenCalled();
     expect(second).toHaveBeenCalledTimes(1);
+  });
+
+  it('media keys: MediaPlayPause toggles, MediaPlay plays, MediaPause pauses, even in a menu or an input', () => {
+    const { handlers, rerender } = setup();
+    expect(press('MediaPlayPause')).toBe(false);
+    press('MediaPlay');
+    press('MediaPause');
+    expect(handlers.togglePlay).toHaveBeenCalledTimes(1);
+    expect(handlers.play).toHaveBeenCalledTimes(1);
+    expect(handlers.pause).toHaveBeenCalledTimes(1);
+
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    press('MediaPlayPause', input);
+    expect(handlers.togglePlay).toHaveBeenCalledTimes(2);
+    input.remove();
+
+    rerender({ menuOpen: true, blocked: false, volumeEnabled: true, nextAvailable: false });
+    press('MediaPause');
+    expect(handlers.pause).toHaveBeenCalledTimes(2);
+    expect(handlers.closeMenu).not.toHaveBeenCalled();
+  });
+
+  it('media keys in blocked: MediaPlayPause / MediaPlay activate "Toca para reproducir"', () => {
+    const { handlers } = setup({ blocked: true });
+    press('MediaPlayPause');
+    press('MediaPlay');
+    expect(handlers.activateBlocked).toHaveBeenCalledTimes(2);
+    expect(handlers.togglePlay).not.toHaveBeenCalled();
+    expect(handlers.play).not.toHaveBeenCalled();
   });
 });

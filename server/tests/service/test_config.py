@@ -37,7 +37,7 @@ def test_defaults_when_no_env_and_no_yaml(tmp_path):
     assert s.scan.on_startup is True
     assert s.scan.probe_concurrency == 2
     assert s.scan.missing_grace_days == 7
-    assert s.playback.max_sessions == 3
+    assert s.playback.max_sessions == 4
     assert s.playback.hls_dir == tmp_path / "hls"
     assert s.playback.hls_segment_seconds == 6
     assert s.playback.hls_ahead_seconds == 120

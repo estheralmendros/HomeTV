@@ -42,10 +42,12 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** The Home rows in display order (prd3 §3.3); each is hidden when empty. */
+/**
+ * The Home rows in display order (prd3 §3.3); each is hidden when empty. "Seguir viendo" holds the
+ * in-progress items and each started show's Next Up episode (prd.md Rev 13: no separate Next Up row).
+ */
 enum class HomeRowId(val prefix: String, @param:StringRes val title: Int) {
     CONTINUE("continue", R.string.home_continue_watching),
-    NEXT_UP("next_up", R.string.home_next_up),
     RECENT("recent", R.string.home_recently_added),
     FILMS("films", R.string.home_films),
     SHOWS("shows", R.string.home_shows),
@@ -84,7 +86,7 @@ data class HomeRow(val id: HomeRowId, val cards: List<HomeCard>)
 /** Where focus goes after the rows were replaced (fresh data, Back to the first card). */
 data class FocusTarget(val key: String, val rowIndex: Int, val cardIndex: Int, val version: Int)
 
-/** The hero above the rows (prd3 §3.4): film/show `backdrop.small`, title, year, overview; episodes the show's. */
+/** The hero above the rows (prd3 §3.4): film/show `backdrop.large` (else `.small`), title, year, overview; episodes the show's. */
 data class HeroUi(val backdrop: String?, val title: String, val year: String?, val episodeLine: UiText?, val overview: String?)
 
 data class HomeUiState(
@@ -107,6 +109,8 @@ class HomeViewModel(
     private val store: SessionStore,
     events: SharedFlow<AppEvent>,
     private val refresh: HomeRefresh,
+    /** After a successful fresh load: re-fetch the profile if the cold-start one failed (`AccountState.ensureLoaded`). */
+    private val onFreshLoad: suspend () -> Unit = {},
 ) : ViewModel() {
     private val _state = MutableStateFlow(HomeUiState())
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
@@ -182,7 +186,7 @@ class HomeViewModel(
         _navigation.trySend(request)
     }
 
-    /** Long-press on Continue Watching / Next Up → the detail of the film or show. */
+    /** Long-press on a Continue Watching card (in progress or Next Up) → the detail of the film or show. */
     fun onCardLongClick(card: HomeCard) {
         val item = card as? ItemCard ?: return
         val request = when (val s = item.summary) {
@@ -211,6 +215,7 @@ class HomeViewModel(
                 }
                 apply(fresh, fromCache = false)
                 profileId?.let { cache.write(it, fresh) }
+                onFreshLoad()
             } catch (e: ApiException) {
                 _state.update { it.copy(loading = false, error = ScreenError.from(e, store.session.value.serverUrl)) }
             }
@@ -255,7 +260,6 @@ class HomeViewModel(
 
     private fun rowsOf(data: HomePayload): List<HomeRow> = listOfNotNull(
         row(HomeRowId.CONTINUE, data.home.continue_watching, CardStyle.LANDSCAPE),
-        row(HomeRowId.NEXT_UP, data.home.next_up, CardStyle.LANDSCAPE),
         row(HomeRowId.RECENT, data.home.recently_added, CardStyle.POSTER),
         row(HomeRowId.FILMS, data.films, CardStyle.POSTER, SeeAllCard(Library.FILMS)),
         row(HomeRowId.SHOWS, data.shows, CardStyle.POSTER, SeeAllCard(Library.SHOWS)),
@@ -289,9 +293,9 @@ class HomeViewModel(
     }
 
     private fun heroOf(card: ItemCard): HeroUi = when (val s = card.summary) {
-        is FilmSummary -> HeroUi(s.backdrop?.small, s.title, s.year?.toString(), null, s.overview)
-        is ShowSummary -> HeroUi(s.backdrop?.small, s.title, s.year?.toString(), null, s.overview)
-        is EpisodeSummary -> HeroUi(s.show_backdrop?.small, s.show_title, null, episodeLine(s), s.overview)
+        is FilmSummary -> HeroUi(s.backdrop?.let { it.large ?: it.small }, s.title, s.year?.toString(), null, s.overview)
+        is ShowSummary -> HeroUi(s.backdrop?.let { it.large ?: it.small }, s.title, s.year?.toString(), null, s.overview)
+        is EpisodeSummary -> HeroUi(s.show_backdrop?.let { it.large ?: it.small }, s.show_title, null, episodeLine(s), s.overview)
         else -> HeroUi(null, card.title, null, null, null)
     }
 

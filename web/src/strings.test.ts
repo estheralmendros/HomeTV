@@ -56,6 +56,82 @@ export function findLiteralUiText(source: string, fileName = 'x.tsx'): string[] 
   return found;
 }
 
+function uiModules(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    if (statSync(path).isDirectory()) return uiModules(path);
+    return /\.tsx?$/.test(path) && !/\.test\.tsx?$/.test(path) && !path.endsWith('strings.es.ts') ? [path] : [];
+  });
+}
+
+/** Every leaf of the catalog (a string or a function), as a dotted path. */
+function catalogLeaves(node: unknown, prefix = ''): string[] {
+  if (typeof node !== 'object' || node === null) return [prefix];
+  return Object.entries(node).flatMap(([key, value]) => catalogLeaves(value, prefix ? `${prefix}.${key}` : key));
+}
+
+/**
+ * Catalog paths a source reads: `S.a.b.c` chains (also `['c']`) and chains on local aliases
+ * (`const T = S.admin.scan; … T.title`). A dynamic index (`S.errors.byCode[code]`) or a whole
+ * object passed on yields its parent path; those parents must be in `DYNAMIC_PARENTS`.
+ */
+export function catalogPathsRead(source: string, fileName = 'x.tsx'): string[] {
+  const file = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const aliases = new Map<string, string>([['S', '']]);
+  const found: string[] = [];
+  const pathOf = (node: ts.Expression): string | null => {
+    if (ts.isIdentifier(node)) return aliases.get(node.text) ?? null;
+    if (ts.isPropertyAccessExpression(node)) {
+      const base = pathOf(node.expression);
+      return base === null ? null : base ? `${base}.${node.name.text}` : node.name.text;
+    }
+    if (ts.isElementAccessExpression(node) && ts.isStringLiteral(node.argumentExpression)) {
+      const base = pathOf(node.expression);
+      return base === null ? null : base ? `${base}.${node.argumentExpression.text}` : node.argumentExpression.text;
+    }
+    return null;
+  };
+  const isChainLink = (node: ts.Node): boolean =>
+    (ts.isPropertyAccessExpression(node.parent) || ts.isElementAccessExpression(node.parent)) &&
+    node.parent.expression === node;
+  const visit = (node: ts.Node): void => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+      const path = pathOf(node.initializer);
+      if (path) {
+        aliases.set(node.name.text, path);
+        return;
+      }
+    }
+    if ((ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) && !isChainLink(node)) {
+      const path = pathOf(node);
+      if (path) found.push(path);
+      else if (ts.isElementAccessExpression(node)) {
+        const base = pathOf(node.expression);
+        if (base) found.push(base);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
+}
+
+/** Catalog objects read with a computed key (`S.errors.byCode[code]`): every leaf below counts. */
+const DYNAMIC_PARENTS = [
+  'errors.byCode',
+  'show.status',
+  'library.noMatch',
+  'player.gone',
+  'player.unsupported',
+  'admin.scan.states',
+  'admin.scan.triggers',
+  'admin.scan.phases',
+  'admin.scan.counts',
+  'admin.scan.countHints',
+  'admin.unmatched.libraries',
+  'admin.unmatched.reasons',
+];
+
 describe('UI string catalog (Rev 9)', () => {
   it('detects literal JSX text and literal accessible props', () => {
     const src = `export const A = () => (<div title="Hola" aria-label={'Menú'}>
@@ -68,6 +144,20 @@ describe('UI string catalog (Rev 9)', () => {
       findLiteralUiText(readFileSync(path, 'utf8'), path).map((text) => `${relative(SRC, path)}: ${text}`),
     );
     expect(offenders).toEqual([]);
+  });
+
+  it('finds catalog reads through S chains and local aliases', () => {
+    const src = `const T = S.admin.scan; const E = T.errors;
+      f(S.common.cancel, S.show.status[x], S['nav']['films'], T.title, E.pin(1), other.title);`;
+    expect(catalogPathsRead(src)).toEqual(['common.cancel', 'show.status', 'nav.films', 'admin.scan.title', 'admin.scan.errors.pin']);
+  });
+
+  it('every S leaf is read somewhere in src/**/*.ts(x)', () => {
+    const read = new Set(uiModules(SRC).flatMap((path) => catalogPathsRead(readFileSync(path, 'utf8'), path)));
+    const unused = catalogLeaves(S).filter(
+      (leaf) => !read.has(leaf) && !DYNAMIC_PARENTS.some((parent) => leaf.startsWith(`${parent}.`)),
+    );
+    expect(unused).toEqual([]);
   });
 
   it('has an S.errors entry for every error code listed in prd2 §1', () => {

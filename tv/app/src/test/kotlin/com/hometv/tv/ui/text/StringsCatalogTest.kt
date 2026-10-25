@@ -22,7 +22,7 @@ class StringsCatalogTest {
         val all = catalog.strings.values + catalog.plurals.values.flatMap { it.values }
         val glossary = listOf(
             "Inicio", "Películas", "Series", "Seguir viendo", "A continuación", "Añadidos recientemente", "Buscar", "Ajustes",
-            "Reproducir", "Reanudar desde %1\$s", "Reproducir desde el principio", "Reproducir ahora", "Parte %1\$s",
+            "Reproducir", "Reanudar desde %1\$s", "Ver desde el principio", "Reproducir ahora", "Parte %1\$s",
             "Marcar como visto", "Audio y subtítulos", "Desactivados", "Forzados", "Externo", "Predeterminado", "(convertido)",
             "Probar otra versión", "Preparando el vídeo…", "Reintentar", "Cancelar", "Volver", "¿Quién está viendo?", "Servidor",
             "Cambiar servidor", "Desconocido",
