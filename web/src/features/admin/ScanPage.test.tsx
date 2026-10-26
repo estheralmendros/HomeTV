@@ -94,6 +94,12 @@ describe('ScanPage', () => {
     expect(screen.getByRole('button', { name: 'Escanear ahora' })).toBeDisabled();
   });
 
+  it('a scan started by a library folder change names its trigger', async () => {
+    serveScans(running({ trigger: 'libraries', phase: 'walking', progress: { processed: null, total: null } }));
+    renderScan();
+    await screen.findByText('En curso (cambio de carpetas)');
+  });
+
   it('errors (n) list the raw server lines (max 50) and a failed run shows its raw error', async () => {
     const errors = Array.from({ length: 60 }, (_, i) => `probe_failed: /media/films/broken-${i}.mkv`);
     serveScans(f.scanStatus({ state: 'failed', errors, error: 'root_unavailable: /media/films2' }));

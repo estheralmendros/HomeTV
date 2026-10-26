@@ -44,6 +44,18 @@ describe('Media Session', () => {
     expect(ms.playbackState).toBe('playing');
   });
 
+  it('playbackState reaches "playing" after a no-op re-render while the element already plays (no stale effect deps)', async () => {
+    const p = renderPlayer('/watch/film/12');
+    await until(() => expect(p.video().getAttribute('src') ?? '').toMatch(/\/stream\?token=/));
+    p.fire('loadedmetadata'); // attachSource seeks and calls play(): the element plays, the machine is still 'loading'
+    // 'waiting' is a no-op while loading: React re-renders the page and bails out (same state)
+    for (let i = 0; i < 3; i += 1) p.fire('waiting');
+    expect(p.video().paused).toBe(false);
+    p.at(100, 'playing');
+    expect(screen.getByRole('button', { name: 'Pausa' })).toBeInTheDocument();
+    expect(ms.playbackState).toBe('playing');
+  });
+
   it('seekforward / seekbackward move ±10 s like the controls', async () => {
     const p = renderPlayer('/watch/film/12');
     await p.startDirect(100);

@@ -130,6 +130,9 @@ const DYNAMIC_PARENTS = [
   'admin.scan.countHints',
   'admin.unmatched.libraries',
   'admin.unmatched.reasons',
+  'admin.libraries.sections',
+  'admin.libraries.status',
+  'admin.libraries.errors',
 ];
 
 describe('UI string catalog (Rev 9)', () => {
@@ -169,6 +172,9 @@ describe('UI string catalog (Rev 9)', () => {
       'segment_timeout', 'session_not_found', 'subtitle_pending', 'subtitle_extraction_failed',
       'subtitle_timeout', 'not_resolvable', 'not_a_file_entry', 'media_file_not_linked',
       'profile_not_found', 'artwork_not_found', 'validation_error',
+      // folder-selection-admin
+      'invalid_library_folders', 'relinks_unconfirmed', 'outside_browse_root', 'folder_not_found',
+      'folder_not_readable', 'browse_unavailable',
     ];
     for (const code of codes) {
       expect(S.errors.byCode, code).toHaveProperty(code);

@@ -45,12 +45,20 @@ describe('HomePage', () => {
     expect(screen.getAllByTestId('skeleton-card')).toHaveLength(16);
   });
 
-  it('empty library: admins get the scan hint and link, without list requests', async () => {
+  it('empty library: admins get the folders/scan hint and both links, without list requests', async () => {
     serveHome(f.emptyHomeResponse());
     const rec = recordRequests();
     renderHome({ profile: f.adminProfile() });
-    expect(await screen.findByText('Tu biblioteca está vacía. Ejecuta un escaneo para indexar tus vídeos.')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Ir a Administración → Escaneo' })).toHaveAttribute('href', '/admin/scan');
+    expect(
+      await screen.findByText(
+        'Tu biblioteca está vacía. Añade las carpetas de tus vídeos en Administración → Bibliotecas o ejecuta un escaneo.',
+      ),
+    ).toBeInTheDocument();
+    const libraries = screen.getByRole('link', { name: 'Ir a Administración → Bibliotecas' });
+    const scan = screen.getByRole('link', { name: 'Ir a Administración → Escaneo' });
+    expect(libraries).toHaveAttribute('href', '/admin/libraries');
+    expect(scan).toHaveAttribute('href', '/admin/scan');
+    expect(libraries.compareDocumentPosition(scan) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await rec.settled();
     expect(rec.find('GET', '/api/films')).toHaveLength(0);
     expect(rec.find('GET', '/api/shows')).toHaveLength(0);
@@ -62,6 +70,7 @@ describe('HomePage', () => {
     renderHome();
     expect(await screen.findByText('La biblioteca está vacía. Pide a un administrador que ejecute un escaneo.')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Ir a Administración → Escaneo' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Ir a Administración → Bibliotecas' })).not.toBeInTheDocument();
   });
 
   it('library not empty but every row empty: links to Películas and Series', async () => {

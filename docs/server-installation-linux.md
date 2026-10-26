@@ -44,7 +44,11 @@ Docker starts at boot by default (`sudo systemctl enable --now docker` if not).
 
 ## 2. Organize your media
 
-HomeTV needs one folder holding two subfolders, `Films` and `TV`, for example `/srv/media`:
+Put your videos under one broad parent folder, for example `/srv/media` or a whole disk. HomeTV
+sees it read-only as `/media` and you choose, in the web app (*Administración → Bibliotecas*,
+step 8), which folders inside it hold films (**Películas**) and which hold TV shows (**Series**).
+The folder names are up to you (`Films` and `TV` are not required); each library can have
+several folders. For example:
 
 ```
 /srv/media/
@@ -66,8 +70,12 @@ Naming rules that give the best matches:
 
 - **Films**: `Title (Year)`, ideally in a folder with the same name. Two files of the same film
   (e.g. `Dune (2021) 2160p.mkv` and `Dune (2021) 1080p.mp4`) become two versions of one film.
+- Film folders may be flat or split in subfolders (e.g. `A/`, `B/`…): film titles come from the
+  file names.
 - **Series**: `Show/Season NN/Show SxxEyy.ext`. Double episodes (`S01E01E02`) and absolute
-  numbers (`One Piece - 105.mkv` inside `Season 05`) also work.
+  numbers (`One Piece - 105.mkv` inside `Season 05`) also work. The Series folder is the one
+  that holds one subfolder per show (episode files may also sit directly in it, named with the
+  show and `S01E01`): in the example, choose `/media/TV`, not its parent or a show's subfolder.
 - **Subtitles**: next to the video, named like it plus a language and an optional `forced`
   flag: `Movie (2020).es.srt`, `Movie (2020).en.forced.srt`. `.srt`, `.ass`, `.ssa` and `.vtt`
   are recognized; subtitles inside the video file are found automatically. Image subtitle files
@@ -141,7 +149,9 @@ Set:
 
 - `TS_AUTHKEY`: the key from step 4.
 - `TMDB_API_KEY`: the key from step 5, or leave it empty.
-- `MEDIA_DIR`: the folder holding `Films` and `TV`, e.g. `/srv/media`.
+- `MEDIA_DIR`: the broad parent folder from step 2, e.g. `/srv/media` (mounted read-only at
+  `/media`). Media on a second disk: mount it once more under `/media` by adding a line such as
+  `- /srv/disk2:/media/disk2:ro` to the `app` service's `volumes:` in `docker-compose.yml`.
 
 `.env` holds secrets: keep it private (`chmod 600 .env`) and never commit it.
 
@@ -168,10 +178,30 @@ In the Tailscale admin console, **Machines** now lists `hometv` with the tag `ta
    console. The first visit can take a few seconds while Tailscale obtains the HTTPS certificate.
 2. HomeTV opens on **Configuración inicial**. Create the first profile: a name, an avatar and a
    4-digit admin PIN. The PIN protects *Administración* only; nobody needs it to watch.
-3. The first library scan starts by itself shortly after the server starts. Follow it in
-   *Administración → Escaneo*, or press **Escanear ahora**. With a TMDB key, posters and
-   synopses appear as the scan completes.
+3. Open *Administración → Bibliotecas*. Under **Películas**, press **Añadir carpeta** and type
+   the folder (e.g. `/media/Films`) or pick it with the folder browser; do the same under
+   **Series** (e.g. `/media/TV`). Press **Guardar cambios**: the folders are saved and a scan
+   starts. Follow it in *Administración → Escaneo*. With a TMDB key, posters and synopses
+   appear as the scan completes.
 4. In *Administración → Perfiles*, add a profile for each person in the house.
+
+**Changing folders later** (*Administración → Bibliotecas*; nothing changes until **Guardar
+cambios**, and the screen asks for confirmation before any save that has consequences):
+
+- Removing a folder hides its titles at once; they are deleted after a few days (the screen says
+  how many) unless you add the folder back, which brings them back with their watch history.
+- Moving a folder between Películas and Series deletes the watch history of its titles.
+- Changing the Series folder re-reads its episodes from the new folder; shows whose name changes
+  lose their watch history.
+- A folder on a new disk needs its `docker-compose.yml` volume line first (step 6), then
+  `docker compose up -d`, then add it in Bibliotecas.
+
+**Upgrading from an older HomeTV**: the folders you had (`HOMETV_FILMS_PATHS` /
+`HOMETV_SHOWS_PATHS`, or the files already indexed) are kept automatically on the first start.
+Those variables are then ignored (Bibliotecas shows a notice) and can be removed from
+`docker-compose.yml`. If older settings left some files in the wrong library or under another
+Series folder, nothing changes at startup: the first save in Bibliotecas lists them in its
+confirmation.
 
 Then set up your other screens:
 
@@ -204,9 +234,9 @@ docker compose start app
 Do not delete the `deploy_tailscale-state` volume: it is the server's identity in your tailnet.
 Without it, `hometv` registers again as a new machine (and may get a different name).
 
-**Settings**: other options (`HOMETV_MAX_SESSIONS`, scan interval, several media folders…) are
-`HOMETV_*` variables added under `app: environment:` in `docker-compose.yml`; see
-[`deploy/README.md`](../deploy/README.md).
+**Settings**: media folders are managed in *Administración → Bibliotecas*. Other options
+(`HOMETV_MAX_SESSIONS`, scan interval…) are `HOMETV_*` variables added under `app: environment:`
+in `docker-compose.yml`; see [`deploy/README.md`](../deploy/README.md).
 
 ## Troubleshooting
 
@@ -218,9 +248,14 @@ Without it, `hometv` registers again as a new machine (and may get a different n
   `docker compose up -d`. A TUN error means `/dev/net/tun` is missing on the host.
 - **`app` is not healthy.** `docker compose logs app` names the problem. A setting with a
   wrong value aborts startup and names the variable.
-- **The library is empty after the scan.** `MEDIA_DIR` must be the folder that *contains*
-  `Films` and `TV`, and the files must be readable by uid 1000 (step 2). The scan card in
+- **The library is empty after the scan.** Check *Administración → Bibliotecas*: each library
+  needs at least one folder, and every folder must be inside `/media` (the `MEDIA_DIR` mount).
+  A **No encontrada** chip means the path is not mounted (check `MEDIA_DIR` and the volume
+  lines); **Sin permiso** means it is not readable by uid 1000 (step 2). The scan card in
   *Administración → Escaneo* lists errors.
+- **"La carpeta no existe en el servidor" for a folder with accents** (e.g. `/media/películas`)
+  that does exist: pick it with the folder browser instead of typing it. The name on disk may
+  use another Unicode form (e.g. copied from a Mac).
 - **A film or episode is missing or misnamed.** Look in *Administración → Sin identificar*,
   rename the file following step 2 and rescan, or use **Corregir identificación** (needs a TMDB
   key).

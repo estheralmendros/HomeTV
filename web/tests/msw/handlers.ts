@@ -95,4 +95,19 @@ export const handlers = [
     return HttpResponse.json({ ...f.profile({ id: Number(params.id) }), ...body });
   }),
   http.delete(`${API}/admin/profiles/:id`, () => new HttpResponse(null, { status: 204 })),
+  http.get(`${API}/admin/libraries`, () => HttpResponse.json(f.librariesResponse())),
+  http.post(`${API}/admin/libraries/plan`, () => HttpResponse.json(f.librariesPlan())),
+  http.put(`${API}/admin/libraries`, async ({ request }) => {
+    const body = (await request.json()) as { films: string[]; shows: string[] };
+    const folder = (path: string) => f.libraryFolder({ path, title_count: 0 });
+    return HttpResponse.json({
+      ...f.librariesResponse({ films: body.films.map(folder), shows: body.shows.map(folder) }),
+      scan: f.scanStatus({ state: 'running', trigger: 'libraries', phase: 'walking', finished_at: null, progress: { processed: null, total: null }, counts: null }),
+    });
+  }),
+  http.get(`${API}/admin/libraries/browse`, ({ request }) => {
+    const path = new URL(request.url).searchParams.get('path');
+    if (path === null || path === '/media') return HttpResponse.json(f.browseResponse());
+    return HttpResponse.json(f.browseResponse({ path, parent: path.slice(0, path.lastIndexOf('/')) || '/', entries: [] }));
+  }),
 ];

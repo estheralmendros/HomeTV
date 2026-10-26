@@ -1,4 +1,5 @@
-"""Watch-state rules (PRD §9), pure: 90 % rule, last-part rule, in-progress, Next Up."""
+"""Watch-state rules (PRD §9), pure: watched ratio (films 95 %, episodes 90 %), last-part rule,
+in-progress, Next Up."""
 
 import pytest
 
@@ -10,23 +11,37 @@ from hometv.watch import (
     is_in_progress,
     is_last_part,
     next_up,
+    watched_ratio,
 )
 
 
 @pytest.mark.parametrize(
-    ("position", "duration", "rule_applies", "expected"),
+    ("item_type", "position", "duration", "rule_applies", "expected"),
     [
-        (8999.0, 10000.0, True, (False, 8999.0)),
-        (9000.0, 10000.0, True, (True, 0.0)),  # exactly 90 %
-        (9999.0, 10000.0, True, (True, 0.0)),
-        (12000.0, 10000.0, True, (True, 0.0)),  # past the end
-        (9500.0, 10000.0, False, (False, 9500.0)),  # non-final part: never watched
-        (0.0, 10000.0, True, (False, 0.0)),
+        ("film", 8999.0, 10000.0, True, (False, 8999.0)),
+        ("film", 9000.0, 10000.0, True, (False, 9000.0)),  # 90 % is not enough for a film
+        ("film", 9499.0, 10000.0, True, (False, 9499.0)),
+        ("film", 9500.0, 10000.0, True, (True, 0.0)),  # exactly 95 %
+        ("film", 9999.0, 10000.0, True, (True, 0.0)),
+        ("film", 12000.0, 10000.0, True, (True, 0.0)),  # past the end
+        ("film", 9500.0, 10000.0, False, (False, 9500.0)),  # non-final part: never watched
+        ("film", 0.0, 10000.0, True, (False, 0.0)),
+        ("episode", 8999.0, 10000.0, True, (False, 8999.0)),
+        ("episode", 9000.0, 10000.0, True, (True, 0.0)),  # exactly 90 %
+        ("episode", 9500.0, 10000.0, True, (True, 0.0)),
+        ("episode", 12000.0, 10000.0, True, (True, 0.0)),
+        ("episode", 0.0, 10000.0, True, (False, 0.0)),
     ],
 )
-def test_ninety_percent_rule(position, duration, rule_applies, expected):
-    outcome = apply_progress_rule(position, duration, rule_applies=rule_applies)
+def test_watched_ratio_rule(item_type, position, duration, rule_applies, expected):
+    outcome = apply_progress_rule(
+        position, duration, ratio=watched_ratio(item_type), rule_applies=rule_applies
+    )
     assert (outcome.reaches_watched, outcome.position_seconds) == expected
+
+
+def test_watched_ratio_per_item_type():
+    assert (watched_ratio("film"), watched_ratio("episode")) == (0.95, 0.9)
 
 
 @pytest.mark.parametrize(

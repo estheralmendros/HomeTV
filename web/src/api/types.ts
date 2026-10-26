@@ -412,7 +412,7 @@ export type PlaybackResponse = PlaybackDirect | PlaybackHls | PlaybackUnsupporte
 // --- Admin ---------------------------------------------------------------------------------
 
 export type ScanState = 'idle' | 'running' | 'completed' | 'failed';
-export type ScanTrigger = 'startup' | 'scheduled' | 'manual';
+export type ScanTrigger = 'startup' | 'scheduled' | 'manual' | 'libraries';
 export type ScanPhase = 'walking' | 'probing' | 'enriching' | 'done';
 
 export interface ScanCounts {
@@ -442,6 +442,57 @@ export interface ScanStatus {
   error: string | null;
   unmatched_count: number;
 }
+
+// Library folders (admin only; server paths never reach non-admin responses).
+export type FolderStatus = 'available' | 'not_found' | 'not_readable';
+export interface LibraryFolder { path: string; status: FolderStatus; title_count: number }
+export interface BrowseRoot { path: string; available: boolean }
+export interface LibrariesResponse {
+  films: LibraryFolder[];
+  shows: LibraryFolder[];
+  browse_root: BrowseRoot;
+  ignored_env: string[];
+  missing_grace_days: number;
+}
+export interface LibrariesPlanRequest { films: string[]; shows: string[] }
+export interface LibrariesSaveRequest extends LibrariesPlanRequest { confirm_relinks?: boolean }
+export interface LibrariesSaveResponse extends LibrariesResponse { scan: ScanStatus | null }
+export interface PlanRemoved { library: LibraryType; path: string; title_count: number }
+export interface PlanCovered { library: LibraryType; path: string; by: string; title_count: number }
+export interface PlanMoved {
+  from_library: LibraryType;
+  from_path: string;
+  to_library: LibraryType;
+  to_path: string;
+  title_count: number;
+}
+/** Series only. */
+export interface PlanRelayout { from_path: string; to_path: string; title_count: number }
+export interface LibrariesPlan {
+  removed: PlanRemoved[];
+  covered: PlanCovered[];
+  moved: PlanMoved[];
+  relayout: PlanRelayout[];
+}
+export type LibraryFolderErrorCode =
+  | 'not_absolute'
+  | 'not_found'
+  | 'not_directory'
+  | 'not_readable'
+  | 'duplicate'
+  | 'overlaps_folder'
+  | 'contains_data_dir'
+  | 'inside_data_dir'
+  | 'contains_hls_dir'
+  | 'inside_hls_dir';
+export interface LibraryFolderError {
+  library: LibraryType;
+  path: string;
+  code: LibraryFolderErrorCode;
+  other: string | null;
+}
+export interface BrowseEntry { name: string; path: string }
+export interface BrowseResponse { path: string; parent: string | null; entries: BrowseEntry[] }
 
 export type UnmatchedReason =
   | 'no_title'

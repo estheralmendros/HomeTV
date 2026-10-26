@@ -8,7 +8,7 @@ Conventions:
 """
 
 from datetime import UTC, date, datetime
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal, get_args
 
 from sqlalchemy import (
     JSON,
@@ -88,12 +88,31 @@ def _fk(target: str, ondelete: str = "CASCADE", nullable: bool = False, **kw: An
 _EXACTLY_ONE_FILM_SHOW = "(film_id IS NULL) != (show_id IS NULL)"
 
 
+ScanTrigger = Literal["startup", "scheduled", "manual", "libraries"]
+SCAN_TRIGGERS: tuple[str, ...] = get_args(ScanTrigger)
+"""``scan_run.trigger`` values (single source for the CHECK and the API ``Literal``)."""
+
+
 class Library(Base):
     __tablename__ = "library"
     __table_args__ = (CheckConstraint("type IN ('films','shows')", name="type"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     type: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    created_at: Mapped[datetime] = _now_col()
+    # Set when this library's folder list was seeded (never cleared): seeding runs once.
+    folders_seeded_at: Mapped[datetime | None]
+
+
+class LibraryFolder(Base):
+    """A folder read by a library. ``path`` is normalized (not realpath), unique across both
+    libraries; display order within a library is ``id``."""
+
+    __tablename__ = "library_folder"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    library_id: Mapped[int] = _fk("library.id")
+    path: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     created_at: Mapped[datetime] = _now_col()
 
 
@@ -486,7 +505,9 @@ class UnmatchedEntry(Base):
 class ScanRun(Base):
     __tablename__ = "scan_run"
     __table_args__ = (
-        CheckConstraint("trigger IN ('startup','scheduled','manual')", name="trigger"),
+        CheckConstraint(
+            "trigger IN (" + ",".join(f"'{t}'" for t in SCAN_TRIGGERS) + ")", name="trigger"
+        ),
         CheckConstraint("state IN ('running','completed','failed')", name="state"),
     )
 

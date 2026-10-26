@@ -23,8 +23,16 @@ from hometv.api import (
 )
 from hometv.api.errors import install_error_handlers
 from hometv.api.schemas import ErrorResponse
-from hometv.config import Settings, load_settings, prepare_runtime, wipe_hls_sessions
+from hometv.config import (
+    Settings,
+    check_library_folders,
+    load_settings,
+    prepare_hls_dir,
+    prepare_runtime,
+    wipe_hls_sessions,
+)
 from hometv.db.engine import Database, run_migrations
+from hometv.libraries import LibraryFolders
 from hometv.logging import AccessLogMiddleware, configure_logging
 from hometv.metadata.artwork import ArtworkCache
 from hometv.metadata.tmdb import TmdbClient
@@ -42,6 +50,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        # Order: env-root guards + data dirs -> migrations -> seed/load the stored library
+        # folders -> their guards -> only then create and wipe the HLS dir.
         configure_logging(initial.server.log_level)
         prepared = await asyncio.to_thread(prepare_runtime, initial)
         db = Database(prepared.db_path)
@@ -50,8 +60,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         hls = HlsSessionManager(prepared)
         keyframes = KeyframeService(db, prepared, session_running=hls.any_running)
         subtitles = SubtitleService(prepared)
+        hls_ready = False  # the finally wipes the HLS dir only once every guard passed
         try:
             await asyncio.to_thread(run_migrations, db)
+            libraries = LibraryFolders(db, prepared)
+            await asyncio.to_thread(libraries.seed_once)
+            await asyncio.to_thread(check_library_folders, prepared, libraries.current())
+            await asyncio.to_thread(prepare_hls_dir, prepared)
+            hls_ready = True
+            app.state.libraries = libraries
             app.state.settings = prepared
             app.state.db = db
             app.state.tmdb = tmdb
@@ -70,6 +87,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 tmdb=tmdb,
                 artwork=app.state.artwork,
                 keyframe_hook=keyframes.enqueue,
+                folders=libraries.current,
             )
             app.state.scheduler = scheduler
             await scheduler.start()  # no background task when on_startup=false and interval=0
@@ -82,7 +100,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await subtitles.shutdown()
             if tmdb is not None:
                 await tmdb.aclose()
-            await asyncio.to_thread(wipe_hls_sessions, prepared.hls_dir)
+            if hls_ready:
+                await asyncio.to_thread(wipe_hls_sessions, prepared.hls_dir)
             db.dispose()
 
     app = FastAPI(

@@ -38,7 +38,7 @@ import { useAutoHide } from './useAutoHide';
 import { useFullscreen } from './useFullscreen';
 import { useKeyboardShortcuts } from './useKeyboardShortcuts';
 import { mediaSessionInfo, useMediaSession } from './useMediaSession';
-import { mediaDuration, useMediaSelector } from './useMediaClock';
+import { mediaDuration, useMediaPaused, useMediaSelector } from './useMediaClock';
 import { isWithinLead, useNextUp } from './useNextUp';
 import { usePlaybackSession } from './usePlaybackSession';
 import { usePlayerSubtitles } from './usePlayerSubtitles';
@@ -186,6 +186,7 @@ export function PlayerPage({ type, id }: PlayerPageProps) {
   const elementDuration = useMediaSelector(video, mediaDuration);
   const duration = state.durationSeconds ?? elementDuration ?? currentFile?.duration_seconds ?? null;
   const withinLead = useMediaSelector(video, (v) => isWithinLead(Number.isFinite(v.currentTime) ? v.currentTime : 0, duration));
+  const elementPaused = useMediaPaused(video);
   const volume = useVolume(video);
   const fullscreen = useFullscreen(rootEl, video);
 
@@ -225,7 +226,7 @@ export function PlayerPage({ type, id }: PlayerPageProps) {
   }, [cancelled, goBack]);
 
   // --- actions ------------------------------------------------------------------------------
-  const playing = state.name === 'playing' || state.name === 'buffering' || (state.name === 'loading' && !video.paused);
+  const playing = state.name === 'playing' || state.name === 'buffering' || (state.name === 'loading' && !elementPaused);
   const togglePlay = useCallback(() => (video.paused ? session.play() : session.pause()), [video, session]);
   const seekTo = useCallback(
     (seconds: number) => {

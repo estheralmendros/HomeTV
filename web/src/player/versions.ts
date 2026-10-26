@@ -33,7 +33,7 @@ export function lastPlayedFile(files: readonly MediaFile[], progress: Progress |
   return files.find((f) => f.id === progress.media_file_id) ?? null;
 }
 
-/** Last 30 s or ≥ 90 % of the part (the server keeps watched=false until 90 % of the LAST part). */
+/** Last 30 s or ≥ 90 % of the part (the server keeps watched=false until 95 % of the LAST part). */
 function isFinished(file: MediaFile, progress: Progress): boolean {
   const duration = file.duration_seconds ?? progress.duration_seconds;
   if (!(duration > 0)) return false;

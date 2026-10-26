@@ -2,7 +2,7 @@
 // held (prd2 § State & data fetching); a 401 admin_locked clears the token, which pauses them
 // until RequireAdmin's keypad unlocks again, then they refetch.
 import { keepPreviousData, queryOptions, useQuery } from '@tanstack/react-query';
-import { getScan, listUnmatched, tmdbSearch, tmdbSeason, tmdbSeasons } from '@/api/admin';
+import { browseFolders, getLibraries, getScan, listUnmatched, tmdbSearch, tmdbSeason, tmdbSeasons } from '@/api/admin';
 import { queryKeys, staleTimes } from '@/api/queryKeys';
 import type { ScanStatus, TmdbType, UnmatchedQuery } from '@/api/types';
 import { useAdminToken, type RunAdminAction } from '@/auth/useAdminAction';
@@ -43,6 +43,35 @@ export function useUnmatchedQuery(params: UnmatchedQuery) {
     enabled: token !== null,
     placeholderData: keepPreviousData,
   });
+}
+
+/** `GET /api/admin/libraries` (Bibliotecas): folders with live status and title counts. */
+export function useLibrariesQuery() {
+  const token = useAdminToken();
+  return useQuery({
+    queryKey: queryKeys.admin.libraries(),
+    queryFn: ({ signal }) => getLibraries(signal),
+    staleTime: staleTimes.adminLibraries,
+    enabled: token !== null,
+  });
+}
+
+export const browseQuery = (path: string | null) =>
+  queryOptions({
+    queryKey: queryKeys.admin.browse(path),
+    queryFn: ({ signal }) => browseFolders(path, signal),
+    staleTime: staleTimes.adminBrowse,
+    // Errors must show at once: the browser offers its own way back (no silent retries).
+    retry: false,
+  });
+
+/**
+ * `GET /api/admin/libraries/browse?path=` for the folder browser; the caller passes `enabled`
+ * (dialog open and `browse_root.available`), and the admin token gates it too.
+ */
+export function useBrowseQuery(path: string | null, { enabled }: { enabled: boolean }) {
+  const token = useAdminToken();
+  return useQuery({ ...browseQuery(path), enabled: enabled && token !== null });
 }
 
 // --- TMDB lookups of the fix-match dialog ---------------------------------------------------

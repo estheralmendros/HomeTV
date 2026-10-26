@@ -1,8 +1,9 @@
 """Watch state (PRD §9).
 
-Pure rules (table-tested in ``tests/unit/test_watch_rules.py``): ``apply_progress_rule`` (90 %),
-``is_last_part`` (multi-part films), ``is_in_progress`` (unwatched and >= 30 s), ``next_up`` and
-``first_unwatched`` over in-memory episode lists.
+Pure rules (table-tested in ``tests/unit/test_watch_rules.py``): ``apply_progress_rule`` with
+``watched_ratio`` (films 95 %, episodes 90 %), ``is_last_part`` (multi-part films),
+``is_in_progress`` (unwatched and >= 30 s), ``next_up`` and ``first_unwatched`` over in-memory
+episode lists.
 
 DB operations (one short write transaction each): ``report_progress`` (``PUT /api/progress``)
 and ``mark_watched`` (``POST /api/watched``). "Library episodes" are episodes with at least one
@@ -22,7 +23,8 @@ from hometv.api.schemas import Progress, ProgressRequest
 from hometv.db import models as m
 from hometv.db.engine import Database
 
-WATCHED_RATIO = 0.9
+FILM_WATCHED_RATIO = 0.95
+EPISODE_WATCHED_RATIO = 0.9
 IN_PROGRESS_MIN_SECONDS = 30.0
 
 # --- Pure rules ----------------------------------------------------------------------------------
@@ -34,10 +36,17 @@ class ProgressOutcome:
     position_seconds: float
 
 
-def apply_progress_rule(position: float, duration: float, *, rule_applies: bool) -> ProgressOutcome:
-    """``position >= 0.9 x duration`` marks watched and resets the position (only when the rule
+def watched_ratio(item_type: str) -> float:
+    """Share of the duration that marks an item watched: films 95 %, episodes 90 %."""
+    return FILM_WATCHED_RATIO if item_type == "film" else EPISODE_WATCHED_RATIO
+
+
+def apply_progress_rule(
+    position: float, duration: float, *, ratio: float, rule_applies: bool
+) -> ProgressOutcome:
+    """``position >= ratio x duration`` marks watched and resets the position (only when the rule
     applies: not on a non-final part). Otherwise the position is stored as reported."""
-    if rule_applies and position >= WATCHED_RATIO * duration:
+    if rule_applies and position >= ratio * duration:
         return ProgressOutcome(True, 0.0)
     return ProgressOutcome(False, position)
 
@@ -202,7 +211,12 @@ def report_progress(db: Database, profile_id: int, req: ProgressRequest) -> Prog
                 )
             ).all()
             rule_applies = is_last_part(media_file.part_number, [p for p in parts if p])
-        outcome = apply_progress_rule(req.position_seconds, duration, rule_applies=rule_applies)
+        outcome = apply_progress_rule(
+            req.position_seconds,
+            duration,
+            ratio=watched_ratio(req.item_type),
+            rule_applies=rule_applies,
+        )
 
         now = m.utcnow()
         key = {"film_id": req.item_id} if req.item_type == "film" else {"episode_id": req.item_id}

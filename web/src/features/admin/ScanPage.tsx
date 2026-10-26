@@ -17,16 +17,13 @@ import { formatCount, formatRelative } from '@/lib/format';
 import { S } from '@/strings.es';
 import styles from './Admin.module.css';
 import { useScanQuery } from './adminQueries';
+import { isScanStatus } from './scanSummary';
 
 const T = S.admin.scan;
 const MAX_ERROR_LINES = 50;
 const COUNT_ORDER: Array<keyof ScanCounts> = [
   'files_seen', 'new', 'changed', 'unchanged', 'ignored', 'unmatched', 'missing', 'restored', 'removed',
 ];
-
-function isScanStatus(value: unknown): value is ScanStatus {
-  return typeof value === 'object' && value !== null && 'state' in value && 'progress' in value;
-}
 
 export function ScanPage() {
   const scan = useScanQuery();

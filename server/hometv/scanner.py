@@ -8,6 +8,14 @@ walking or probing.
 Removal is two-stage: files not seen under a *fully walked* root (and not under a protected
 prefix) get ``missing_since``; they are purged after ``scan.missing_grace_days``.
 
+Roots come from the ``folders`` provider (production: ``LibraryFolders.current``; the default
+reads the env/YAML roots, for tests only), called once per run. A known file walked under
+another root of the same Películas library is re-rooted (path only, links kept). A **relink**
+(the file's ``library_id`` differs from the walk's library, or a Series file whose
+``root_path`` differs from the walk's root) is reparsed and relinked only when ``relinks=True``
+(the ``libraries`` run started by a confirmed save); any other run leaves the row untouched and
+reports ``relink_pending: <root_path> -> <walk root>``.
+
 Phase 4 hook: ``keyframe_hook(media_file_ids)`` is called at the end of the probe phase with the
 present files that need a background keyframe index (§4 step 5a), new/changed files first.
 """
@@ -26,7 +34,7 @@ from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path, PurePosixPath
-from typing import Any, Literal
+from typing import Any
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
@@ -34,6 +42,7 @@ from sqlalchemy.orm import Session
 from hometv.config import Settings
 from hometv.db import models as m
 from hometv.db.engine import Database
+from hometv.libraries import LibraryFolderSet, LibraryType
 from hometv.parser import (
     SIDECAR_EXTENSIONS,
     VIDEO_EXTENSIONS,
@@ -57,7 +66,7 @@ PARSE_REASONS = frozenset({"no_title", "no_season", "no_episode_number", "multi_
 KEYFRAME_CONTAINERS = ("ts", "avi", "mpeg", "asf", "mkv", "webm")
 _BROKEN_LINK_ERRNOS = {errno_mod.ENOENT, errno_mod.ENOTDIR, errno_mod.ELOOP}
 
-LibraryType = Literal["films", "shows"]
+FolderProvider = Callable[[], LibraryFolderSet]
 ProbeFn = Callable[[str], Awaitable[ProbeResult]]
 KeyframeHook = Callable[[list[int]], None]
 
@@ -114,6 +123,7 @@ class _Row:
     missing: bool
     probe_error: bool
     root_path: str
+    library_id: int
 
 
 @dataclass
@@ -365,9 +375,16 @@ class Scanner:
         probe_fn: ProbeFn | None = None,
         fs: FsOps | None = None,
         keyframe_hook: KeyframeHook | None = None,
+        folders: FolderProvider | None = None,
+        relinks: bool = False,
     ) -> None:
         self.db = db
         self.settings = settings
+        # Tests only: production passes ``LibraryFolders.current`` (stored folders).
+        self.folders: FolderProvider = folders or (
+            lambda: LibraryFolderSet.from_settings(settings.libraries)
+        )
+        self.relinks = relinks
         self.probe_fn: ProbeFn = probe_fn or functools.partial(
             probe, ffprobe_path=settings.ffmpeg.ffprobe_path
         )
@@ -422,10 +439,7 @@ class Scanner:
     # -- step 2: walk --
 
     def _walk_all(self) -> list[_RootWalk]:
-        roots: list[tuple[str, LibraryType]] = [
-            *((r, "films") for r in self.settings.libraries.films),
-            *((r, "shows") for r in self.settings.libraries.shows),
-        ]
+        roots = self.folders().roots()  # one snapshot per run
         real_roots = [os.path.realpath(r) for r, _ in roots]
         seen: set[str] = set()
         return [self._walk(root, lib_type, real_roots, seen) for root, lib_type in roots]
@@ -545,6 +559,7 @@ class Scanner:
                     r.missing_since is not None,
                     r.probe_error is not None,
                     r.root_path,
+                    r.library_id,
                 )
                 for r in session.execute(
                     select(
@@ -555,6 +570,7 @@ class Scanner:
                         m.MediaFile.missing_since,
                         m.MediaFile.probe_error,
                         m.MediaFile.root_path,
+                        m.MediaFile.library_id,
                     )
                 )
             }
@@ -570,7 +586,9 @@ class Scanner:
 
         work: list[_Work] = []
         seen: set[str] = set()
+        pending: dict[tuple[str, str], None] = {}
         for walk in walks:
+            library_id = self._libraries[walk.library_type]
             for video in walk.videos:
                 seen.add(video.path)
                 row = rows.get(video.path)
@@ -583,6 +601,26 @@ class Scanner:
                     work.append(_Work(video, None, True, False, False, True, parsed))
                     continue
                 changed = row.size != video.size or row.mtime_ns != video.mtime_ns
+                relink = row.library_id != library_id or (
+                    walk.library_type == "shows" and row.root_path != walk.root
+                )
+                if relink and not self.relinks:
+                    pending[(row.root_path, walk.root)] = None  # left exactly as it is
+                    rep.count("unchanged")
+                    continue
+                if relink:
+                    if row.missing:
+                        rep.count("restored")
+                    parsed = self._parse(walk, video)
+                    if isinstance(parsed, Ignored):
+                        rep.count("ignored")
+                    else:
+                        rep.count("changed" if changed else "unchanged")
+                    needs_probe = row.probe_error or changed
+                    work.append(
+                        _Work(video, row.id, True, changed, row.missing, needs_probe, parsed)
+                    )
+                    continue
                 if row.missing:
                     rep.count("restored")
                 if changed:
@@ -594,8 +632,11 @@ class Scanner:
                     work.append(_Work(video, row.id, True, True, row.missing, True, parsed))
                     continue
                 rep.count("unchanged")
-                if row.probe_error or row.missing:
+                reroot = row.root_path != walk.root  # same Películas library: path only
+                if row.probe_error or row.missing or reroot:
                     work.append(_Work(video, row.id, False, False, row.missing, row.probe_error))
+        for root_path, walk_root in pending:
+            rep.add_error(f"relink_pending: {root_path} -> {walk_root}")
 
         configured = {w.root: w for w in walks}
         missing_ids: list[int] = []

@@ -12,6 +12,7 @@ from pydantic import (
     model_validator,
 )
 
+from hometv.db.models import ScanTrigger
 from hometv.playback.decide import ClientCaps
 from hometv.profiles import AVATAR_IDS, NAME_MAX_LENGTH, PIN_PATTERN
 
@@ -171,7 +172,7 @@ class ScanProgress(BaseModel):
 class ScanStatus(BaseModel):
     id: int | None
     state: Literal["idle", "running", "completed", "failed"]
-    trigger: Literal["startup", "scheduled", "manual"] | None
+    trigger: ScanTrigger | None
     phase: Literal["walking", "probing", "enriching", "done"] | None
     started_at: UtcDateTime | None
     finished_at: UtcDateTime | None
@@ -180,6 +181,99 @@ class ScanStatus(BaseModel):
     errors: list[str]
     error: str | None
     unmatched_count: int
+
+
+# --- Admin: library folders ----------------------------------------------------------------
+
+LibraryType = Literal["films", "shows"]
+
+
+def _no_nul(value: str) -> str:
+    if "\x00" in value:
+        raise ValueError("must not contain a NUL character")
+    return value
+
+
+FolderPath = Annotated[
+    str, StringConstraints(min_length=1, max_length=4096), AfterValidator(_no_nul)
+]
+
+
+class LibraryFolderOut(BaseModel):
+    path: str
+    status: Literal["available", "not_found", "not_readable"]
+    title_count: int
+
+
+class BrowseRoot(BaseModel):
+    path: str
+    available: bool
+
+
+class LibrariesResponse(BaseModel):
+    films: list[LibraryFolderOut]
+    shows: list[LibraryFolderOut]
+    browse_root: BrowseRoot
+    ignored_env: list[str]
+    missing_grace_days: int
+
+
+class LibrariesPlanRequest(BaseModel):
+    films: Annotated[list[FolderPath], Field(max_length=50)]
+    shows: Annotated[list[FolderPath], Field(max_length=50)]
+
+
+class LibrariesSaveRequest(LibrariesPlanRequest):
+    confirm_relinks: bool = False
+
+
+class PlanRemovedOut(BaseModel):
+    library: LibraryType
+    path: str
+    title_count: int
+
+
+class PlanCoveredOut(BaseModel):
+    library: LibraryType
+    path: str
+    by: str
+    title_count: int
+
+
+class PlanMovedOut(BaseModel):
+    from_library: LibraryType
+    from_path: str
+    to_library: LibraryType
+    to_path: str
+    title_count: int
+
+
+class PlanRelayoutOut(BaseModel):
+    from_path: str
+    to_path: str
+    title_count: int
+
+
+class LibrariesPlan(BaseModel):
+    removed: list[PlanRemovedOut]
+    covered: list[PlanCoveredOut]
+    moved: list[PlanMovedOut]
+    relayout: list[PlanRelayoutOut]
+
+
+class LibrariesSaveResponse(LibrariesResponse):
+    scan: ScanStatus | None
+
+
+class BrowseEntry(BaseModel):
+    name: str
+    path: str
+
+
+class BrowseResponse(BaseModel):
+    path: str
+    parent: str | None
+    entries: list[BrowseEntry]
 
 
 # --- Admin: unmatched ----------------------------------------------------------------------

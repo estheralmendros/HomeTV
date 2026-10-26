@@ -8,10 +8,13 @@ import pytest
 from hometv.config import (
     ConfigError,
     Settings,
+    check_library_folders,
     load_settings,
+    prepare_hls_dir,
     prepare_runtime,
     wipe_hls_sessions,
 )
+from hometv.libraries import LibraryFolderSet
 
 SESSION_ID = "0123456789abcdef0123456789abcdef"
 
@@ -28,6 +31,8 @@ def test_defaults_when_no_env_and_no_yaml(tmp_path):
     s = load_settings({"HOMETV_DATA_DIR": str(tmp_path)})
     assert s.data_dir == tmp_path
     assert s.libraries.films == [] and s.libraries.shows == []
+    assert s.libraries.browse_root == "/media"
+    assert s.library_sources == {}
     assert s.tmdb.api_key is None
     assert s.tmdb.language == "es-ES"
     assert s.tmdb.fallback_language == "en-US"
@@ -101,6 +106,7 @@ def test_every_env_var_is_mapped(tmp_path):
         "HOMETV_DATA_DIR": str(tmp_path),
         "HOMETV_FILMS_PATHS": "/media/a, /media/b/",
         "HOMETV_SHOWS_PATHS": "/media/tv",
+        "HOMETV_MEDIA_BROWSE_ROOT": "/srv/",
         "HOMETV_TMDB_API_KEY": "k",
         "HOMETV_TMDB_LANGUAGE": "en-GB",
         "HOMETV_TMDB_FALLBACK_LANGUAGE": "de-DE",
@@ -131,6 +137,7 @@ def test_every_env_var_is_mapped(tmp_path):
     s = load_settings(env)
     assert s.libraries.films == ["/media/a", "/media/b"]
     assert s.libraries.shows == ["/media/tv"]
+    assert s.libraries.browse_root == "/srv"
     assert (s.tmdb.api_key, s.tmdb.language, s.tmdb.fallback_language) == ("k", "en-GB", "de-DE")
     assert (s.tmdb.max_rps, s.tmdb.cast_limit) == (10, 5)
     assert (s.scan.interval_hours, s.scan.on_startup) == (0, False)
@@ -152,6 +159,24 @@ def test_every_env_var_is_mapped(tmp_path):
     assert s.server.cors_origins == ["http://localhost:5173", "http://x"]
     assert s.server.log_level == "debug"
     assert (s.ffmpeg.ffmpeg_path, s.ffmpeg.ffprobe_path) == ("/usr/bin/ffmpeg", "/usr/bin/ffprobe")
+
+
+def test_library_sources_name_env_or_yaml_key_of_each_set_library(tmp_path):
+    write_yaml(tmp_path / "config.yaml", "libraries:\n  films: [/media/F]\n  shows: [/media/T]\n")
+    s = load_settings({"HOMETV_DATA_DIR": str(tmp_path), "HOMETV_SHOWS_PATHS": "/media/TV"})
+    assert s.library_sources == {"films": "libraries.films", "shows": "HOMETV_SHOWS_PATHS"}
+
+
+def test_empty_library_values_are_not_sources(tmp_path):
+    write_yaml(tmp_path / "config.yaml", "libraries:\n  films: []\n")
+    s = load_settings({"HOMETV_DATA_DIR": str(tmp_path), "HOMETV_SHOWS_PATHS": ""})
+    assert s.library_sources == {}
+
+
+def test_browse_root_from_yaml_is_normalized(tmp_path):
+    write_yaml(tmp_path / "config.yaml", "libraries:\n  browse_root: /srv//disks/\n")
+    s = load_settings({"HOMETV_DATA_DIR": str(tmp_path)})
+    assert s.libraries.browse_root == "/srv/disks"
 
 
 def test_empty_tmdb_key_env_means_not_configured(tmp_path):
@@ -261,19 +286,52 @@ def test_configured_secret_key_wins_and_no_file_written(tmp_path):
 # --- prepare_runtime: directories, roots ---------------------------------------------------
 
 
-def test_creates_artwork_subtitles_and_hls_dirs(tmp_path):
+def test_creates_artwork_and_subtitles_dirs_but_not_hls_dir(tmp_path):
     s = prepare_runtime(make(tmp_path))
     assert (tmp_path / "data" / "artwork").is_dir()
     assert (tmp_path / "data" / "subtitles").is_dir()
-    assert (tmp_path / "data" / "hls").is_dir()
+    assert not (tmp_path / "data" / "hls").exists()  # prepare_hls_dir, after the folder guards
     assert s.playback.hls_dir == tmp_path / "data" / "hls"
+    prepare_hls_dir(s)
+    assert (tmp_path / "data" / "hls").is_dir()
 
 
-def test_missing_media_root_is_a_warning_not_fatal(tmp_path, caplog):
+# --- check_library_folders: stored folders --------------------------------------------------
+
+
+def test_missing_stored_folder_is_a_warning_not_fatal(tmp_path, caplog):
     missing = str(tmp_path / "not-mounted")
     with caplog.at_level(logging.WARNING, logger="hometv"):
-        prepare_runtime(make(tmp_path, libraries={"films": [missing]}))
-    assert any(missing in r.getMessage() for r in caplog.records)
+        check_library_folders(make(tmp_path), LibraryFolderSet(films=(missing,)))
+    assert f"media_root_missing: {missing}" in [r.getMessage() for r in caplog.records]
+
+
+def test_stored_folder_containing_data_dir_aborts(tmp_path):
+    media = tmp_path / "media"
+    media.mkdir()
+    settings = Settings(data_dir=media / "data", playback={"hls_dir": tmp_path / "hls"})
+    with pytest.raises(ConfigError) as exc:
+        check_library_folders(settings, LibraryFolderSet(shows=(str(media),)))
+    message = str(exc.value)
+    assert "HOMETV_DATA_DIR" in message and str(media) in message
+    assert "stored in the database" in message
+
+
+def test_stored_folder_containing_hls_dir_aborts(tmp_path):
+    media = tmp_path / "media"
+    media.mkdir()
+    link = tmp_path / "alias"
+    link.symlink_to(media)
+    settings = Settings(data_dir=tmp_path / "data", playback={"hls_dir": media / "hls"})
+    with pytest.raises(ConfigError) as exc:
+        check_library_folders(settings, LibraryFolderSet(films=(str(link),)))
+    assert "HOMETV_HLS_DIR" in str(exc.value) and str(link) in str(exc.value)
+
+
+def test_stored_folders_outside_data_and_hls_pass(tmp_path):
+    media = tmp_path / "media"
+    media.mkdir()
+    check_library_folders(make(tmp_path), LibraryFolderSet(films=(str(media),)))
 
 
 # --- prepare_runtime: hls_dir guard (rule 6) -----------------------------------------------
@@ -375,7 +433,10 @@ def test_startup_wipes_only_session_directories(tmp_path, caplog):
     (hls / "keep" / "file").write_text("keep")
     (hls / ("A" * 32)).mkdir()  # uppercase hex is not a session id
     with caplog.at_level(logging.INFO, logger="hometv"):
-        prepare_runtime(Settings(data_dir=tmp_path / "data", playback={"hls_dir": hls}))
+        settings = prepare_runtime(Settings(data_dir=tmp_path / "data", playback={"hls_dir": hls}))
+    assert session.exists()  # prepare_runtime no longer touches the HLS dir
+    with caplog.at_level(logging.INFO, logger="hometv"):
+        prepare_hls_dir(settings)
     assert not session.exists()
     assert (hls / "notes.txt").read_text() == "keep me"
     assert (hls / "keep" / "file").exists()

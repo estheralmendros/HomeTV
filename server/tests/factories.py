@@ -2,7 +2,8 @@
 
 - ``add_film(s, title, ...)`` -> ``m.Film`` with ``files`` present media files (default 1).
 - ``add_file(s, film_id=..., episode_ids=(...), ...)`` -> ``m.MediaFile`` (probe JSON from
-  ``probe_json(...)``; ``missing=True`` sets ``missing_since``).
+  ``probe_json(...)``; ``missing=True`` sets ``missing_since``; ``root=``/``rel=``/``library=``
+  place it, default ``/media/{library}/{n}/{name}``).
 - ``add_show(s, title, episodes={season: count}, ...)`` -> ``(m.Show, {(s, e): m.Episode})``,
   each episode with one present file.
 - ``add_progress(s, profile_id, film_id=/episode_id=, ...)``.
@@ -88,11 +89,16 @@ def add_file(
     probe: dict[str, Any] | None = None,
     probe_error: str | None = None,
     added_at: datetime | None = None,
+    root: str | None = None,
+    rel: str | None = None,
+    library: str | None = None,
 ) -> m.MediaFile:
     libs = libraries(s)
     n = _next()
     name = name or f"file{n}.mkv"
-    library = "films" if film_id is not None or not episode_ids else "shows"
+    library = library or ("films" if film_id is not None or not episode_ids else "shows")
+    root = root or f"/media/{library}"
+    rel = rel or f"{n}/{name}"
     if probe_error is not None:
         probe = None
     elif probe is None:
@@ -100,9 +106,9 @@ def add_file(
     video = (probe or {}).get("video") or {}
     row = m.MediaFile(
         library_id=libs[library],
-        root_path=f"/media/{library}",
-        path=f"/media/{library}/{n}/{name}",
-        relative_path=f"{n}/{name}",
+        root_path=root,
+        path=f"{root.rstrip('/')}/{rel}",
+        relative_path=rel,
         size_bytes=size,
         mtime_ns=n,
         container=(probe or {}).get("container"),

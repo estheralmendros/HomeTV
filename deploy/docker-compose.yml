@@ -24,12 +24,11 @@ services:
     depends_on: [tailscale]
     environment:
       HOMETV_HOST: 127.0.0.1
-      HOMETV_FILMS_PATHS: /media/Films
-      HOMETV_SHOWS_PATHS: /media/TV
+      # The film and TV folders are chosen inside /media in Administración → Bibliotecas.
       HOMETV_TMDB_API_KEY: ${TMDB_API_KEY}
       HOMETV_TMDB_LANGUAGE: es-ES
     volumes:
-      - ${MEDIA_DIR}:/media:ro
+      - ${MEDIA_DIR}:/media:ro                   # one broad parent; more disks: /srv/disk2:/media/disk2:ro
       - hometv-data:/data
     restart: unless-stopped
 volumes: { tailscale-state: {}, hometv-data: {} }
