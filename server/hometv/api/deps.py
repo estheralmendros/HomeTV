@@ -3,7 +3,7 @@
 DB route handlers are plain ``def`` (FastAPI thread pool); reads use ``ReadSession``; writes
 must go through ``Db.write_session()`` (one short transaction under the process-wide write
 lock). Service objects created in the lifespan: ``SchedulerDep``, ``TmdbDep`` (``None`` without
-a TMDB key), ``TmdbProxyDep``, ``ArtworkDep``, ``TokensDep``, ``LimiterDep``.
+a TMDB key), ``TmdbProxyDep``, ``ArtworkDep``, ``TokensDep``, ``LimiterDep``, ``LibrariesDep``.
 
 Auth (PRD §8; each loads the profile in its own short read session, so no read transaction
 stays open across an ``await`` in async handlers):
@@ -29,6 +29,7 @@ from hometv.api.errors import ApiError
 from hometv.config import Settings
 from hometv.db import models as m
 from hometv.db.engine import Database
+from hometv.libraries import LibraryFolders
 from hometv.metadata.artwork import ArtworkCache
 from hometv.metadata.tmdb import TmdbClient
 from hometv.profiles import TokenService, UnlockLimiter
@@ -69,10 +70,15 @@ def get_artwork(request: Request) -> ArtworkCache:
     return request.app.state.artwork
 
 
+def get_libraries(request: Request) -> LibraryFolders:
+    return request.app.state.libraries
+
+
 SchedulerDep = Annotated[Scheduler, Depends(get_scheduler)]
 TmdbDep = Annotated[TmdbClient | None, Depends(get_tmdb)]
 TmdbProxyDep = Annotated[TmdbProxy, Depends(get_tmdb_proxy)]
 ArtworkDep = Annotated[ArtworkCache, Depends(get_artwork)]
+LibrariesDep = Annotated[LibraryFolders, Depends(get_libraries)]
 
 
 # --- Auth ----------------------------------------------------------------------------------------

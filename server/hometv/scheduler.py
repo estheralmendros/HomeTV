@@ -8,12 +8,17 @@ scheduled tick while running is skipped.
 Phase 3 wiring: ``app.state.scheduler.trigger("manual")`` -> 202 ScanStatus and
 ``app.state.scheduler.status()`` (or ``scan_status(session)``) -> 200 ScanStatus.
 Phase 4 hook: pass ``keyframe_hook`` (forwarded to the scanner, §4 step 5a).
+
+Library folders (HOMETV-1): production passes ``folders=LibraryFolders.current`` (forwarded to
+every ``Scanner``); ``trigger("libraries", before=save)`` runs ``save`` under the lock before the
+run row exists, and only a ``libraries`` run relinks (``Scanner(relinks=True)``).
 """
 
 import asyncio
 import contextlib
 import logging
 from collections.abc import Awaitable, Callable
+from typing import Any
 
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
@@ -28,7 +33,7 @@ from hometv.metadata.artwork import ArtworkCache
 from hometv.metadata.enrich import Enricher
 from hometv.metadata.tmdb import TmdbClient
 from hometv.scan_report import ScanReport
-from hometv.scanner import KeyframeHook, ProbeFn, Scanner
+from hometv.scanner import FolderProvider, KeyframeHook, ProbeFn, Scanner
 
 logger = logging.getLogger("hometv.scheduler")
 
@@ -83,6 +88,7 @@ class Scheduler:
         keyframe_hook: KeyframeHook | None = None,
         sleep: Sleep = asyncio.sleep,
         startup_delay: float = STARTUP_DELAY_SECONDS,
+        folders: FolderProvider | None = None,
     ) -> None:
         self.db = db
         self.settings = settings
@@ -90,6 +96,7 @@ class Scheduler:
         self.artwork = artwork
         self.probe_fn = probe_fn
         self.keyframe_hook = keyframe_hook
+        self.folders = folders
         self._sleep = sleep
         self.startup_delay = startup_delay
         self.interval_seconds = settings.scan.interval_hours * 3600.0
@@ -137,8 +144,8 @@ class Scheduler:
         with self.db.read_session() as session:
             return scan_status(session)
 
-    async def trigger(self, trigger: str = "manual") -> ScanStatus:
-        """Start a scan in the background (202). Raises 409 ``scan_in_progress`` if running."""
+    async def ensure_idle(self) -> None:
+        """Raise 409 ``scan_in_progress`` (``details.scan``) while a scan holds the lock."""
         if self._lock.locked():
             current = await asyncio.to_thread(self.status)
             raise ApiError(
@@ -147,13 +154,26 @@ class Scheduler:
                 "A scan is already running",
                 {"scan": current.model_dump(mode="json")},
             )
+
+    async def trigger(
+        self, trigger: str = "manual", *, before: Callable[[], Any] | None = None
+    ) -> ScanStatus:
+        """Start a scan in the background (202). Raises 409 ``scan_in_progress`` if running.
+
+        ``before`` runs in a worker thread under the lock, before the run row is created; if
+        it raises, the lock is released and the error propagates (no run, no scan)."""
+        await self.ensure_idle()  # returns without yielding when the lock is free
         await self._lock.acquire()  # never yields: the lock is free
         try:
+            if before is not None:
+                await asyncio.to_thread(before)
             run_id = await asyncio.to_thread(self._create_run, trigger)
         except BaseException:
             self._lock.release()
             raise
-        self._scan_task = asyncio.create_task(self._execute(run_id), name=f"hometv-scan-{run_id}")
+        self._scan_task = asyncio.create_task(
+            self._execute(run_id, trigger), name=f"hometv-scan-{run_id}"
+        )
         return await asyncio.to_thread(self.status)
 
     async def run_scheduled(self, trigger: str = "scheduled") -> bool:
@@ -167,7 +187,9 @@ class Scheduler:
         except BaseException:
             self._lock.release()
             raise
-        self._scan_task = asyncio.create_task(self._execute(run_id), name=f"hometv-scan-{run_id}")
+        self._scan_task = asyncio.create_task(
+            self._execute(run_id, trigger), name=f"hometv-scan-{run_id}"
+        )
         await self._scan_task
         return True
 
@@ -194,11 +216,16 @@ class Scheduler:
         with self.db.write_session() as session:
             report.save(session, run_id, state=state, error=error, finished_at=m.utcnow())
 
-    async def _execute(self, run_id: int) -> None:
+    async def _execute(self, run_id: int, trigger: str) -> None:
         report = ScanReport()
         try:
             scanner = Scanner(
-                self.db, self.settings, probe_fn=self.probe_fn, keyframe_hook=self.keyframe_hook
+                self.db,
+                self.settings,
+                probe_fn=self.probe_fn,
+                keyframe_hook=self.keyframe_hook,
+                folders=self.folders,
+                relinks=trigger == "libraries",
             )
             await scanner.run(report, run_id)
             enricher = Enricher(

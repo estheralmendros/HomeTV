@@ -29,6 +29,7 @@ EXPECTED_TABLES = {
     "playback_progress",
     "unmatched_entry",
     "scan_run",
+    "library_folder",
 }
 
 
@@ -49,7 +50,7 @@ def test_migration_creates_every_table(db):
 def test_migration_is_at_head_and_idempotent(db):
     run_migrations(db)
     with db.read_engine.connect() as conn:
-        assert MigrationContext.configure(conn).get_current_revision() == HEAD_REVISION == "0001"
+        assert MigrationContext.configure(conn).get_current_revision() == HEAD_REVISION == "0002"
 
 
 @pytest.mark.filterwarnings("ignore:.*expression-based index:UserWarning")
@@ -202,6 +203,8 @@ def test_all_data_model_columns_exist(db):
         "errors",
         "error",
     } <= cols["scan_run"]
+    assert "folders_seeded_at" in cols["library"]
+    assert {"id", "library_id", "path", "created_at"} <= cols["library_folder"]
 
 
 def test_wal_mode_after_migration(db):
@@ -478,3 +481,77 @@ def test_scan_run_json_defaults(db):
         assert run.counts == {}
         assert run.errors == []
         assert run.processed == 0
+
+
+def test_scan_run_accepts_libraries_trigger_and_rejects_unknown(db):
+    with db.write_session() as s:
+        s.add(m.ScanRun(trigger="libraries", state="running", phase="walking"))
+    with pytest.raises(IntegrityError), db.write_session() as s:
+        s.add(m.ScanRun(trigger="bogus", state="running", phase="walking"))
+        s.flush()
+
+
+def test_library_folder_path_unique_across_libraries(db):
+    with db.write_session() as s:
+        films, shows = _library(s, "films"), _library(s, "shows")
+        s.add(m.LibraryFolder(library_id=films.id, path="/media/a"))
+        s.flush()
+        assert s.get(m.Library, films.id).folders_seeded_at is None
+    with pytest.raises(IntegrityError), db.write_session() as s:
+        s.add(m.LibraryFolder(library_id=films.id, path="/media/a"))
+        s.flush()
+    with pytest.raises(IntegrityError), db.write_session() as s:
+        s.add(m.LibraryFolder(library_id=shows.id, path="/media/a"))
+        s.flush()
+
+
+def test_library_folder_cascades_with_library(db):
+    with db.write_session() as s:
+        films = _library(s, "films")
+        s.add(m.LibraryFolder(library_id=films.id, path="/media/a"))
+    with db.write_session() as s:
+        s.execute(text("DELETE FROM library"))
+    with db.read_session() as s:
+        assert s.scalar(text("SELECT count(*) FROM library_folder")) == 0
+
+
+def test_upgrade_from_0001_keeps_rows_and_downgrade_maps_libraries_trigger(tmp_path):
+    from alembic import command
+
+    from hometv.db.engine import alembic_config
+
+    database = Database(tmp_path / "old.db")
+    try:
+        cfg = alembic_config(database)
+        with database.write_engine.connect() as conn:
+            cfg.attributes["connection"] = conn
+            command.upgrade(cfg, "0001")
+            conn.exec_driver_sql("INSERT INTO library (id, type) VALUES (1, 'films')")
+            conn.exec_driver_sql(
+                "INSERT INTO media_file (library_id, root_path, path, relative_path, size_bytes,"
+                " mtime_ns) VALUES (1, '/m', '/m/a.mkv', 'a.mkv', 1, 1)"
+            )
+            conn.exec_driver_sql(
+                "INSERT INTO scan_run (trigger, state, phase)"
+                " VALUES ('manual', 'completed', 'done')"
+            )
+            conn.commit()
+        run_migrations(database)
+        with database.write_session() as s:
+            assert s.scalar(text("SELECT count(*) FROM media_file")) == 1
+            assert s.scalar(text("SELECT folders_seeded_at FROM library")) is None
+            s.add(m.ScanRun(trigger="libraries", state="completed", phase="done"))
+        with database.write_engine.connect() as conn:
+            cfg.attributes["connection"] = conn
+            command.downgrade(cfg, "0001")
+            conn.commit()
+        with database.read_session() as s:
+            triggers = s.scalars(text("SELECT trigger FROM scan_run ORDER BY id")).all()
+            assert triggers == ["manual", "manual"]
+            assert s.scalar(text("SELECT count(*) FROM media_file")) == 1
+            tables = set(inspect(database.read_engine).get_table_names())
+            assert "library_folder" not in tables
+            cols = {c["name"] for c in inspect(database.read_engine).get_columns("library")}
+            assert "folders_seeded_at" not in cols
+    finally:
+        database.dispose()

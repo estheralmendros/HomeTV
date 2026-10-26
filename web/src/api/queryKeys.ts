@@ -27,6 +27,9 @@ export const queryKeys = {
     tmdbSearch: (type: TmdbType, q: string, year: number | null) => ['admin', 'tmdb', type, q, year] as const,
     tmdbSeasons: (tmdbId: number) => ['admin', 'tmdb', 'tv', tmdbId, 'seasons'] as const,
     tmdbSeason: (tmdbId: number, seasonNumber: number) => ['admin', 'tmdb', 'tv', tmdbId, 'season', seasonNumber] as const,
+    libraries: () => ['admin', 'libraries'] as const,
+    /** Folder browser listing; `null` = the browse root. A child of `libraries()` (prefix). */
+    browse: (path: string | null) => ['admin', 'libraries', 'browse', path] as const,
   },
 };
 
@@ -48,6 +51,8 @@ export const staleTimes = {
   adminScan: 0,
   adminUnmatched: 0,
   adminTmdb: 5 * MINUTE,
+  adminLibraries: 0,
+  adminBrowse: 0,
 } as const;
 
 export type PlayedItem =
@@ -63,6 +68,8 @@ export type InvalidationEvent =
   | { type: 'watchedEpisodes'; showId: number }
   /** Match / resolve success, scan finished. */
   | { type: 'catalogChanged' }
+  /** PUT /api/admin/libraries success (folders saved, a `libraries` scan may have started). */
+  | { type: 'librariesChanged' }
   /** Profile create / edit / delete. */
   | { type: 'profilesChanged' };
 
@@ -92,7 +99,11 @@ export function invalidateAfter(event: InvalidationEvent): QueryKey[] {
       return [
         ['home'], ['films'], ['shows'], ['genres'], ['search'], ['film'], ['show'], ['season'], ['episode'],
         queryKeys.admin.unmatchedAll(), queryKeys.admin.scan(),
+        // Title counts per folder change when a scan ends.
+        queryKeys.admin.libraries(),
       ];
+    case 'librariesChanged':
+      return [queryKeys.admin.libraries(), queryKeys.admin.scan()];
     case 'profilesChanged':
       return [queryKeys.profiles(), queryKeys.me()];
   }

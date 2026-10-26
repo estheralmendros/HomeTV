@@ -8,14 +8,25 @@ is a contract shared by the web and TV clients: change it deliberately and updat
 ## Layout
 
 - `server/`: Python 3.12 uv project (FastAPI, SQLAlchemy 2 sync, Alembic, guessit).
-  - `hometv/config.py`: Settings, `load_settings()` (env `HOMETV_*` > YAML > defaults),
-    `prepare_runtime()` (path guards, dirs, HLS wipe, secret key).
+  - `hometv/config.py`: Settings, `load_settings()` (env `HOMETV_*` > YAML > defaults; fills
+    `library_sources`), `prepare_runtime()` (env-root path guards, data dirs, secret key),
+    `check_library_folders()` (stored folders vs data/HLS dir), `prepare_hls_dir()` (mkdir + wipe).
+    `libraries.films|shows` / `HOMETV_FILMS_PATHS|SHOWS_PATHS` only seed the stored folders once;
+    `libraries.browse_root` (`HOMETV_MEDIA_BROWSE_ROOT`, default `/media`) is the browser base.
   - `hometv/text.py`, `hometv/parser.py`: pure modules (no I/O).
   - `hometv/probe.py`: ffprobe wrapper (injectable `runner`) + pure `normalize()`.
   - `hometv/db/engine.py`: `Database` (read/write engines, `write_session()`),
     `run_migrations()`. `db/models.py`: full data model. `db/migrations/versions/`: Alembic.
-  - `hometv/scanner.py`: `Scanner(db, settings, probe_fn=, fs=FsOps(), keyframe_hook=).run()`:
-    walk/diff/parse/probe/link/sidecars/soft-delete+purge. `scan_report.py`: `ScanReport`
+  - `hometv/libraries.py`: library folders owned by the DB (`library_folder`, seeded once per
+    library: env/YAML > present `media_file` roots > empty; `library.folders_seeded_at`). Pure
+    `normalize_folder`/`same_folders`/`choose_seed`/`validate_change`/`split_removals`/
+    `browse_listing` (fs via injectable `FolderFs`); `LibraryFolders` (`app.state.libraries`:
+    `seed_once`, `current()` immutable `LibraryFolderSet` snapshot, `plan` -> `ChangePlan`
+    removed/covered/moved/relayout, `save(confirm_relinks=)`, `folder_status`/`describe`, `browse`).
+  - `hometv/scanner.py`: `Scanner(db, settings, probe_fn=, fs=FsOps(), keyframe_hook=, folders=,
+    relinks=).run()`: walk/diff/parse/probe/link/sidecars/soft-delete+purge; same-library Películas
+    root change = path-only re-root; move/Series relayout = relink (only with `relinks=True`, else
+    untouched + `relink_pending:` report line). `scan_report.py`: `ScanReport`
     (counts/errors, `save()` into `scan_run`).
   - `hometv/metadata/`: `tmdb.py` (`TmdbClient`: limiter, retries, language fallback),
     `matching.py` (pure `choose_match`), `enrich.py` (`Enricher`, `merge_items`, admin
@@ -27,8 +38,9 @@ is a contract shared by the web and TV clients: change it deliberately and updat
   - `hometv/watch.py`: pure rules (90 %, last part, in-progress, `next_up`) +
     `report_progress` / `mark_watched`. `hometv/catalog.py`: batched list/detail/home/search
     queries returning the pydantic shapes (`media_file_out`, `media_label`).
-  - `hometv/scheduler.py`: `Scheduler` (single-flight scan -> enrich; `trigger`, `status`),
-    `scan_status(session)`.
+  - `hometv/scheduler.py`: `Scheduler` (single-flight scan -> enrich; `trigger(t, before=)`
+    (`before` runs in a thread under the lock, before the run row), `ensure_idle`, `status`;
+    `folders=` forwarded to every `Scanner`), `scan_status(session)`.
   - `hometv/playback/`: `decide.py` (pure decision + `ClientCaps`), `stream.py` (byte ranges),
     `keyframe_readers.py` (pure MKV Cues / MP4 stss readers, ffprobe row parsing),
     `keyframes.py` (`KeyframeService`: cache, ffprobe fallback + rchar watchdog, failure map,
@@ -42,14 +54,17 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     non-`/api` GET/HEAD, appended last by `install_spa`; `/assets/*` immutable, stale asset ->
     plain 404, else `index.html` no-cache; "Web UI not built" placeholder without a dist).
   - `hometv/main.py`: `create_app(settings)` factory + lifespan (sets `app.state.db/settings/
-    tmdb/tmdb_proxy/artwork/scheduler/keyframes/hls/subtitles`); `run()` single-worker entry
-    (console script `hometv`, the container CMD).
+    libraries/tmdb/tmdb_proxy/artwork/scheduler/keyframes/hls/subtitles`); order: `prepare_runtime`
+    -> migrations -> `libraries.seed_once` -> `check_library_folders` -> `prepare_hls_dir` (sets
+    `hls_ready`; the `finally` wipes the HLS dir only when set) -> services; `run()` single-worker
+    entry (console script `hometv`, the container CMD).
   - `hometv/api/`: `errors.py` (envelope), `deps.py` (auth deps), `schemas.py`,
     `list_params.py` (films/shows query params), `routes_*.py` (system, profiles, catalog,
     films, shows, watch, artwork, admin, media).
   - `tests/`: `unit/` (pure), `service/` (tmp dirs + SQLite, stubs), `api/` (in-process
     httpx), `integration/` (real ffmpeg/ffprobe, marker `integration`), `perf/` (marker
-    `perf`), `fixtures/`, `factories.py` (`add_film`/`add_show`/`add_file`/`add_progress`),
+    `perf`), `fixtures/`, `factories.py` (`add_film`/`add_show`/`add_file(root=, rel=, library=)`/
+    `add_progress`),
     `stubs.py` (`FakeProc`, `Spawner`, `ScaledClock`, `wait_until`), `fmp4_builder.py`
     (synthetic fMP4), `hls_stub.py` (argv-driven stub ffmpeg for API tests).
 - `web/`: React 18 + TS (strict, `noUncheckedIndexedAccess`, alias `@/`) + Vite 5 SPA, Node 24
@@ -72,6 +87,10 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     shell (fullscreen root + the single `<video>`, `PlayerShellContext`), `PlayerPage` is keyed by
     `pathname + ?file=` and holds all per-playback state.
   - `src/features/<screen>/` (setup, profiles, home, library, search, film, show, admin, about),
+    `features/admin/`: `AdminLayout` (tabs Escaneo/Bibliotecas/Sin identificar/Perfiles, the one
+    scan poll), `LibrariesPage` (Bibliotecas: pure `libraryDraft` reducer, save = plan → server-built
+    confirmation → PUT; results on the page), `AddFolderDialog`, `FolderBrowser` (keeps the last good
+    listing as the way back), `adminQueries` (`useLibrariesQuery`, `useBrowseQuery`),
     `src/components/` (shared UI), `src/lib/` (`format`, `languages`, `chunkReload`,
     `RouteErrorBoundary`, `lazyRoute`, hooks), `router.tsx` (lazy `/admin/*` and `/watch/*`).
   - `tests/`: `setup.ts` (MSW `onUnhandledRequest: 'error'`, media/TextTrack stubs, resets),
@@ -180,6 +199,13 @@ is a contract shared by the web and TV clients: change it deliberately and updat
   dependency; `X-Admin-Token` header only). API tests use `user`/`admin`/`profile_factory`/
   `clock` from `tests/api/conftest.py` (`Who.headers`, `Who.admin_headers`). A new
   `/api/admin/*` route must be added to `ADMIN_ROUTES` in `test_api_admin.py` (coverage test).
+- **Library folders**: production `Scanner`/`Scheduler` construction passes the
+  `LibraryFolders.current` provider (`folders=`); the default (env/YAML roots) is for tests only.
+  Only a `libraries` run (`PUT /api/admin/libraries` via `trigger("libraries", before=save)`)
+  relinks (`relinks=True`); every other run reports `relink_pending` and leaves the row as is.
+  Admin library routes: `GET`/`PUT /api/admin/libraries`, `POST .../plan`, `GET .../browse`;
+  web client in `api/admin.ts` (`getLibraries`/`planLibraries`/`saveLibraries`/`browseFolders`),
+  keys `admin.libraries()`/`admin.browse(path)`, event `librariesChanged`.
 - **Catalog visibility**: a file is hidden when `missing_since` is set; films/episodes need a
   present file, shows/seasons a visible episode (`watch.film_has_present_file`,
   `watch.present_file_exists`). Build responses in batches, never one query per item.

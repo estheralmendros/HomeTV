@@ -55,6 +55,18 @@ async def test_progress_roundtrip_and_watched_rule(client, db, user):
         position_seconds=9000.0,
     )
     data = r.json()
+    # 90 % is not enough for a film (films: 95 %).
+    assert (data["position_seconds"], data["watched"]) == (9000.0, False)
+
+    r = await _put(
+        client,
+        user,
+        item_type="film",
+        item_id=film_id,
+        media_file_id=file_id,
+        position_seconds=9500.0,
+    )
+    data = r.json()
     assert (data["position_seconds"], data["watched"]) == (0.0, True)
     assert data["watched_at"].endswith("Z")
 
@@ -68,6 +80,30 @@ async def test_progress_roundtrip_and_watched_rule(client, db, user):
         position_seconds=100.0,
     )
     assert (r.json()["position_seconds"], r.json()["watched"]) == (100.0, True)
+
+
+async def test_episode_watched_rule_is_ninety_percent(client, db, user):
+    with db.write_session() as s:
+        _show, eps = add_show(s, "The Office", episodes={2: 1}, with_files=False)
+        ep = eps[(2, 1)].id
+        file_id = add_file(s, episode_ids=[ep], duration=1000.0).id
+
+    async def put(pos):
+        r = await _put(
+            client,
+            user,
+            item_type="episode",
+            item_id=ep,
+            media_file_id=file_id,
+            position_seconds=pos,
+        )
+        assert r.status_code == 200
+        return r.json()
+
+    data = await put(899.0)
+    assert (data["watched"], data["position_seconds"]) == (False, 899.0)
+    data = await put(900.0)  # exactly 90 %: episodes keep the 90 % rule
+    assert (data["watched"], data["position_seconds"]) == (True, 0.0)
 
 
 async def test_progress_is_per_profile(client, db, user, admin):
@@ -163,7 +199,9 @@ async def test_multi_part_film_rule(client, db, user):
     home = (await client.get("/api/home", headers=user.headers)).json()
     assert [x["id"] for x in home["continue_watching"]] == [film_id]
 
-    data = await put(p2, 1800.0)  # 90 % of Part 2 (last part)
+    data = await put(p2, 1800.0)  # 90 % of Part 2 (last part): not enough for a film
+    assert (data["watched"], data["position_seconds"]) == (False, 1800.0)
+    data = await put(p2, 1900.0)  # 95 % of Part 2
     assert (data["watched"], data["position_seconds"]) == (True, 0.0)
 
     await client.post(
@@ -182,7 +220,7 @@ async def test_multi_part_film_rule(client, db, user):
     )
     with db.write_session() as s:
         s.execute(delete(m.MediaFile).where(m.MediaFile.id.in_([p2, full_id])))
-    data = await put(p1, 2700.0)
+    data = await put(p1, 2850.0)  # 95 %
     assert data["watched"] is True
 
 

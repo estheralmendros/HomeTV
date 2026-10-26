@@ -24,6 +24,7 @@ export const adminRoutes: RouteObject[] = [
     children: [
       { index: true, element: <Navigate to="scan" replace /> },
       { path: 'scan', lazy: lazyRoute(() => import('@/features/admin/ScanPage'), (m) => m.ScanPage) },
+      { path: 'libraries', lazy: lazyRoute(() => import('@/features/admin/LibrariesPage'), (m) => m.LibrariesPage) },
       { path: 'unmatched', lazy: lazyRoute(() => import('@/features/admin/UnmatchedPage'), (m) => m.UnmatchedPage) },
       {
         path: 'profiles',

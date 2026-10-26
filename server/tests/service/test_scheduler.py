@@ -210,3 +210,108 @@ async def test_keyframe_hook_is_passed_to_the_scanner(mdb, media: MediaTree, med
     finally:
         await scheduler.stop()
     assert len(queued) == 1
+
+
+# --- HOMETV-1: before=, ensure_idle, libraries trigger -----------------------------------------
+
+
+async def test_trigger_runs_before_under_the_lock_before_creating_the_run(mdb, media_settings):
+    scheduler = Scheduler(mdb, media_settings(), tmdb=None, artwork=None, probe_fn=StubProbe())
+    seen: dict[str, object] = {}
+
+    def before() -> None:
+        seen["locked"] = scheduler.running
+        seen["runs"] = len(_runs(mdb))
+
+    try:
+        status = await scheduler.trigger("libraries", before=before)
+        assert status.trigger == "libraries"
+        await scheduler.wait_idle()
+    finally:
+        await scheduler.stop()
+    assert seen == {"locked": True, "runs": 0}
+    assert [r.trigger for r in _runs(mdb)] == ["libraries"]
+
+
+async def test_trigger_before_error_propagates_without_a_run_and_releases_the_lock(
+    mdb, media_settings
+):
+    scheduler = Scheduler(mdb, media_settings(), tmdb=None, artwork=None, probe_fn=StubProbe())
+
+    def before() -> None:
+        raise ApiError(422, "invalid_library_folders", "Invalid library folders")
+
+    with pytest.raises(ApiError) as exc:
+        await scheduler.trigger("libraries", before=before)
+    assert exc.value.code == "invalid_library_folders"
+    assert _runs(mdb) == []
+    assert not scheduler.running
+    await scheduler.ensure_idle()  # no error: idle
+
+
+async def test_ensure_idle_raises_scan_in_progress_while_running(
+    mdb, media: MediaTree, media_settings
+):
+    media.add("Dune (2021).mkv")
+    probe = GatedProbe()
+    scheduler = Scheduler(mdb, media_settings(), tmdb=None, artwork=None, probe_fn=probe)
+    try:
+        started = await scheduler.trigger("manual")
+        await probe.started.wait()
+        with pytest.raises(ApiError) as exc:
+            await scheduler.ensure_idle()
+        assert (exc.value.status_code, exc.value.code) == (409, "scan_in_progress")
+        assert exc.value.details["scan"]["id"] == started.id
+        probe.gate.set()
+        await scheduler.wait_idle()
+    finally:
+        await scheduler.stop()
+
+
+@pytest.mark.parametrize(("trigger", "relinks"), [("libraries", True), ("manual", False)])
+async def test_execute_passes_the_folders_provider_and_relinks_only_for_libraries(
+    mdb, media_settings, monkeypatch, trigger, relinks
+):
+    from hometv import scheduler as scheduler_module
+    from hometv.libraries import LibraryFolderSet
+
+    captured: dict[str, object] = {}
+
+    class SpyScanner:
+        def __init__(self, *args, **kwargs) -> None:
+            captured.update(kwargs)
+
+        async def run(self, report, run_id):
+            return report
+
+    monkeypatch.setattr(scheduler_module, "Scanner", SpyScanner)
+
+    def provider() -> LibraryFolderSet:
+        return LibraryFolderSet(films=("/m",))
+
+    scheduler = Scheduler(
+        mdb, media_settings(), tmdb=None, artwork=None, probe_fn=StubProbe(), folders=provider
+    )
+    await scheduler.trigger(trigger)
+    await scheduler.wait_idle()
+    assert captured["folders"] is provider
+    assert captured["relinks"] is relinks
+
+
+async def test_scheduled_runs_never_relink(mdb, media_settings, monkeypatch):
+    from hometv import scheduler as scheduler_module
+
+    captured: list[bool] = []
+
+    class SpyScanner:
+        def __init__(self, *args, **kwargs) -> None:
+            captured.append(kwargs["relinks"])
+
+        async def run(self, report, run_id):
+            return report
+
+    monkeypatch.setattr(scheduler_module, "Scanner", SpyScanner)
+    scheduler = Scheduler(mdb, media_settings(), tmdb=None, artwork=None, probe_fn=StubProbe())
+    assert await scheduler.run_scheduled("startup")
+    assert await scheduler.run_scheduled("scheduled")
+    assert captured == [False, False]

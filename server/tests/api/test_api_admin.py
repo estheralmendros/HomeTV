@@ -138,6 +138,10 @@ ADMIN_ROUTES = [
     ),
     ("PATCH", "/api/admin/profiles/{profile_id}", "/api/admin/profiles/{uid}", {"name": "Kid"}),
     ("DELETE", "/api/admin/profiles/{profile_id}", "/api/admin/profiles/{uid}", None),
+    ("GET", "/api/admin/libraries", "/api/admin/libraries", None),
+    ("PUT", "/api/admin/libraries", "/api/admin/libraries", {"films": [], "shows": []}),
+    ("POST", "/api/admin/libraries/plan", "/api/admin/libraries/plan", {"films": [], "shows": []}),
+    ("GET", "/api/admin/libraries/browse", "/api/admin/libraries/browse", None),
 ]
 
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RunAdminAction } from '@/auth/useAdminAction';
-import { tmdbSearchQuery, tmdbSeasonQuery, tmdbSeasonsQuery } from './adminQueries';
+import { browseQuery, tmdbSearchQuery, tmdbSeasonQuery, tmdbSeasonsQuery } from './adminQueries';
 
 // The TMDB lookups are not gated by `enabled: token !== null` (they run through useAdminAction,
 // prd2 § State & data fetching), so no background refetch may pop the PIN keypad unprompted.
@@ -13,5 +13,12 @@ describe('TMDB lookup queries', () => {
     ['season', tmdbSeasonQuery(run, 438631, 1)],
   ])('%s: no window-focus or reconnect refetch, no retries', (_name, options) => {
     expect(options).toMatchObject({ refetchOnWindowFocus: false, refetchOnReconnect: false, retry: false });
+  });
+});
+
+describe('folder browser query', () => {
+  it('keys by path and never retries (errors show at once with a way back)', () => {
+    expect(browseQuery(null)).toMatchObject({ queryKey: ['admin', 'libraries', 'browse', null], retry: false, staleTime: 0 });
+    expect(browseQuery('/media/A').queryKey).toEqual(['admin', 'libraries', 'browse', '/media/A']);
   });
 });

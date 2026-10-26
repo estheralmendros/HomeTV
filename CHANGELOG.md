@@ -4,7 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [0.2.0] - Released on 2026-10-26 by Esther Almendros Pérez
+
+### Added
+
+#### Server
+- The film and TV folders are stored by the server and changed from the admin area, with no restart and no compose edit. `HOMETV_FILMS_PATHS` / `HOMETV_SHOWS_PATHS` (or the YAML keys) are only read on the first start to fill them in (an existing installation keeps the folders of the files it already indexed), then ignored; `HOMETV_MEDIA_BROWSE_ROOT` (default `/media`) is the base of the folder browser.
+- Before folder changes are saved, the server reports their consequences. Moving a folder between Películas and Series, or changing the Series folder so the show folders change, needs explicit confirmation: those titles are identified again and their watch history is deleted. Titles of a removed folder disappear from the catalog at once and are deleted after the grace period (`HOMETV_SCAN_MISSING_GRACE_DAYS`, 7 days by default); adding the folder back before then restores them with their history.
+
+#### Web app
+- "Bibliotecas" tab in Administración to manage the Películas and Series folders: each folder shows whether it is available and how many titles it has; folders are added by typing a path or by picking one in a server folder browser, and removed with an undo before saving. Saving shows a confirmation with what will happen to the affected titles when needed, then starts a scan ("cambio de carpetas").
+- When the library is empty, admins get a link to Bibliotecas next to the scan link.
+
+### Changed
+
+#### Server
+- Films now count as watched at 95 % (was 90 %), so closing one during its credits no longer marks it watched; TV episodes stay at 90 %.
+- The Docker Compose file no longer sets the library folders: mount one broad parent folder at `/media` (and more disks under it) and choose the folders in Administración → Bibliotecas.
+
+## [0.1.0] - Released on 2026-10-25 by Esther Almendros Pérez
 
 ### Added
 

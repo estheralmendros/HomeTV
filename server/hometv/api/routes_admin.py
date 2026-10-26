@@ -17,6 +17,7 @@ from hometv.api.deps import (
     AdminUser,
     ArtworkDep,
     Db,
+    LibrariesDep,
     LimiterDep,
     ReadSession,
     SchedulerDep,
@@ -29,8 +30,14 @@ from hometv.api.deps import (
 from hometv.api.errors import ApiError
 from hometv.api.routes_profiles import profile_out
 from hometv.api.schemas import (
+    BrowseResponse,
     ErrorResponse,
     FilmDetail,
+    LibrariesPlan,
+    LibrariesPlanRequest,
+    LibrariesResponse,
+    LibrariesSaveRequest,
+    LibrariesSaveResponse,
     MatchRequest,
     Page,
     Profile,
@@ -50,6 +57,7 @@ from hometv.api.schemas import (
     UnmatchedEntry,
 )
 from hometv.db.models import UNMATCHED_REASONS
+from hometv.libraries import plan_out, same_folders
 from hometv.metadata import enrich
 from hometv.profiles import verify_pin
 
@@ -117,6 +125,77 @@ async def start_scan(scheduler: SchedulerDep) -> ScanStatus:
 @router.get("/scan", response_model=ScanStatus)
 def scan_status(scheduler: SchedulerDep) -> ScanStatus:
     return scheduler.status()
+
+
+# --- Library folders -----------------------------------------------------------------------------
+
+_INVALID_FOLDERS: Responses = {
+    422: {
+        "model": ErrorResponse,
+        "description": "invalid_library_folders (details.folders) | validation_error",
+    }
+}
+
+
+@router.get("/libraries", response_model=LibrariesResponse)
+def get_libraries(libraries: LibrariesDep, session: ReadSession) -> LibrariesResponse:
+    return libraries.describe(session)
+
+
+@router.post("/libraries/plan", response_model=LibrariesPlan, responses=_INVALID_FOLDERS)
+def plan_libraries(body: LibrariesPlanRequest, libraries: LibrariesDep) -> LibrariesPlan:
+    """Preview a change (no write; ignores the scan lock)."""
+    return plan_out(libraries.plan(body.films, body.shows))
+
+
+@router.put(
+    "/libraries",
+    response_model=LibrariesSaveResponse,
+    responses={
+        409: {
+            "model": ErrorResponse,
+            "description": "scan_in_progress (details.scan) | relinks_unconfirmed "
+            "(details.moves, details.relayouts)",
+        },
+        **_INVALID_FOLDERS,
+    },
+)
+async def save_libraries(
+    body: LibrariesSaveRequest, scheduler: SchedulerDep, libraries: LibrariesDep, db: Db
+) -> LibrariesSaveResponse:
+    """Replace both lists and start a ``libraries`` scan; a no-op (same sets) starts none."""
+    await scheduler.ensure_idle()
+    scan: ScanStatus | None = None
+    if not same_folders(libraries.current(), body.films, body.shows):
+        scan = await scheduler.trigger(
+            "libraries",
+            before=lambda: libraries.save(
+                body.films, body.shows, confirm_relinks=body.confirm_relinks
+            ),
+        )
+
+    def describe() -> LibrariesResponse:
+        with db.read_session() as session:
+            return libraries.describe(session)
+
+    current = await asyncio.to_thread(describe)
+    return LibrariesSaveResponse(**current.model_dump(), scan=scan)
+
+
+@router.get(
+    "/libraries/browse",
+    response_model=BrowseResponse,
+    responses={
+        403: {"model": ErrorResponse, "description": "outside_browse_root | folder_not_readable"},
+        404: {"model": ErrorResponse, "description": "folder_not_found"},
+        409: {"model": ErrorResponse, "description": "browse_unavailable"},
+    },
+)
+def browse_libraries(
+    libraries: LibrariesDep,
+    path: Annotated[str | None, Query(min_length=1, max_length=4096)] = None,
+) -> BrowseResponse:
+    return libraries.browse(path)
 
 
 # --- Unmatched -----------------------------------------------------------------------------------

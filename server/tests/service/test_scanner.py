@@ -712,3 +712,373 @@ async def test_scan_run_row_tracks_progress(mdb, media: MediaTree, media_setting
     assert run.processed == 2
     assert run.counts["new"] == 2
     assert run.phase == "probing"
+
+
+# --- Library folders provider, re-roots and relinks (HOMETV-1) -------------------------------
+
+
+def _provider(films=(), shows=()):
+    from hometv.libraries import LibraryFolderSet
+
+    folders = LibraryFolderSet(films=tuple(map(str, films)), shows=tuple(map(str, shows)))
+    return lambda: folders
+
+
+def _profile(mdb) -> int:
+    with mdb.write_session() as s:
+        profile = m.Profile(name="Kids", avatar_id="avatar-01", is_admin=False)
+        s.add(profile)
+        s.flush()
+        return profile.id
+
+
+def _progress(mdb, profile_id, *, film_id=None, episode_id=None) -> None:
+    with mdb.write_session() as s:
+        s.add(
+            m.PlaybackProgress(
+                profile_id=profile_id,
+                film_id=film_id,
+                episode_id=episode_id,
+                position_seconds=60.0,
+                duration_seconds=5400.0,
+            )
+        )
+
+
+def _progress_rows(mdb) -> list[tuple[int | None, int | None]]:
+    with mdb.read_session() as s:
+        rows = [(p.film_id, p.episode_id) for p in s.scalars(select(m.PlaybackProgress))]
+        return sorted(rows, key=lambda r: (r[0] or 0, r[1] or 0))
+
+
+def _episode_ids(mdb, path: Path) -> list[int]:
+    with mdb.read_session() as s:
+        row = s.scalar(select(m.MediaFile).where(m.MediaFile.path == str(path)))
+        return sorted(
+            s.scalars(
+                select(m.MediaFileEpisode.episode_id).where(
+                    m.MediaFileEpisode.media_file_id == row.id
+                )
+            )
+        )
+
+
+def _show_titles(mdb) -> list[str]:
+    return sorted(s.title for s in _all(mdb, m.Show))
+
+
+async def test_provider_folders_are_walked_instead_of_settings(
+    mdb, media: MediaTree, media_settings, stub_probe, tmp_path
+):
+    media.add("Dune (2021).mkv")
+    other = tmp_path / "other"
+    heat = media.add("Heat (1995).mkv", root=other)
+    report = await _scan(mdb, media_settings(), stub_probe, folders=_provider(films=[other]))
+    assert [f.path for f in _all(mdb, m.MediaFile)] == [str(heat)]
+    assert report.counts["files_seen"] == 1
+
+
+async def test_removed_folder_goes_missing_and_readding_restores_links_and_progress(
+    mdb, media: MediaTree, media_settings, stub_probe
+):
+    dune = media.add("Dune (2021)/Dune (2021).mkv")
+    settings = media_settings()
+    both = _provider(films=[media.films], shows=[media.shows])
+    await _scan(mdb, settings, stub_probe, folders=both)
+    film_id = _file(mdb, dune).film_id
+    _progress(mdb, _profile(mdb), film_id=film_id)
+
+    report = await _scan(mdb, settings, stub_probe, folders=_provider(shows=[media.shows]))
+    assert f"root_unconfigured: {media.films}" in report.errors
+    assert _file(mdb, dune).missing_since is not None
+    assert _progress_rows(mdb) == [(film_id, None)]
+
+    await _scan(mdb, settings, stub_probe, folders=both)
+    assert _file(mdb, dune).missing_since is None
+    assert _file(mdb, dune).film_id == film_id
+    assert _progress_rows(mdb) == [(film_id, None)]
+
+
+@pytest.mark.parametrize("grace", [7, 0])
+async def test_folder_moved_within_films_keeps_the_film_and_progress(
+    mdb, media: MediaTree, media_settings, stub_probe, grace
+):
+    old = media.add("Dune (2021)/Dune (2021).mkv", root=media.base / "A")
+    settings = media_settings(scan={"missing_grace_days": grace})
+    await _scan(mdb, settings, stub_probe, folders=_provider(films=[media.base / "A"]))
+    film_id = _file(mdb, old).film_id
+    _progress(mdb, _profile(mdb), film_id=film_id)
+
+    new = media.add("Dune (2021)/Dune (2021).mkv", root=media.base / "B")
+    await _scan(mdb, settings, stub_probe, folders=_provider(films=[media.base / "B"]))
+    assert _file(mdb, new).film_id == film_id
+    assert _progress_rows(mdb) == [(film_id, None)]
+    if grace == 0:
+        assert _file(mdb, old) is None  # purged; the film lives on through the new file
+        assert [f.id for f in _all(mdb, m.Film)] == [film_id]
+
+
+async def test_films_root_replaced_by_parent_is_a_path_only_reroot(
+    mdb, media: MediaTree, media_settings, stub_probe
+):
+    mkv = media.base / "MKV"
+    dune = media.add("Dune (2021)/Dune (2021).mkv", root=mkv)
+    heat = media.add("Heat (1995).mkv", root=mkv)
+    settings = media_settings()
+    await _scan(mdb, settings, stub_probe, folders=_provider(films=[mkv]))
+    dune_row, heat_row = _file(mdb, dune), _file(mdb, heat)
+    films_before = {(f.id, f.title, f.added_at) for f in _all(mdb, m.Film)}
+    _progress(mdb, _profile(mdb), film_id=dune_row.film_id)
+    media.touch(heat)
+    new = media.add("películas/A/Alien (1979).mkv", root=media.base)
+    stub_probe.calls.clear()
+
+    report = await _scan(mdb, settings, stub_probe, folders=_provider(films=[media.base]))
+
+    row = _file(mdb, dune)
+    assert (row.id, row.film_id) == (dune_row.id, dune_row.film_id)
+    assert row.root_path == str(media.base)
+    assert row.relative_path == "MKV/Dune (2021)/Dune (2021).mkv"
+    assert _file(mdb, heat).film_id == heat_row.film_id  # changed: reparsed, same film
+    assert _file(mdb, heat).root_path == str(media.base)
+    assert sorted(stub_probe.calls) == ["Alien (1979).mkv", "Heat (1995).mkv"]
+    assert {(f.id, f.title, f.added_at) for f in _all(mdb, m.Film)} >= films_before
+    assert sorted(f.title for f in _all(mdb, m.Film)) == ["Alien", "Dune", "Heat"]
+    assert _file(mdb, new).relative_path == "películas/A/Alien (1979).mkv"
+    assert _progress_rows(mdb) == [(dune_row.film_id, None)]
+    assert report.counts["unchanged"] == 1 and report.counts["changed"] == 1
+    assert not any(e.startswith("relink_pending") for e in report.errors)
+
+
+async def test_reroot_of_a_missing_file_restores_it_with_the_same_links(
+    mdb, media: MediaTree, media_settings, stub_probe
+):
+    mkv = media.base / "MKV"
+    dune = media.add("Dune (2021).mkv", root=mkv)
+    settings = media_settings()
+    await _scan(mdb, settings, stub_probe, folders=_provider(films=[mkv]))
+    before = _file(mdb, dune)
+    await _scan(mdb, settings, stub_probe, folders=_provider())
+    assert _file(mdb, dune).missing_since is not None
+    stub_probe.calls.clear()
+
+    report = await _scan(mdb, settings, stub_probe, folders=_provider(films=[media.base]))
+    row = _file(mdb, dune)
+    assert row.missing_since is None and row.root_path == str(media.base)
+    assert (row.id, row.film_id) == (before.id, before.film_id)
+    assert stub_probe.calls == []
+    assert report.counts["restored"] == 1
+
+
+def _user_series(media: MediaTree) -> dict[str, Path]:
+    series = media.base / "series"
+    return {
+        "naruto": media.add("Naruto/Naruto.S01E01.mkv", root=series),
+        "office": media.add("The Office/Season 2/The.Office.S02E03.mkv", root=series),
+        "loose": media.add("Bluey.S01E02.mkv", root=series),
+    }
+
+
+async def test_user_series_layout_names_shows_after_folders_and_loose_files(
+    mdb, media: MediaTree, media_settings, stub_probe
+):
+    _user_series(media)
+    await _scan(mdb, media_settings(), stub_probe, folders=_provider(shows=[media.base / "series"]))
+    assert _show_titles(mdb) == ["Bluey", "Naruto", "The Office"]
+
+
+async def test_wrong_series_folder_corrected_by_a_confirmed_relayout(
+    mdb, media: MediaTree, media_settings, stub_probe
+):
+    files = _user_series(media)
+    settings = media_settings()
+    await _scan(mdb, settings, stub_probe, folders=_provider(shows=[media.base]))
+    assert "series" in [t.lower() for t in _show_titles(mdb)]
+    wrong_episode = _episode_ids(mdb, files["naruto"])[0]
+    _progress(mdb, _profile(mdb), episode_id=wrong_episode)
+
+    fixed = _provider(shows=[media.base / "series"])
+    report = await _scan(mdb, settings, stub_probe, folders=fixed, relinks=True)
+
+    assert _show_titles(mdb) == ["Bluey", "Naruto", "The Office"]
+    assert _progress_rows(mdb) == []
+    assert {f.root_path for f in _all(mdb, m.MediaFile)} == {str(media.base / "series")}
+    assert not any(e.startswith("relink_pending") for e in report.errors)
+
+
+async def test_relayout_keeping_the_show_name_keeps_ids_and_progress(
+    mdb, media: MediaTree, media_settings, stub_probe
+):
+    series = media.base / "series"
+    naruto = media.add("Naruto/Naruto.S01E01.mkv", root=series)
+    settings = media_settings()
+    await _scan(mdb, settings, stub_probe, folders=_provider(shows=[series]))
+    episodes = _episode_ids(mdb, naruto)
+    show_ids = [s.id for s in _all(mdb, m.Show)]
+    _progress(mdb, _profile(mdb), episode_id=episodes[0])
+    stub_probe.calls.clear()
+
+    await _scan(
+        mdb, settings, stub_probe, folders=_provider(shows=[series / "Naruto"]), relinks=True
+    )
+
+    row = _file(mdb, naruto)
+    assert row.root_path == str(series / "Naruto") and row.relative_path == "Naruto.S01E01.mkv"
+    assert _episode_ids(mdb, naruto) == episodes
+    assert [s.id for s in _all(mdb, m.Show)] == show_ids
+    assert _progress_rows(mdb) == [(None, episodes[0])]
+    assert stub_probe.calls == []  # unchanged file: not re-probed
+
+
+async def test_confirmed_move_from_films_to_shows_relinks_and_drops_only_moved_progress(
+    mdb, media: MediaTree, media_settings, stub_probe
+):
+    x = media.base / "X"
+    moved = media.add("Lost.S01E01.mkv", root=x)
+    keep = media.add("Dune (2021).mkv", root=media.base / "F")
+    settings = media_settings()
+    await _scan(mdb, settings, stub_probe, folders=_provider(films=[x, media.base / "F"]))
+    moved_film, kept_film = _file(mdb, moved).film_id, _file(mdb, keep).film_id
+    assert moved_film is not None
+    profile = _profile(mdb)
+    _progress(mdb, profile, film_id=moved_film)
+    _progress(mdb, profile, film_id=kept_film)
+
+    await _scan(
+        mdb,
+        settings,
+        stub_probe,
+        folders=_provider(films=[media.base / "F"], shows=[x]),
+        relinks=True,
+    )
+
+    row = _file(mdb, moved)
+    assert row.film_id is None and len(_episode_ids(mdb, moved)) == 1
+    assert _show_titles(mdb) == ["Lost"]
+    assert [f.id for f in _all(mdb, m.Film)] == [kept_film]
+    assert _progress_rows(mdb) == [(kept_film, None)]
+
+
+async def _pending_setup(mdb, media: MediaTree, media_settings, stub_probe):
+    """Rows left by an older configuration: films-library rows under the Series folder S
+    (stale library_id) and Series rows stored under root ``base`` inside S."""
+    s_root = media.base / "S"
+    stale = media.add("Dune (2021).mkv", root=s_root)
+    settings = media_settings()
+    await _scan(mdb, settings, stub_probe, folders=_provider(films=[s_root]))
+    episode = media.add("Lost/Lost.S01E01.mkv", root=s_root)
+    await _scan(mdb, settings, stub_probe, folders=_provider(shows=[media.base]))
+    return settings, s_root, stale, episode
+
+
+async def test_relinks_only_in_a_confirmed_run(mdb, media: MediaTree, media_settings, stub_probe):
+    settings, s_root, stale, episode = await _pending_setup(mdb, media, media_settings, stub_probe)
+    before = {f.path: (f.id, f.library_id, f.root_path, f.film_id) for f in _all(mdb, m.MediaFile)}
+    episodes = _episode_ids(mdb, episode)
+    profile = _profile(mdb)
+    _progress(mdb, profile, film_id=before[str(stale)][3])
+    _progress(mdb, profile, episode_id=episodes[0])
+    media.touch(stale)
+    media.touch(episode)
+    stub_probe.calls.clear()
+    folders = _provider(shows=[s_root])
+
+    report = await _scan(mdb, settings, stub_probe, folders=folders)
+
+    after = {f.path: (f.id, f.library_id, f.root_path, f.film_id) for f in _all(mdb, m.MediaFile)}
+    assert after == before
+    assert all(f.missing_since is None for f in _all(mdb, m.MediaFile))
+    assert _episode_ids(mdb, episode) == episodes
+    assert len(_progress_rows(mdb)) == 2
+    assert stub_probe.calls == []
+    assert f"relink_pending: {media.base} -> {s_root}" in report.errors
+    assert f"relink_pending: {s_root} -> {s_root}" in report.errors
+    assert report.counts["unchanged"] == 2
+
+    report = await _scan(mdb, settings, stub_probe, folders=folders, relinks=True)
+    rows = {f.path: f for f in _all(mdb, m.MediaFile)}
+    assert {r.root_path for r in rows.values()} == {str(s_root)}
+    assert rows[str(stale)].film_id is None
+    assert not any(e.startswith("relink_pending") for e in report.errors)
+    report = await _scan(mdb, settings, stub_probe, folders=folders)
+    assert not any(e.startswith("relink_pending") for e in report.errors)
+
+
+async def test_relinks_applied_by_a_confirmed_run_are_exactly_the_planned_ones(
+    mdb, media: MediaTree, media_settings, make_settings, stub_probe
+):
+    from hometv.libraries import LibraryFolders
+
+    settings, s_root, stale, episode = await _pending_setup(mdb, media, media_settings, stub_probe)
+    other = media.add("Heat (1995).mkv", root=media.base / "F")
+    await _scan(
+        mdb, settings, stub_probe, folders=_provider(films=[media.base / "F"], shows=[media.base])
+    )
+    lf = LibraryFolders(mdb, make_settings())
+    lf.seed_once()
+    with mdb.write_session() as s:
+        libs = {lib.type: lib.id for lib in s.scalars(select(m.Library))}
+        s.execute(m.LibraryFolder.__table__.delete())
+        s.flush()
+        s.add(m.LibraryFolder(library_id=libs["films"], path=str(media.base / "F")))
+        s.add(m.LibraryFolder(library_id=libs["shows"], path=str(s_root)))
+    lf.load()
+    plan = lf.plan([str(media.base / "F")], [str(s_root)])
+    planned = {(mv.from_path, mv.to_path) for mv in plan.moved}
+    planned |= {(r.from_path, r.to_path) for r in plan.relayout}
+
+    before = {f.path: (f.library_id, f.root_path) for f in _all(mdb, m.MediaFile)}
+    report = await _scan(mdb, settings, stub_probe, folders=lf.current)
+    pending = {
+        tuple(e.removeprefix("relink_pending: ").split(" -> "))
+        for e in report.errors
+        if e.startswith("relink_pending")
+    }
+    assert pending == planned
+    await _scan(mdb, settings, stub_probe, folders=lf.current, relinks=True)
+    after = {f.path: (f.library_id, f.root_path) for f in _all(mdb, m.MediaFile)}
+    relinked = {p for p in before if before[p] != after[p]}
+    assert relinked == {str(stale), str(episode)}
+    assert after[str(other)] == before[str(other)]
+    assert not lf.plan([str(media.base / "F")], [str(s_root)]).has_relinks
+
+
+async def test_upgrade_with_series_env_changed_to_a_parent_deletes_nothing(
+    mdb, media: MediaTree, make_settings, stub_probe
+):
+    from hometv.libraries import LibraryFolders, PlanRelayout
+
+    series = media.base / "series"
+    naruto = media.add("Naruto/Naruto.S01E01.mkv", root=series)
+    old = make_settings(libraries={"shows": [str(series)]})
+    await _scan(mdb, old, stub_probe)  # pre-upgrade scan from env roots (default provider)
+    episodes = _episode_ids(mdb, naruto)
+    _progress(mdb, _profile(mdb), episode_id=episodes[0])
+
+    upgraded = make_settings(libraries={"shows": [str(media.base)]})
+    lf = LibraryFolders(mdb, upgraded)
+    lf.seed_once()
+    report = await _scan(mdb, upgraded, stub_probe, folders=lf.current)
+
+    assert _show_titles(mdb) == ["Naruto"]
+    assert _episode_ids(mdb, naruto) == episodes
+    assert _progress_rows(mdb) == [(None, episodes[0])]
+    assert f"relink_pending: {series} -> {media.base}" in report.errors
+    plan = lf.plan([], [str(media.base)])
+    assert plan.relayout == (PlanRelayout(str(series), str(media.base), 1),)
+
+
+async def test_seeded_media_file_roots_leave_nothing_unconfigured(
+    mdb, media: MediaTree, media_settings, make_settings, stub_probe
+):
+    from hometv.libraries import LibraryFolders
+
+    media.add("Dune (2021).mkv")
+    media.show("Lost/Lost.S01E01.mkv")
+    await _scan(mdb, media_settings(), stub_probe)
+    no_env = make_settings()
+    lf = LibraryFolders(mdb, no_env)
+    lf.seed_once()
+    report = await _scan(mdb, no_env, stub_probe, folders=lf.current)
+    assert not any(e.startswith("root_unconfigured") for e in report.errors)
+    assert report.counts["missing"] == 0

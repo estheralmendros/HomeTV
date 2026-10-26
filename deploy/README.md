@@ -16,8 +16,8 @@ allowed by your ACL, at `https://hometv.<tailnet>.ts.net`.
 ## Requirements
 
 - Linux host (amd64) with Docker Engine and the Compose plugin, and `/dev/net/tun`.
-- A media directory with `Films/` and `TV/` subdirectories (mounted read-only; HomeTV never
-  writes to it).
+- A media directory (one broad parent, e.g. a whole disk), mounted read-only at `/media`; HomeTV
+  never writes to it. The film and TV folders inside it are chosen later in the web app.
 - A Tailscale account (admin access to the tailnet) and, optionally, a TMDB API key.
 
 ## Setup
@@ -37,10 +37,13 @@ allowed by your ACL, at `https://hometv.<tailnet>.ts.net`.
 4. **Environment**: in this directory, `cp .env.example .env` and set:
    - `TS_AUTHKEY`: the key from step 3;
    - `TMDB_API_KEY`: TMDB v3 key or v4 read token (empty = no metadata, items stay `pending`);
-   - `MEDIA_DIR`: host path holding `Films/` and `TV/`.
+   - `MEDIA_DIR`: host folder with your media, one broad parent (e.g. a whole disk). It is mounted
+     read-only at `/media`; folder names such as `Films`/`TV` are not required.
 5. **Start**: `docker compose up -d --build` (run in `deploy/`).
 6. **First use**: open `https://hometv.<tailnet>.ts.net`, create the first admin profile (4-digit
-   PIN), and wait for the startup scan (it starts 10 s after boot).
+   PIN), then open **Administración → Bibliotecas**: add the folders under `/media` that hold
+   films (**Películas**) and TV shows (**Series**), typed or picked with the folder browser, and
+   press **Guardar cambios**. The save starts a scan (see **Administración → Escaneo**).
 7. **TV app**: point it to the same URL (see `../docs/tv-app-installation.md`).
 
 ## Operations
@@ -52,8 +55,31 @@ allowed by your ACL, at `https://hometv.<tailnet>.ts.net`.
   `hls/` (HLS scratch, wiped on start and stop). Back up the volume to keep profiles and watch
   history. The `tailscale-state` volume keeps the node identity (do not delete it, or the node
   re-registers).
-- Libraries: compose sets `HOMETV_FILMS_PATHS=/media/Films` and `HOMETV_SHOWS_PATHS=/media/TV`.
-  Several roots: comma-separated lists, or a `config.yaml` in the data volume.
+- Libraries: the folders of **Películas** and **Series** are managed in **Administración →
+  Bibliotecas** (stored in the database; a save starts a scan, no restart). Each library can have
+  several folders, or none.
+  - The folder browser explores `/media` (`HOMETV_MEDIA_BROWSE_ROOT`); typing a full path works
+    everywhere.
+  - A folder on a new host disk still needs a volume line in `docker-compose.yml` (e.g.
+    `/srv/disk2:/media/disk2:ro`) and `docker compose up -d`; then add it in Bibliotecas.
+  - Series layout: the Series folder is the one that holds one subfolder per show (episode files
+    may also sit directly in it, named with the show and `S01E01`). Choose exactly that folder,
+    not its parent or a show's subfolder. Changing it later re-reads the episodes from the new
+    folder; shows whose name changes lose their watch history (the screen asks first). Film
+    folders may be flat or split in subfolders (`A/`, `B/`…): film titles come from file names.
+  - Moving a folder between Películas and Series deletes the watch history of its titles (the
+    screen asks first). A removed folder's titles are hidden at once and deleted after the grace
+    period (`HOMETV_SCAN_MISSING_GRACE_DAYS`) unless the folder is added back.
+  - Upgrade: on the first start of this version the existing folders are kept automatically
+    (from `HOMETV_FILMS_PATHS`/`HOMETV_SHOWS_PATHS` or `libraries.films|shows` in `config.yaml`,
+    else from the already indexed files). Those settings are then ignored (the Bibliotecas screen
+    says so) and can be removed. If older settings left some files in the wrong library or under
+    another Series folder, nothing changes at startup; the first save in Bibliotecas lists them
+    in its confirmation.
+  - A typed folder with accents (e.g. `/media/películas`) reported as "La carpeta no existe en el
+    servidor" although it exists: pick it with the folder browser instead (the name on disk may
+    use another Unicode form, e.g. copied from a Mac). "No encontrada" / "Sin permiso" chips
+    mean the path is not mounted or not readable by uid 1000.
 - Other settings (`HOMETV_*`, e.g. `HOMETV_MAX_SESSIONS`, `HOMETV_HLS_DIR` to put HLS scratch
   on an SSD/tmpfs, `HOMETV_SCAN_INTERVAL_HOURS`): add them to the `app` environment. The full
   list is the Configuration Reference in `specs/HOMETV-1/hometv-app/prd.md`.

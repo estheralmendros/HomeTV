@@ -24,3 +24,8 @@ export function scanFinishedToast(scan: ScanStatus): string {
   const first = T.finished(parts.length > 0 ? parts.join(', ') : T.noChanges);
   return c && c.missing > 0 ? `${first}\n${T.missing(c.missing)}` : first;
 }
+
+/** A ScanStatus in an error's `details.scan` (409 scan_in_progress). */
+export function isScanStatus(value: unknown): value is ScanStatus {
+  return typeof value === 'object' && value !== null && 'state' in value && 'progress' in value;
+}

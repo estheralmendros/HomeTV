@@ -5,7 +5,10 @@ Precedence (highest first): ``HOMETV_*`` environment variables -> YAML file
 
 ``Settings`` itself only validates what it is given (init kwargs), so tests can build it
 directly; ``load_settings()`` does the env/YAML merge; ``prepare_runtime()`` performs the
-startup side effects (guards, directories, HLS wipe, secret key).
+startup side effects (env-root guards, directories, secret key). The library folders live in
+the database (``hometv.libraries``): the env/YAML library keys only seed them once, and the
+stored folders are checked by ``check_library_folders()`` before ``prepare_hls_dir()`` creates
+and wipes the HLS dir.
 """
 
 import logging
@@ -16,7 +19,7 @@ import secrets
 import shutil
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 import yaml
 from pydantic import (
@@ -31,6 +34,9 @@ from pydantic import (
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 from hometv.text import empty_to_none
+
+if TYPE_CHECKING:
+    from hometv.libraries import LibraryFolderSet
 
 logger = logging.getLogger("hometv.config")
 
@@ -65,8 +71,11 @@ class _Section(BaseModel):
 class LibrariesSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")  # unknown library type aborts startup
 
+    # Only read to seed the stored library folders once (hometv.libraries).
     films: list[str] = Field(default_factory=list)
     shows: list[str] = Field(default_factory=list)
+    # Base folder of the admin folder browser.
+    browse_root: str = "/media"
 
     @field_validator("films", "shows", mode="before")
     @classmethod
@@ -77,6 +86,11 @@ class LibrariesSettings(BaseModel):
     @classmethod
     def _normalize(cls, roots: list[str]) -> list[str]:
         return [_normalize_root(r) for r in roots]
+
+    @field_validator("browse_root")
+    @classmethod
+    def _normalize_browse_root(cls, root: str) -> str:
+        return _normalize_root(root)
 
 
 class TmdbSettings(_Section):
@@ -146,6 +160,9 @@ class Settings(BaseSettings):
     auth: AuthSettings = Field(default_factory=AuthSettings)
     server: ServerSettings = Field(default_factory=ServerSettings)
     ffmpeg: FfmpegSettings = Field(default_factory=FfmpegSettings)
+    # Library type -> display name of the key that set it ("HOMETV_FILMS_PATHS" or
+    # "libraries.films"); filled by load_settings() for non-empty library keys only.
+    library_sources: dict[str, str] = Field(default_factory=dict)
 
     @classmethod
     def settings_customise_sources(
@@ -188,7 +205,11 @@ class Settings(BaseSettings):
 
     @property
     def media_roots(self) -> list[str]:
+        """Env/YAML library roots: only the pre-write guard (``check_paths``) and seeding."""
         return [*self.libraries.films, *self.libraries.shows]
+
+    def library_source(self, library_type: str) -> str:
+        return self.library_sources.get(library_type, f"libraries.{library_type}")
 
 
 # Flat env var -> nested settings path (Configuration Reference).
@@ -196,6 +217,7 @@ ENV_MAP: dict[str, tuple[str, ...]] = {
     "HOMETV_DATA_DIR": ("data_dir",),
     "HOMETV_FILMS_PATHS": ("libraries", "films"),
     "HOMETV_SHOWS_PATHS": ("libraries", "shows"),
+    "HOMETV_MEDIA_BROWSE_ROOT": ("libraries", "browse_root"),
     "HOMETV_TMDB_API_KEY": ("tmdb", "api_key"),
     "HOMETV_TMDB_LANGUAGE": ("tmdb", "language"),
     "HOMETV_TMDB_FALLBACK_LANGUAGE": ("tmdb", "fallback_language"),
@@ -231,6 +253,10 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
     env = dict(os.environ if environ is None else environ)
     data: dict[str, Any] = _read_yaml(env)
     sources: dict[tuple[str, ...], str] = {}
+    yaml_libraries = data.get("libraries")
+    for lib_type in ("films", "shows"):
+        if isinstance(yaml_libraries, dict) and lib_type in yaml_libraries:
+            sources[("libraries", lib_type)] = f"libraries.{lib_type}"
 
     for name, path in ENV_MAP.items():
         if name in env:
@@ -238,12 +264,18 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
             sources[path] = name
 
     try:
-        return Settings(**data)
+        settings = Settings(**data)
     except ValidationError as exc:
         err = exc.errors()[0]
         loc = tuple(str(p) for p in err["loc"])
         key = _key_for(loc, sources)
         raise ConfigError(f"Invalid configuration value for {key}: {err['msg']}") from exc
+    library_sources = {
+        lib_type: sources[("libraries", lib_type)]
+        for lib_type in ("films", "shows")
+        if getattr(settings.libraries, lib_type) and ("libraries", lib_type) in sources
+    }
+    return settings.model_copy(update={"library_sources": library_sources})
 
 
 def _read_yaml(env: Mapping[str, str]) -> dict[str, Any]:
@@ -298,7 +330,8 @@ def _is_within(child: Path, parent: Path) -> bool:
 
 
 def check_paths(settings: Settings) -> None:
-    """PRD §1 rule 6: never write under a media root; hls_dir must not hold the data dir."""
+    """PRD §1 rule 6 against the env/YAML roots (pre-write guard, before anything is written):
+    never write under a media root; hls_dir must not hold the data dir."""
     data_dir = _resolve(settings.data_dir)
     hls_dir = _resolve(settings.hls_dir)
     for root in settings.media_roots:
@@ -347,17 +380,43 @@ def _resolve_secret_key(settings: Settings) -> str:
     return key
 
 
+def check_library_folders(settings: Settings, folders: "LibraryFolderSet") -> None:
+    """Guards for the stored library folders (run once they are loaded from the database).
+
+    A stored folder holding the data or HLS dir aborts startup (the env var changed after the
+    folder was saved); a missing folder is only a warning."""
+    data_dir = _resolve(settings.data_dir)
+    hls_dir = _resolve(settings.hls_dir)
+    for folder, _library in folders.roots():
+        resolved = _resolve(Path(folder))
+        if _is_within(data_dir, resolved):
+            raise ConfigError(
+                f"HOMETV_DATA_DIR ({data_dir}) is inside library folder {folder} "
+                "(stored in the database); change HOMETV_DATA_DIR"
+            )
+        if _is_within(hls_dir, resolved):
+            raise ConfigError(
+                f"HOMETV_HLS_DIR ({hls_dir}) is inside library folder {folder} "
+                "(stored in the database); change HOMETV_HLS_DIR"
+            )
+        if not Path(folder).is_dir():
+            logger.warning("media_root_missing: %s", folder)
+
+
+def prepare_hls_dir(settings: Settings) -> None:
+    """Create the HLS dir and wipe stale sessions (only after every HLS guard passed)."""
+    settings.hls_dir.mkdir(parents=True, exist_ok=True)
+    wipe_hls_sessions(settings.hls_dir)
+
+
 def prepare_runtime(settings: Settings) -> Settings:
-    """Startup side effects (PRD §1 rules 2-4, 6). Returns settings with the secret key set."""
-    for root in settings.media_roots:
-        if not Path(root).is_dir():
-            logger.warning("media_root_missing: %s", root)
-    check_paths(settings)  # before any directory creation or wipe
+    """Startup side effects before the database opens (PRD §1 rules 3-4, 6): env-root guards,
+    data dirs, secret key. The HLS dir is prepared later (``prepare_hls_dir``). Returns
+    settings with the secret key set."""
+    check_paths(settings)  # before any directory creation
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     settings.artwork_dir.mkdir(exist_ok=True)
     settings.subtitles_dir.mkdir(exist_ok=True)
-    settings.hls_dir.mkdir(parents=True, exist_ok=True)
-    wipe_hls_sessions(settings.hls_dir)
     secret = _resolve_secret_key(settings)
     auth = settings.auth.model_copy(update={"secret_key": secret})
     return settings.model_copy(update={"auth": auth})

@@ -13,7 +13,7 @@ function renderAdmin(route: string, options: ProviderOptions = {}) {
 const tabs = () => screen.getByRole('navigation', { name: 'Secciones de administración' });
 
 describe('AdminLayout', () => {
-  it('/admin redirects to /admin/scan and shows the three tabs', async () => {
+  it('/admin redirects to /admin/scan and shows the four tabs in order', async () => {
     const { router } = renderAdmin('/admin');
     await screen.findByRole('heading', { level: 1, name: 'Administración' });
     await waitFor(() => expect(currentUrl(router)).toBe('/admin/scan'));
@@ -21,6 +21,19 @@ describe('AdminLayout', () => {
     await waitFor(() => expect(within(tabs()).getByRole('link', { name: 'Escaneo' })).toHaveAttribute('aria-current', 'page'));
     expect(within(tabs()).getByRole('link', { name: /^Sin identificar/ })).toHaveAttribute('href', '/admin/unmatched');
     expect(within(tabs()).getByRole('link', { name: 'Perfiles' })).toHaveAttribute('href', '/admin/profiles');
+    expect(within(tabs()).getByRole('link', { name: 'Bibliotecas' })).toHaveAttribute('href', '/admin/libraries');
+    expect(within(tabs()).getAllByRole('link').map((link) => link.textContent)).toEqual([
+      'Escaneo', 'Bibliotecas', 'Sin identificar4', 'Perfiles',
+    ]);
+  });
+
+  it('the Bibliotecas tab opens the library folders page', async () => {
+    const { user, router } = renderAdmin('/admin/scan');
+    await user.click(await within(await screen.findByRole('navigation', { name: 'Secciones de administración' })).findByRole('link', { name: 'Bibliotecas' }));
+    await waitFor(() => expect(currentUrl(router)).toBe('/admin/libraries'));
+    expect(within(tabs()).getByRole('link', { name: 'Bibliotecas' })).toHaveAttribute('aria-current', 'page');
+    expect(await screen.findByRole('heading', { level: 2, name: 'Películas' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Series' })).toBeInTheDocument();
   });
 
   it('the Unmatched tab badge shows ScanStatus.unmatched_count without an unmatched list request', async () => {

@@ -1,1 +1,1 @@
-0.1.0-SNAPSHOT-HOMETV-1-hometv-app
+0.2.0

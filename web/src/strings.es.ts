@@ -6,6 +6,9 @@ import { countFormat, plural, pluralRules } from '@/lib/intl';
 
 const APP_NAME = 'HomeTV';
 
+const titleCount = (n: number) => plural(n, 'título', 'títulos');
+const showCount = (n: number) => plural(n, 'serie', 'series');
+
 type ErrorText = string | ((retryAfterSeconds: number | null) => string);
 
 const errorTexts = {
@@ -47,6 +50,12 @@ const errorTexts = {
   artwork_not_found: 'Imagen no disponible.',
   validation_error: 'Revisa los datos introducidos.',
   already_bootstrapped: 'HomeTV ya está configurado.',
+  invalid_library_folders: 'Revisa las carpetas marcadas.',
+  relinks_unconfirmed: 'Hay títulos que se volverán a identificar; revisa los cambios.',
+  outside_browse_root: 'Esa carpeta está fuera de la zona que se puede explorar.',
+  folder_not_found: 'La carpeta no existe en el servidor.',
+  folder_not_readable: 'HomeTV no tiene permiso para leer esta carpeta.',
+  browse_unavailable: 'No se puede explorar el servidor.',
 } satisfies Record<string, ErrorText>;
 
 export const S = {
@@ -170,13 +179,18 @@ export const S = {
     onlyAdmins: 'Solo para administradores',
     title: 'Administración',
     tabsLabel: 'Secciones de administración',
-    tabs: { scan: 'Escaneo', unmatched: 'Sin identificar', profiles: 'Perfiles' },
+    tabs: { scan: 'Escaneo', libraries: 'Bibliotecas', unmatched: 'Sin identificar', profiles: 'Perfiles' },
 
     scan: {
       title: 'Escaneo de la biblioteca',
       scanNow: 'Escanear ahora',
       states: { idle: 'Inactivo', running: 'En curso', completed: 'Completado', failed: 'Fallido' },
-      triggers: { startup: 'al iniciar', scheduled: 'programado', manual: 'manual' },
+      triggers: {
+        startup: 'al iniciar',
+        scheduled: 'programado',
+        manual: 'manual',
+        libraries: 'cambio de carpetas',
+      },
       stateWithTrigger: (state: string, trigger: string) => `${state} (${trigger})`,
       phases: {
         walking: 'Recorriendo carpetas',
@@ -225,6 +239,78 @@ export const S = {
             ? 'Ahora falta 1 archivo: ¿hay algún disco desconectado?'
             : `Ahora faltan ${countFormat.format(n)} archivos: ¿hay algún disco desconectado?`,
         failed: 'El escaneo ha fallado.',
+      },
+    },
+
+    libraries: {
+      sections: { films: 'Películas', shows: 'Series' },
+      empty: 'Sin carpetas',
+      addFolder: 'Añadir carpeta',
+      status: { available: 'Disponible', not_found: 'No encontrada', not_readable: 'Sin permiso' },
+      titleCount: (n: number) => titleCount(n),
+      added: 'Nueva',
+      removed: 'Se quitará',
+      remove: 'Quitar',
+      removeLabel: (path: string) => `Quitar ${path}`,
+      undo: 'Deshacer',
+      undoLabel: (path: string) => `Deshacer quitar ${path}`,
+      save: 'Guardar cambios',
+      discard: 'Descartar',
+      saved: 'Carpetas guardadas. Escaneo iniciado',
+      savedNoScan: 'Carpetas guardadas',
+      scanInProgress: 'Hay un escaneo en curso; guarda cuando termine.',
+      ignoredEnv: (names: string[]) =>
+        `HomeTV ya no usa ${names.join(', ')} para elegir las carpetas: ahora se gestionan desde esta pantalla. Puedes quitar esa configuración.`,
+      errorSummary: 'Revisa las carpetas marcadas.',
+      confirm: {
+        title: (n: number) => (pluralRules.select(n) === 'one' ? '¿Quitar 1 carpeta?' : `¿Quitar ${countFormat.format(n)} carpetas?`),
+        titleChanges: '¿Guardar estos cambios de carpetas?',
+        body: (days: number) =>
+          days === 0
+            ? 'Sus títulos y su historial de reproducción se borrarán en el escaneo que empieza ahora.'
+            : `Sus títulos dejarán de verse en el catálogo ahora y se borrarán dentro de ${plural(days, 'día', 'días')} si no vuelves a añadir la carpeta. Si la vuelves a añadir antes, volverán con su historial de reproducción.`,
+        item: (library: string, path: string, n: number) => `${library} · ${path} (${titleCount(n)})`,
+        movedItem: (fromLib: string, fromPath: string, toLib: string, toPath: string, n: number) =>
+          `${fromLib} · ${fromPath} → ${toLib} · ${toPath} (${titleCount(n)})`,
+        movedSameItem: (fromLib: string, toLib: string, path: string, n: number) => `${fromLib} → ${toLib} · ${path} (${titleCount(n)})`,
+        movedBody:
+          'Se volverán a identificar en la otra biblioteca y su historial de reproducción se borrará en el escaneo que empieza ahora. No se puede recuperar.',
+        relayoutItem: (fromPath: string, toPath: string, n: number) => `Series · ${fromPath} → ${toPath} (${showCount(n)})`,
+        relayoutBody:
+          'Sus episodios se volverán a identificar a partir de la nueva carpeta en el escaneo que empieza ahora. Las series que salgan con otro nombre perderán su historial de reproducción; no se puede recuperar.',
+        coveredItem: (library: string, path: string, by: string) => `${library} · ${path} → ${by}`,
+        coveredBody: 'Sus títulos siguen dentro de la nueva carpeta y conservan su historial de reproducción.',
+        submit: 'Quitar y guardar',
+        submitChanges: 'Guardar cambios',
+      },
+      dialog: {
+        title: (library: string) => `Añadir carpeta a ${library}`,
+        pathLabel: 'Ruta de la carpeta en el servidor',
+        placeholder: '/media/Peliculas',
+        add: 'Añadir',
+        browserLabel: 'Carpetas del servidor',
+        current: (path: string) => `Carpeta actual: ${path}`,
+        up: 'Subir',
+        choose: 'Elegir esta carpeta',
+        noSubfolders: 'No hay subcarpetas',
+        browseUnavailable: (path: string) => `No se puede explorar ${path} en el servidor. Escribe la ruta completa.`,
+        folderGone: 'Esta carpeta ya no existe.',
+        folderUnreadable: 'HomeTV no tiene permiso para leer esta carpeta.',
+        back: 'Volver',
+        backToRoot: 'Volver al inicio',
+      },
+      errors: {
+        not_absolute: 'Escribe la ruta completa; tiene que empezar por /.',
+        not_found: 'La carpeta no existe en el servidor.',
+        not_directory: 'Esa ruta no es una carpeta.',
+        not_readable: 'HomeTV no tiene permiso para leer esta carpeta.',
+        duplicate: 'Esta carpeta ya está en la lista.',
+        overlaps_folder: (other: string | null) =>
+          `Se solapa con ${other ?? 'otra carpeta'}: una carpeta no puede estar dentro de otra.`,
+        contains_data_dir: 'Esta carpeta contiene los datos de HomeTV.',
+        inside_data_dir: 'Esta carpeta está dentro de los datos de HomeTV.',
+        contains_hls_dir: 'Esta carpeta contiene la carpeta temporal de reproducción de HomeTV.',
+        inside_hls_dir: 'Esta carpeta está dentro de la carpeta temporal de reproducción de HomeTV.',
       },
     },
 
@@ -291,7 +377,8 @@ export const S = {
     recentlyAdded: 'Añadidos recientemente',
     details: 'Detalles',
     detailsOf: (title: string) => `Detalles de ${title}`,
-    emptyAdmin: 'Tu biblioteca está vacía. Ejecuta un escaneo para indexar tus vídeos.',
+    emptyAdmin: 'Tu biblioteca está vacía. Añade las carpetas de tus vídeos en Administración → Bibliotecas o ejecuta un escaneo.',
+    goToLibraries: 'Ir a Administración → Bibliotecas',
     goToScan: 'Ir a Administración → Escaneo',
     emptyViewer: 'La biblioteca está vacía. Pide a un administrador que ejecute un escaneo.',
     nothingToShow: 'Explora tu biblioteca.',

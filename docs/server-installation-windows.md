@@ -54,7 +54,8 @@ to **Never** while plugged in. A sleeping PC drops every playback. The screen ca
 
 ## 3. Organize your media
 
-Use the same layout as on Linux: one folder with `Films` and `TV` inside, e.g.
+Use the same layout as on Linux: one broad parent folder (or a whole drive) holding your film and
+TV folders, e.g.
 
 ```
 D:\Media\
@@ -62,7 +63,11 @@ D:\Media\
 └── TV\The Office\Season 02\The Office S02E03.mkv
 ```
 
-The naming rules are in the Linux guide, step 2. HomeTV only reads this folder.
+HomeTV sees it read-only as `/media`. The folder names are up to you: after the first start you
+choose, in *Administración → Bibliotecas*, which folders hold films (**Películas**) and which
+hold TV shows (**Series**). The Series folder is the one with one subfolder per show (here
+`/media/TV`), not its parent or a show's subfolder. The naming rules are in the Linux guide,
+step 2. HomeTV only reads this folder.
 
 ## 4. Get HomeTV
 
@@ -97,7 +102,9 @@ Set:
 
 - `TS_AUTHKEY`: the auth key.
 - `TMDB_API_KEY`: the TMDB key, or empty.
-- `MEDIA_DIR`: the media folder **with forward slashes**, e.g. `MEDIA_DIR=D:/Media`.
+- `MEDIA_DIR`: the broad media folder **with forward slashes**, e.g. `MEDIA_DIR=D:/Media`
+  (mounted read-only at `/media`). Media on another drive: add a line such as
+  `- E:/Series:/media/disk2:ro` to the `app` service's `volumes:` in `docker-compose.yml`.
 
 Save the file. Keep it private: it holds your keys.
 
@@ -120,7 +127,15 @@ reboot once you sign in. You can also see them in the Docker Desktop window unde
 ## 8. First use
 
 Exactly as in the Linux guide, step 8: open `https://hometv.<your-tailnet>.ts.net` from a
-Tailscale device, create the first profile with its admin PIN, and let the first scan finish.
+Tailscale device, create the first profile with its admin PIN, then in *Administración →
+Bibliotecas* add your film folders under **Películas** and your TV folders under **Series**
+(typed, e.g. `/media/Films`, or picked with the folder browser) and press **Guardar cambios**:
+the scan starts. The Linux guide, step 8, explains what removing, moving or changing folders
+later does (the screen always asks first), the upgrade from older versions (existing folders
+are kept; the old `HOMETV_FILMS_PATHS`/`HOMETV_SHOWS_PATHS` are then ignored and can be
+removed; files left in the wrong library by older settings are listed in the first save's
+confirmation), and that a folder on a new drive needs its volume line and
+`docker compose up -d` first.
 Then set up the [Android TV app](tv-app-installation.md) and the [iPad](ipad-installation.md).
 
 ## Everyday operations
@@ -151,10 +166,14 @@ Don't delete the `deploy_tailscale-state` volume: it is the server's identity in
   Tailscale to userspace networking. In `docker-compose.yml`, under `tailscale:`, set
   `TS_USERSPACE: "true"` and delete the `devices:` and `cap_add:` lines, then run
   `docker compose up -d`. `tailscale serve` still publishes HomeTV the same way.
-- **The library is empty.** Check `MEDIA_DIR` in `.env` (forward slashes, the folder that
-  *contains* `Films` and `TV`), and that the drive is shared with Docker: **Settings → Resources →
-  File sharing** if your Docker Desktop shows that page. `docker compose exec app ls /media/Films`
-  should list your films.
+- **The library is empty.** Check *Administración → Bibliotecas*: each library needs at least
+  one folder inside `/media`. A **No encontrada** chip means the path is not mounted: check
+  `MEDIA_DIR` in `.env` (forward slashes) and that the drive is shared with Docker: **Settings →
+  Resources → File sharing** if your Docker Desktop shows that page. `docker compose exec app ls
+  /media` should list your folders. **Sin permiso** means the folder is not readable by the app.
+- **"La carpeta no existe en el servidor" for a folder with accents** (e.g. `/media/películas`)
+  that does exist: pick it with the folder browser instead of typing it (the name on disk may use
+  another Unicode form).
 - **The first scan is slow.** The container reads Windows drives through WSL's file sharing,
   which is slower than a Linux disk. Later scans only look at changed files and are much faster.
   Playback is not affected.

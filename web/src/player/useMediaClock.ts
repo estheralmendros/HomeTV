@@ -56,14 +56,25 @@ export function mediaDuration(video: HTMLMediaElement): number | null {
  * changes (`Object.is`), so `select` must return a primitive.
  */
 export function useMediaSelector<T extends string | number | boolean | null>(video: HTMLMediaElement, select: (video: HTMLMediaElement) => T): T {
-  const subscribe = useCallback(
-    (onChange: () => void) => {
-      for (const type of CLOCK_EVENTS) video.addEventListener(type, onChange);
-      return () => {
-        for (const type of CLOCK_EVENTS) video.removeEventListener(type, onChange);
-      };
-    },
-    [video],
-  );
+  const subscribe = useCallback((onChange: () => void) => listen(video, CLOCK_EVENTS, onChange), [video]);
   return useSyncExternalStore(subscribe, () => select(video));
+}
+
+const PAUSED_EVENTS = ['play', 'pause', 'playing', 'emptied', 'ended'] as const;
+
+/**
+ * `video.paused` as an external store. Never read it raw during render: a render that React
+ * bails out of (same state) still keeps its effect deps, so a mutable read there can leave a
+ * `[playing]` effect believing it already ran.
+ */
+export function useMediaPaused(video: HTMLMediaElement): boolean {
+  const subscribe = useCallback((onChange: () => void) => listen(video, PAUSED_EVENTS, onChange), [video]);
+  return useSyncExternalStore(subscribe, () => video.paused);
+}
+
+function listen(video: HTMLMediaElement, events: readonly string[], onChange: () => void): () => void {
+  for (const type of events) video.addEventListener(type, onChange);
+  return () => {
+    for (const type of events) video.removeEventListener(type, onChange);
+  };
 }

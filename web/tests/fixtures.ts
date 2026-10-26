@@ -4,6 +4,7 @@
 import type {
   AudioTrack,
   Avatar,
+  BrowseResponse,
   CastMember,
   ClientCaps,
   EpisodeDetail,
@@ -15,6 +16,9 @@ import type {
   HomeResponse,
   Image,
   Info,
+  LibrariesPlan,
+  LibrariesResponse,
+  LibraryFolder,
   MediaFile,
   Page,
   PlaybackDirect,
@@ -392,6 +396,41 @@ export function idleScanStatus(overrides: Partial<ScanStatus> = {}): ScanStatus 
     progress: { processed: null, total: null }, counts: null, unmatched_count: 0,
     ...overrides,
   });
+}
+
+export function libraryFolder(overrides: Partial<LibraryFolder> = {}): LibraryFolder {
+  return { path: '/media/Films', status: 'available', title_count: 412, ...overrides };
+}
+
+/** GET /api/admin/libraries: two film folders (one gone), one show folder, browsable /media. */
+export function librariesResponse(overrides: Partial<LibrariesResponse> = {}): LibrariesResponse {
+  return {
+    films: [libraryFolder(), libraryFolder({ path: '/media/Films4K', status: 'not_found', title_count: 37 })],
+    shows: [libraryFolder({ path: '/media/TV', title_count: 58 })],
+    browse_root: { path: '/media', available: true },
+    ignored_env: [],
+    missing_grace_days: 7,
+    ...overrides,
+  };
+}
+
+/** An empty plan (a save that only adds harmless folders). */
+export function librariesPlan(overrides: Partial<LibrariesPlan> = {}): LibrariesPlan {
+  return { removed: [], covered: [], moved: [], relayout: [], ...overrides };
+}
+
+/** GET /api/admin/libraries/browse at the root (/media). */
+export function browseResponse(overrides: Partial<BrowseResponse> = {}): BrowseResponse {
+  return {
+    path: '/media',
+    parent: null,
+    entries: [
+      { name: 'Disco2', path: '/media/Disco2' },
+      { name: 'Films', path: '/media/Films' },
+      { name: 'TV', path: '/media/TV' },
+    ],
+    ...overrides,
+  };
 }
 
 export function unmatchedEntry(overrides: Partial<UnmatchedEntry> = {}): UnmatchedEntry {
