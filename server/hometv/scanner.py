@@ -36,9 +36,10 @@ from datetime import timedelta
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
+from hometv.changes.scope import ScanScope, merge_scopes, within
 from hometv.config import Settings
 from hometv.db import models as m
 from hometv.db.engine import Database
@@ -57,7 +58,7 @@ from hometv.parser import (
 )
 from hometv.probe import ProbeError, ProbeResult, probe
 from hometv.scan_report import ScanReport
-from hometv.text import normalize_title, search_text, sort_title
+from hometv.text import normalize_title, search_text, sort_title, undecodable
 
 logger = logging.getLogger("hometv.scanner")
 
@@ -105,10 +106,11 @@ class _RootWalk:
     videos: list[_Video] = field(default_factory=list)
     subs: dict[str, list[_Sub]] = field(default_factory=lambda: defaultdict(list))
     stems: dict[str, set[str]] = field(default_factory=lambda: defaultdict(set))
-    walked_dirs: list[str] = field(default_factory=list)
     protected_dirs: list[str] = field(default_factory=list)
     protected_files: set[str] = field(default_factory=set)
     fully_walked: bool = True
+    scopes: list[ScanScope] = field(default_factory=list)  # empty: the whole root (full scan)
+    root_listing_empty: bool = False  # the root listing had no non-dot entry (scoped guards)
 
     def is_protected(self, path: str) -> bool:
         return path in self.protected_files or any(path.startswith(p) for p in self.protected_dirs)
@@ -147,16 +149,8 @@ def _errno_name(exc: OSError) -> str:
     return errno_mod.errorcode.get(exc.errno or 0, str(exc.errno))
 
 
-def _undecodable(name: str) -> bool:
-    try:
-        name.encode("utf-8")
-    except UnicodeEncodeError:
-        return True
-    return False
-
-
-def _within(path: str, root: str) -> bool:
-    return path == root or path.startswith(root.rstrip(os.sep) + os.sep)
+def _listing_empty(entries: Iterable[Any]) -> bool:
+    return not any(not e.name.startswith(".") for e in entries)
 
 
 def serialize_parse(result: ParseResult) -> dict[str, Any] | None:
@@ -377,8 +371,13 @@ class Scanner:
         keyframe_hook: KeyframeHook | None = None,
         folders: FolderProvider | None = None,
         relinks: bool = False,
+        scope: Sequence[ScanScope] | None = None,
     ) -> None:
         self.db = db
+        # ``None``/empty: full scan. Else a change-triggered (``watch``) run: only the scope
+        # directories are walked, diffed and marked missing (prd.md FR-6..9).
+        self.scope: list[ScanScope] | None = merge_scopes(scope) if scope else None
+        self._configured_roots: set[str] = set()
         self.settings = settings
         # Tests only: production passes ``LibraryFolders.current`` (stored folders).
         self.folders: FolderProvider = folders or (
@@ -402,7 +401,7 @@ class Scanner:
         rep.phase = "walking"
         self._libraries = await asyncio.to_thread(self._sync_libraries)
 
-        walks = await asyncio.to_thread(self._walk_all)
+        walks = await asyncio.to_thread(self._walk_all if self.scope is None else self._walk_scoped)
         videos = [v for w in walks for v in w.videos]
         rep.total = len(videos)
         rep.counts["files_seen"] = len(videos)
@@ -444,59 +443,166 @@ class Scanner:
         seen: set[str] = set()
         return [self._walk(root, lib_type, real_roots, seen) for root, lib_type in roots]
 
+    def _root_failed(self, walk: _RootWalk, message: str) -> _RootWalk:
+        self._report.add_error(message)
+        self._report.unreachable_roots.add(walk.root)
+        walk.fully_walked = False
+        return walk
+
     def _walk(
         self, root: str, library_type: LibraryType, real_roots: list[str], seen: set[str]
     ) -> _RootWalk:
-        rep = self._report
         walk = _RootWalk(root=root, library_type=library_type)
         try:
             self.fs.stat(root)
         except OSError:
-            rep.add_error(f"root_unavailable: {root}")
-            walk.fully_walked = False
+            return self._root_failed(walk, f"root_unavailable: {root}")
+        if not self._walk_tree(walk, root, real_roots, seen):
             return walk
-        stack = [root]
+        self._final_root_stat(walk)
+        return walk
+
+    def _final_root_stat(self, walk: _RootWalk) -> None:
+        try:
+            self.fs.stat(walk.root)
+        except OSError as exc:
+            self._root_failed(walk, f"walk_error: {walk.root}: {_errno_name(exc)}")
+
+    def _walk_tree(
+        self, walk: _RootWalk, start: str, real_roots: list[str], seen: set[str]
+    ) -> bool:
+        """Depth-first walk from ``start`` (the root, or a scope directory). False when the
+        root itself cannot be listed (``root_unavailable``, nothing walked)."""
+        rep = self._report
+        stack = [start]
         while stack:
             directory = stack.pop()
             try:
                 with self.fs.scandir(directory) as it:
                     entries = sorted(it, key=lambda e: e.name)
             except OSError as exc:
-                if directory == root:
-                    rep.add_error(f"root_unavailable: {root}")
-                    walk.fully_walked = False
-                    return walk
+                if directory == walk.root:
+                    self._root_failed(walk, f"root_unavailable: {walk.root}")
+                    return False
                 rep.add_error(f"walk_error: {directory}: {_errno_name(exc)}")
                 walk.protected_dirs.append(directory + os.sep)
                 continue
-            walk.walked_dirs.append(directory)
-            subdirs: list[str] = []
-            undecodable = False
-            for entry in entries:
-                name = entry.name
-                if _undecodable(name):
-                    undecodable = True
-                    continue
-                if name.startswith("."):
-                    continue
-                try:
-                    is_link = entry.is_symlink()
-                    if not is_link and entry.is_dir(follow_symlinks=False):
-                        subdirs.append(entry.path)
-                        continue
-                except OSError as exc:
-                    rep.add_error(f"walk_error: {entry.path}: {_errno_name(exc)}")
-                    walk.protected_files.add(entry.path)
-                    continue
-                self._walk_file(walk, directory, entry.path, name, is_link, real_roots, seen)
-            if undecodable:
-                rep.add_error(f"undecodable_name: {directory}")
+            if directory == walk.root:
+                walk.root_listing_empty = _listing_empty(entries)
+            subdirs = self._walk_entries(walk, directory, entries, real_roots, seen)
             stack.extend(reversed(subdirs))
+        return True
+
+    def _walk_entries(
+        self,
+        walk: _RootWalk,
+        directory: str,
+        entries: list[Any],
+        real_roots: list[str],
+        seen: set[str],
+        *,
+        files_only: bool = False,
+    ) -> list[str]:
+        """Handle one directory listing: files go through ``_walk_file``; returns the
+        subdirectories to walk (none when ``files_only``)."""
+        rep = self._report
+        subdirs: list[str] = []
+        has_undecodable = False
+        for entry in entries:
+            name = entry.name
+            if undecodable(name):
+                has_undecodable = True
+                continue
+            if name.startswith("."):
+                continue
+            try:
+                is_link = entry.is_symlink()
+                if not is_link and entry.is_dir(follow_symlinks=False):
+                    if not files_only:
+                        subdirs.append(entry.path)
+                    continue
+            except OSError as exc:
+                rep.add_error(f"walk_error: {entry.path}: {_errno_name(exc)}")
+                walk.protected_files.add(entry.path)
+                continue
+            self._walk_file(walk, directory, entry.path, name, is_link, real_roots, seen)
+        if has_undecodable:
+            rep.add_error(f"undecodable_name: {directory}")
+        return subdirs
+
+    def _walk_scoped(self) -> list[_RootWalk]:
+        """prd.md FR-7: one root listing per scope root, then only the scope directories."""
+        assert self.scope is not None
+        roots = self.folders().roots()  # one snapshot per run
+        configured = dict(roots)
+        self._configured_roots = set(configured)
+        real_roots = [os.path.realpath(r) for r, _ in roots]  # every root, as the full walk
+        seen: set[str] = set()
+        by_root: dict[str, list[ScanScope]] = defaultdict(list)
+        for scope in self.scope:
+            by_root[scope.root].append(scope)
+        walks: list[_RootWalk] = []
+        for root, scopes in sorted(by_root.items()):
+            library_type = configured.get(root)
+            if library_type is None:
+                for scope in scopes:
+                    self._report.add_error(f"scope_unconfigured: {scope.path}")
+                continue
+            walks.append(self._walk_root_scoped(root, library_type, scopes, real_roots, seen))
+        return walks
+
+    def _walk_root_scoped(
+        self,
+        root: str,
+        library_type: LibraryType,
+        scopes: list[ScanScope],
+        real_roots: list[str],
+        seen: set[str],
+    ) -> _RootWalk:
+        rep = self._report
+        walk = _RootWalk(root=root, library_type=library_type, scopes=scopes)
         try:
             self.fs.stat(root)
-        except OSError as exc:
-            rep.add_error(f"walk_error: {root}: {_errno_name(exc)}")
-            walk.fully_walked = False
+        except OSError:
+            return self._root_failed(walk, f"root_unavailable: {root}")
+        if any(s.whole_root for s in scopes):  # merge_scopes: then it is the only scope
+            if not self._walk_tree(walk, root, real_roots, seen):
+                return walk
+            self._final_root_stat(walk)
+            return walk
+        try:
+            with self.fs.scandir(root) as it:
+                entries = sorted(it, key=lambda e: e.name)
+        except OSError:
+            return self._root_failed(walk, f"root_unavailable: {root}")
+        walk.root_listing_empty = _listing_empty(entries)
+        by_name = {e.name: e for e in entries}
+        for scope in scopes:
+            if not scope.recursive:  # root shallow: the files of the listing only
+                self._walk_entries(walk, root, entries, real_roots, seen, files_only=True)
+                continue
+            directory = scope.path
+            entry = by_name.get(scope.rel_dir)
+            try:
+                walkable = (
+                    entry is not None
+                    and not entry.is_symlink()
+                    and entry.is_dir(follow_symlinks=False)
+                )
+            except OSError:
+                walkable = False
+            if not walkable:
+                continue  # gone, a file or a symlink (never followed): nothing walked
+            try:
+                self.fs.stat(directory)
+            except OSError as exc:
+                if exc.errno in (errno_mod.ENOENT, errno_mod.ENOTDIR):
+                    continue  # removed meanwhile: a legitimate removal
+                rep.add_error(f"walk_error: {directory}: {_errno_name(exc)}")
+                walk.protected_dirs.append(directory + os.sep)
+                continue
+            self._walk_tree(walk, directory, real_roots, seen)
+        self._final_root_stat(walk)
         return walk
 
     def _walk_file(
@@ -528,7 +634,7 @@ class Scanner:
             return  # directory symlinks are never followed; devices/fifos skipped
         if is_link:
             real = os.path.realpath(path)
-            if not any(_within(real, r) for r in real_roots):
+            if not any(within(real, r) for r in real_roots):
                 rep.add_error(f"symlink_outside_root: {path}")
                 return
         rel = PurePosixPath(*Path(os.path.relpath(path, walk.root)).parts).as_posix()
@@ -550,39 +656,22 @@ class Scanner:
     def _diff(self, walks: list[_RootWalk]) -> tuple[list[_Work], list[int]]:
         rep = self._report
         with self.db.read_session() as session:
-            rows = {
-                r.path: _Row(
-                    r.id,
-                    r.path,
-                    r.size_bytes,
-                    r.mtime_ns,
-                    r.missing_since is not None,
-                    r.probe_error is not None,
-                    r.root_path,
-                    r.library_id,
-                )
-                for r in session.execute(
-                    select(
-                        m.MediaFile.id,
-                        m.MediaFile.path,
-                        m.MediaFile.size_bytes,
-                        m.MediaFile.mtime_ns,
-                        m.MediaFile.missing_since,
-                        m.MediaFile.probe_error,
-                        m.MediaFile.root_path,
-                        m.MediaFile.library_id,
-                    )
-                )
-            }
-
-        present_by_root: dict[str, int] = defaultdict(int)
-        for known in rows.values():
-            if not known.missing:
-                present_by_root[known.root_path] += 1
-        for walk in walks:
-            if walk.fully_walked and not walk.videos and present_by_root.get(walk.root, 0) > 0:
-                rep.add_error(f"root_empty_skipped_removal: {walk.root}")
-                walk.fully_walked = False
+            rows = self._load_rows(session, walks)
+            if self.scope is None:
+                present_by_root: dict[str, int] = defaultdict(int)
+                for known in rows.values():
+                    if not known.missing:
+                        present_by_root[known.root_path] += 1
+                for walk in walks:
+                    if (
+                        walk.fully_walked
+                        and not walk.videos
+                        and present_by_root.get(walk.root, 0) > 0
+                    ):
+                        rep.add_error(f"root_empty_skipped_removal: {walk.root}")
+                        walk.fully_walked = False
+            else:
+                self._scoped_root_guards(session, walks)
 
         work: list[_Work] = []
         seen: set[str] = set()
@@ -643,6 +732,10 @@ class Scanner:
         for row in rows.values():
             if row.missing or row.path in seen:
                 continue
+            if self.scope is not None:
+                if self._scoped_missing(row, walks):
+                    missing_ids.append(row.id)
+                continue
             root_walk = configured.get(row.root_path)
             if root_walk is None:
                 rep.add_error(f"root_unconfigured: {row.root_path}")
@@ -650,6 +743,93 @@ class Scanner:
             elif root_walk.fully_walked and not root_walk.is_protected(row.path):
                 missing_ids.append(row.id)
         return work, missing_ids
+
+    _ROW_COLUMNS = (
+        m.MediaFile.id,
+        m.MediaFile.path,
+        m.MediaFile.size_bytes,
+        m.MediaFile.mtime_ns,
+        m.MediaFile.missing_since,
+        m.MediaFile.probe_error,
+        m.MediaFile.root_path,
+        m.MediaFile.library_id,
+    )
+
+    def _load_rows(self, session: Session, walks: list[_RootWalk]) -> dict[str, _Row]:
+        """Every row (full scan), or only the rows inside the scope directories: a range on
+        the unique ``path`` (``prefix <= path < prefix_hi``, ``"0"`` = ``"/"`` + 1) whatever
+        their ``root_path`` (a root-shallow scope adds "no ``/`` after the prefix"), then
+        filtered by ``ScanScope.contains``."""
+        if self.scope is None:
+            results = session.execute(select(*self._ROW_COLUMNS))
+            return {r.path: self._row(r) for r in results}
+        rows: dict[str, _Row] = {}
+        for walk in walks:
+            for scope in walk.scopes:
+                prefix = scope.path.rstrip("/") + "/"
+                prefix_hi = prefix[:-1] + "0"
+                query = select(*self._ROW_COLUMNS).where(
+                    m.MediaFile.path >= prefix, m.MediaFile.path < prefix_hi
+                )
+                if not scope.recursive:  # root shallow: direct children only (no LIKE escaping)
+                    rest = func.substr(m.MediaFile.path, len(prefix) + 1)
+                    query = query.where(func.instr(rest, "/") == 0)
+                for r in session.execute(query):
+                    if scope.contains(r.path):
+                        rows[r.path] = self._row(r)
+        return rows
+
+    @staticmethod
+    def _row(r: Any) -> _Row:
+        return _Row(
+            r.id,
+            r.path,
+            r.size_bytes,
+            r.mtime_ns,
+            r.missing_since is not None,
+            r.probe_error is not None,
+            r.root_path,
+            r.library_id,
+        )
+
+    def _scoped_root_guards(self, session: Session, walks: list[_RootWalk]) -> None:
+        """prd.md FR-8 root guards: an empty root listing (any scope shape), or a whole-root
+        scope that found no video, with present rows of that root -> nothing marked missing."""
+        rep = self._report
+        for walk in walks:
+            if not walk.fully_walked:
+                continue
+            whole = any(s.whole_root for s in walk.scopes)
+            if not (walk.root_listing_empty or (whole and not walk.videos)):
+                continue
+            present = session.scalar(
+                select(func.count())
+                .select_from(m.MediaFile)
+                .where(
+                    m.MediaFile.library_id == self._libraries[walk.library_type],
+                    m.MediaFile.root_path == walk.root,
+                    m.MediaFile.missing_since.is_(None),
+                )
+            )
+            if present:
+                rep.add_error(f"root_empty_skipped_removal: {walk.root}")
+                walk.fully_walked = False
+
+    def _scoped_missing(self, row: _Row, walks: list[_RootWalk]) -> bool:
+        """A row not seen by a scoped walk: missing only when a scope of its root's walk
+        contains it and that walk fully ran. Rows of another configured (nested) root are left
+        to that root's own runs; rows of an unconfigured root follow the full-scan rule."""
+        owners = [w for w in walks if any(s.contains(row.path) for s in w.scopes)]
+        if not owners:
+            return False
+        # Nested roots: the walk of the row's own root decides (as the full scan's rule).
+        owner = next((w for w in owners if w.root == row.root_path), owners[0])
+        if row.root_path != owner.root:
+            if row.root_path in self._configured_roots:
+                return False
+            self._report.add_error(f"root_unconfigured: {row.root_path}")
+            return True
+        return owner.fully_walked and not owner.is_protected(row.path)
 
     @staticmethod
     def _parse(walk: _RootWalk, video: _Video) -> ParseResult:
@@ -854,11 +1034,14 @@ class Scanner:
                 ids.update((path, media_file_id) for path, media_file_id in rows)
             media_ids = list(ids.values())
             existing: dict[str, m.SubtitleFile] = {}
+            scopes = [scope for walk in walks for scope in walk.scopes]
             for id_chunk in _chunks(media_ids, 500):
                 for row in session.scalars(
                     select(m.SubtitleFile).where(m.SubtitleFile.media_file_id.in_(id_chunk))
                 ):
-                    existing[row.path] = row
+                    # Scoped run: never touch a sidecar row outside the scope (prd.md FR-9).
+                    if self.scope is None or any(s.contains(row.path) for s in scopes):
+                        existing[row.path] = row
 
         desired: dict[str, dict[str, Any]] = {}
         for walk in walks:

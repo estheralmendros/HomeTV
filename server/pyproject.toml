@@ -45,6 +45,7 @@ addopts = "-ra --strict-markers"
 markers = [
     "integration: requires real ffmpeg/ffprobe binaries (skipped when missing)",
     "perf: performance benchmarks (excluded from the default run)",
+    "inotify: real Linux inotify (no ffmpeg needed; skipped off Linux)",
 ]
 
 [tool.ruff]

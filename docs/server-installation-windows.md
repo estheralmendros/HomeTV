@@ -159,6 +159,17 @@ docker compose start app
 
 Don't delete the `deploy_tailscale-state` volume: it is the server's identity in your tailnet.
 
+**New files and the scan**: on Docker Desktop, HomeTV does not notice new files on its own.
+The media folders reach the container through the file-system bridge of Docker Desktop's VM,
+where change detection does not work, so *Administración → Escaneo* shows "Detección de
+cambios: no disponible" and "No disponible en: …" with every folder. This is expected. New
+media appear with the periodic scan (every 6 hours; `HOMETV_SCAN_INTERVAL_HOURS`) or when you
+press **Escanear ahora**.
+
+**Settings** (`HOMETV_SCAN_INTERVAL_HOURS`, `HOMETV_MAX_SESSIONS`…) are not set in `.env` (step 6
+only fills in keys and the media folder): add them under the `app` service's `environment:` in
+`docker-compose.yml`, e.g. `HOMETV_SCAN_INTERVAL_HOURS: "2"`, then run `docker compose up -d`.
+
 ## Troubleshooting
 
 - **`tailscale` keeps restarting with a TUN error** (`/dev/net/tun`, "operation not
@@ -177,6 +188,12 @@ Don't delete the `deploy_tailscale-state` volume: it is the server's identity in
 - **The first scan is slow.** The container reads Windows drives through WSL's file sharing,
   which is slower than a Linux disk. Later scans only look at changed files and are much faster.
   Playback is not affected.
+- **New files do not appear by themselves** ("Detección de cambios: no disponible" on the scan
+  card, with every folder listed after "No disponible en"). Docker Desktop's file sharing does
+  not report changes to the container, so this is expected on Windows. Press **Escanear ahora**
+  after copying files, or scan more often by adding `HOMETV_SCAN_INTERVAL_HOURS` (e.g. `"2"`)
+  under the `app` service's `environment:` in `docker-compose.yml` and running
+  `docker compose up -d`.
 - **Docker Desktop says WSL is not installed or virtualization is off.** Run `wsl --install`
   again as administrator, and check that virtualization is enabled in the BIOS (Task Manager →
   Performance → CPU shows *Virtualization: Enabled*).

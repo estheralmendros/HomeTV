@@ -70,9 +70,11 @@ then run `docker compose up -d --build` in `deploy/`. The app is served at
 
 Settings come from `HOMETV_*` environment variables, then an optional YAML file
 (`HOMETV_CONFIG_FILE`, or `{data_dir}/config.yaml`), then defaults. Typical ones:
-`HOMETV_TMDB_API_KEY`, `HOMETV_DATA_DIR` (default `/data`), `HOMETV_MAX_SESSIONS` and
-`HOMETV_MEDIA_BROWSE_ROOT` (default `/media`, the base of the folder browser). The media folders
+`HOMETV_TMDB_API_KEY`, `HOMETV_DATA_DIR` (default `/data`), `HOMETV_MAX_SESSIONS`,
+`HOMETV_MEDIA_BROWSE_ROOT` (default `/media`, the base of the folder browser), and
+`HOMETV_SCAN_WATCH_ENABLED` / `HOMETV_SCAN_WATCH_QUIET_SECONDS` (change detection on Linux hosts:
+new files are scanned about a minute after a copy ends; default on, 30 s). The media folders
 of Películas and Series are managed in the web app, **Administración → Bibliotecas** (stored in
 the database); `HOMETV_FILMS_PATHS` / `HOMETV_SHOWS_PATHS` are only read on the first start to
-seed them, then ignored. The full list is the Configuration Reference in
-`specs/HOMETV-1/hometv-app/prd.md`.
+seed them, then ignored. The full list is the
+[Configuration reference](deploy/README.md#configuration-reference).

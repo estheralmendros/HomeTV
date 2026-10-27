@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.3.0] - Released on 2026-10-27 by Esther Almendros Pérez
+
+### Added
+
+#### Server
+- Change detection: on a Linux host, new, renamed and deleted media files reach the catalog about a minute after a copy ends, without waiting for the periodic scan. The server watches the library folders (inotify, read-only), waits for a quiet period, then scans only the changed folders and looks up their metadata (scan trigger `watch`). The periodic scan stays as a safety net. Folders on network shares or Docker Desktop bind mounts are reported as not watched.
+- Settings `HOMETV_SCAN_WATCH_ENABLED` (default `true`) and `HOMETV_SCAN_WATCH_QUIET_SECONDS` (default `30`, minimum `5`), also as `scan.watch_enabled` / `scan.watch_quiet_seconds` in `config.yaml`.
+- The scan status (`GET /api/admin/scan`) reports the folders of a change-triggered scan (`scope`, stored in `scan_run.scope`) and the state of change detection (`watcher`: active, starting, disabled, unavailable or error, with the folders that are not watched and a technical detail).
+
+#### Web app
+- Administración → Escaneo names scans started by a file change ("cambio detectado"), lists the folders they scanned ("Carpetas: …"), and always shows the state of change detection ("Detección de cambios: …"), the folders that are not watched and, on errors, the technical details. The card refreshes by itself while change detection is starting.
+
+### Changed
+
+#### Documentation
+- The Linux guide and `deploy/README.md` explain change detection, where its settings go (the `app` service's `environment:` in `docker-compose.yml`), and how to raise the host's inotify limits (`fs.inotify.max_user_watches`, `fs.inotify.max_user_instances`) when the scan card reports errors.
+- The Windows guide explains that change detection is not available with Docker Desktop: new files appear with the periodic scan or "Escanear ahora".
+
 ## [0.2.0] - Released on 2026-10-26 by Esther Almendros Pérez
 
 ### Added

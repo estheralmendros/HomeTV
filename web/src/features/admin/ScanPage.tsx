@@ -1,12 +1,13 @@
 // /admin/scan (prd2 §11 Scan): the status card of the current/last run and "Escanear ahora".
-// AdminLayout polls `['admin','scan']` every 2 s while running and handles the finish.
+// AdminLayout polls `['admin','scan']` every 2 s while running (or while change detection is
+// starting) and handles the finish.
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useId } from 'react';
+import { Fragment, useId } from 'react';
 import { startScan } from '@/api/admin';
 import { errorMessage, isApiError } from '@/api/errors';
 import { infoQuery } from '@/api/queries';
 import { queryKeys } from '@/api/queryKeys';
-import type { ScanCounts, ScanStatus } from '@/api/types';
+import type { ScanCounts, ScanScope, ScanStatus, WatcherStatus } from '@/api/types';
 import { isAdminActionCancelled, useAdminAction } from '@/auth/useAdminAction';
 import { ErrorState } from '@/components/ErrorState';
 import { WARNING_GLYPH } from '@/components/glyphs';
@@ -17,10 +18,11 @@ import { formatCount, formatRelative } from '@/lib/format';
 import { S } from '@/strings.es';
 import styles from './Admin.module.css';
 import { useScanQuery } from './adminQueries';
-import { isScanStatus } from './scanSummary';
+import { isScanStatus, scopeLabel } from './scanSummary';
 
 const T = S.admin.scan;
 const MAX_ERROR_LINES = 50;
+const MAX_SCOPE_LABELS = 5;
 const COUNT_ORDER: Array<keyof ScanCounts> = [
   'files_seen', 'new', 'changed', 'unchanged', 'ignored', 'unmatched', 'missing', 'restored', 'removed',
 ];
@@ -101,6 +103,8 @@ function ScanCard({ scan, onScanNow }: { scan: ScanStatus; onScanNow: () => void
         </p>
       )}
 
+      {scan.scope && scan.scope.length > 0 && <ScopeLine scope={scan.scope} />}
+
       {scan.state !== 'idle' && (
         <div className={styles.progress}>
           {total !== null && processed !== null ? (
@@ -153,6 +157,48 @@ function ScanCard({ scan, onScanNow }: { scan: ScanStatus; onScanNow: () => void
           </ul>
         </details>
       )}
+
+      <WatcherLines watcher={scan.watcher} />
     </section>
+  );
+}
+
+/** "Carpetas: MKV (archivos sueltos), películas/A" (first 5, then "y N más"; prd2 FR-26). */
+function ScopeLine({ scope }: { scope: ScanScope[] }) {
+  const shown = scope.slice(0, MAX_SCOPE_LABELS);
+  const rest = scope.length - shown.length;
+  return (
+    <p className={styles.scope}>
+      {T.scopeLabel}{' '}
+      {shown.map((s, i) => (
+        <Fragment key={s.path}>
+          {i > 0 && ', '}
+          <span title={s.path}>{scopeLabel(s)}</span>
+        </Fragment>
+      ))}
+      {rest > 0 && ` ${T.scopeMore(rest)}`}
+    </p>
+  );
+}
+
+/** "Detección de cambios: …", the unwatched roots and the raw diagnostic (prd2 FR-27). */
+function WatcherLines({ watcher }: { watcher: WatcherStatus }) {
+  const warn = watcher.state === 'unavailable' || watcher.state === 'error';
+  return (
+    <>
+      <p className={warn ? styles.warning : styles.watcher}>
+        {warn && <span aria-hidden="true">{WARNING_GLYPH} </span>}
+        {T.watcher.line(T.watcher.states[watcher.state])}
+      </p>
+      {watcher.unavailable_roots.length > 0 && (
+        <p className={styles.watcher}>{T.watcher.unavailableIn(watcher.unavailable_roots.join(', '))}</p>
+      )}
+      {watcher.detail !== null && (
+        <details className={styles.errors}>
+          <summary>{T.watcher.technicalDetails}</summary>
+          <code className={styles.watcherDetail}>{watcher.detail}</code>
+        </details>
+      )}
+    </>
   );
 }

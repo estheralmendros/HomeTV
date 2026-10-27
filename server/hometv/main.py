@@ -1,8 +1,9 @@
 """App factory, lifespan and the single-worker entry point."""
 
 import asyncio
+import logging
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -23,6 +24,8 @@ from hometv.api import (
 )
 from hometv.api.errors import install_error_handlers
 from hometv.api.schemas import ErrorResponse
+from hometv.changes.backend import WatchBackend
+from hometv.changes.watcher import ChangeWatcher
 from hometv.config import (
     Settings,
     check_library_folders,
@@ -43,9 +46,16 @@ from hometv.profiles import TokenService, UnlockLimiter
 from hometv.scheduler import Scheduler
 from hometv.spa import install_spa
 
+logger = logging.getLogger("hometv.main")
 
-def create_app(settings: Settings | None = None) -> FastAPI:
-    """Build the app. ``settings`` defaults to ``load_settings()`` (env + YAML)."""
+
+def create_app(
+    settings: Settings | None = None,
+    *,
+    watch_backend_factory: Callable[[], WatchBackend] | None = None,
+) -> FastAPI:
+    """Build the app. ``settings`` defaults to ``load_settings()`` (env + YAML).
+    ``watch_backend_factory`` (tests): the change watcher's backend (default: inotify)."""
     initial = settings if settings is not None else load_settings()
 
     @asynccontextmanager
@@ -57,6 +67,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         db = Database(prepared.db_path)
         tmdb = TmdbClient.from_settings(prepared)
         scheduler: Scheduler | None = None
+        watcher: ChangeWatcher | None = None
         hls = HlsSessionManager(prepared)
         keyframes = KeyframeService(db, prepared, session_running=hls.any_running)
         subtitles = SubtitleService(prepared)
@@ -89,10 +100,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 keyframe_hook=keyframes.enqueue,
                 folders=libraries.current,
             )
+            watcher = ChangeWatcher(
+                prepared,
+                libraries.current,
+                scheduler.request_scoped,
+                backend_factory=watch_backend_factory,
+            )
+            # Bound unconditionally: an inert watcher (disabled / not Linux) ignores them.
+            scheduler.on_full_run = watcher.request_sync
+            scheduler.on_run_finished = watcher.note_unreachable
+            scheduler.watcher_status = watcher.status
             app.state.scheduler = scheduler
+            app.state.watcher = watcher
             await scheduler.start()  # no background task when on_startup=false and interval=0
+            await watcher.start()  # returns at once: the arming walk runs as a task
             yield
         finally:
+            if watcher is not None:
+                try:
+                    await watcher.stop()  # before the scheduler
+                except Exception:  # the rest of the shutdown must still run
+                    logger.exception("watcher_stop_failed")
             if scheduler is not None:
                 await scheduler.stop()
             await keyframes.stop()

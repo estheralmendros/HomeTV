@@ -6,6 +6,7 @@ from typing import Annotated, Any, Literal
 from pydantic import (
     AfterValidator,
     BaseModel,
+    ConfigDict,
     Field,
     PlainSerializer,
     StringConstraints,
@@ -169,6 +170,37 @@ class ScanProgress(BaseModel):
     total: int | None
 
 
+def _utf8_safe(value: str) -> str:
+    """Lone surrogates (``os.fsdecode`` of non-UTF-8 bytes) as ``\\udcff`` text, so the
+    response can always be encoded."""
+    return value.encode("utf-8", "backslashreplace").decode("utf-8")
+
+
+def _utf8_safe_optional(value: str | None) -> str | None:
+    return None if value is None else _utf8_safe(value)
+
+
+class ScanScopeOut(BaseModel):
+    """One folder of a change-triggered (``watch``) run."""
+
+    root: str
+    path: str  # == root for a root shallow or whole-root scope
+    recursive: bool  # false: only the files directly in ``root``
+
+
+class WatcherStatus(BaseModel):
+    """Change detection (HOMETV-1): ``starting`` while the first arming walk runs."""
+
+    model_config = ConfigDict(frozen=True)
+
+    state: Literal["active", "starting", "disabled", "unavailable", "error"]
+    unavailable_roots: tuple[Annotated[str, AfterValidator(_utf8_safe)], ...]  # sorted
+    detail: Annotated[str | None, AfterValidator(_utf8_safe_optional)]  # English diagnostic
+
+
+DISABLED_WATCHER = WatcherStatus(state="disabled", unavailable_roots=(), detail=None)
+
+
 class ScanStatus(BaseModel):
     id: int | None
     state: Literal["idle", "running", "completed", "failed"]
@@ -181,6 +213,8 @@ class ScanStatus(BaseModel):
     errors: list[str]
     error: str | None
     unmatched_count: int
+    scope: list[ScanScopeOut] | None  # null for full runs and for idle; <= 50 entries
+    watcher: WatcherStatus
 
 
 # --- Admin: library folders ----------------------------------------------------------------

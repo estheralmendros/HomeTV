@@ -277,3 +277,144 @@ describe('scan polling interval', () => {
     vi.useRealTimers();
   });
 });
+
+const WARNING = String.fromCodePoint(0x26a0, 0xfe0e);
+const scopeLine = () => within(card()).getByText(/^Carpetas:/);
+const watcherLine = () => within(card()).getByText(/^Detección de cambios:/);
+const watchRun = (scope: ScanStatus['scope']) => f.scanStatus({ trigger: 'watch', scope });
+const letters = 'ABCDEFGHIJKL'.split('');
+
+describe('ScanPage change-triggered runs (scope line)', () => {
+  it('names the "cambio detectado" trigger and lists the scanned folders, each titled with its full path', async () => {
+    serveScans(
+      watchRun([
+        f.scanScope({ root: '/media/MKV', path: '/media/MKV', recursive: false }),
+        f.scanScope({ root: '/media/películas', path: '/media/películas/A', recursive: true }),
+      ]),
+    );
+    renderScan();
+    await screen.findByText('Completado (cambio detectado)');
+    expect(scopeLine().textContent).toBe('Carpetas: MKV (archivos sueltos), películas/A');
+    expect(within(scopeLine()).getByText('películas/A')).toHaveAttribute('title', '/media/películas/A');
+    expect(within(scopeLine()).getByText('MKV (archivos sueltos)')).toHaveAttribute('title', '/media/MKV');
+  });
+
+  it('a whole-root scope reads "(toda la carpeta)"', async () => {
+    serveScans(watchRun([f.scanScope({ root: '/media/series', path: '/media/series', recursive: true })]));
+    renderScan();
+    await screen.findByText('Completado (cambio detectado)');
+    expect(scopeLine().textContent).toBe('Carpetas: series (toda la carpeta)');
+  });
+
+  it('12 folders: the first 5, then "y 7 más" without a comma before "y"', async () => {
+    serveScans(watchRun(letters.map((l) => f.scanScope({ path: `/media/películas/${l}` }))));
+    renderScan();
+    await screen.findByText('Completado (cambio detectado)');
+    expect(scopeLine().textContent).toBe('Carpetas: películas/A, películas/B, películas/C, películas/D, películas/E y 7 más');
+    expect(within(scopeLine()).queryByText('películas/F')).not.toBeInTheDocument();
+  });
+
+  it('exactly 5 folders: no "más" suffix', async () => {
+    serveScans(watchRun(letters.slice(0, 5).map((l) => f.scanScope({ path: `/media/películas/${l}` }))));
+    renderScan();
+    await screen.findByText('Completado (cambio detectado)');
+    expect(scopeLine().textContent).toBe('Carpetas: películas/A, películas/B, películas/C, películas/D, películas/E');
+  });
+
+  it.each([
+    ['null', null],
+    ['empty', []],
+  ])('no folders line when the scope is %s', async (_name, scope) => {
+    serveScans(f.scanStatus({ scope }));
+    renderScan();
+    await screen.findByText('Completado (manual)');
+    expect(within(card()).queryByText(/Carpetas:/)).not.toBeInTheDocument();
+  });
+});
+
+describe('ScanPage change detection (watcher line)', () => {
+  it.each([
+    ['active', 'Detección de cambios: activa'],
+    ['starting', 'Detección de cambios: iniciando…'],
+    ['disabled', 'Detección de cambios: desactivada'],
+  ] as const)('%s: a plain line', async (state, text) => {
+    serveScans(f.scanStatus({ watcher: f.watcherStatus({ state }) }));
+    renderScan();
+    await screen.findByText('Completado (manual)');
+    expect(watcherLine().textContent).toBe(text);
+    expect(within(card()).queryByText(/No disponible en/)).not.toBeInTheDocument();
+    expect(within(card()).queryByText('Detalles técnicos')).not.toBeInTheDocument();
+  });
+
+  it('error with a detail: a warning line and a "Detalles técnicos" disclosure with the raw detail', async () => {
+    const detail = 'inotify watch limit reached (fs.inotify.max_user_watches)';
+    serveScans(f.scanStatus({ watcher: f.watcherStatus({ state: 'error', detail }) }));
+    const { user } = renderScan();
+    await screen.findByText('Completado (manual)');
+    expect(watcherLine().textContent).toBe(`${WARNING} Detección de cambios: con errores`);
+    const summary = within(card()).getByText('Detalles técnicos');
+    const disclosure = summary.closest('details')!;
+    expect(disclosure).not.toHaveAttribute('open');
+    await user.click(summary);
+    expect(disclosure).toHaveAttribute('open');
+    expect(within(disclosure).getByText(detail).tagName).toBe('CODE');
+  });
+
+  it('unavailable roots on Linux: a warning line and the folders, no disclosure without a detail', async () => {
+    serveScans(
+      f.scanStatus({
+        watcher: f.watcherStatus({ state: 'unavailable', unavailable_roots: ['/media/MKV', '/media/películas', '/media/series'] }),
+      }),
+    );
+    renderScan();
+    await screen.findByText('Completado (manual)');
+    expect(watcherLine().textContent).toBe(`${WARNING} Detección de cambios: no disponible`);
+    expect(within(card()).getByText('No disponible en: /media/MKV, /media/películas, /media/series')).toBeInTheDocument();
+    expect(within(card()).queryByText('Detalles técnicos')).not.toBeInTheDocument();
+  });
+
+  it('active with one unavailable root: the plain line and "No disponible en"', async () => {
+    serveScans(f.scanStatus({ watcher: f.watcherStatus({ unavailable_roots: ['/media/series'] }) }));
+    renderScan();
+    await screen.findByText('Completado (manual)');
+    expect(watcherLine().textContent).toBe('Detección de cambios: activa');
+    expect(within(card()).getByText('No disponible en: /media/series')).toBeInTheDocument();
+  });
+
+  it('a non-Linux host: "no disponible" plus the disclosure, no "No disponible en" line', async () => {
+    serveScans(f.scanStatus({ watcher: f.watcherStatus({ state: 'unavailable', detail: 'inotify requires Linux' }) }));
+    renderScan();
+    await screen.findByText('Completado (manual)');
+    expect(watcherLine().textContent).toBe(`${WARNING} Detección de cambios: no disponible`);
+    const disclosure = within(card()).getByText('Detalles técnicos').closest('details')!;
+    expect(within(disclosure).getByText('inotify requires Linux')).toBeInTheDocument();
+    expect(within(card()).queryByText(/No disponible en/)).not.toBeInTheDocument();
+  });
+
+  it('an idle server still shows the watcher line', async () => {
+    serveScans(f.idleScanStatus({ watcher: f.watcherStatus({ state: 'disabled' }) }));
+    renderScan();
+    await screen.findByText('Inactivo');
+    expect(watcherLine().textContent).toBe('Detección de cambios: desactivada');
+  });
+
+  it('"iniciando…" keeps polling every 2 s until change detection is active, then stops (no toast)', async () => {
+    useFakePlayerTimers();
+    const starting = f.scanStatus({ watcher: f.watcherStatus({ state: 'starting' }) });
+    serveScans(starting, starting, f.scanStatus());
+    const rec = recordRequests();
+    renderScan();
+    await until(() => expect(watcherLine().textContent).toBe('Detección de cambios: iniciando…'));
+    const gets = () => rec.find('GET', '/api/admin/scan').length;
+    expect(gets()).toBe(1);
+    await advance(2000);
+    await until(() => expect(gets()).toBe(2));
+    expect(watcherLine().textContent).toBe('Detección de cambios: iniciando…');
+    await advance(2000);
+    await until(() => expect(watcherLine().textContent).toBe('Detección de cambios: activa'));
+    expect(gets()).toBe(3);
+    await advance(10_000);
+    expect(gets()).toBe(3);
+    expect(toastRegion()).not.toHaveTextContent('Escaneo terminado');
+  });
+});

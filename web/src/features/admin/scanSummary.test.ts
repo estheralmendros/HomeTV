@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as f from '../../../tests/fixtures';
-import { scanFinishedToast } from './scanSummary';
+import { scanFinishedToast, scopeLabel } from './scanSummary';
 
 describe('scanFinishedToast', () => {
   it('lists the non-zero counts with "modificados" for changed, and the missing line', () => {
@@ -26,5 +26,18 @@ describe('scanFinishedToast', () => {
 
   it('a failed run', () => {
     expect(scanFinishedToast(f.scanStatus({ state: 'failed' }))).toBe('El escaneo ha fallado.');
+  });
+});
+
+describe('scopeLabel', () => {
+  it.each([
+    ['a top-level folder', f.scanScope(), 'películas/A'],
+    ['a show folder', f.scanScope({ root: '/media/series', path: '/media/series/Breaking Bad' }), 'series/Breaking Bad'],
+    ['a nested relative path', f.scanScope({ root: '/media/series', path: '/media/series/Lost/Temporada 1' }), 'series/Lost/Temporada 1'],
+    ['loose files of a root', f.scanScope({ root: '/media/MKV', path: '/media/MKV', recursive: false }), 'MKV (archivos sueltos)'],
+    ['a whole root', f.scanScope({ root: '/media/series', path: '/media/series', recursive: true }), 'series (toda la carpeta)'],
+    ['a root with a trailing slash', f.scanScope({ root: '/media/series/', path: '/media/series/Lost' }), 'series/Lost'],
+  ])('%s', (_name, scope, label) => {
+    expect(scopeLabel(scope)).toBe(label);
   });
 });

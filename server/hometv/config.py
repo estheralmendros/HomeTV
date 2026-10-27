@@ -106,6 +106,8 @@ class ScanSettings(_Section):
     on_startup: bool = True
     probe_concurrency: int = Field(2, ge=1)
     missing_grace_days: int = Field(7, ge=0)
+    watch_enabled: bool = True
+    watch_quiet_seconds: int = Field(30, ge=5)
 
 
 class PlaybackSettings(_Section):
@@ -212,7 +214,7 @@ class Settings(BaseSettings):
         return self.library_sources.get(library_type, f"libraries.{library_type}")
 
 
-# Flat env var -> nested settings path (Configuration Reference).
+# Flat env var -> nested settings path (deploy/README.md "Configuration reference").
 ENV_MAP: dict[str, tuple[str, ...]] = {
     "HOMETV_DATA_DIR": ("data_dir",),
     "HOMETV_FILMS_PATHS": ("libraries", "films"),
@@ -227,6 +229,8 @@ ENV_MAP: dict[str, tuple[str, ...]] = {
     "HOMETV_SCAN_ON_STARTUP": ("scan", "on_startup"),
     "HOMETV_SCAN_PROBE_CONCURRENCY": ("scan", "probe_concurrency"),
     "HOMETV_SCAN_MISSING_GRACE_DAYS": ("scan", "missing_grace_days"),
+    "HOMETV_SCAN_WATCH_ENABLED": ("scan", "watch_enabled"),
+    "HOMETV_SCAN_WATCH_QUIET_SECONDS": ("scan", "watch_quiet_seconds"),
     "HOMETV_MAX_SESSIONS": ("playback", "max_sessions"),
     "HOMETV_HLS_DIR": ("playback", "hls_dir"),
     "HOMETV_HLS_SEGMENT_SECONDS": ("playback", "hls_segment_seconds"),

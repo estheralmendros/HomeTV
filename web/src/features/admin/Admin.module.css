@@ -170,6 +170,13 @@
   font-variant-numeric: tabular-nums;
 }
 
+.scope,
+.watcher {
+  margin: 0;
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
 .warning {
   margin: 0;
   padding: var(--space-3);
@@ -179,13 +186,21 @@
 }
 
 .rawError,
-.logLines code {
+.logLines code,
+.watcherDetail {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: var(--font-size-sm);
 }
 
 .rawError {
   color: var(--color-danger);
+}
+
+.watcherDetail {
+  display: block;
+  margin-top: var(--space-2);
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
 }
 
 .errors summary {

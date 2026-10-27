@@ -165,3 +165,53 @@ async def test_env_root_guard_still_aborts_before_anything_is_written(make_setti
         async with app.router.lifespan_context(app):
             pass
     assert not data.exists()
+
+
+# --- HOMETV-1: change watcher wiring (prd.md FR-12) --------------------------------------------
+
+
+async def test_lifespan_wires_the_change_watcher(make_settings, tmp_path):
+    import sys
+
+    from tests.stubs import BackendFactory, wait_until
+
+    films = tmp_path / "media" / "films"
+    films.mkdir(parents=True)
+    settings = make_settings(scan={"watch_enabled": True}, libraries={"films": [str(films)]})
+    factory = BackendFactory()
+    app = create_app(settings, watch_backend_factory=factory)
+    async with app.router.lifespan_context(app):
+        watcher = app.state.watcher
+        scheduler = app.state.scheduler
+        assert scheduler.on_full_run == watcher.request_sync
+        assert scheduler.on_run_finished == watcher.note_unreachable
+        assert scheduler.watcher_status == watcher.status
+        if sys.platform != "linux":
+            assert watcher.status().state == "unavailable"
+            assert factory.calls == 0
+        else:
+            assert watcher.status().state in ("starting", "active")
+            await wait_until(lambda: watcher.status().state == "active")
+            assert factory.last.ops("add_tree") == [str(films)]
+        assert scheduler.status().watcher == watcher.status()
+    if sys.platform == "linux":
+        assert factory.last.closed  # the watcher is stopped with the app
+
+
+async def test_shared_test_settings_have_an_inert_watcher(app):
+    assert app.state.watcher.status().state == "disabled"
+    assert app.state.scheduler.status().watcher.state == "disabled"
+
+
+async def test_shutdown_continues_when_the_watcher_stop_fails(make_settings, data_dir, caplog):
+    app = create_app(make_settings())
+    async with app.router.lifespan_context(app):
+
+        async def broken_stop() -> None:
+            raise RuntimeError("watcher bug")
+
+        app.state.watcher.stop = broken_stop
+        hls = app.state.settings.hls_dir
+        (hls / ("cd" * 16)).mkdir()
+    assert not (hls / ("cd" * 16)).exists()  # the rest of the shutdown still ran
+    assert "watcher_stop_failed" in caplog.text

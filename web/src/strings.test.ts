@@ -125,6 +125,7 @@ const DYNAMIC_PARENTS = [
   'player.unsupported',
   'admin.scan.states',
   'admin.scan.triggers',
+  'admin.scan.watcher.states',
   'admin.scan.phases',
   'admin.scan.counts',
   'admin.scan.countHints',

@@ -50,7 +50,7 @@ def test_migration_creates_every_table(db):
 def test_migration_is_at_head_and_idempotent(db):
     run_migrations(db)
     with db.read_engine.connect() as conn:
-        assert MigrationContext.configure(conn).get_current_revision() == HEAD_REVISION == "0002"
+        assert MigrationContext.configure(conn).get_current_revision() == HEAD_REVISION == "0003"
 
 
 @pytest.mark.filterwarnings("ignore:.*expression-based index:UserWarning")
@@ -202,6 +202,7 @@ def test_all_data_model_columns_exist(db):
         "total",
         "errors",
         "error",
+        "scope",
     } <= cols["scan_run"]
     assert "folders_seeded_at" in cols["library"]
     assert {"id", "library_id", "path", "created_at"} <= cols["library_folder"]
@@ -491,6 +492,23 @@ def test_scan_run_accepts_libraries_trigger_and_rejects_unknown(db):
         s.flush()
 
 
+def test_scan_run_watch_trigger_and_scope_round_trip(db):
+    scope = [
+        {"root": "/media/películas", "path": "/media/películas/A", "recursive": True},
+        {"root": "/media/series", "path": "/media/series", "recursive": False},
+    ]
+    with db.write_session() as s:
+        s.add(m.ScanRun(trigger="watch", state="running", phase="walking", scope=scope))
+        s.add(m.ScanRun(trigger="manual", state="running", phase="walking"))
+        s.add(m.ScanRun(trigger="scheduled", state="running", phase="walking", scope=None))
+    with db.read_session() as s:
+        runs = list(s.scalars(select(m.ScanRun).order_by(m.ScanRun.id)))
+        assert runs[0].scope == scope
+        assert runs[1].scope is None and runs[2].scope is None
+        # full runs store SQL NULL, never the JSON text 'null'
+        assert s.scalar(text("SELECT count(*) FROM scan_run WHERE scope IS NULL")) == 2
+
+
 def test_library_folder_path_unique_across_libraries(db):
     with db.write_session() as s:
         films, shows = _library(s, "films"), _library(s, "shows")
@@ -553,5 +571,38 @@ def test_upgrade_from_0001_keeps_rows_and_downgrade_maps_libraries_trigger(tmp_p
             assert "library_folder" not in tables
             cols = {c["name"] for c in inspect(database.read_engine).get_columns("library")}
             assert "folders_seeded_at" not in cols
+    finally:
+        database.dispose()
+
+
+def test_upgrade_from_0002_keeps_scan_runs(tmp_path):
+    from alembic import command
+
+    from hometv.db.engine import alembic_config
+
+    database = Database(tmp_path / "old.db")
+    try:
+        cfg = alembic_config(database)
+        with database.write_engine.connect() as conn:
+            cfg.attributes["connection"] = conn
+            command.upgrade(cfg, "0002")
+            conn.exec_driver_sql(
+                "INSERT INTO scan_run (trigger, state, phase)"
+                " VALUES ('libraries', 'completed', 'done')"
+            )
+            conn.commit()
+        run_migrations(database)
+        with database.write_session() as s:
+            assert s.scalar(text("SELECT count(*) FROM scan_run WHERE scope IS NULL")) == 1
+            s.add(m.ScanRun(trigger="watch", state="completed", phase="done", scope=[]))
+        with database.write_engine.connect() as conn:
+            cfg.attributes["connection"] = conn
+            command.downgrade(cfg, "0002")
+            conn.commit()
+        with database.read_session() as s:
+            triggers = s.scalars(text("SELECT trigger FROM scan_run ORDER BY id")).all()
+            assert triggers == ["libraries", "scheduled"]
+            cols = {c["name"] for c in inspect(database.read_engine).get_columns("scan_run")}
+            assert "scope" not in cols
     finally:
         database.dispose()

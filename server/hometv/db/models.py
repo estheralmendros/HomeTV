@@ -88,7 +88,7 @@ def _fk(target: str, ondelete: str = "CASCADE", nullable: bool = False, **kw: An
 _EXACTLY_ONE_FILM_SHOW = "(film_id IS NULL) != (show_id IS NULL)"
 
 
-ScanTrigger = Literal["startup", "scheduled", "manual", "libraries"]
+ScanTrigger = Literal["startup", "scheduled", "manual", "libraries", "watch"]
 SCAN_TRIGGERS: tuple[str, ...] = get_args(ScanTrigger)
 """``scan_run.trigger`` values (single source for the CHECK and the API ``Literal``)."""
 
@@ -528,3 +528,5 @@ class ScanRun(Base):
         JSON, nullable=False, default=list, server_default=text("'[]'")
     )
     error: Mapped[str | None]
+    # ``watch`` runs: ``[ScanScope.to_json(), ...]`` (merge_scopes order); SQL NULL otherwise.
+    scope: Mapped[list[Any] | None] = mapped_column(JSON(none_as_null=True))

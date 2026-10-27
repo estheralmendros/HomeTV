@@ -13,7 +13,10 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     `check_library_folders()` (stored folders vs data/HLS dir), `prepare_hls_dir()` (mkdir + wipe).
     `libraries.films|shows` / `HOMETV_FILMS_PATHS|SHOWS_PATHS` only seed the stored folders once;
     `libraries.browse_root` (`HOMETV_MEDIA_BROWSE_ROOT`, default `/media`) is the browser base.
-  - `hometv/text.py`, `hometv/parser.py`: pure modules (no I/O).
+    `scan.watch_enabled` / `scan.watch_quiet_seconds` (`HOMETV_SCAN_WATCH_ENABLED|QUIET_SECONDS`,
+    default on / 30 s, `ge=5`): change detection; `make_settings` turns it off for tests.
+  - `hometv/text.py` (also `undecodable(name)`, shared by scanner/folder browser/scheduler/changes),
+    `hometv/parser.py`: pure modules (no I/O).
   - `hometv/probe.py`: ffprobe wrapper (injectable `runner`) + pure `normalize()`.
   - `hometv/db/engine.py`: `Database` (read/write engines, `write_session()`),
     `run_migrations()`. `db/models.py`: full data model. `db/migrations/versions/`: Alembic.
@@ -24,10 +27,31 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     `seed_once`, `current()` immutable `LibraryFolderSet` snapshot, `plan` -> `ChangePlan`
     removed/covered/moved/relayout, `save(confirm_relinks=)`, `folder_status`/`describe`, `browse`).
   - `hometv/scanner.py`: `Scanner(db, settings, probe_fn=, fs=FsOps(), keyframe_hook=, folders=,
-    relinks=).run()`: walk/diff/parse/probe/link/sidecars/soft-delete+purge; same-library Películas
-    root change = path-only re-root; move/Series relayout = relink (only with `relinks=True`, else
-    untouched + `relink_pending:` report line). `scan_report.py`: `ScanReport`
-    (counts/errors, `save()` into `scan_run`).
+    relinks=, scope=).run()`: walk/diff/parse/probe/link/sidecars/soft-delete+purge; same-library
+    Películas root change = path-only re-root; move/Series relayout = relink (only with
+    `relinks=True`, else untouched + `relink_pending:` report line). `scope` (list of `ScanScope`,
+    `watch` runs): `_walk_scoped` (one root listing, then only the scope dirs via the shared
+    `_walk_tree`; symlinked top-level dirs never walked), rows loaded by a `path` range per scope
+    (root-shallow: direct children only),
+    root guards (empty root listing / whole-root scope without videos -> `root_empty_skipped_removal`),
+    missing/sidecars limited to the scope, rows of another configured (nested) root left alone (the row's own root walk decides when present),
+    unconfigured scope root -> `scope_unconfigured:`. `scan_report.py`: `ScanReport`
+    (counts/errors, `save()` into `scan_run`; in-memory `unreachable_roots` = roots with
+    `root_unavailable` or a root `walk_error`, handed to the watcher).
+  - `hometv/changes/` (change-triggered scoped scans): `scope.py` (pure `ScanScope(root, rel_dir,
+    recursive)` = top-level dir / root shallow / whole root, `root_of` longest root, `scope_for`, `within` (the one path-prefix helper),
+    `merge_scopes` (cap `MAX_PENDING_SCOPES` = 50, widens roots, stops when only whole roots
+    remain)), `mounts.py` (pure mountinfo parsing, `mount_for`, fs-type denylist `is_watchable`),
+    `backend.py` (`WatchEvent` kinds incl. synthetic `watch_limit`/`backend_failed`, `WatchBackend`
+    protocol `start/add_tree/remove/is_alive/abort/close`, `WatchLimitError`, `WatchUnavailable`, shared `SIZED_KINDS`/`file_extension`/`is_video`),
+    `inotify.py` (`InotifyBackend` over ctypes, Linux only; pure `parse_events`/`map_batch`; reader
+    thread applies drops before arms; dot/undecodable dirs never armed (`_skipped_name`); seams `libc/scandir/stat/read/poll_factory/read_sleep`),
+    `settle.py` (pure `ChangeSettler`: quiet period + size check, `suspend`/`set_roots`/
+    `drop_root`), `watcher.py` (`ChangeWatcher` on `app.state.watcher`: inert `disabled`/not Linux,
+    `starting`/`active`/`unavailable`/`error` snapshot `status()`, single-flight `sync()` steps 0-7,
+    health facts (`_fact_seq`) + instance-bound `HealthAction`s drained under the sync lock,
+    `note_unreachable`, `poll_once`, `wait_idle`; seams `backend_factory/mountinfo/platform/clock/
+    stat_size/stat_identity/auto_poll/poll_retry_seconds`; `stop()` logs, never re-raises, task failures).
   - `hometv/metadata/`: `tmdb.py` (`TmdbClient`: limiter, retries, language fallback),
     `matching.py` (pure `choose_match`), `enrich.py` (`Enricher`, `merge_items`, admin
     `match_item`/`resolve_unmatched`), `artwork.py` (`ArtworkCache`, `image()` Image object).
@@ -40,7 +64,12 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     queries returning the pydantic shapes (`media_file_out`, `media_label`).
   - `hometv/scheduler.py`: `Scheduler` (single-flight scan -> enrich; `trigger(t, before=)`
     (`before` runs in a thread under the lock, before the run row), `ensure_idle`, `status`;
-    `folders=` forwarded to every `Scanner`), `scan_status(session)`.
+    `folders=` forwarded to every `Scanner`; `request_scoped(scopes)` -> pending queue + one kick
+    task -> `watch` run (`Scanner(scope=)`); a full run clears the queue once its row exists and
+    calls `on_full_run`; `run_scheduled` waits for a `watch` run (`_wait_watch_holder`,
+    `_full_waiting`), `trigger` never waits; `on_run_finished(unreachable_roots)`,
+    `watcher_status`; `wait_idle` covers kick + run), `scan_status(session, watcher)` (`scope`,
+    `watcher` in `ScanStatus`).
   - `hometv/playback/`: `decide.py` (pure decision + `ClientCaps`), `stream.py` (byte ranges),
     `keyframe_readers.py` (pure MKV Cues / MP4 stss readers, ffprobe row parsing),
     `keyframes.py` (`KeyframeService`: cache, ffprobe fallback + rchar watchdog, failure map,
@@ -53,20 +82,25 @@ is a contract shared by the web and TV clients: change it deliberately and updat
   - `hometv/spa.py`: §12 static `web_dist` serving + SPA fallback (`SpaRoute` catch-all for
     non-`/api` GET/HEAD, appended last by `install_spa`; `/assets/*` immutable, stale asset ->
     plain 404, else `index.html` no-cache; "Web UI not built" placeholder without a dist).
-  - `hometv/main.py`: `create_app(settings)` factory + lifespan (sets `app.state.db/settings/
-    libraries/tmdb/tmdb_proxy/artwork/scheduler/keyframes/hls/subtitles`); order: `prepare_runtime`
-    -> migrations -> `libraries.seed_once` -> `check_library_folders` -> `prepare_hls_dir` (sets
-    `hls_ready`; the `finally` wipes the HLS dir only when set) -> services; `run()` single-worker
-    entry (console script `hometv`, the container CMD).
+  - `hometv/main.py`: `create_app(settings, *, watch_backend_factory=None)` factory + lifespan
+    (sets `app.state.db/settings/libraries/tmdb/tmdb_proxy/artwork/scheduler/watcher/keyframes/hls/
+    subtitles`); order: `prepare_runtime` -> migrations -> `libraries.seed_once` ->
+    `check_library_folders` -> `prepare_hls_dir` (sets `hls_ready`; the `finally` wipes the HLS
+    dir only when set) -> services -> `Scheduler` -> `ChangeWatcher` (hooks `on_full_run`/
+    `on_run_finished`/`watcher_status` bound) -> `scheduler.start()` -> `watcher.start()` (never
+    awaits the arming walk); the `finally` stops the watcher before the scheduler; `run()`
+    single-worker entry (console script `hometv`, the container CMD).
   - `hometv/api/`: `errors.py` (envelope), `deps.py` (auth deps), `schemas.py`,
     `list_params.py` (films/shows query params), `routes_*.py` (system, profiles, catalog,
     films, shows, watch, artwork, admin, media).
   - `tests/`: `unit/` (pure), `service/` (tmp dirs + SQLite, stubs), `api/` (in-process
-    httpx), `integration/` (real ffmpeg/ffprobe, marker `integration`), `perf/` (marker
-    `perf`), `fixtures/`, `factories.py` (`add_film`/`add_show`/`add_file(root=, rel=, library=)`/
-    `add_progress`),
-    `stubs.py` (`FakeProc`, `Spawner`, `ScaledClock`, `wait_until`), `fmp4_builder.py`
-    (synthetic fMP4), `hls_stub.py` (argv-driven stub ffmpeg for API tests).
+    httpx), `integration/` (real ffmpeg/ffprobe, marker `integration`; `test_inotify_backend.py`
+    also marked `inotify`: no ffmpeg needed, skipped off Linux), `perf/` (marker `perf`, incl.
+    `test_scoped_scan_perf.py`), `fixtures/`, `factories.py` (`add_film`/`add_show`/
+    `add_file(root=, rel=, library=)`/`add_progress`),
+    `stubs.py` (`FakeProc`, `Spawner`, `ScaledClock`, `wait_until`, `FakeWatchBackend` (`emit`,
+    `calls`/`ops`, `fail_with`, `alive`, `gate(op)`/`open_gate`), `BackendFactory`),
+    `fmp4_builder.py` (synthetic fMP4), `hls_stub.py` (argv-driven stub ffmpeg for API tests).
 - `web/`: React 18 + TS (strict, `noUncheckedIndexedAccess`, alias `@/`) + Vite 5 SPA, Node 24
   (`.nvmrc`), TanStack Query 5, React Router 6 data router, hls.js (lazy), CSS Modules over
   `styles/tokens.css`, no UI kit. `tsconfig.json` = references to `tsconfig.app.json` (src +
@@ -88,7 +122,9 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     `pathname + ?file=` and holds all per-playback state.
   - `src/features/<screen>/` (setup, profiles, home, library, search, film, show, admin, about),
     `features/admin/`: `AdminLayout` (tabs Escaneo/Bibliotecas/Sin identificar/Perfiles, the one
-    scan poll), `LibrariesPage` (Bibliotecas: pure `libraryDraft` reducer, save = plan → server-built
+    scan poll: `scanRefetchInterval` while `running` or `watcher.state === 'starting'`), `ScanPage`
+    (card + "Carpetas:" scope line + "Detección de cambios" watcher lines), `scanSummary`
+    (`scanFinishedToast`, `isScanStatus`, pure `scopeLabel`), `LibrariesPage` (Bibliotecas: pure `libraryDraft` reducer, save = plan → server-built
     confirmation → PUT; results on the page), `AddFolderDialog`, `FolderBrowser` (keeps the last good
     listing as the way back), `adminQueries` (`useLibrariesQuery`, `useBrowseQuery`),
     `src/components/` (shared UI), `src/lib/` (`format`, `languages`, `chunkReload`,
@@ -103,7 +139,8 @@ is a contract shared by the web and TV clients: change it deliberately and updat
   1000, healthcheck, CMD `hometv`; build context = repo root, `Dockerfile.dockerignore`
   whitelists `server/` and `web/` minus node_modules/dist), `docker-compose.yml`
   (app in the tailscale sidecar's netns, `HOMETV_HOST=127.0.0.1`, media `:ro`, no ports),
-  `tailscale/serve.json`, `.env.example`, `README.md` (setup steps).
+  `tailscale/serve.json`, `.env.example`, `README.md` (setup steps + "Configuration reference", the only tracked list of `HOMETV_*`
+  settings).
 - `docs/`: user guides: `server-installation-linux.md`, `server-installation-windows.md` (Docker
   Desktop + WSL 2; no native Windows: HLS throttling uses SIGSTOP/SIGCONT), `tv-app-installation.md`,
   `ipad-installation.md` (the web app in Safari over Tailscale; there is no iOS app).
@@ -199,6 +236,11 @@ is a contract shared by the web and TV clients: change it deliberately and updat
   dependency; `X-Admin-Token` header only). API tests use `user`/`admin`/`profile_factory`/
   `clock` from `tests/api/conftest.py` (`Who.headers`, `Who.admin_headers`). A new
   `/api/admin/*` route must be added to `ADMIN_ROUTES` in `test_api_admin.py` (coverage test).
+- **Change detection**: the watcher only reads (inotify never writes); no timer touches the disk
+  (re-arming happens in `sync()` at full runs and after an overflow). Watcher tests use
+  `FakeWatchBackend` + `auto_poll=False` + a fake clock; API tests that need another watcher state
+  swap `app.state.scheduler.watcher_status` (bound once by the lifespan). `make_settings` keeps
+  `scan.watch_enabled=False`, so no other test arms watches or gets spontaneous `watch` runs.
 - **Library folders**: production `Scanner`/`Scheduler` construction passes the
   `LibraryFolders.current` provider (`folders=`); the default (env/YAML roots) is for tests only.
   Only a `libraries` run (`PUT /api/admin/libraries` via `trigger("libraries", before=save)`)
