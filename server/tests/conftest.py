@@ -2,12 +2,14 @@
 
 - ``make_settings(**overrides)``: Settings rooted in a tmp data dir (nested dict overrides
   are deep-merged, e.g. ``make_settings(tmdb={"api_key": "k"})``).
-- ``settings``: default test settings (no TMDB key, no media roots, scan on startup off).
+- ``settings``: default test settings (no TMDB key, no media roots, scan on startup off, change
+  detection off: ``scan.watch_enabled=False``; watcher tests enable it with a fake backend).
 - ``app``: ``create_app(settings)`` with its lifespan running (migrations applied).
 - ``client``: ``httpx.AsyncClient`` over ``ASGITransport(app)``, base URL ``http://test``.
 - ``db``: the app's ``Database`` (use ``db.write_session()`` to seed rows).
 - ``ffmpeg_bin`` / ``ffprobe_bin``: paths to real binaries; tests marked ``integration`` are
-  skipped automatically when either is missing.
+  skipped automatically when either is missing (except those also marked ``inotify``, which
+  need no ffmpeg and skip themselves off Linux).
 """
 
 import os
@@ -37,7 +39,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
         return
     skip = pytest.mark.skip(reason="ffmpeg/ffprobe not installed")
     for item in items:
-        if "integration" in item.keywords:
+        if "integration" in item.keywords and "inotify" not in item.keywords:
             item.add_marker(skip)
 
 
@@ -85,7 +87,7 @@ def make_settings(tmp_path: Path, data_dir: Path) -> Callable[..., Settings]:
     def factory(**overrides: Any) -> Settings:
         base: dict[str, Any] = {
             "data_dir": data_dir,
-            "scan": {"on_startup": False, "interval_hours": 0},
+            "scan": {"on_startup": False, "interval_hours": 0, "watch_enabled": False},
             "auth": {"secret_key": "test-secret-key"},
             "server": {"web_dist": tmp_path / "web-dist", "log_level": "warning"},
         }

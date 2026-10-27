@@ -1,8 +1,9 @@
 // Texts of a finished scan (prd2 §11 Scan step 4).
-import type { ScanStatus } from '@/api/types';
+import type { ScanScope, ScanStatus } from '@/api/types';
 import { S } from '@/strings.es';
 
 const T = S.admin.scan.toast;
+const SCAN = S.admin.scan;
 
 /**
  * "Escaneo terminado: 240 nuevos, 3 recuperados, 1 eliminado, 4 sin identificar" (only the
@@ -28,4 +29,18 @@ export function scanFinishedToast(scan: ScanStatus): string {
 /** A ScanStatus in an error's `details.scan` (409 scan_in_progress). */
 export function isScanStatus(value: unknown): value is ScanStatus {
   return typeof value === 'object' && value !== null && 'state' in value && 'progress' in value;
+}
+
+/**
+ * Label of one folder of a change-triggered run (prd2 FR-26), `name` = the root's last segment:
+ * "películas/A" (a folder under the root), "MKV (archivos sueltos)" (the root's loose files),
+ * "series (toda la carpeta)" (the whole root).
+ */
+export function scopeLabel(scope: ScanScope): string {
+  const root = scope.root.replace(/\/+$/, '');
+  const name = root.slice(root.lastIndexOf('/') + 1);
+  if (!scope.recursive) return SCAN.scopeLoose(name);
+  const path = scope.path.replace(/\/+$/, '');
+  if (path === root) return SCAN.scopeWholeRoot(name);
+  return `${name}/${path.slice(root.length + 1)}`;
 }

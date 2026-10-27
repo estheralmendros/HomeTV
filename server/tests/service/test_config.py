@@ -42,6 +42,8 @@ def test_defaults_when_no_env_and_no_yaml(tmp_path):
     assert s.scan.on_startup is True
     assert s.scan.probe_concurrency == 2
     assert s.scan.missing_grace_days == 7
+    assert s.scan.watch_enabled is True
+    assert s.scan.watch_quiet_seconds == 30
     assert s.playback.max_sessions == 4
     assert s.playback.hls_dir == tmp_path / "hls"
     assert s.playback.hls_segment_seconds == 6
@@ -116,6 +118,8 @@ def test_every_env_var_is_mapped(tmp_path):
         "HOMETV_SCAN_ON_STARTUP": "false",
         "HOMETV_SCAN_PROBE_CONCURRENCY": "4",
         "HOMETV_SCAN_MISSING_GRACE_DAYS": "0",
+        "HOMETV_SCAN_WATCH_ENABLED": "false",
+        "HOMETV_SCAN_WATCH_QUIET_SECONDS": "45",
         "HOMETV_MAX_SESSIONS": "2",
         "HOMETV_HLS_DIR": str(tmp_path / "scratch"),
         "HOMETV_HLS_SEGMENT_SECONDS": "4",
@@ -142,6 +146,7 @@ def test_every_env_var_is_mapped(tmp_path):
     assert (s.tmdb.max_rps, s.tmdb.cast_limit) == (10, 5)
     assert (s.scan.interval_hours, s.scan.on_startup) == (0, False)
     assert (s.scan.probe_concurrency, s.scan.missing_grace_days) == (4, 0)
+    assert (s.scan.watch_enabled, s.scan.watch_quiet_seconds) == (False, 45)
     p = s.playback
     assert (p.max_sessions, p.hls_dir, p.hls_segment_seconds) == (2, tmp_path / "scratch", 4)
     assert (p.hls_ahead_seconds, p.hls_behind_seconds, p.hls_max_disk_mb) == (60, 30, 100)
@@ -222,6 +227,8 @@ def test_relative_media_root_is_made_absolute(tmp_path, monkeypatch):
         ({"HOMETV_PORT": "notaport"}, "HOMETV_PORT"),
         ({"HOMETV_LOG_LEVEL": "loud"}, "HOMETV_LOG_LEVEL"),
         ({"HOMETV_SCAN_ON_STARTUP": "maybe"}, "HOMETV_SCAN_ON_STARTUP"),
+        ({"HOMETV_SCAN_WATCH_QUIET_SECONDS": "4"}, "HOMETV_SCAN_WATCH_QUIET_SECONDS"),
+        ({"HOMETV_SCAN_WATCH_ENABLED": "maybe"}, "HOMETV_SCAN_WATCH_ENABLED"),
     ],
 )
 def test_invalid_env_value_aborts_naming_env_key(tmp_path, env, key):
@@ -468,3 +475,33 @@ def test_prepare_runtime_does_not_write_into_media_root(tmp_path):
     before = sorted(os.listdir(media))
     prepare_runtime(Settings(data_dir=tmp_path / "data", libraries={"films": [str(media)]}))
     assert sorted(os.listdir(media)) == before
+
+
+# --- Change-triggered scans (HOMETV-1 prd2 FR-22) ---------------------------------------------
+
+
+def test_watch_settings_env_overrides_yaml(tmp_path):
+    write_yaml(
+        tmp_path / "config.yaml",
+        "scan:\n  watch_enabled: false\n  watch_quiet_seconds: 90\n",
+    )
+    s = load_settings({"HOMETV_DATA_DIR": str(tmp_path)})
+    assert (s.scan.watch_enabled, s.scan.watch_quiet_seconds) == (False, 90)
+    s = load_settings(
+        {
+            "HOMETV_DATA_DIR": str(tmp_path),
+            "HOMETV_SCAN_WATCH_ENABLED": "true",
+            "HOMETV_SCAN_WATCH_QUIET_SECONDS": "60",
+        }
+    )
+    assert (s.scan.watch_enabled, s.scan.watch_quiet_seconds) == (True, 60)
+
+
+def test_watch_disabled_env(tmp_path):
+    s = load_settings({"HOMETV_DATA_DIR": str(tmp_path), "HOMETV_SCAN_WATCH_ENABLED": "false"})
+    assert s.scan.watch_enabled is False
+
+
+def test_shared_make_settings_disables_the_watcher(make_settings):
+    assert make_settings().scan.watch_enabled is False
+    assert make_settings(scan={"interval_hours": 2}).scan.watch_enabled is False

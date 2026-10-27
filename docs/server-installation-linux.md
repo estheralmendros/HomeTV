@@ -155,6 +155,21 @@ Set:
 
 `.env` holds secrets: keep it private (`chmod 600 .env`) and never commit it.
 
+Optional: change detection (new files show up about a minute after a copy ends, without
+waiting for the periodic scan) is on by default. To change its quiet period or turn it off, do
+not use `.env`: add `HOMETV_SCAN_WATCH_QUIET_SECONDS` (seconds, default `30`, minimum `5`) or
+`HOMETV_SCAN_WATCH_ENABLED: "false"` under the `app` service's `environment:` in
+`docker-compose.yml`, e.g.:
+
+```yaml
+  app:
+    environment:
+      HOMETV_HOST: 127.0.0.1
+      HOMETV_SCAN_WATCH_QUIET_SECONDS: "60"   # optional; default 30
+```
+
+then run `docker compose up -d`.
+
 ## 7. Start HomeTV
 
 ```bash
@@ -259,6 +274,39 @@ in `docker-compose.yml`; see [`deploy/README.md`](../deploy/README.md).
 - **A film or episode is missing or misnamed.** Look in *Administración → Sin identificar*,
   rename the file following step 2 and rescan, or use **Corregir identificación** (needs a TMDB
   key).
+- **New files do not appear by themselves.** New, renamed or deleted files normally reach the
+  catalog about a minute after the copy ends. Open *Administración → Escaneo* and read the
+  **Detección de cambios** line at the bottom of the card:
+  - **con errores**: open **Detalles técnicos**.
+    - If the text mentions `max_user_watches`, the host's inotify watch limit is reached (one
+      watch per media folder). Check the current limit, raise it, and make it permanent:
+
+      ```bash
+      cat /proc/sys/fs/inotify/max_user_watches
+      sudo sysctl fs.inotify.max_user_watches=524288
+      echo 'fs.inotify.max_user_watches=524288' | sudo tee /etc/sysctl.d/90-hometv.conf
+      ```
+
+      Then press **Escanear ahora**: a full scan re-arms every folder.
+    - If the text says "Too many open files" (`[Errno 24]`, `EMFILE`), the host's inotify
+      *instance* limit is reached instead. Check it with `cat /proc/sys/fs/inotify/max_user_instances`,
+      raise it with `sudo sysctl fs.inotify.max_user_instances=512`, make it permanent with
+      `echo 'fs.inotify.max_user_instances=512' | sudo tee /etc/sysctl.d/91-hometv.conf`,
+      then press **Escanear ahora**.
+    - Any other text: press **Escanear ahora** (a full scan restarts change detection). If the
+      line still says **con errores**, check the server log with `docker compose logs app`.
+  - **No disponible en: *folders*** has two causes, most likely first:
+    - **The disk was unplugged, remounted, or its mount dropped** (the usual case with a USB
+      disk): check that the disk is plugged in and mounted on the host, then press **Escanear
+      ahora**. If the folders are still listed, run `docker compose restart app` in
+      `~/hometv/deploy` (Docker bind mounts do not follow a remount) and press **Escanear
+      ahora** again.
+    - **The folder is on a network share (NFS, SMB)**: change detection does not work there and
+      the line stays. The periodic scan and **Escanear ahora** still pick up new files.
+  - **iniciando…** right after a start: the folders are still being registered (longer on a
+    sleeping USB disk); the line updates by itself.
+  - **desactivada**: `HOMETV_SCAN_WATCH_ENABLED` is `false` under `app: environment:` in
+    `docker-compose.yml` (step 6).
 - **"El servidor ya está convirtiendo el número máximo de vídeos"** (web) **or "El servidor ya
   está emitiendo en el número máximo de dispositivos"** (TV). By default, 4 screens can watch
   converted (HLS) video at the same time. Raise `HOMETV_MAX_SESSIONS` if the machine

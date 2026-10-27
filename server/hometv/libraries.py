@@ -49,6 +49,7 @@ from hometv.api.schemas import (
 from hometv.config import LibrariesSettings, Settings, _normalize_root
 from hometv.db import models as m
 from hometv.db.engine import Database
+from hometv.text import undecodable
 
 logger = logging.getLogger("hometv.libraries")
 
@@ -342,7 +343,7 @@ def browse_listing(base: str, path: str | None, *, fs: FolderFs) -> BrowseRespon
         with fs.scandir(normalized) as it:
             for entry in it:
                 name = entry.name
-                if name.startswith(".") or _undecodable(name):
+                if name.startswith(".") or undecodable(name):
                     continue
                 try:
                     if not entry.is_dir():
@@ -362,14 +363,6 @@ def browse_listing(base: str, path: str | None, *, fs: FolderFs) -> BrowseRespon
     entries.sort(key=lambda e: (e.name.casefold(), e.name))
     parent = None if normalized == base_norm else posixpath.dirname(normalized)
     return BrowseResponse(path=normalized, parent=parent, entries=entries)
-
-
-def _undecodable(name: str) -> bool:
-    try:
-        name.encode("utf-8")
-    except UnicodeEncodeError:
-        return True
-    return False
 
 
 def folder_status(path: str, fs: FolderFs) -> FolderStatus:

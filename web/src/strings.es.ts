@@ -190,6 +190,7 @@ export const S = {
         scheduled: 'programado',
         manual: 'manual',
         libraries: 'cambio de carpetas',
+        watch: 'cambio detectado',
       },
       stateWithTrigger: (state: string, trigger: string) => `${state} (${trigger})`,
       phases: {
@@ -226,6 +227,22 @@ export const S = {
       failedError: 'Error del escaneo',
       tmdbNotConfigured:
         'No hay ninguna clave de API de TMDB configurada. Los contenidos no tendrán carteles ni metadatos.',
+      scopeLabel: 'Carpetas:',
+      scopeLoose: (name: string) => `${name} (archivos sueltos)`,
+      scopeWholeRoot: (name: string) => `${name} (toda la carpeta)`,
+      scopeMore: (n: number) => `y ${countFormat.format(n)} más`,
+      watcher: {
+        line: (state: string) => `Detección de cambios: ${state}`,
+        states: {
+          active: 'activa',
+          starting: 'iniciando…',
+          disabled: 'desactivada',
+          unavailable: 'no disponible',
+          error: 'con errores',
+        },
+        unavailableIn: (folders: string) => `No disponible en: ${folders}`,
+        technicalDetails: 'Detalles técnicos',
+      },
       toast: {
         finished: (summary: string) => `Escaneo terminado: ${summary}`,
         noChanges: 'Sin cambios',

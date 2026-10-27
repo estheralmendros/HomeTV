@@ -6,6 +6,8 @@
 - ``search_text``: ``normalize_title(title) + " " + normalize_title(original_title)`` (PRD §10).
 - ``str_or_none`` / ``is_blank``: TMDB string fields (blank or non-string -> missing).
 - ``empty_to_none``: config values where ``""`` (e.g. an empty env var) means unset.
+- ``undecodable``: a file name that is not valid UTF-8 (``os.fsdecode`` surrogate escapes); the
+  scanner, the folder browser and change detection skip such names.
 """
 
 import re
@@ -50,3 +52,12 @@ def is_blank(value: Any) -> bool:
 
 def empty_to_none(value: Any) -> Any:
     return None if value == "" else value
+
+
+def undecodable(name: str) -> bool:
+    """True when ``name`` holds surrogate escapes (bytes that are not valid UTF-8)."""
+    try:
+        name.encode("utf-8")
+    except UnicodeEncodeError:
+        return True
+    return False

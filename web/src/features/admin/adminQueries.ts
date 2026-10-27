@@ -17,9 +17,12 @@ export const scanQuery = () =>
     staleTime: staleTimes.adminScan,
   });
 
-/** Poll interval: every 2 s while the run is `running`. */
+/**
+ * Poll interval: every 2 s while the run is `running`, and while change detection is `starting`
+ * (so the card leaves "iniciando…" once the first arming walk ends).
+ */
 export const scanRefetchInterval = (data: ScanStatus | undefined): number | false =>
-  data?.state === 'running' ? SCAN_POLL_MS : false;
+  data?.state === 'running' || data?.watcher.state === 'starting' ? SCAN_POLL_MS : false;
 
 /**
  * `GET /api/admin/scan`. Only AdminLayout polls (`poll: true`, one interval for the whole admin

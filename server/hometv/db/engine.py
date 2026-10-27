@@ -107,7 +107,7 @@ class Database:
 # --- Migrations ----------------------------------------------------------------------------
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
-HEAD_REVISION = "0002"
+HEAD_REVISION = "0003"
 
 
 def alembic_config(database: "Database | None" = None) -> Any:

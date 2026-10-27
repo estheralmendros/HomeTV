@@ -1,13 +1,21 @@
-"""Fake subprocesses for service tests (keyframe ffprobe, HLS ffmpeg, subtitle ffmpeg).
+"""Fake subprocesses for service tests (keyframe ffprobe, HLS ffmpeg, subtitle ffmpeg), and a
+fake change-detection backend.
 
 ``FakeProc`` implements the ``procs.Proc`` protocol: ``stdout``/``stderr`` are real
 ``asyncio.StreamReader``s the scenario feeds; signals are recorded; SIGSTOP/SIGCONT toggle
 ``stopped``; SIGTERM/SIGKILL end it (unless ``ignore_kill``).
+
+``FakeWatchBackend`` implements ``changes.backend.WatchBackend``: ``emit(events)`` calls the
+``deliver`` callback (from any thread, like the reader thread); ``calls`` records
+``("add_tree"|"remove"|"close", root)``; ``fail_with[root]`` makes ``add_tree(root)`` raise;
+``alive`` drives ``is_alive()``; ``gate(op, roots=None)`` blocks that operation (in its worker
+thread) until ``open_gate(op)`` or ``abort()``; ``max_active`` observes concurrent calls.
 """
 
 import asyncio
 import itertools
 import signal
+import threading
 import time
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Any
@@ -130,3 +138,128 @@ async def wait_until(predicate: Callable[[], bool], timeout: float = 5.0) -> Non
         if time.monotonic() > deadline:
             raise AssertionError("condition not reached in time")
         await asyncio.sleep(0.01)
+
+
+class FakeWatchBackend:
+    def __init__(self, name: str = "backend") -> None:
+        self.name = name
+        self.deliver: Callable[[list[Any]], None] | None = None
+        self.calls: list[tuple[str, str]] = []
+        self.fail_with: dict[str, BaseException] = {}
+        self.alive = True
+        self.closed = False
+        self._closing = False
+        self.close_thread: str | None = None
+        self.entered: dict[str, threading.Event] = {}
+        self._gates: dict[str, tuple[threading.Event, set[str] | None]] = {}
+        self._lock = threading.Lock()
+        self._active = 0
+        self.max_active = 0
+
+    def __repr__(self) -> str:
+        return f"FakeWatchBackend({self.name})"
+
+    # -- test controls --
+
+    def emit(self, events: Sequence[Any]) -> None:
+        assert self.deliver is not None, "backend not started"
+        self.deliver(list(events))
+
+    def gate(self, op: str, roots: set[str] | None = None) -> threading.Event:
+        """Block ``op`` (for ``roots`` only, when given) until ``open_gate(op)``."""
+        self._gates[op] = (threading.Event(), roots)
+        self.entered[op] = threading.Event()
+        return self.entered[op]
+
+    def open_gate(self, op: str) -> None:
+        gate = self._gates.pop(op, None)
+        if gate is not None:
+            gate[0].set()
+
+    def ops(self, op: str) -> list[str]:
+        return [root for kind, root in self.calls if kind == op]
+
+    def _wait_gate(self, op: str, root: str) -> None:
+        gate = self._gates.get(op)
+        if gate is None or (gate[1] is not None and root not in gate[1]):
+            return
+        self.entered[op].set()
+        while not gate[0].wait(0.01):
+            if self._closing and op != "close":
+                return
+
+    def _enter(self, op: str, root: str) -> None:
+        with self._lock:
+            self.calls.append((op, root))
+            self._active += 1
+            self.max_active = max(self.max_active, self._active)
+
+    def _leave(self) -> None:
+        with self._lock:
+            self._active -= 1
+
+    # -- WatchBackend --
+
+    def start(self, deliver: Callable[[list[Any]], None]) -> None:
+        self.deliver = deliver
+
+    def add_tree(self, root: str) -> int:
+        self._enter("add_tree", root)
+        try:
+            self._wait_gate("add_tree", root)
+            if self._closing:
+                return 0
+            error = self.fail_with.get(root)
+            if error is not None:
+                raise error
+            return 1
+        finally:
+            self._leave()
+
+    def remove(self, root: str) -> None:
+        self._enter("remove", root)
+        try:
+            self._wait_gate("remove", root)
+        finally:
+            self._leave()
+
+    def is_alive(self) -> bool:
+        return self.alive and not self.closed
+
+    def abort(self) -> None:
+        self._closing = True
+
+    def close(self) -> None:
+        self._enter("close", "")
+        try:
+            self._closing = True
+            self._wait_gate("close", "")
+            self.closed = True
+            self.close_thread = threading.current_thread().name
+        finally:
+            self._leave()
+
+
+class BackendFactory:
+    """``backend_factory`` for ``ChangeWatcher`` tests: builds ``FakeWatchBackend``s
+    (``created``), or raises ``error`` while it is set."""
+
+    def __init__(self) -> None:
+        self.created: list[FakeWatchBackend] = []
+        self.error: BaseException | None = None
+        self.calls = 0
+        self.configure: Callable[[FakeWatchBackend], None] | None = None
+
+    def __call__(self) -> FakeWatchBackend:
+        self.calls += 1
+        if self.error is not None:
+            raise self.error
+        backend = FakeWatchBackend(f"B{len(self.created) + 1}")
+        if self.configure is not None:
+            self.configure(backend)
+        self.created.append(backend)
+        return backend
+
+    @property
+    def last(self) -> FakeWatchBackend:
+        return self.created[-1]

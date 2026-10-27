@@ -247,6 +247,110 @@ async def test_scan_trigger_status_and_conflict(client, app, admin, monkeypatch)
     assert done["phase"] == "done"
 
 
+# --- Scan: change-triggered runs (HOMETV-1 prd2 FR-23) ------------------------------------------
+
+
+async def test_idle_scan_status_has_null_scope_and_a_watcher(client, admin):
+    body = (await client.get("/api/admin/scan", headers=admin.admin_headers)).json()
+    assert body["scope"] is None
+    assert body["watcher"] == {"state": "disabled", "unavailable_roots": [], "detail": None}
+
+
+async def test_watch_run_status_has_trigger_and_scope_full_run_has_none(client, app, admin):
+    from hometv.changes.scope import ScanScope
+
+    scope = ScanScope("/media/películas", "A", True)
+    app.state.scheduler.request_scoped([scope])
+    await app.state.scheduler.wait_idle()
+    body = (await client.get("/api/admin/scan", headers=admin.admin_headers)).json()
+    assert (body["trigger"], body["state"]) == ("watch", "completed")
+    assert body["scope"] == [
+        {"root": "/media/películas", "path": "/media/películas/A", "recursive": True}
+    ]
+    r = await client.post("/api/admin/scan", headers=admin.admin_headers)
+    assert r.status_code == 202 and r.json()["scope"] is None
+    await app.state.scheduler.wait_idle()
+    body = (await client.get("/api/admin/scan", headers=admin.admin_headers)).json()
+    assert (body["trigger"], body["scope"]) == ("manual", None)
+
+
+async def test_swapped_watcher_status_is_reflected(client, app, admin):
+    from hometv.api.schemas import WatcherStatus
+
+    error = WatcherStatus(
+        state="error",
+        unavailable_roots=[],
+        detail="inotify watch limit reached (fs.inotify.max_user_watches)",
+    )
+    app.state.scheduler.watcher_status = lambda: error
+    body = (await client.get("/api/admin/scan", headers=admin.admin_headers)).json()
+    assert body["watcher"] == error.model_dump(mode="json")
+
+
+async def test_watcher_detail_with_a_lone_surrogate_still_returns_200(client, app, admin):
+    import os
+
+    from hometv.api.schemas import WatcherStatus
+
+    bad = os.fsdecode(b"\xff")
+    status = WatcherStatus(state="error", unavailable_roots=[], detail=f"OSError: {bad}")
+    app.state.scheduler.watcher_status = lambda: status
+    r = await client.get("/api/admin/scan", headers=admin.admin_headers)
+    assert r.status_code == 200
+    assert r.json()["watcher"]["detail"] == "OSError: \\udcff"
+
+
+async def test_undecodable_scope_never_reaches_the_api(client, app, admin):
+    import os
+
+    from hometv.changes.scope import ScanScope
+
+    valid = ScanScope("/media/MKV", "", False)
+    bad = ScanScope("/media/MKV", os.fsdecode(b"\xff"), True)
+    app.state.scheduler.request_scoped([valid, bad])
+    await app.state.scheduler.wait_idle()
+    r = await client.get("/api/admin/scan", headers=admin.admin_headers)
+    assert r.status_code == 200
+    assert r.json()["scope"] == [valid.to_json()]
+
+
+async def test_conflict_during_a_watch_run_carries_trigger_and_scope(
+    client, app, admin, monkeypatch
+):
+    from hometv.changes.scope import ScanScope
+
+    release = asyncio.Event()
+    started = asyncio.Event()
+
+    class SlowScanner:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        async def run(self, report, run_id):
+            started.set()
+            await release.wait()
+            return report
+
+    monkeypatch.setattr(scheduler_module, "Scanner", SlowScanner)
+    scope = ScanScope("/media/series", "Breaking Bad", True)
+    app.state.scheduler.request_scoped([scope])
+    await started.wait()
+    r = await client.post("/api/admin/scan", headers=admin.admin_headers)
+    assert _err(r) == (409, "scan_in_progress")
+    scan = r.json()["error"]["details"]["scan"]
+    assert scan["trigger"] == "watch"
+    assert scan["scope"] == [scope.to_json()]
+    assert "watcher" in scan
+    release.set()
+    await app.state.scheduler.wait_idle()
+
+
+async def test_openapi_exposes_scan_scope_and_watcher_status(client):
+    schemas = (await client.get("/api/openapi.json")).json()["components"]["schemas"]
+    assert {"ScanScopeOut", "WatcherStatus"} <= set(schemas)
+    assert "watch" in schemas["ScanStatus"]["properties"]["trigger"]["anyOf"][0]["enum"]
+
+
 # --- Unmatched -----------------------------------------------------------------------------------
 
 

@@ -27,6 +27,7 @@ import type {
   Profile,
   Progress,
   ScanCounts,
+  ScanScope,
   ScanStatus,
   SeasonDetail,
   SessionResponse,
@@ -40,6 +41,7 @@ import type {
   UnlockResponse,
   UnmatchedEntry,
   VideoInfo,
+  WatcherStatus,
 } from '@/api/types';
 import type { StoredSession } from '@/auth/session';
 
@@ -386,8 +388,18 @@ export function scanStatus(overrides: Partial<ScanStatus> = {}): ScanStatus {
     errors: [],
     error: null,
     unmatched_count: 4,
+    scope: null,
+    watcher: watcherStatus(),
     ...overrides,
   };
+}
+
+export function scanScope(overrides: Partial<ScanScope> = {}): ScanScope {
+  return { root: '/media/películas', path: '/media/películas/A', recursive: true, ...overrides };
+}
+
+export function watcherStatus(overrides: Partial<WatcherStatus> = {}): WatcherStatus {
+  return { state: 'active', unavailable_roots: [], detail: null, ...overrides };
 }
 
 export function idleScanStatus(overrides: Partial<ScanStatus> = {}): ScanStatus {

@@ -32,6 +32,9 @@ class ScanReport:
     total: int | None = None
     counts: dict[str, int] = field(default_factory=lambda: dict.fromkeys(COUNT_KEYS, 0))
     errors: list[str] = field(default_factory=list)
+    # Roots a walk could not reach (``root_unavailable`` or a ``walk_error`` of the root itself);
+    # not persisted: the scheduler hands it to the change watcher after every run.
+    unreachable_roots: set[str] = field(default_factory=set)
 
     def add_error(self, message: str) -> None:
         """Record an error string (deduplicated, at most ``MAX_ERRORS`` kept)."""

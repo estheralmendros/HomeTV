@@ -412,7 +412,16 @@ export type PlaybackResponse = PlaybackDirect | PlaybackHls | PlaybackUnsupporte
 // --- Admin ---------------------------------------------------------------------------------
 
 export type ScanState = 'idle' | 'running' | 'completed' | 'failed';
-export type ScanTrigger = 'startup' | 'scheduled' | 'manual' | 'libraries';
+export type ScanTrigger = 'startup' | 'scheduled' | 'manual' | 'libraries' | 'watch';
+export interface ScanScope { root: string; path: string; recursive: boolean }
+export type WatcherState = 'active' | 'starting' | 'disabled' | 'unavailable' | 'error';
+export interface WatcherStatus {
+  state: WatcherState;
+  /** Absolute server paths of roots that are not watched. */
+  unavailable_roots: string[];
+  /** English diagnostic (never main text). */
+  detail: string | null;
+}
 export type ScanPhase = 'walking' | 'probing' | 'enriching' | 'done';
 
 export interface ScanCounts {
@@ -441,6 +450,9 @@ export interface ScanStatus {
   errors: string[];
   error: string | null;
   unmatched_count: number;
+  /** Folders of a change-triggered run; null for full runs. */
+  scope: ScanScope[] | null;
+  watcher: WatcherStatus;
 }
 
 // Library folders (admin only; server paths never reach non-admin responses).
