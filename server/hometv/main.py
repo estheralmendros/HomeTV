@@ -17,6 +17,7 @@ from hometv.api import (
     routes_catalog,
     routes_films,
     routes_media,
+    routes_people,
     routes_profiles,
     routes_shows,
     routes_system,
@@ -39,6 +40,7 @@ from hometv.libraries import LibraryFolders
 from hometv.logging import AccessLogMiddleware, configure_logging
 from hometv.metadata.artwork import ArtworkCache
 from hometv.metadata.tmdb import TmdbClient
+from hometv.people import PersonService
 from hometv.playback.hls import HlsSessionManager
 from hometv.playback.keyframes import KeyframeService
 from hometv.playback.subtitles import SubtitleService
@@ -68,6 +70,7 @@ def create_app(
         tmdb = TmdbClient.from_settings(prepared)
         scheduler: Scheduler | None = None
         watcher: ChangeWatcher | None = None
+        people: PersonService | None = None
         hls = HlsSessionManager(prepared)
         keyframes = KeyframeService(db, prepared, session_running=hls.any_running)
         subtitles = SubtitleService(prepared)
@@ -87,6 +90,8 @@ def create_app(
             app.state.unlock_limiter = UnlockLimiter()
             app.state.tmdb_proxy = TmdbProxy(tmdb)
             app.state.artwork = ArtworkCache(prepared.artwork_dir, tmdb)
+            people = PersonService(db, tmdb)
+            app.state.people = people
             app.state.hls = hls
             app.state.keyframes = keyframes
             app.state.subtitles = subtitles
@@ -126,6 +131,11 @@ def create_app(
             await keyframes.stop()
             await hls.shutdown()
             await subtitles.shutdown()
+            if people is not None:
+                try:
+                    await people.stop()  # before tmdb.aclose(): no fetch on a closed client
+                except Exception:
+                    logger.exception("people_stop_failed")
             if tmdb is not None:
                 await tmdb.aclose()
             if hls_ready:
@@ -156,6 +166,7 @@ def create_app(
     app.include_router(routes_catalog.router)
     app.include_router(routes_films.router)
     app.include_router(routes_shows.router)
+    app.include_router(routes_people.router)
     app.include_router(routes_watch.router)
     app.include_router(routes_artwork.router)
     app.include_router(routes_media.router)

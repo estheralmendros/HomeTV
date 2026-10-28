@@ -5,6 +5,7 @@ import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 import java.time.Instant
 import java.time.LocalDate
+import java.time.Period
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -33,6 +34,18 @@ sealed interface EpisodeTitle {
     data class Numbered(val number: Int) : EpisodeTitle
 }
 
+/** The life span line's data (cast-appearances prd.md "Life span line"); the words come from `app` (`UiFormat`). */
+sealed interface LifeSpan {
+    /** "8 de octubre de 1992 (34 años)"; [age] null when the birthday is in the future. */
+    data class Living(val birth: String, val age: Int?) : LifeSpan
+
+    /** "8 de octubre de 1932 – 3 de mayo de 2010 (77 años)"; [age] null when death < birth. */
+    data class Deceased(val birth: String, val death: String, val age: Int?) : LifeSpan
+
+    /** "– 3 de mayo de 2010" (no birthday). */
+    data class DeathOnly(val death: String) : LifeSpan
+}
+
 /**
  * es-ES formatting with one constant locale (prd3 §UI Language rule 5): never `Locale.getDefault()`,
  * so an English TV still shows "4 oct 2005", "1.234" and "7,8". Returns numbers and dates (data)
@@ -43,6 +56,7 @@ object Format {
     val LOCALE: Locale = Locale.forLanguageTag("es-ES")
 
     private val dateFormatter: DateTimeFormatter = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(LOCALE)
+    private val longDateFormatter: DateTimeFormatter = DateTimeFormatter.ofLocalizedDate(FormatStyle.LONG).withLocale(LOCALE)
     private val symbols = DecimalFormatSymbols.getInstance(LOCALE)
     private val countFormat = ThreadLocal.withInitial { DecimalFormat("#,##0", symbols).apply { isGroupingUsed = true } }
     private val ratingFormat = ThreadLocal.withInitial { DecimalFormat("0.0", symbols).apply { roundingMode = RoundingMode.HALF_UP } }
@@ -98,4 +112,29 @@ object Format {
         channels <= 2 -> "$channels.0"
         else -> "${channels - 1}.1"
     }
+
+    /** "8 de octubre de 1992" (es-ES long date, CLDR). */
+    fun longDate(date: LocalDate): String = longDateFormatter.format(date)
+
+    /** Completed years from [birth] to [on] (a 29 February birthday turns a year older on 1 March); [on] before [birth] → null. */
+    fun age(birth: LocalDate, on: LocalDate): Int? = if (on.isBefore(birth)) null else Period.between(birth, on).years
+
+    /**
+     * The life span of a person from the API's `YYYY-MM-DD` strings; a value that is not a valid
+     * calendar date counts as unknown. Null when neither date is known. [today] is the device's local date.
+     */
+    fun lifeSpan(birthday: String?, deathday: String?, today: LocalDate): LifeSpan? {
+        val birth = calendarDate(birthday)
+        val death = calendarDate(deathday)
+        return when {
+            birth != null && death != null -> LifeSpan.Deceased(longDate(birth), longDate(death), age(birth, death))
+            birth != null -> LifeSpan.Living(longDate(birth), age(birth, today))
+            death != null -> LifeSpan.DeathOnly(longDate(death))
+            else -> null
+        }
+    }
+
+    /** A strict `YYYY-MM-DD` calendar date ("2021-02-30" → null), else null. */
+    private fun calendarDate(iso: String?): LocalDate? =
+        iso?.takeIf { dateOnly.matches(it) }?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
 }

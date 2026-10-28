@@ -25,7 +25,7 @@ class StringsCatalogTest {
             "Reproducir", "Reanudar desde %1\$s", "Ver desde el principio", "Reproducir ahora", "Parte %1\$s",
             "Marcar como visto", "Audio y subtítulos", "Desactivados", "Forzados", "Externo", "Predeterminado", "(convertido)",
             "Probar otra versión", "Preparando el vídeo…", "Reintentar", "Cancelar", "Volver", "¿Quién está viendo?", "Servidor",
-            "Cambiar servidor", "Desconocido",
+            "Cambiar servidor", "Desconocido", "En tu catálogo", "Biografía",
         )
         val missing = glossary.filterNot { it in all }
         assertEquals(emptyList<String>(), missing)
@@ -79,6 +79,16 @@ class StringsCatalogTest {
             "countdown_starts_in|Empieza en %1\$s",
             "part_prompt|Continuando con la parte %1\$s",
             "setup_error_cleartext|Usa la dirección https:// que muestra Tailscale (…ts.net).",
+            "person_in_catalog|En tu catálogo",
+            "person_biography|Biografía",
+            "person_as_character|como %1\$s",
+            "person_life_living|%1\$s (%2\$s)",
+            "person_life_deceased|%1\$s – %2\$s (%3\$s)",
+            "person_life_deceased_no_age|%1\$s – %2\$s",
+            "person_life_death_only|– %1\$s",
+            "person_empty|No aparece en ningún título disponible de tu catálogo.",
+            "person_incomplete|Puede que falten títulos: no se ha podido consultar TMDB.",
+            "person_gone|Esta persona no está disponible.",
         ],
     )
     fun `catalog text`(name: String, expected: String) {
@@ -108,5 +118,7 @@ class StringsCatalogTest {
         assertEquals("22 episodios", catalog.plural(com.hometv.tv.R.plurals.episode_count, 22, "22"))
         assertEquals("150 sin ver", catalog.plural(com.hometv.tv.R.plurals.unwatched_count, 150, "150"))
         assertEquals("quedan unos 3 min", catalog.plural(com.hometv.tv.R.plurals.minutes_left, 3, "3"))
+        assertEquals("1 año", catalog.plural(com.hometv.tv.R.plurals.person_age, 1, "1"))
+        assertEquals("30 años", catalog.plural(com.hometv.tv.R.plurals.person_age, 30, "30"))
     }
 }

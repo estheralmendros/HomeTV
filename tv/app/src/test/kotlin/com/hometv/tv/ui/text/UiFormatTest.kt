@@ -112,4 +112,21 @@ class UiFormatTest {
         assertEquals(null, UiFormat.showStatusRes("Rumored"))
         assertEquals(null, UiFormat.showStatusRes(null))
     }
+
+    /** cast-appearances prd.md "Life span line" and "Appearance subtitle", as the Person screen shows them. */
+    @Test
+    fun `person life span lines and the appearance subtitle`() {
+        val today = java.time.LocalDate.of(2026, 10, 27)
+        fun line(birthday: String?, deathday: String?) =
+            com.hometv.tv.ui.person.PersonViewModel.lifeSpanText(com.hometv.tv.core.util.Format.lifeSpan(birthday, deathday, today))?.let(fmt::text)
+        assertEquals("27 de diciembre de 1995 (30 años)", line("1995-12-27", null))
+        assertEquals("1 de octubre de 2025 (1 año)", line("2025-10-01", null))
+        assertEquals("8 de octubre de 1932 – 3 de mayo de 2010 (77 años)", line("1932-10-08", "2010-05-03"))
+        assertEquals("3 de mayo de 2010 – 8 de octubre de 1932", line("2010-05-03", "1932-10-08"))
+        assertEquals("– 3 de mayo de 2010", line(null, "2010-05-03"))
+        assertEquals("1 de enero de 2027", line("2027-01-01", null))
+        assertEquals(null, line(null, null))
+        val dune = com.hometv.tv.core.api.FilmSummary(12, "Dune")
+        assertEquals("como Paul Atreides", com.hometv.tv.ui.person.PersonViewModel.subtitle(com.hometv.tv.core.api.PersonAppearance("film", dune, "Paul Atreides"))?.let(fmt::text))
+    }
 }

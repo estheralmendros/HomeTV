@@ -198,6 +198,31 @@ class RepositoriesTest {
     }
 
     @Test
+    fun `person calls GET api people id and drops appearances of unknown types`() = runTest {
+        t.route("GET", "/api/people/3") {
+            t.json(
+                """{"person_id": 3, "name": "Timothée Chalamet", "credits_complete": true, "appearances": [
+                    {"kind": "film", "item": {"type": "film", "id": 12, "title": "Dune"}, "character": "Paul Atreides"},
+                    {"kind": "game", "item": {"type": "game", "id": 1}},
+                    {"kind": "show", "item": {"type": "show", "id": 7, "title": "Homeland"}},
+                    {"kind": "episode", "item": {"type": "episode", "id": 345, "show_id": 7, "show_title": "Homeland", "season_number": 1, "episode_number": 1}}
+                ]}""",
+            )
+        }
+        val person = catalog.person(3)
+        assertEquals("Timothée Chalamet", person.name)
+        assertEquals(listOf("film:12", "show:7"), person.appearances.map { it.item.key })
+        assertEquals(listOf("GET /api/people/3"), t.paths())
+        assertEquals("Bearer old", t.requests.single().getHeader("Authorization"))
+    }
+
+    @Test
+    fun `an unknown person is a 404 not_found`() = runTest {
+        t.route("GET", "/api/people/999") { t.error(404, "not_found") }
+        assertEquals("not_found", assertThrows<ApiException.Http> { catalog.person(999) }.code)
+    }
+
+    @Test
     fun `a removed title is a 404 not_found`() = runTest {
         t.route("GET", "/api/films/13") { t.error(404, "not_found") }
         assertEquals("not_found", assertThrows<ApiException.Http> { catalog.film(13) }.code)

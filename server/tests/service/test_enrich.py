@@ -159,6 +159,7 @@ async def test_film_enrichment_stores_details_genres_cast_and_artwork(
     for size in ("w780", "w1280"):
         assert (art / size / "jYEW5xZkZk2WTrdbMGAPFuBqbDc.jpg").exists()
     assert not (art / "w185").exists()  # profiles are lazy
+    assert not (art / "h632").exists()
 
 
 async def test_cast_keeps_one_credit_per_person_first_by_billing_order(

@@ -24,6 +24,15 @@
   font-size: var(--font-size-sm);
 }
 
+.subtitle {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
 .progress {
   position: absolute;
   left: var(--space-2);

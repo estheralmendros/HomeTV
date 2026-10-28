@@ -33,6 +33,14 @@ async def test_miss_downloads_once_then_serves_from_disk(client, app, images, us
     assert (settings.artwork_dir / "w342" / "abc123.jpg").read_bytes() == b"JPEGDATA"
 
 
+async def test_h632_profile_size_is_served(client, images, user):
+    route = images.get(f"{TMDB_IMAGE_BASE_URL}/h632/tc.jpg").respond(content=b"JPEG")
+    response = await client.get("/api/artwork/h632/tc.jpg", headers=user.headers)
+    assert response.status_code == 200
+    assert response.content == b"JPEG"
+    assert route.call_count == 1
+
+
 async def test_svg_content_type(client, images, user):
     images.get(f"{TMDB_IMAGE_BASE_URL}/w185/logo.svg").respond(content=b"<svg/>")
     response = await client.get(f"/api/artwork/w185/logo.svg?token={user.token}")

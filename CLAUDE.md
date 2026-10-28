@@ -52,16 +52,27 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     health facts (`_fact_seq`) + instance-bound `HealthAction`s drained under the sync lock,
     `note_unreachable`, `poll_once`, `wait_idle`; seams `backend_factory/mountinfo/platform/clock/
     stat_size/stat_identity/auto_poll/poll_retry_seconds`; `stop()` logs, never re-raises, task failures).
-  - `hometv/metadata/`: `tmdb.py` (`TmdbClient`: limiter, retries, language fallback),
-    `matching.py` (pure `choose_match`), `enrich.py` (`Enricher`, `merge_items`, admin
-    `match_item`/`resolve_unmatched`), `artwork.py` (`ArtworkCache`, `image()` Image object).
+  - `hometv/metadata/`: `tmdb.py` (`TmdbClient`: limiter, retries, language fallback;
+    `person_details` = `/person/{id}` + `combined_credits`, biography fallback without credits,
+    `BIOGRAPHY_LANGUAGE_KEY`), `matching.py` (pure `choose_match`), `enrich.py` (`Enricher`,
+    `merge_items`, admin `match_item`/`resolve_unmatched`), `artwork.py` (`ArtworkCache`,
+    `image()` Image object; profile = `w185`/`h632`, both lazy).
   - `hometv/admin.py`: admin services (`list_unmatched`, `unmatched_count`, `TmdbProxy`).
   - `hometv/profiles.py`: PIN hashing, `TokenService` (profile/admin tokens, injectable
     `clock`), `UnlockLimiter`, pure `plan_pin_change`, profile CRUD (`bootstrap`,
     `create_profile`, `update_profile`, `delete_profile`).
   - `hometv/watch.py`: pure rules (90 %, last part, in-progress, `next_up`) +
     `report_progress` / `mark_watched`. `hometv/catalog.py`: batched list/detail/home/search
-    queries returning the pydantic shapes (`media_file_out`, `media_label`).
+    queries returning the pydantic shapes (`media_file_out`, `media_label`, `not_found` 404 helper;
+    `person_detail`: TMDB credits (`person_credit`, `library_id` subquery so SQLite seeks
+    `uq_*_library_id_tmdb_id`) ∪ local `cast_credit`, matched + visible only, ≤ 7 queries).
+  - `hometv/people.py` (actor screen): pure `normalize_credits`/`normalize_person`/`is_fresh`
+    (`PERSON_TTL` 30 d, `PERSON_FETCH_WAIT_SECONDS` 5); `PersonService` (`app.state.people`:
+    `detail()` single-flight fetch task per person in `_inflight`, never-fetched waits
+    `wait_seconds`, stale answers at once + background refresh, failure leaves the DB untouched;
+    `_apply` = one write (columns + multi-row credit insert + `details_fetched_at`); `wait_idle`
+    (tests, awaits only unfinished tasks), `stop()` (sets `_stopped`: later requests start no fetch,
+    answered from the DB like the no-TMDB path); seams `now/wait_seconds/ttl`).
   - `hometv/scheduler.py`: `Scheduler` (single-flight scan -> enrich; `trigger(t, before=)`
     (`before` runs in a thread under the lock, before the run row), `ensure_idle`, `status`;
     `folders=` forwarded to every `Scanner`; `request_scoped(scopes)` -> pending queue + one kick
@@ -83,21 +94,24 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     non-`/api` GET/HEAD, appended last by `install_spa`; `/assets/*` immutable, stale asset ->
     plain 404, else `index.html` no-cache; "Web UI not built" placeholder without a dist).
   - `hometv/main.py`: `create_app(settings, *, watch_backend_factory=None)` factory + lifespan
-    (sets `app.state.db/settings/libraries/tmdb/tmdb_proxy/artwork/scheduler/watcher/keyframes/hls/
-    subtitles`); order: `prepare_runtime` -> migrations -> `libraries.seed_once` ->
+    (sets `app.state.db/settings/libraries/tmdb/tmdb_proxy/artwork/people/scheduler/watcher/
+    keyframes/hls/subtitles`); order: `prepare_runtime` -> migrations -> `libraries.seed_once` ->
     `check_library_folders` -> `prepare_hls_dir` (sets `hls_ready`; the `finally` wipes the HLS
     dir only when set) -> services -> `Scheduler` -> `ChangeWatcher` (hooks `on_full_run`/
     `on_run_finished`/`watcher_status` bound) -> `scheduler.start()` -> `watcher.start()` (never
-    awaits the arming walk); the `finally` stops the watcher before the scheduler; `run()`
+    awaits the arming walk); the `finally` stops the watcher before the scheduler and
+    `people.stop()` before `tmdb.aclose()`; `run()`
     single-worker entry (console script `hometv`, the container CMD).
   - `hometv/api/`: `errors.py` (envelope), `deps.py` (auth deps), `schemas.py`,
     `list_params.py` (films/shows query params), `routes_*.py` (system, profiles, catalog,
-    films, shows, watch, artwork, admin, media).
+    films, shows, people (async `GET /api/people/{id}`, `PeopleDep`), watch, artwork, admin,
+    media).
   - `tests/`: `unit/` (pure), `service/` (tmp dirs + SQLite, stubs), `api/` (in-process
     httpx), `integration/` (real ffmpeg/ffprobe, marker `integration`; `test_inotify_backend.py`
     also marked `inotify`: no ffmpeg needed, skipped off Linux), `perf/` (marker `perf`, incl.
-    `test_scoped_scan_perf.py`), `fixtures/`, `factories.py` (`add_film`/`add_show`/
-    `add_file(root=, rel=, library=)`/`add_progress`),
+    `test_scoped_scan_perf.py`, `test_people_perf.py`), `fixtures/`, `factories.py` (`add_film`/
+    `add_show`/`add_file(root=, rel=, library=)`/`add_progress`/`add_person`/`add_cast_credit`/
+    `add_person_credit`),
     `stubs.py` (`FakeProc`, `Spawner`, `ScaledClock`, `wait_until`, `FakeWatchBackend` (`emit`,
     `calls`/`ops`, `fail_with`, `alive`, `gate(op)`/`open_gate`), `BackendFactory`),
     `fmp4_builder.py` (synthetic fMP4), `hls_stub.py` (argv-driven stub ffmpeg for API tests).
@@ -108,7 +122,9 @@ is a contract shared by the web and TV clients: change it deliberately and updat
   - `src/strings.es.ts`: `S`, the only UI string catalog (es-ES; functions for values/plurals).
   - `src/api/`: `client.ts` (`apiFetch`, 401 hook, `X-Admin-Token`), `errors.ts` (`ApiError`,
     `errorMessage`), `types.ts` (REST shapes, snake_case), one module per area,
-    `queryKeys.ts` (`queryKeys`, `staleTimes`, `invalidateAfter(event)`), `queries.ts`.
+    `queryKeys.ts` (`queryKeys`, `staleTimes`, `invalidateAfter(event)`; `['person', id]` /
+    `personAll()` is invalidated by `playerExit`/`watchedFilm`/`watchedEpisodes`/`catalogChanged`),
+    `queries.ts`, `people.ts` (`getPerson`).
   - `src/auth/`: per-tab session (`AuthProvider`, `session.ts`), `BootGate`/`RequireProfile`/
     `RequireAdmin`, in-memory `adminUnlock`, `useAdminAction` (keypad + one retry on
     `admin_locked`), `AdminPinModal`.
@@ -120,15 +136,26 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     lock-screen play/pause/seek handlers + metadata, feature-detected); `PlayerRoute` is the stable
     shell (fullscreen root + the single `<video>`, `PlayerShellContext`), `PlayerPage` is keyed by
     `pathname + ?file=` and holds all per-playback state.
-  - `src/features/<screen>/` (setup, profiles, home, library, search, film, show, admin, about),
+  - `src/features/<screen>/` (setup, profiles, home, library, search, film, show, person, admin, about),
+    `features/person/`: `PersonPage` (`/people/:id`, eager; `NotAvailable` (also a 404 on refetch)/skeleton/
+    `ErrorState` (only without cached data)/keyed `PersonView`: header photo `Artwork kind="poster"` + initials placeholder, name, life span,
+    place; "Biografía"; "En tu catálogo" = `PosterGrid` + `subtitleFor`, empty text, `credits_complete`
+    note), `Biography` (4-line clamp, "Leer más/menos" only when `useOverflows`), pure `lifeSpan`
+    (`formatLongDate`/`ageOn`/`todayIso`/`lifeSpanText`, `Date.UTC` round-trip validation) and
+    `appearanceSubtitle`,
     `features/admin/`: `AdminLayout` (tabs Escaneo/Bibliotecas/Sin identificar/Perfiles, the one
     scan poll: `scanRefetchInterval` while `running` or `watcher.state === 'starting'`), `ScanPage`
     (card + "Carpetas:" scope line + "Detección de cambios" watcher lines), `scanSummary`
     (`scanFinishedToast`, `isScanStatus`, pure `scopeLabel`), `LibrariesPage` (Bibliotecas: pure `libraryDraft` reducer, save = plan → server-built
     confirmation → PUT; results on the page), `AddFolderDialog`, `FolderBrowser` (keeps the last good
     listing as the way back), `adminQueries` (`useLibrariesQuery`, `useBrowseQuery`),
-    `src/components/` (shared UI), `src/lib/` (`format`, `languages`, `chunkReload`,
-    `RouteErrorBoundary`, `lazyRoute`, hooks), `router.tsx` (lazy `/admin/*` and `/watch/*`).
+    `src/components/` (shared UI; `Artwork` `largeAt2x` (false = `small` only) and `placeholder`
+    (null/failed image); `PosterCard`/`SummaryCard` `subtitle` (also in the link name via
+    `S.cards.withSubtitle`), `PosterGrid` `subtitleFor`; `CastRow` items are `<Link>`s to
+    `/people/{person_id}` named "name, character", `small` only, initials circle), `src/lib/`
+    (`format`, `languages`, `chunkReload`, `RouteErrorBoundary`, `lazyRoute`, hooks incl.
+    `useOverflows(ref, active, content)` (clamped-text overflow, re-measured on `content` change and
+    by `ResizeObserver` when present, keeps its value while inactive)), `router.tsx` (lazy `/admin/*` and `/watch/*`).
   - `tests/`: `setup.ts` (MSW `onUnhandledRequest: 'error'`, media/TextTrack stubs, resets),
     `fixtures.ts` (`f.*` factories), `msw/handlers.ts` (`handlers`, `apiError`),
     `msw/server.ts` (`recordRequests()`), `renderWithProviders.tsx`, `player.tsx`, `fakeHls.ts`,
@@ -153,13 +180,15 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     `AuthInterceptor` Bearer for the server host only), `data/` (`SessionStore` StateFlow +
     `InMemorySessionStore`, `SessionGuard` single-flight `renew` → Renewed|ProfileGone|Unreachable,
     `withRenewal(Origin.Foreground|Background)`, repositories, `AppEvents`, `NextEpisodeResolver`
-    (D12), `ProfileRepository.verifyAdminPin` → `PinCheck` (the only PIN on the TV: server change; an
+    (D12), `CatalogRepository.person(id)` (`GET /api/people/{id}`, drops non film/show appearances),
+    `ProfileRepository.verifyAdminPin` → `PinCheck` (the only PIN on the TV: server change; an
     expired token renews once, `invalid_pin` never renews), `PlaybackRepository` (`preparing` loop as a `Flow<PlaybackProgress>`, POSTs in
     `appScope`; `subtitleLoop`, keep-alive, DELETE)), `playback/` (pure `ClientCapsBuilder`,
     `VersionSelector` (D10–D13), `TrackRules`, `TrackCheck`, `PlaybackErrorMapper`,
     `PlaybackPlanner`, `SeekAccumulator`, `ProgressReporter`, the `PlayerController` interface (its `Listener.onRemote*` carry
     media-session commands, no Media3 types in `core`)),
-    `util/` (`ServerUrl`, `Format` (constant es-ES), `LanguageNames`).
+    `util/` (`ServerUrl`, `Format` (constant es-ES; `longDate`/`age`/`lifeSpan(birthday, deathday,
+    today)` → structured `LifeSpan` Living|Deceased|DeathOnly, invalid dates = unknown), `LanguageNames`).
     `src/testFixtures`: `FakeHomeTvApi`, `TestServer` (MockWebServer routing), `F` media files.
   - `app/` (`com.hometv.tv`): `MainActivity` (offers every key to `KeyDispatch` before Compose
     focus; screens register with `KeyEventInterceptor { event -> Boolean }`), `di/AppContainer`
@@ -168,22 +197,35 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     shared Coil cache base for the per-server `ImageLoader`s, one factory per ViewModel), `data/`
     (`DataStoreSessionStore`, `HomeCache` (write IOExceptions are logged and swallowed),
     `HomeRefresh`, `DetailRefresh` (generation counter marked by `AppNavigator.play`; Film/Show
-    detail `onVisible()` on `ON_RESUME` refetches in place), `PlayerLaunches`),
+    detail and Person `onVisible()` on `ON_RESUME` refetch in place), `PlayerLaunches`),
     `playback/` (`AndroidCodecInventory`, `PlayerFactory` (`AUDIO_ATTRIBUTES` shared with the
     passthrough query), `HomeTvLoadErrorHandlingPolicy`, `MediaItemBuilder`, `SubtitleFileCache`
     (`get` answers from an in-memory index, no disk I/O), `ExoPlayerController` (the ExoPlayer is
     private; `attach/detach(PlayerView)`; owns a Media3 `MediaSession` over `RemoteCommandPlayer`
     while attached), `ExoTrackMapper`), `ui/`
-    (`HomeTvRoot` NavHost, `navigation/` (`Route`, `AppNavigator`), `text/` (`UiText`,
-    `UiFormat`, `StringResolver`), `components/`, one package per screen; `player/`
+    (`HomeTvRoot` NavHost, `navigation/` (`Route` incl. `Route.Person(id)`, `NavRequest.Person`,
+    `AppNavigator.openPerson`), `text/` (`UiText`, `UiFormat`, `StringResolver`), `components/`
+    (`PosterCard(…, subtitle, subtitleTestTag)` one muted line, `TextDialog` (scrollable read-only
+    text, Up/Down scroll ¾ viewport, Back closes), `Artwork(placeholder=)`), `common/ScreenError`
+    (`PersonGone` → "Esta persona no está disponible." [Volver], no `AppEvent`), theme
+    `HomeTvDimens.WIDE_FOCUSED_SCALE` (1.02, wide blocks), one package per screen; `detail/` Film
+    detail cast OK → `onCastSelected` → `NavRequest.Person`, `CastFocus(key, index)` restores the
+    card on Back (`castKey` in `DetailModels`; `onButton` sets `focus = id` and clears `castFocus`
+    before navigating); `person/` (`PersonViewModel`: `PersonUiState`, `AppearanceCard`,
+    `PersonFocus` Bio|Card(key)|None changed only on OK / bio close / gone target, never per D-pad
+    move; `PersonScreen`: 960×540 dp fit (1-line name, 3-line bio block, 1-line subtitle, note in the
+    header), lazy rows use `focusRestorer(<remembered card>)`; Film cast and Person rows restore
+    through `ui/components/FocusRestorer.kt` `LazyListState.focusItem` + `rememberFocusedItemKey`); `player/`
     (`PlayerViewModel` session state machine, `NextEpisodeResolution` (next-episode state + retry),
     `HlsSessionOwner` (HLS DELETEs and row-33 orphans in `appScope`), `PlayerScreen` with Media3 `PlayerView`, overlay, track dialog, countdown, error
     screen)). `res/values/strings.xml` is the only catalog; the APK keeps only `es` resources
     (`localeFilters`).
   - Tests: `app/src/test` (ViewModel/glue tests, JUnit 5; `ui/player/PlayerSessionStateTest` covers
     the §8 session table with `FakePlayerController`), `app/src/sharedTest` (Compose focus/navigation
-    tests on Robolectric via `UiTestBase` + `testContainer` + `ScriptedApi`; also compiled into
-    `androidTest`).
+    tests on Robolectric via `UiTestBase` (`assertFullyVisible`/`assertInsideSafeArea`, overridable
+    `clock` passed to `testContainer`, e.g. a fixed date for age texts) +
+    `testContainer` + `ScriptedApi` (`onPerson` seam, 404 by default; `PersonFocusTest`); also
+    compiled into `androidTest`).
 
 ## Commands
 

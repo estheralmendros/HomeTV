@@ -6,6 +6,7 @@ import { adminUnlock } from '@/auth/adminUnlock';
 import * as admin from './admin';
 import * as catalog from './catalog';
 import { setTokenGetter } from './client';
+import * as people from './people';
 import * as playback from './playback';
 import * as profiles from './profiles';
 import * as system from './system';
@@ -53,6 +54,7 @@ describe('endpoint modules', () => {
     ['getEpisode', () => catalog.getEpisode(345), { path: '/api/episodes/345' }],
     ['getGenres', () => catalog.getGenres('shows'), { path: '/api/genres', query: { type: 'shows' } }],
     ['search', () => catalog.search('dune'), { path: '/api/search', query: { q: 'dune', limit: '20' } }],
+    ['getPerson', () => people.getPerson(3), { method: 'GET', path: '/api/people/3', query: {}, bearer: 'Bearer tok' }],
     ['putProgress', () => watch.putProgress({ item_type: 'film', item_id: 12, media_file_id: 91, position_seconds: 10, duration_seconds: 100 }),
       { method: 'PUT', path: '/api/progress', body: { item_type: 'film', item_id: 12, media_file_id: 91, position_seconds: 10, duration_seconds: 100 } }],
     ['setWatched', () => watch.setWatched({ target: 'season', id: 70, watched: true }),

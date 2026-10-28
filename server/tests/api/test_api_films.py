@@ -372,7 +372,7 @@ async def test_film_detail_shape(client, db, user):
             "character": "Paul Atreides",
             "profile_image": {
                 "small": "/api/artwork/w185/tc.jpg",
-                "large": "/api/artwork/w185/tc.jpg",
+                "large": "/api/artwork/h632/tc.jpg",
             },
         },
     ]

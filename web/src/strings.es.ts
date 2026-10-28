@@ -456,6 +456,8 @@ export const S = {
     noPlayableFile: 'No hay ningún archivo reproducible',
     version: 'Versión',
     cast: 'Reparto',
+    /** "Reparto" link name: "Timothée Chalamet, Paul Atreides" (actor, character). */
+    castMemberLabel: (name: string, character: string) => `${name}, ${character}`,
     fixMatch: 'Corregir identificación',
     notFound:
       'Esta película no está disponible. Puede que se haya eliminado o que su archivo esté en un disco desconectado.',
@@ -634,6 +636,22 @@ export const S = {
     },
   },
 
+  /** Actor screen (/people/:id). Dates are long es-ES; "–" is U+2013 with spaces. */
+  person: {
+    biography: 'Biografía',
+    readMore: 'Leer más',
+    readLess: 'Leer menos',
+    inCatalog: 'En tu catálogo',
+    asCharacter: (character: string) => `como ${character}`,
+    lifeLiving: (birth: string, age: number) => `${birth} (${plural(age, 'año', 'años')})`,
+    lifeDeceased: (birth: string, death: string, age: number) => `${birth} – ${death} (${plural(age, 'año', 'años')})`,
+    lifeDeceasedNoAge: (birth: string, death: string) => `${birth} – ${death}`,
+    deathOnly: (death: string) => `– ${death}`,
+    empty: 'No aparece en ningún título disponible de tu catálogo.',
+    incomplete: 'Puede que falten títulos: no se ha podido consultar TMDB.',
+    notFound: 'Esta persona no está disponible.',
+  },
+
   row: {
     previous: 'Anterior',
     next: 'Siguiente',
@@ -641,6 +659,8 @@ export const S = {
 
   cards: {
     unmatchedTag: 'Sin identificar',
+    /** Card link name with its subtitle: "Dune (2021), como Paul Atreides". */
+    withSubtitle: (label: string, subtitle: string) => `${label}, ${subtitle}`,
   },
 
   notFound: {

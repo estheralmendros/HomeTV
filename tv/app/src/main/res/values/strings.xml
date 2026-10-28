@@ -110,6 +110,22 @@
     <string name="version_label_unknown">Desconocido</string>
     <string name="item_gone">Este título ya no está disponible.</string>
 
+    <!-- Person (actor screen, cast-appearances prd3) -->
+    <string name="person_in_catalog">En tu catálogo</string>
+    <string name="person_biography">Biografía</string>
+    <string name="person_as_character">como %1$s</string>
+    <string name="person_life_living">%1$s (%2$s)</string>
+    <string name="person_life_deceased">%1$s – %2$s (%3$s)</string>
+    <string name="person_life_deceased_no_age">%1$s – %2$s</string>
+    <string name="person_life_death_only">– %1$s</string>
+    <string name="person_empty">No aparece en ningún título disponible de tu catálogo.</string>
+    <string name="person_incomplete">Puede que falten títulos: no se ha podido consultar TMDB.</string>
+    <string name="person_gone">Esta persona no está disponible.</string>
+    <plurals name="person_age">
+        <item quantity="one">%1$s año</item>
+        <item quantity="other">%1$s años</item>
+    </plurals>
+
     <!-- Structured values (core Format / LanguageNames / TrackRules → ui/text/UiFormat.kt) -->
     <string name="runtime_h_min">%1$s h %2$s min</string>
     <string name="runtime_h">%1$s h</string>

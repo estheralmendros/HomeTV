@@ -1,0 +1,26 @@
+.bio {
+  margin: 0;
+  white-space: pre-line;
+  /* A long URL or token wraps instead of widening the page (360 px). */
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Unstyled link-like button (ShowDetailPage .overview pattern); focus: the global ring. */
+.toggle {
+  margin-top: var(--space-2);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-text);
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}

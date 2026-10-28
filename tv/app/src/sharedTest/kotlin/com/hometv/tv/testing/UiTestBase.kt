@@ -29,12 +29,15 @@ import com.hometv.tv.core.data.Session
 import com.hometv.tv.core.playback.F
 import com.hometv.tv.di.AppContainer
 import com.hometv.tv.ui.HomeTvRoot
+import com.hometv.tv.ui.theme.HomeTvDimens
+import java.time.Clock
 import java.time.Instant
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import org.junit.After
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 
 /**
@@ -58,8 +61,11 @@ abstract class UiTestBase {
 
     protected val signedIn = Session(serverUrl = TEST_SERVER, profileId = 5, token = "tok", expiresAt = Instant.parse("2030-01-01T00:00:00Z"))
 
+    /** The container's clock (session renewal, ages on the Person screen); tests may fix it. */
+    protected open val clock: Clock = Clock.systemUTC()
+
     protected fun launch(session: Session = signedIn) {
-        container = testContainer(api, scope, session, cacheIo = Dispatchers.Unconfined, player = { player })
+        container = testContainer(api, scope, session, clock = clock, cacheIo = Dispatchers.Unconfined, player = { player })
         rule.setContent { HomeTvRoot(container, onExit = { exited = true }, keyDispatch = keyDispatch) }
         settle()
     }
@@ -116,6 +122,27 @@ abstract class UiTestBase {
             .joinToString(" < ")
             .ifEmpty { "(untagged ${node.config})" }
     }
+
+    /**
+     * The node [tag] lies entirely on screen: inside the screen width, its top at or below [minTop] dp
+     * and its bottom above the 27 dp bottom safe area.
+     */
+    protected fun assertFullyVisible(tag: String, minTop: Float = 0f) {
+        val node = node(tag).fetchSemanticsNode()
+        val density = node.layoutInfo.density.density
+        val root = rule.onAllNodes(isRoot()).fetchSemanticsNodes().first().size
+        val left = node.positionInRoot.x / density
+        val top = node.positionInRoot.y / density
+        val right = left + node.size.width / density
+        val bottom = top + node.size.height / density
+        val safeBottom = root.height / density - HomeTvDimens.SafeVertical.value
+        assertTrue("'$tag' spans x $left..$right dp, outside the ${root.width / density} dp screen", left >= 0f && right <= root.width / density)
+        assertTrue("'$tag' starts at $top dp, above $minTop dp", top >= minTop - 0.5f)
+        assertTrue("'$tag' ends at $bottom dp, below the safe area ($safeBottom dp)", bottom <= safeBottom + 0.5f)
+    }
+
+    /** [assertFullyVisible] with the top safe area too (top ≥ 27 dp). */
+    protected fun assertInsideSafeArea(tag: String) = assertFullyVisible(tag, minTop = HomeTvDimens.SafeVertical.value)
 
     @After
     fun cancelScope() = scope.cancel()

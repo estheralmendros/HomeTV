@@ -321,6 +321,30 @@ data class EpisodeDetail(
     val type: String = "episode",
 )
 
+/** One title of an actor's "En tu catálogo" row (`GET /api/people/{id}`): `kind` = `film` | `show`. */
+@Serializable
+data class PersonAppearance(
+    val kind: String,
+    /** Polymorphic on `type` ([SummarySerializer]); `CatalogRepository.person` drops other types. */
+    val item: Summary,
+    val character: String? = null,
+)
+
+/** `GET /api/people/{id}` (cast-appearances prd.md): dates are `YYYY-MM-DD`; `credits_complete` false = TMDB not consulted. */
+@Serializable
+data class PersonDetail(
+    val person_id: Long,
+    val name: String,
+    val profile_image: Image? = null,
+    val biography: String? = null,
+    val biography_language: String? = null,
+    val birthday: String? = null,
+    val deathday: String? = null,
+    val place_of_birth: String? = null,
+    val credits_complete: Boolean = false,
+    val appearances: List<PersonAppearance> = emptyList(),
+)
+
 @Serializable
 data class SearchResponse(val films: List<FilmSummary> = emptyList(), val shows: List<ShowSummary> = emptyList())
 

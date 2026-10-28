@@ -575,6 +575,29 @@ class CastMember(BaseModel):
     profile_image: Image | None
 
 
+class PersonAppearance(BaseModel):
+    """A catalog item of the actor screen; ``kind`` always equals ``item.type``."""
+
+    kind: Literal["film", "show"]
+    item: Annotated[FilmSummary | ShowSummary, Field(discriminator="type")]
+    character: str | None
+
+
+class PersonDetail(BaseModel):
+    """``GET /api/people/{person_id}``: the actor and their visible, matched catalog titles."""
+
+    person_id: int
+    name: str
+    profile_image: Image | None
+    biography: str | None
+    biography_language: str | None
+    birthday: date | None
+    deathday: date | None
+    place_of_birth: str | None
+    credits_complete: bool
+    appearances: list[PersonAppearance]
+
+
 class FilmDetail(BaseModel):
     type: Literal["film"] = "film"
     id: int

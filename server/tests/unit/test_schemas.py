@@ -83,3 +83,69 @@ def test_watcher_status_detail_with_a_lone_surrogate_serializes():
     assert "inotify reader stopped: OSError: \\\\udcff" in text
     assert status.detail == "inotify reader stopped: OSError: \\udcff"
     assert status.unavailable_roots == ("/media/\\udcff",)
+
+
+# --- Actor screen: PersonDetail / PersonAppearance (FR-11) -----------------------------------
+
+
+def _summary(type_: str) -> dict:
+    base = {
+        "type": type_,
+        "id": 1,
+        "title": "T",
+        "year": 2021,
+        "poster": None,
+        "backdrop": None,
+        "overview": None,
+        "match_status": "matched",
+        "added_at": "2026-10-20T10:00:00Z",
+    }
+    if type_ == "film":
+        return base | {"progress": None}
+    return base | {"season_count": 1, "episode_count": 2, "unwatched_episode_count": 2}
+
+
+def test_person_appearance_discriminates_on_item_type():
+    from hometv.api.schemas import FilmSummary, PersonAppearance, ShowSummary
+
+    film = PersonAppearance.model_validate(
+        {"kind": "film", "character": "Paul", "item": _summary("film")}
+    )
+    show = PersonAppearance.model_validate(
+        {"kind": "show", "character": None, "item": _summary("show")}
+    )
+    assert isinstance(film.item, FilmSummary)
+    assert isinstance(show.item, ShowSummary)
+
+
+def test_person_detail_shape():
+    from datetime import date
+
+    from hometv.api.schemas import PersonDetail
+
+    detail = PersonDetail(
+        person_id=3,
+        name="Timothée Chalamet",
+        profile_image=None,
+        biography=None,
+        biography_language=None,
+        birthday=date(1995, 12, 27),
+        deathday=None,
+        place_of_birth=None,
+        credits_complete=False,
+        appearances=[],
+    )
+    dumped = detail.model_dump(mode="json")
+    assert list(dumped) == [
+        "person_id",
+        "name",
+        "profile_image",
+        "biography",
+        "biography_language",
+        "birthday",
+        "deathday",
+        "place_of_birth",
+        "credits_complete",
+        "appearances",
+    ]
+    assert dumped["birthday"] == "1995-12-27"

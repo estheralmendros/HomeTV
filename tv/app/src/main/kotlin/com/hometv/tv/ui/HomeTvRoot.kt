@@ -28,6 +28,7 @@ import com.hometv.tv.ui.home.HomeScreen
 import com.hometv.tv.ui.navigation.AppNavigator
 import com.hometv.tv.ui.navigation.Library
 import com.hometv.tv.ui.navigation.Route
+import com.hometv.tv.ui.person.PersonScreen
 import com.hometv.tv.ui.player.PlayerScreen
 import com.hometv.tv.ui.profiles.ProfilePickerScreen
 import com.hometv.tv.ui.search.SearchScreen
@@ -135,6 +136,10 @@ private fun AppNavHost(container: AppContainer, onExit: () -> Unit) {
         composable<Route.ShowDetail> { entry ->
             val id = entry.toRoute<Route.ShowDetail>().id
             ShowDetailScreen(viewModel { container.showDetailViewModel(id) }, navigator)
+        }
+        composable<Route.Person> { entry ->
+            val id = entry.toRoute<Route.Person>().id
+            PersonScreen(viewModel { container.personViewModel(id) }, navigator)
         }
         composable<Route.Player> { entry ->
             val route = entry.toRoute<Route.Player>()

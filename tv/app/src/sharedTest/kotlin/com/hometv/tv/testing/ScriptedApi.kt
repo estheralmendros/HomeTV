@@ -44,6 +44,8 @@ open class ScriptedApi : FakeHomeTvApi() {
     var onGenres: suspend (type: String) -> com.hometv.tv.core.api.GenreList = { com.hometv.tv.core.api.GenreList() }
     var onShows: suspend (page: Int, pageSize: Int, sort: String, order: String) -> Page<ShowSummary> = { p, s, _, _ -> Page(emptyList(), p, s, 0) }
     var onFilm: suspend (Long) -> FilmDetail = { throw httpError(404, "not_found") }
+    /** `GET /api/people/{id}` (the Person screen, cast-appearances prd3). */
+    var onPerson: suspend (Long) -> com.hometv.tv.core.api.PersonDetail = { throw httpError(404, "not_found") }
     var onShow: suspend (Long) -> ShowDetail = { throw httpError(404, "not_found") }
     var onSeason: suspend (Long, Int) -> SeasonDetail = { _, _ -> throw httpError(404, "not_found") }
     var onEpisode: suspend (Long) -> EpisodeDetail = { throw httpError(404, "not_found") }
@@ -77,6 +79,7 @@ open class ScriptedApi : FakeHomeTvApi() {
     private fun filters(genre: Long?, yearFrom: Int?, yearTo: Int?, watched: Boolean?): String =
         listOfNotNull(genre?.let { "&genre=$it" }, yearFrom?.let { "&year_from=$it" }, yearTo?.let { "&year_to=$it" }, watched?.let { "&watched=$it" }).joinToString("")
     override suspend fun film(id: Long): FilmDetail = log("GET /api/films/$id") { onFilm(id) }
+    override suspend fun person(id: Long): com.hometv.tv.core.api.PersonDetail = log("GET /api/people/$id") { onPerson(id) }
     override suspend fun show(id: Long): ShowDetail = log("GET /api/shows/$id") { onShow(id) }
     override suspend fun season(showId: Long, seasonNumber: Int): SeasonDetail = log("GET /api/shows/$showId/seasons/$seasonNumber") { onSeason(showId, seasonNumber) }
     override suspend fun episode(id: Long): EpisodeDetail = log("GET /api/episodes/$id") { onEpisode(id) }

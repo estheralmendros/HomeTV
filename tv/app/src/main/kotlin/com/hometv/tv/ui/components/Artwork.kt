@@ -25,14 +25,23 @@ val LocalAppImageLoader = staticCompositionLocalOf<ImageLoader?> { null }
 
 /**
  * An image from the server over a colored placeholder that shows [fallbackTitle] (prd3 §3.9:
- * missing images → colored placeholder with title text). A failed load leaves the placeholder.
+ * missing images → colored placeholder with title text), or [placeholder] instead (the Person
+ * screen's initial). A failed load leaves the placeholder.
  */
 @Composable
-fun Artwork(path: String?, fallbackTitle: String?, modifier: Modifier = Modifier, contentScale: ContentScale = ContentScale.Crop) {
+fun Artwork(
+    path: String?,
+    fallbackTitle: String?,
+    modifier: Modifier = Modifier,
+    contentScale: ContentScale = ContentScale.Crop,
+    placeholder: (@Composable () -> Unit)? = null,
+) {
     val url = LocalArtwork.current(path)
     val loader = LocalAppImageLoader.current
     Box(modifier.background(HomeTvColors.Placeholder), contentAlignment = Alignment.Center) {
-        if (fallbackTitle != null) {
+        if (placeholder != null) {
+            placeholder()
+        } else if (fallbackTitle != null) {
             Text(
                 fallbackTitle,
                 style = MaterialTheme.typography.bodySmall,

@@ -1,0 +1,81 @@
+.header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+  margin-bottom: var(--space-5);
+}
+
+.photo {
+  width: 180px;
+}
+
+.photoInitials {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(--color-surface-2);
+  font-size: 4rem;
+  font-weight: 700;
+  user-select: none;
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.name {
+  margin: 0;
+  font-size: var(--font-size-xl);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.lifeSpan {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.place {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.section {
+  margin-bottom: var(--space-5);
+}
+
+.heading {
+  font-size: var(--font-size-lg);
+}
+
+.empty {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.note {
+  margin: var(--space-4) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+@media (max-width: 599px) {
+  .photo {
+    width: 120px;
+  }
+
+  .photoInitials {
+    font-size: 3rem;
+  }
+
+  .name {
+    font-size: var(--font-size-lg);
+  }
+}

@@ -105,6 +105,17 @@ async def test_prefetch_downloads_eager_sizes_and_ignores_failures(cache, tmp_pa
     assert (tmp_path / "artwork" / "w780" / "poster.jpg").exists()
 
 
+@respx.mock
+async def test_h632_profile_size_is_valid_and_downloaded_on_demand(cache, tmp_path):
+    cache.validate("h632", "abc.jpg")
+    route = respx.get(f"{TMDB_IMAGE_BASE_URL}/h632/abc.jpg").respond(content=b"IMG")
+    assert not (tmp_path / "artwork" / "h632").exists()
+    path = await cache.ensure("h632", "abc.jpg")
+    assert path == tmp_path / "artwork" / "h632" / "abc.jpg"
+    assert path.read_bytes() == b"IMG"
+    assert route.call_count == 1
+
+
 def test_tmdb_file_name_and_image_object():
     assert tmdb_file_name("/abc123.jpg") == "abc123.jpg"
     assert tmdb_file_name(None) is None
@@ -120,6 +131,6 @@ def test_tmdb_file_name_and_image_object():
     assert image("still", "s.jpg")["small"] == "/api/artwork/w300/s.jpg"
     assert image("profile", "p.jpg") == {
         "small": "/api/artwork/w185/p.jpg",
-        "large": "/api/artwork/w185/p.jpg",
+        "large": "/api/artwork/h632/p.jpg",
     }
     assert image("poster", None) is None

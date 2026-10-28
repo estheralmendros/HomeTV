@@ -6,8 +6,8 @@
   image downloads share the limiter.
 - Retries: 429 -> sleep ``Retry-After`` (default 2 s) and retry; 5xx/connect/read errors ->
   backoff 1, 2, 4 s then ``TmdbUnavailable``; 401 -> ``TmdbAuthError``; 404 -> ``None``.
-- Language fallback: details/season responses with an empty ``overview`` or title/name are
-  re-requested in ``fallback_language`` and only empty fields are filled.
+- Language fallback: details/season responses with an empty ``overview`` or title/name (person:
+  ``biography``) are re-requested in ``fallback_language`` and only empty fields are filled.
 
 ``sleep``/``clock`` are injectable so tests never wait.
 """
@@ -32,6 +32,8 @@ MAX_IN_FLIGHT = 8
 BACKOFF_SECONDS = (1, 2, 4)
 DEFAULT_RETRY_AFTER = 2.0
 MAX_RATE_LIMITED_RETRIES = 10
+BIOGRAPHY_LANGUAGE_KEY = "hometv_biography_language"
+"""Key ``person_details`` adds to its payload: the language of the biography (or ``None``)."""
 
 Sleep = Callable[[float], Awaitable[None]]
 
@@ -232,6 +234,29 @@ class TmdbClient:
             fallback = await self._get_json(path, {"language": self.fallback_language})
             if fallback:
                 _fill_empty(data, fallback, fields)
+        return data
+
+    async def person_details(self, tmdb_id: int) -> dict[str, Any] | None:
+        """``/person/{id}`` with ``combined_credits``; ``None`` on 404.
+
+        A blank biography is re-requested in ``fallback_language`` (details only: credits are
+        language-independent); a failure of that second call fails the whole fetch, as in
+        ``_details``. ``data[BIOGRAPHY_LANGUAGE_KEY]`` is the language of the final biography
+        (``None`` when blank in both).
+        """
+        path = f"/person/{tmdb_id}"
+        data = await self._get_json(
+            path, {"append_to_response": "combined_credits", "language": self.language}
+        )
+        if data is None:
+            return None
+        language: str | None = None if is_blank(data.get("biography")) else self.language
+        if language is None and self._needs_fallback():
+            fallback = await self._get_json(path, {"language": self.fallback_language})
+            if fallback and not is_blank(fallback.get("biography")):
+                _fill_empty(data, fallback, ("biography",))
+                language = self.fallback_language
+        data[BIOGRAPHY_LANGUAGE_KEY] = language
         return data
 
     async def tv_season(self, tmdb_id: int, season_number: int) -> dict[str, Any] | None:

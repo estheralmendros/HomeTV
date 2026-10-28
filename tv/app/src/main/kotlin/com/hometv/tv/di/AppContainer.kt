@@ -50,12 +50,15 @@ import com.hometv.tv.ui.detail.ShowDetailViewModel
 import com.hometv.tv.ui.home.HomeViewModel
 import com.hometv.tv.ui.navigation.Library
 import com.hometv.tv.ui.navigation.Route
+import com.hometv.tv.ui.person.PersonViewModel
 import com.hometv.tv.ui.profiles.ProfilesViewModel
 import com.hometv.tv.ui.search.SearchViewModel
 import com.hometv.tv.ui.settings.SettingsViewModel
 import com.hometv.tv.ui.setup.SetupViewModel
 import java.io.File
 import java.time.Clock
+import java.time.LocalDate
+import java.time.ZoneId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -94,7 +97,7 @@ class AppContainer(
     private val clientsFactory: (serverUrl: String) -> ApiClients,
     validationClient: OkHttpClient,
     val codecs: CodecSource,
-    clock: Clock = Clock.systemUTC(),
+    private val clock: Clock = Clock.systemUTC(),
     /** One player per Player screen, on the stream client of the current server (an ExoPlayer in the app, a fake in tests). */
     private val playerControllers: (streamClient: OkHttpClient) -> PlayerController = { error("No player in this container") },
     /** `cacheDir/subtitles` (side-loaded WebVTT files). */
@@ -234,6 +237,9 @@ class AppContainer(
     fun filmDetailViewModel(id: Long) = FilmDetailViewModel(id, catalog, watch, store, ::capsForFile, events, homeRefresh, detailRefresh)
 
     fun showDetailViewModel(id: Long) = ShowDetailViewModel(id, catalog, watch, store, events, homeRefresh, detailRefresh)
+
+    /** The actor screen; "today" (ages) is the [clock]'s date in the device's time zone. */
+    fun personViewModel(id: Long) = PersonViewModel(id, catalog, store, detailRefresh, today = { LocalDate.now(clock.withZone(ZoneId.systemDefault())) })
 
     fun settingsViewModel() = SettingsViewModel(store, account, profiles, ::deviceCaps, config.versionName)
 
