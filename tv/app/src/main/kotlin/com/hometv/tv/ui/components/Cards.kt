@@ -17,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -59,7 +60,10 @@ private fun FocusCard(
     ) { content() }
 }
 
-/** Poster card (rows and grids): poster, title below (marquee when focused), year; progress / watched check / badge. */
+/**
+ * Poster card (rows and grids): poster, title below (marquee when focused), year; progress / watched
+ * check / badge. [subtitle] (the Person screen's "como …") is one muted line under the year.
+ */
 @Composable
 fun PosterCard(
     title: String,
@@ -72,6 +76,8 @@ fun PosterCard(
     modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
     onFocused: () -> Unit = {},
+    subtitle: String? = null,
+    subtitleTestTag: String? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
     Column(Modifier.width(PosterWidth)) {
@@ -89,6 +95,16 @@ fun PosterCard(
             modifier = Modifier.padding(top = 8.dp).then(if (focused) Modifier.basicMarquee() else Modifier),
         )
         if (year != null) Text(year, style = MaterialTheme.typography.bodySmall, color = HomeTvColors.Muted)
+        if (subtitle != null) {
+            Text(
+                subtitle,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodySmall,
+                color = HomeTvColors.Muted,
+                modifier = subtitleTestTag?.let { Modifier.testTag(it) } ?: Modifier,
+            )
+        }
     }
 }
 

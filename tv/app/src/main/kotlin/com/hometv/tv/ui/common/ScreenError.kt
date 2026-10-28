@@ -11,6 +11,9 @@ sealed interface ScreenError {
     /** 404 `not_found`: "Este título ya no está disponible." [Volver] (+ `AppEvent.ItemGone`). */
     data object ItemGone : ScreenError
 
+    /** 404 `not_found` on the Person screen: "Esta persona no está disponible." [Volver] (no `AppEvent`). */
+    data object PersonGone : ScreenError
+
     /** A 401 on the retried call: "No se ha podido iniciar sesión en el servidor" [Reintentar]. */
     data object SignIn : ScreenError
 

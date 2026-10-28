@@ -1,0 +1,89 @@
+{
+  "adult": false,
+  "also_known_as": ["Timothée Hal Chalamet"],
+  "biography": "",
+  "birthday": "1995-12-27",
+  "deathday": null,
+  "gender": 2,
+  "homepage": null,
+  "id": 1190668,
+  "imdb_id": "nm3154303",
+  "known_for_department": "Acting",
+  "name": "Timothée Chalamet",
+  "place_of_birth": "Manhattan, New York City, New York, USA",
+  "popularity": 45.6,
+  "profile_path": "/BE2sdjpgsa2rNTFa66f7upkaOP.jpg",
+  "combined_credits": {
+    "cast": [
+      {
+        "adult": false,
+        "id": 438631,
+        "media_type": "movie",
+        "title": "Dune",
+        "release_date": "2021-09-15",
+        "character": "Paul Atreides",
+        "credit_id": "5b4f3e2c0e0a267a5c00f0f1",
+        "order": 0
+      },
+      {
+        "adult": false,
+        "id": 787699,
+        "media_type": "movie",
+        "title": "Wonka",
+        "release_date": "2023-12-06",
+        "character": "Willy Wonka",
+        "credit_id": "60a1b2c3d4e5f6a7b8c9d0e1",
+        "order": 0
+      },
+      {
+        "adult": false,
+        "id": 1407,
+        "media_type": "tv",
+        "name": "Homeland",
+        "first_air_date": "2011-10-02",
+        "character": "Finn Walden",
+        "credit_id": "525718e3760ee3776a1356c1",
+        "episode_count": 8
+      },
+      {
+        "adult": false,
+        "id": 1407,
+        "media_type": "tv",
+        "name": "Homeland",
+        "first_air_date": "2011-10-02",
+        "character": "Finn Walden",
+        "credit_id": "525718e3760ee3776a1356c2",
+        "episode_count": 1
+      },
+      {
+        "adult": false,
+        "id": 4194,
+        "media_type": "tv",
+        "name": "Royal Pains",
+        "first_air_date": "2009-06-04",
+        "character": "",
+        "credit_id": "52577b9c760ee36aaa3a4b17",
+        "episode_count": 1
+      },
+      {
+        "adult": true,
+        "id": 999001,
+        "media_type": "movie",
+        "title": "Adult title",
+        "character": "Someone",
+        "credit_id": "000000000000000000000001"
+      }
+    ],
+    "crew": [
+      {
+        "adult": false,
+        "id": 555,
+        "media_type": "movie",
+        "title": "Some production",
+        "department": "Production",
+        "job": "Executive Producer",
+        "credit_id": "000000000000000000000002"
+      }
+    ]
+  }
+}

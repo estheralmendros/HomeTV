@@ -1,9 +1,9 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import * as f from '../../tests/fixtures';
-import { renderWithProviders } from '../../tests/renderWithProviders';
+import { findProbedLocation, renderWithProviders } from '../../tests/renderWithProviders';
 import { setTokenGetter } from '@/api/client';
 import { Artwork } from './Artwork';
 import { Avatar, ProfileAvatar, avatarColor, initialOf } from './Avatar';
@@ -31,6 +31,43 @@ describe('CastRow', () => {
     expect(screen.getByText('Reggie Kray')).toBeInTheDocument();
     expect(errors).not.toHaveBeenCalled();
     errors.mockRestore();
+  });
+
+  it('each member is a link to /people/{person_id} named "name, character"', () => {
+    renderWithProviders(
+      <CastRow cast={[f.castMember(), f.castMember({ person_id: 8, name: 'Zendaya', character: null, profile_image: null })]} />,
+    );
+    expect(screen.getByRole('link', { name: 'Timothée Chalamet, Paul Atreides' })).toHaveAttribute('href', '/people/3');
+    expect(screen.getByRole('link', { name: 'Zendaya' })).toHaveAttribute('href', '/people/8');
+  });
+
+  it('Enter on the focused member navigates to the actor page', async () => {
+    const { user } = renderWithProviders(<CastRow cast={[f.castMember()]} />, { path: '/films/12', route: '/films/12' });
+    const link = screen.getByRole('link', { name: 'Timothée Chalamet, Paul Atreides' });
+    link.focus();
+    expect(link).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(await findProbedLocation()).toBe('/people/3');
+  });
+
+  it('requests only the small image (no srcset)', () => {
+    renderWithProviders(<CastRow cast={[f.castMember()]} />, { session: f.session({ token: 'tok' }) });
+    const img = screen.getByRole('link', { name: /Timothée Chalamet/ }).querySelector('img')!;
+    expect(img).toHaveAttribute('src', '/api/artwork/w185/chalamet.jpg?token=tok');
+    expect(img).not.toHaveAttribute('srcset');
+  });
+
+  it('a member without a photo, or whose photo fails, shows the initial in the photo circle', () => {
+    renderWithProviders(
+      <CastRow cast={[f.castMember({ profile_image: null }), f.castMember({ person_id: 8, name: 'zendaya', character: null })]} />,
+    );
+    const noPhoto = screen.getByRole('link', { name: /Timothée Chalamet/ });
+    expect(noPhoto.querySelector('img')).toBeNull();
+    expect(within(noPhoto).getByText('T')).toHaveAttribute('aria-hidden', 'true');
+    const broken = screen.getByRole('link', { name: 'zendaya' });
+    fireEvent.error(broken.querySelector('img')!);
+    expect(within(broken).getByText('Z')).toBeInTheDocument();
+    expect(broken.querySelector('img')).toBeNull();
   });
 });
 
@@ -74,6 +111,18 @@ describe('PosterCard', () => {
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
   });
 
+  it('with a subtitle: shown below the year and part of the link name', () => {
+    renderWithProviders(<PosterCard to="/films/12" title="Dune" year={2021} poster={null} subtitle="como Paul Atreides" />);
+    const link = screen.getByRole('link', { name: 'Dune (2021), como Paul Atreides' });
+    expect(within(link).getByText('como Paul Atreides')).toBeInTheDocument();
+    expect(link).toHaveTextContent('Dune2021como Paul Atreides');
+  });
+
+  it('a null subtitle changes nothing', () => {
+    renderWithProviders(<PosterCard to="/films/12" title="Dune" year={2021} poster={null} subtitle={null} />);
+    expect(screen.getByRole('link', { name: 'Dune (2021)' })).toHaveTextContent(/2021$/);
+  });
+
   it('shows a badge such as "12 sin ver"', () => {
     renderWithProviders(<PosterCard to="/shows/7" title="The Office" poster={null} badge="12 sin ver" />);
     expect(screen.getByText('12 sin ver')).toBeInTheDocument();
@@ -90,6 +139,38 @@ describe('Artwork', () => {
     rerender(<Artwork image={f.image('dune-2')} title="Dune" />);
     expect(container.querySelector('img')).toHaveAttribute('src', expect.stringContaining('dune-2'));
     expect(screen.queryByTestId('artwork-placeholder')).not.toBeInTheDocument();
+  });
+
+  it('uses large as the 2x srcset by default and small only with largeAt2x={false}', () => {
+    const { container, rerender } = render(<Artwork image={f.image('dune')} title="Dune" />);
+    expect(container.querySelector('img')).toHaveAttribute('srcset', '/api/artwork/w780/dune.jpg 2x');
+    rerender(<Artwork image={f.image('dune')} title="Dune" largeAt2x={false} />);
+    expect(container.querySelector('img')).toHaveAttribute('src', '/api/artwork/w342/dune.jpg');
+    expect(container.querySelector('img')).not.toHaveAttribute('srcset');
+  });
+
+  it('a custom placeholder replaces the title tile for a null or failed image', () => {
+    const { container, rerender } = render(<Artwork image={null} title="Dune" placeholder={<span>D</span>} />);
+    expect(screen.getByText('D')).toBeInTheDocument();
+    expect(screen.queryByTestId('artwork-placeholder')).not.toBeInTheDocument();
+    rerender(<Artwork image={f.image('dune')} title="Dune" placeholder={<span>D</span>} />);
+    expect(screen.queryByText('D')).not.toBeInTheDocument();
+    fireEvent.error(container.querySelector('img')!);
+    expect(screen.getByText('D')).toBeInTheDocument();
+  });
+
+  it('loads lazily by default and eagerly with loading="eager"', () => {
+    const { container, rerender } = render(<Artwork image={f.image('dune')} title="Dune" />);
+    expect(container.querySelector('img')).toHaveAttribute('loading', 'lazy');
+    rerender(<Artwork image={f.image('dune')} title="Dune" loading="eager" />);
+    expect(container.querySelector('img')).toHaveAttribute('loading', 'eager');
+  });
+
+  it('marks its frame with data-kind (poster by default)', () => {
+    const { container, rerender } = render(<Artwork image={null} title="Dune" />);
+    expect(container.firstElementChild).toHaveAttribute('data-kind', 'poster');
+    rerender(<Artwork image={null} title="Dune" kind="profile" />);
+    expect(container.firstElementChild).toHaveAttribute('data-kind', 'profile');
   });
 });
 

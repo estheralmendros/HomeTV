@@ -44,6 +44,9 @@ object HomeTvDimens {
     val SafeVertical = 27.dp
     val FocusRingWidth = 3.dp
     const val FOCUSED_SCALE = 1.08f
+
+    /** Focus scale of a wide block (the Person biography): [FOCUSED_SCALE] would push it past the 48 dp margin. */
+    const val WIDE_FOCUSED_SCALE = 1.02f
     const val AVATAR_FOCUSED_SCALE = 1.1f
 }
 

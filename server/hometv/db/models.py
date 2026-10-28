@@ -349,6 +349,36 @@ class Person(Base):
     tmdb_id: Mapped[int] = mapped_column(Integer, nullable=False, unique=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
     profile_path: Mapped[str | None]
+    # TMDB person details (``people.py``); ``name``/``profile_path`` stay owned by enrichment.
+    biography: Mapped[str | None]
+    biography_language: Mapped[str | None]
+    birthday: Mapped[date | None]
+    deathday: Mapped[date | None]
+    place_of_birth: Mapped[str | None]
+    # Last successful TMDB person fetch (a TMDB 404 included); NULL = never fetched.
+    details_fetched_at: Mapped[datetime | None]
+
+
+class PersonCredit(Base):
+    """One TMDB acting credit of a person (``combined_credits.cast``), matched at read time."""
+
+    __tablename__ = "person_credit"
+    __table_args__ = (
+        CheckConstraint("media_type IN ('movie','tv')", name="media_type"),
+        Index(
+            "uq_person_credit_person_id_media_type_tmdb_id",
+            "person_id",
+            "media_type",
+            "tmdb_id",
+            unique=True,
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    person_id: Mapped[int] = _fk("person.id")
+    media_type: Mapped[str] = mapped_column(String, nullable=False)
+    tmdb_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    character: Mapped[str | None]
 
 
 class CastCredit(Base):
@@ -357,6 +387,7 @@ class CastCredit(Base):
         CheckConstraint(_EXACTLY_ONE_FILM_SHOW, name="exactly_one_target"),
         Index("ix_cast_credit_film_id_order", "film_id", "order"),
         Index("ix_cast_credit_show_id_order", "show_id", "order"),
+        Index("ix_cast_credit_person_id", "person_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

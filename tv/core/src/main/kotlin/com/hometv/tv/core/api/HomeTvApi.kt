@@ -54,6 +54,10 @@ interface HomeTvApi {
     @GET("api/films/{id}")
     suspend fun film(@Path("id") id: Long): FilmDetail
 
+    /** The actor screen (cast-appearances prd3): person details and their catalog appearances. */
+    @GET("api/people/{id}")
+    suspend fun person(@Path("id") id: Long): PersonDetail
+
     @GET("api/shows")
     suspend fun shows(
         @Query("page") page: Int,

@@ -21,6 +21,9 @@ import type {
   LibraryFolder,
   MediaFile,
   Page,
+  PersonDetail,
+  PersonFilmAppearance,
+  PersonShowAppearance,
   PlaybackDirect,
   PlaybackHls,
   PlaybackUnsupported,
@@ -92,7 +95,7 @@ export function unlockResponse(overrides: Partial<UnlockResponse> = {}): UnlockR
 }
 
 export function image(name = 'abc123', kind: 'poster' | 'backdrop' | 'still' | 'profile' = 'poster'): Image {
-  const sizes = { poster: ['w342', 'w780'], backdrop: ['w780', 'w1280'], still: ['w300', 'w780'], profile: ['w185', 'w185'] };
+  const sizes = { poster: ['w342', 'w780'], backdrop: ['w780', 'w1280'], still: ['w300', 'w780'], profile: ['w185', 'h632'] };
   const [small, large] = sizes[kind];
   return { small: `/api/artwork/${small}/${name}.jpg`, large: `/api/artwork/${large}/${name}.jpg` };
 }
@@ -254,6 +257,31 @@ export function castMember(overrides: Partial<CastMember> = {}): CastMember {
     name: 'Timothée Chalamet',
     character: 'Paul Atreides',
     profile_image: image('chalamet', 'profile'),
+    ...overrides,
+  };
+}
+
+export function filmAppearance(overrides: Partial<PersonFilmAppearance> = {}): PersonFilmAppearance {
+  return { kind: 'film', item: filmSummary(), character: 'Paul Atreides', ...overrides };
+}
+
+export function showAppearance(overrides: Partial<PersonShowAppearance> = {}): PersonShowAppearance {
+  return { kind: 'show', item: showSummary(), character: 'Pam Beesly', ...overrides };
+}
+
+/** Person 3 "Timothée Chalamet" (fetched: bio, dates, place) appearing in Dune (film 12). */
+export function personDetail(overrides: Partial<PersonDetail> = {}): PersonDetail {
+  return {
+    person_id: 3,
+    name: 'Timothée Chalamet',
+    profile_image: image('chalamet', 'profile'),
+    biography: 'Timothée Hal Chalamet es un actor estadounidense.',
+    biography_language: 'es-ES',
+    birthday: '1995-12-27',
+    deathday: null,
+    place_of_birth: 'Manhattan, New York City, New York, USA',
+    credits_complete: true,
+    appearances: [filmAppearance()],
     ...overrides,
   };
 }

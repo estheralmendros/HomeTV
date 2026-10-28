@@ -42,6 +42,7 @@ open class FakeHomeTvApi : HomeTvApi {
     override suspend fun home(limit: Int): HomeResponse = unused()
     override suspend fun films(page: Int, pageSize: Int, sort: String, order: String, genre: Long?, yearFrom: Int?, yearTo: Int?, watched: Boolean?): Page<FilmSummary> = unused()
     override suspend fun film(id: Long): FilmDetail = unused()
+    override suspend fun person(id: Long): com.hometv.tv.core.api.PersonDetail = unused()
     override suspend fun shows(page: Int, pageSize: Int, sort: String, order: String, genre: Long?, yearFrom: Int?, yearTo: Int?, watched: Boolean?): Page<ShowSummary> = unused()
     override suspend fun genres(type: String): com.hometv.tv.core.api.GenreList = unused()
     override suspend fun show(id: Long): ShowDetail = unused()

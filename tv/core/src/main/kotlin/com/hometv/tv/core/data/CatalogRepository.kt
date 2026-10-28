@@ -7,6 +7,7 @@ import com.hometv.tv.core.api.Genre
 import com.hometv.tv.core.api.HomeResponse
 import com.hometv.tv.core.api.HomeTvApi
 import com.hometv.tv.core.api.Page
+import com.hometv.tv.core.api.PersonDetail
 import com.hometv.tv.core.api.SearchResponse
 import com.hometv.tv.core.api.SeasonDetail
 import com.hometv.tv.core.api.ShowDetail
@@ -55,6 +56,11 @@ class CatalogRepository(
     suspend fun film(id: Long): FilmDetail = call { film(id) }
 
     suspend fun show(id: Long): ShowDetail = call { show(id) }
+
+    /** `GET /api/people/{id}`; appearances whose item is not a film or show summary are dropped (as [home]). */
+    suspend fun person(id: Long): PersonDetail = call { person(id) }.let { p ->
+        p.copy(appearances = p.appearances.filter { it.item is FilmSummary || it.item is ShowSummary })
+    }
 
     suspend fun season(showId: Long, seasonNumber: Int): SeasonDetail = call { season(showId, seasonNumber) }
 

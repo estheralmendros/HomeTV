@@ -1,6 +1,7 @@
 // Query option builders shared by screens (key + fetcher + staleTime in one place).
 import { queryOptions } from '@tanstack/react-query';
 import { getEpisode, getFilm, getGenres, getHome, getSeason, getShow, search } from './catalog';
+import { getPerson } from './people';
 import { getMe, listProfiles } from './profiles';
 import { queryKeys, staleTimes } from './queryKeys';
 import { getInfo } from './system';
@@ -50,4 +51,16 @@ export const episodeQuery = (id: number) =>
     queryKey: queryKeys.episode(id),
     queryFn: ({ signal }) => getEpisode(id, signal),
     staleTime: staleTimes.episode,
+  });
+
+// networkMode 'always' (the only query that overrides the app-wide 'online', see createQueryClient):
+// offline, the fetch fails and the page shows the connection error with "Reintentar" (prd2 States)
+// instead of a query paused on its skeleton forever. A failed refetch of a cached person keeps it
+// on screen (PersonPage shows the error only without data).
+export const personQuery = (id: number) =>
+  queryOptions({
+    queryKey: queryKeys.person(id),
+    queryFn: ({ signal }) => getPerson(id, signal),
+    staleTime: staleTimes.person,
+    networkMode: 'always',
   });

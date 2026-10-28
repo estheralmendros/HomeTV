@@ -80,4 +80,34 @@ class ThemeLegibilityTest : UiTestBase() {
         val color = textColor("2021 · 2 h 35 min")
         assertTrue("the metadata line is drawn in $color", color == com.hometv.tv.ui.detail.DetailText.secondary)
     }
+
+    @Test
+    fun theBiographyTextStaysLightWhenItsBlockIsFocused() {
+        useLibrary()
+        api.onFilm = { id ->
+            com.hometv.tv.core.api.FilmDetail(
+                id = id, title = "Film $id", match_status = "matched", media_files = listOf(com.hometv.tv.core.playback.F.file(1)),
+                cast = listOf(com.hometv.tv.core.api.CastMember(4, "Timothée Chalamet", "Paul")),
+            )
+        }
+        val biography = "Timothée Hal Chalamet es un actor estadounidense."
+        api.onPerson = { id ->
+            com.hometv.tv.core.api.PersonDetail(
+                person_id = id, name = "Timothée Chalamet", biography = biography, credits_complete = true,
+                appearances = listOf(com.hometv.tv.core.api.PersonAppearance("film", dune, "Paul Atreides")),
+            )
+        }
+        launch()
+        press(androidx.compose.ui.input.key.Key.DirectionDown)
+        press(androidx.compose.ui.input.key.Key.DirectionRight)
+        press(androidx.compose.ui.input.key.Key.DirectionCenter)
+        press(androidx.compose.ui.input.key.Key.DirectionDown)
+        press(androidx.compose.ui.input.key.Key.DirectionCenter)
+        press(androidx.compose.ui.input.key.Key.DirectionUp)
+        assertFocused("person_bio")
+        // tv-material's Surface switches LocalContentColor to a dark colour when focused: the text sets its own.
+        val color = textColor(biography)
+        assertTrue("the focused biography is drawn in $color", color == HomeTvColors.OnBackground)
+        assertLegible(biography, on = HomeTvColors.SurfaceVariant)
+    }
 }

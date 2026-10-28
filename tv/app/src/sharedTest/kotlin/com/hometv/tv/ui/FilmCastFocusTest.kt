@@ -1,8 +1,10 @@
 package com.hometv.tv.ui
 
+import android.content.Context
+import android.content.pm.PackageManager
 import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onNodeWithText
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.hometv.tv.core.api.CastMember
 import com.hometv.tv.core.api.FilmDetail
@@ -14,6 +16,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Shadows.shadowOf
 
 /** prd3 §6 step 1 (cast navigation): the cast row is reachable with the D-pad and scrolls through every member. */
 @RunWith(AndroidJUnit4::class)
@@ -30,20 +33,6 @@ class FilmCastFocusTest : UiTestBase() {
         press(Key.DirectionRight)
         press(Key.DirectionCenter)
         assertFocused("button_PLAY")
-    }
-
-    /** The card (photo, name and character) is entirely on screen, above the bottom safe area. */
-    private fun assertFullyVisible(tag: String) {
-        val card = node(tag).fetchSemanticsNode()
-        val density = card.layoutInfo.density.density
-        val root = rule.onAllNodes(isRoot()).fetchSemanticsNodes().first().size
-        val left = card.positionInRoot.x / density
-        val top = card.positionInRoot.y / density
-        val right = left + card.size.width / density
-        val bottom = top + card.size.height / density
-        val safeBottom = root.height / density - HomeTvDimens.SafeVertical.value
-        assertTrue("'$tag' spans x $left..$right dp, outside the ${root.width / density} dp screen", left >= 0f && right <= root.width / density)
-        assertTrue("'$tag' ends at $bottom dp, below the safe area ($safeBottom dp)", top >= 0f && bottom <= safeBottom + 0.5f)
     }
 
     @Test
@@ -67,6 +56,8 @@ class FilmCastFocusTest : UiTestBase() {
     fun aFilmInProgressShowsItsWholeHeaderWheneverTheButtonsHaveFocus() {
         // The Dune case: tagline + a 5-line overview + three buttons on two rows
         // (Reanudar / Ver desde el principio / Marcar como visto).
+        // A TV (FEATURE_LEANBACK): Compose then scrolls focus into view with its pivot spec, as on the device.
+        shadowOf(ApplicationProvider.getApplicationContext<Context>().packageManager).setSystemFeature(PackageManager.FEATURE_LEANBACK, true)
         useLibrary()
         val overview = List(12) { "En un lejano futuro, la galaxia conocida es gobernada por casas nobles." }.joinToString(" ")
         api.onFilm = { id ->
@@ -96,11 +87,58 @@ class FilmCastFocusTest : UiTestBase() {
 
         press(Key.DirectionDown)
         assertFocused("cast_1:0")
+        settle()
+        // The whole page fits: entering the cast row does not scroll it (the title would leave the screen).
+        assertEquals("page scroll with the focus on the first cast card", 0f, pageScroll(), 0.5f)
         assertFullyVisible("cast_1:0")
+        assertFocusRingInsidePage("cast_1:0")
         press(Key.DirectionUp)
         assertFocused("button_RESUME")
         settle()
         assertEquals("page scroll back on Reanudar", 0f, pageScroll(), 0.5f)
+    }
+
+    /**
+     * The focused card is drawn scaled by [HomeTvDimens.FOCUSED_SCALE] around its centre; the page's scroll
+     * viewport (which stops at the bottom safe area) clips whatever is drawn below it, focus ring included.
+     */
+    private fun assertFocusRingInsidePage(tag: String) {
+        val card = node(tag).fetchSemanticsNode()
+        val density = card.layoutInfo.density.density
+        val overhang = card.size.height * (HomeTvDimens.FOCUSED_SCALE - 1f) / 2f
+        val drawnBottom = (card.positionInRoot.y + card.size.height + overhang) / density
+        val page = node("film_detail_page").fetchSemanticsNode()
+        val viewportBottom = (page.positionInRoot.y + page.size.height) / density
+        assertTrue("'$tag' is drawn down to $drawnBottom dp, below the page viewport ($viewportBottom dp): the ring is cut off", drawnBottom <= viewportBottom + 0.5f)
+    }
+
+    @Test
+    fun aTallHeaderScrollsThePageJustEnoughForTheWholeFocusRing() {
+        // A two-line title and a long overview: the cast row starts below the viewport, so the page has to scroll.
+        shadowOf(ApplicationProvider.getApplicationContext<Context>().packageManager).setSystemFeature(PackageManager.FEATURE_LEANBACK, true)
+        useLibrary()
+        val overview = List(12) { "En un lejano futuro, la galaxia conocida es gobernada por casas nobles." }.joinToString(" ")
+        api.onFilm = { id ->
+            FilmDetail(
+                id = id, title = "Un título larguísimo que no cabe en una sola línea de la pantalla del televisor", year = 2021,
+                runtime_minutes = 155, match_status = "matched", tagline = "Más allá del miedo, el destino espera.", overview = overview,
+                media_files = listOf(F.file(1)), cast = cast,
+                progress = Progress(position_seconds = 38.0, duration_seconds = 9300.0, media_file_id = 1),
+            )
+        }
+        launch()
+        press(Key.DirectionDown)
+        press(Key.DirectionRight)
+        press(Key.DirectionCenter)
+        assertFocused("button_RESUME")
+        press(Key.DirectionDown)
+        assertFocused("cast_1:0")
+        settle()
+        assertTrue("the page scrolled to reach the cast row", pageScroll() > 0f)
+        assertFocusRingInsidePage("cast_1:0")
+        press(Key.DirectionRight)
+        settle()
+        assertFocusRingInsidePage("cast_2:1")
     }
 
     /** Unclipped left edge of the first node matching [matcher], in dp. */

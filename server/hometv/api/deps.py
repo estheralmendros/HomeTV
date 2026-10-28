@@ -32,6 +32,7 @@ from hometv.db.engine import Database
 from hometv.libraries import LibraryFolders
 from hometv.metadata.artwork import ArtworkCache
 from hometv.metadata.tmdb import TmdbClient
+from hometv.people import PersonService
 from hometv.profiles import TokenService, UnlockLimiter
 from hometv.scheduler import Scheduler
 
@@ -74,11 +75,16 @@ def get_libraries(request: Request) -> LibraryFolders:
     return request.app.state.libraries
 
 
+def get_people(request: Request) -> PersonService:
+    return request.app.state.people
+
+
 SchedulerDep = Annotated[Scheduler, Depends(get_scheduler)]
 TmdbDep = Annotated[TmdbClient | None, Depends(get_tmdb)]
 TmdbProxyDep = Annotated[TmdbProxy, Depends(get_tmdb_proxy)]
 ArtworkDep = Annotated[ArtworkCache, Depends(get_artwork)]
 LibrariesDep = Annotated[LibraryFolders, Depends(get_libraries)]
+PeopleDep = Annotated[PersonService, Depends(get_people)]
 
 
 # --- Auth ----------------------------------------------------------------------------------------

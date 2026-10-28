@@ -1,6 +1,7 @@
 package com.hometv.tv.ui.detail
 
 import com.hometv.tv.R
+import com.hometv.tv.core.api.CastMember
 import com.hometv.tv.core.api.FilmDetail
 import com.hometv.tv.core.api.Genre
 import com.hometv.tv.core.api.MediaFile
@@ -19,6 +20,8 @@ import com.hometv.tv.ui.navigation.NavRequest
 import com.hometv.tv.ui.navigation.PlayRequest
 import com.hometv.tv.ui.text.UiText
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -323,5 +326,164 @@ class FilmDetailViewModelTest {
         advanceUntilIdle()
         assertEquals(FilmDetailUiState.Error(ScreenError.ItemGone), vm.state.value)
         assertEquals(listOf<AppEvent>(AppEvent.ItemGone("film", 12)), repos.received)
+    }
+
+    // ---- Cast navigation (cast-appearances prd3 FR-T5) ----------------------------------------
+
+    private val cast = listOf(CastMember(3, "Timothée Chalamet", "Paul Atreides"), CastMember(4, "Zendaya", "Chani"), CastMember(5, "Rebecca Ferguson"))
+
+    private fun withCast(vararg files: MediaFile, progress: Progress? = null, members: List<CastMember> = cast) {
+        film = film.copy(media_files = files.toList(), progress = progress, cast = members)
+    }
+
+    @Test
+    fun `castKey is unique per position, also for a person credited twice`() {
+        assertEquals("3:0", castKey(cast[0], 0))
+        assertEquals("3:2", castKey(cast[0], 2))
+    }
+
+    @Test
+    fun `OK on a cast card remembers the card and asks for the Person screen`() = runTest(main.dispatcher) {
+        withCast(F.file(1))
+        val vm = vm()
+        advanceUntilIdle()
+        assertEquals(null, vm.content().castFocus)
+        val version = vm.content().focusVersion
+        vm.onCastSelected(castKey(cast[1], 1), 1, 4)
+        assertEquals(CastFocus("4:1", 1), vm.content().castFocus)
+        assertEquals(version, vm.content().focusVersion, "the card already has focus: no focusVersion bump")
+        assertEquals(NavRequest.Person(4), vm.navigation.first())
+    }
+
+    @Test
+    fun `a button press after a cast selection gives focus back to that button at once`() = runTest(main.dispatcher) {
+        withCast(F.file(1))
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onCastSelected("3:0", 0, 3)
+        vm.navigation.first()
+        vm.onButton(ButtonId.WATCHED)
+        assertEquals(null, vm.content().castFocus, "published before the toggle's request")
+        assertEquals(ButtonId.WATCHED, vm.content().focus, "the pressed button, not the first one")
+        advanceUntilIdle()
+        assertEquals(null, vm.content().castFocus)
+        assertEquals(ButtonId.WATCHED, vm.content().focus)
+    }
+
+    @Test
+    fun `Play after a cast selection publishes the cleared cast focus before the Play request`() = runTest(main.dispatcher) {
+        withCast(F.file(1))
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onCastSelected("3:0", 0, 3)
+        vm.navigation.first()
+        val version = vm.content().focusVersion
+        val log = mutableListOf<String>()
+        val unconfined = UnconfinedTestDispatcher(testScheduler)
+        backgroundScope.launch(unconfined) {
+            vm.state.collect { s -> (s as? FilmDetailUiState.Content)?.let { log += "state cast=${it.castFocus} focus=${it.focus} v=${it.focusVersion}" } }
+        }
+        backgroundScope.launch(unconfined) { vm.navigation.collect { log += "nav $it" } }
+        vm.onButton(ButtonId.PLAY)
+        assertEquals(
+            listOf(
+                "state cast=CastFocus(key=3:0, index=0) focus=PLAY v=$version",
+                "state cast=null focus=PLAY v=$version",
+                "nav ${NavRequest.Play(PlayRequest("film", 12, mediaFileId = 1))}",
+            ),
+            log,
+        )
+    }
+
+    @Test
+    fun `a button press without a remembered cast card publishes nothing extra`() = runTest(main.dispatcher) {
+        withCast(F.file(1))
+        val vm = vm()
+        advanceUntilIdle()
+        val states = mutableListOf<FilmDetailUiState>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.state.collect { states += it } }
+        vm.onButton(ButtonId.PLAY)
+        vm.navigation.first()
+        assertEquals(1, states.size, "only the current state: $states")
+    }
+
+    @Test
+    fun `after Play turns into Resume focus falls back to the first button, never to the cast`() = runTest(main.dispatcher) {
+        withCast(F.file(1, duration = 7200.0))
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onCastSelected("4:1", 1, 4)
+        vm.navigation.first()
+        vm.onButton(ButtonId.PLAY)
+        vm.navigation.first()
+        withCast(F.file(1, duration = 7200.0), progress = F.progress(1, position = 600.0))
+        returnFromPlayer(vm)
+        advanceUntilIdle()
+        assertEquals(listOf(ButtonId.RESUME, ButtonId.PLAY_FROM_START, ButtonId.WATCHED), vm.buttons())
+        assertEquals(ButtonId.RESUME, vm.content().focus)
+        assertEquals(null, vm.content().castFocus)
+    }
+
+    @Test
+    fun `Play from the start keeps focus on that button after the Player when it still exists`() = runTest(main.dispatcher) {
+        withCast(F.file(1, duration = 7200.0), progress = F.progress(1, position = 600.0))
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onButton(ButtonId.PLAY_FROM_START)
+        vm.navigation.first()
+        withCast(F.file(1, duration = 7200.0), progress = F.progress(1, position = 900.0))
+        returnFromPlayer(vm)
+        advanceUntilIdle()
+        assertEquals(ButtonId.PLAY_FROM_START, vm.content().focus)
+    }
+
+    @Test
+    fun `a refetch keeps the remembered cast card only while the cast still has it at that position`() = runTest(main.dispatcher) {
+        withCast(F.file(1))
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onCastSelected("4:1", 1, 4)
+        vm.navigation.first()
+        returnFromPlayer(vm)
+        advanceUntilIdle()
+        assertEquals(CastFocus("4:1", 1), vm.content().castFocus, "same cast: kept")
+
+        withCast(F.file(1), members = listOf(cast[0], cast[2], cast[1]))
+        returnFromPlayer(vm)
+        advanceUntilIdle()
+        assertEquals(null, vm.content().castFocus, "the key moved to another index: dropped")
+        assertEquals(ButtonId.PLAY, vm.content().focus)
+    }
+
+    @Test
+    fun `a dropped cast card does not come back when a later refetch restores the old cast`() = runTest(main.dispatcher) {
+        withCast(F.file(1))
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onCastSelected("4:1", 1, 4)
+        vm.navigation.first()
+        withCast(F.file(1), members = listOf(cast[0], cast[2], cast[1]))
+        returnFromPlayer(vm)
+        advanceUntilIdle()
+        assertEquals(null, vm.content().castFocus, "the key moved to another index: dropped")
+
+        withCast(F.file(1))
+        returnFromPlayer(vm)
+        advanceUntilIdle()
+        assertEquals(null, vm.content().castFocus, "the stale card stays dropped")
+        assertEquals(ButtonId.PLAY, vm.content().focus)
+    }
+
+    @Test
+    fun `closing a dialog clears the remembered cast card`() = runTest(main.dispatcher) {
+        withCast(F.file(1, label = "A"), F.file(2, label = "B"))
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onCastSelected("3:0", 0, 3)
+        vm.navigation.first()
+        vm.onButton(ButtonId.VERSION)
+        vm.onDialogDismiss()
+        assertEquals(null, vm.content().castFocus)
+        assertEquals(ButtonId.VERSION, vm.content().focus)
     }
 }

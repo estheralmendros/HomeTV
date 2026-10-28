@@ -8,6 +8,7 @@ import pytest
 import respx
 
 from hometv.metadata.tmdb import (
+    BIOGRAPHY_LANGUAGE_KEY,
     TMDB_BASE_URL,
     TMDB_IMAGE_BASE_URL,
     TmdbAuthError,
@@ -193,6 +194,102 @@ async def test_tv_details_appends_credits(client):
     data = await client.tv_details(2316)
     assert data["name"] == "The Office"
     assert route.calls[0].request.url.params["append_to_response"] == "credits"
+
+
+# --- person_details (actor screen FR-4) ------------------------------------------------------
+
+PERSON_URL = f"{TMDB_BASE_URL}/person/1190668"
+
+
+@respx.mock
+async def test_person_details_blank_biography_uses_fallback_without_credits(client):
+    es = respx.get(PERSON_URL, params={"language": "es-ES"}).respond(
+        json=load("person_1190668.json")
+    )
+    en = respx.get(PERSON_URL, params={"language": "en-US"}).respond(
+        json=load("person_1190668_en.json")
+    )
+    data = await client.person_details(1190668)
+    assert data is not None
+    es_params = dict(es.calls[0].request.url.params)
+    assert es_params == {
+        "api_key": "v3key",
+        "append_to_response": "combined_credits",
+        "language": "es-ES",
+    }
+    assert en.call_count == 1
+    assert "append_to_response" not in en.calls[0].request.url.params
+    assert data["biography"].startswith("Timothée Hal Chalamet is an American actor")
+    assert data[BIOGRAPHY_LANGUAGE_KEY] == "en-US"
+    assert len(data["combined_credits"]["cast"]) == 6  # credits from the first call
+
+
+@respx.mock
+async def test_person_details_biography_in_primary_language(client):
+    payload = load("person_1190668.json") | {"biography": "Actor estadounidense."}
+    route = respx.get(PERSON_URL).respond(json=payload)
+    data = await client.person_details(1190668)
+    assert data is not None
+    assert route.call_count == 1
+    assert data["biography"] == "Actor estadounidense."
+    assert data[BIOGRAPHY_LANGUAGE_KEY] == "es-ES"
+
+
+@respx.mock
+async def test_person_details_blank_in_both_languages(client):
+    respx.get(PERSON_URL, params={"language": "es-ES"}).respond(json=load("person_1190668.json"))
+    en = respx.get(PERSON_URL, params={"language": "en-US"}).respond(
+        json=load("person_1190668_en.json") | {"biography": "  "}
+    )
+    data = await client.person_details(1190668)
+    assert data is not None
+    assert en.call_count == 1
+    assert data["biography"] == ""
+    assert data[BIOGRAPHY_LANGUAGE_KEY] is None
+
+
+@respx.mock
+async def test_person_details_fallback_404_keeps_primary(client):
+    respx.get(PERSON_URL, params={"language": "es-ES"}).respond(json=load("person_1190668.json"))
+    respx.get(PERSON_URL, params={"language": "en-US"}).respond(404)
+    data = await client.person_details(1190668)
+    assert data is not None
+    assert data[BIOGRAPHY_LANGUAGE_KEY] is None
+
+
+@respx.mock
+async def test_person_details_failed_fallback_fails_the_fetch(client, sleeps):
+    respx.get(PERSON_URL, params={"language": "es-ES"}).respond(json=load("person_1190668.json"))
+    respx.get(PERSON_URL, params={"language": "en-US"}).respond(503)
+    with pytest.raises(TmdbUnavailable):
+        await client.person_details(1190668)
+
+
+@respx.mock
+async def test_person_details_no_fallback_when_languages_equal(sleeps):
+    route = respx.get(PERSON_URL).respond(json=load("person_1190668.json"))
+    c = TmdbClient("k", language="en-US", fallback_language="en-US", sleep=sleeps)
+    try:
+        data = await c.person_details(1190668)
+    finally:
+        await c.aclose()
+    assert data is not None
+    assert route.call_count == 1
+    assert data[BIOGRAPHY_LANGUAGE_KEY] is None
+
+
+@respx.mock
+async def test_person_details_404_returns_none(client):
+    route = respx.get(PERSON_URL).respond(404)
+    assert await client.person_details(1190668) is None
+    assert route.call_count == 1
+
+
+@respx.mock
+async def test_person_details_401_raises_auth_error(client):
+    respx.get(PERSON_URL).respond(401)
+    with pytest.raises(TmdbAuthError):
+        await client.person_details(1190668)
 
 
 @respx.mock

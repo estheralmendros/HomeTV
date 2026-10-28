@@ -88,6 +88,7 @@ fun ScreenErrorView(error: ScreenError, onRetry: () -> Unit, onBack: () -> Unit,
     when (error) {
         is ScreenError.Connection -> ConnectionErrorScreen(error, onRetry, modifier)
         ScreenError.ItemGone -> ErrorScreen(stringResource(R.string.item_gone), listOf(ErrorAction(stringResource(R.string.action_back), onBack)), modifier)
+        ScreenError.PersonGone -> ErrorScreen(stringResource(R.string.person_gone), listOf(ErrorAction(stringResource(R.string.action_back), onBack)), modifier)
         ScreenError.SignIn -> ErrorScreen(stringResource(R.string.error_sign_in), listOf(ErrorAction(stringResource(R.string.action_retry), onRetry)), modifier)
         is ScreenError.Unexpected -> ErrorScreen(stringResource(R.string.error_unexpected, error.code), listOf(ErrorAction(stringResource(R.string.action_retry), onRetry)), modifier)
         ScreenError.LoadFailed -> ErrorScreen(stringResource(R.string.error_load_failed), listOf(ErrorAction(stringResource(R.string.action_retry), onRetry)), modifier)

@@ -18,6 +18,8 @@ describe('queryKeys', () => {
     expect(queryKeys.season(7, 2)).toEqual(['season', 7, 2]);
     expect(queryKeys.seasonsOf(7)).toEqual(['season', 7]);
     expect(queryKeys.episode(345)).toEqual(['episode', 345]);
+    expect(queryKeys.person(3)).toEqual(['person', 3]);
+    expect(queryKeys.personAll()).toEqual(['person']);
     expect(queryKeys.admin.scan()).toEqual(['admin', 'scan']);
     expect(queryKeys.admin.unmatched({ library: 'films', page: 2 })).toEqual(['admin', 'unmatched', { library: 'films', page: 2 }]);
     expect(queryKeys.admin.unmatchedAll()).toEqual(['admin', 'unmatched']);
@@ -32,7 +34,7 @@ describe('queryKeys', () => {
   it('has the PRD stale times', () => {
     expect(staleTimes).toEqual({
       info: Infinity, profiles: 30_000, me: 300_000, home: 0, library: 30_000, genres: 300_000, search: 30_000,
-      film: 30_000, show: 30_000, season: 30_000, episode: 30_000, adminScan: 0, adminUnmatched: 0, adminTmdb: 300_000,
+      film: 30_000, show: 30_000, season: 30_000, episode: 30_000, person: 30_000, adminScan: 0, adminUnmatched: 0, adminTmdb: 300_000,
       adminLibraries: 0, adminBrowse: 0,
     });
   });
@@ -42,29 +44,29 @@ describe('invalidateAfter', () => {
   const lists = [['films', 'list'], ['shows', 'list'], ['search']];
 
   it('player exit of a film', () => {
-    expect(invalidateAfter({ type: 'playerExit', item: { type: 'film', id: 12 } })).toEqual([['home'], ['film', 12], ...lists]);
+    expect(invalidateAfter({ type: 'playerExit', item: { type: 'film', id: 12 } })).toEqual([['home'], ['film', 12], ...lists, ['person']]);
   });
 
   it('player exit of an episode (detail + show + season)', () => {
     expect(
       invalidateAfter({ type: 'playerExit', item: { type: 'episode', id: 345, showId: 7, seasonNumber: 2 } }),
-    ).toEqual([['home'], ['episode', 345], ['show', 7], ['season', 7, 2], ...lists]);
+    ).toEqual([['home'], ['episode', 345], ['show', 7], ['season', 7, 2], ...lists, ['person']]);
   });
 
   it('watched film', () => {
-    expect(invalidateAfter({ type: 'watchedFilm', id: 12 })).toEqual([['film', 12], ['home'], ['films', 'list'], ['search']]);
+    expect(invalidateAfter({ type: 'watchedFilm', id: 12 })).toEqual([['film', 12], ['home'], ['films', 'list'], ['search'], ['person']]);
   });
 
   it('watched episode / season / show', () => {
     expect(invalidateAfter({ type: 'watchedEpisodes', showId: 7 })).toEqual([
-      ['show', 7], ['season', 7], ['episode'], ['home'], ['shows', 'list'], ['search'],
+      ['show', 7], ['season', 7], ['episode'], ['home'], ['shows', 'list'], ['search'], ['person'],
     ]);
   });
 
   it('match / resolve success and scan finished', () => {
     const keys = [
       ['home'], ['films'], ['shows'], ['genres'], ['search'], ['film'], ['show'], ['season'], ['episode'],
-      ['admin', 'unmatched'], ['admin', 'scan'], ['admin', 'libraries'],
+      ['admin', 'unmatched'], ['admin', 'scan'], ['admin', 'libraries'], ['person'],
     ];
     expect(invalidateAfter({ type: 'catalogChanged' })).toEqual(keys);
   });

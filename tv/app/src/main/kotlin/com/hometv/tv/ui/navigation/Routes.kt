@@ -31,6 +31,10 @@ sealed interface Route {
     @Serializable
     data class ShowDetail(val id: Long) : Route
 
+    /** (10) Person: actor screen, opened from Film detail's cast row. */
+    @Serializable
+    data class Person(val id: Long) : Route
+
     /**
      * (9) Player.
      * - [launchId]: UUID registered in `AppContainer.playerLaunches` when the route is pushed; an id

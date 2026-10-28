@@ -30,6 +30,7 @@ EXPECTED_TABLES = {
     "unmatched_entry",
     "scan_run",
     "library_folder",
+    "person_credit",
 }
 
 
@@ -50,7 +51,7 @@ def test_migration_creates_every_table(db):
 def test_migration_is_at_head_and_idempotent(db):
     run_migrations(db)
     with db.read_engine.connect() as conn:
-        assert MigrationContext.configure(conn).get_current_revision() == HEAD_REVISION == "0003"
+        assert MigrationContext.configure(conn).get_current_revision() == HEAD_REVISION == "0004"
 
 
 @pytest.mark.filterwarnings("ignore:.*expression-based index:UserWarning")
@@ -166,7 +167,20 @@ def test_all_data_model_columns_exist(db):
         "size_bytes",
         "mtime_ns",
     } <= cols["subtitle_file"]
-    assert {"tmdb_id", "name", "profile_path"} <= cols["person"]
+    assert {
+        "tmdb_id",
+        "name",
+        "profile_path",
+        "biography",
+        "biography_language",
+        "birthday",
+        "deathday",
+        "place_of_birth",
+        "details_fetched_at",
+    } <= cols["person"]
+    assert {"id", "person_id", "media_type", "tmdb_id", "character"} <= cols["person_credit"]
+    cast_indexes = {i["name"] for i in insp.get_indexes("cast_credit")}
+    assert "ix_cast_credit_person_id" in cast_indexes
     assert {"person_id", "film_id", "show_id", "character", "order"} <= cols["cast_credit"]
     assert {"id", "name"} <= cols["genre"]
     assert {
@@ -358,6 +372,27 @@ def test_cast_credit_exactly_one_target(db):
         s.flush()
         s.add(m.CastCredit(person_id=person.id, film_id=film.id, show_id=show.id, order=0))
         s.flush()
+
+
+def test_person_credit_media_type_check_and_unique(db):
+    with db.write_session() as s:
+        person = m.Person(tmdb_id=1, name="P")
+        s.add(person)
+        s.flush()
+        s.add(m.PersonCredit(person_id=person.id, media_type="movie", tmdb_id=10))
+        s.add(m.PersonCredit(person_id=person.id, media_type="tv", tmdb_id=10))
+    with pytest.raises(IntegrityError), db.write_session() as s:
+        person = s.scalars(select(m.Person)).one()
+        s.add(m.PersonCredit(person_id=person.id, media_type="person", tmdb_id=11))
+        s.flush()
+    with pytest.raises(IntegrityError), db.write_session() as s:
+        person = s.scalars(select(m.Person)).one()
+        s.add(m.PersonCredit(person_id=person.id, media_type="movie", tmdb_id=10))
+        s.flush()
+    with db.write_session() as s:
+        s.execute(text("DELETE FROM person"))
+    with db.read_session() as s:
+        assert s.scalar(text("SELECT count(*) FROM person_credit")) == 0
 
 
 def test_progress_exactly_one_target_and_unique_per_profile(db):
@@ -604,5 +639,58 @@ def test_upgrade_from_0002_keeps_scan_runs(tmp_path):
             assert triggers == ["libraries", "scheduled"]
             cols = {c["name"] for c in inspect(database.read_engine).get_columns("scan_run")}
             assert "scope" not in cols
+    finally:
+        database.dispose()
+
+
+def test_upgrade_from_0003_keeps_persons(tmp_path):
+    from alembic import command
+
+    from hometv.db.engine import alembic_config
+
+    database = Database(tmp_path / "old.db")
+    try:
+        cfg = alembic_config(database)
+        with database.write_engine.connect() as conn:
+            cfg.attributes["connection"] = conn
+            command.upgrade(cfg, "0003")
+            assert conn.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
+            conn.exec_driver_sql("INSERT INTO library (id, type) VALUES (1, 'films')")
+            conn.exec_driver_sql(
+                "INSERT INTO film (id, library_id, parsed_title, parsed_title_norm, title,"
+                " sort_title, search_text) VALUES (1, 1, 'Dune', 'dune', 'Dune', 'dune', 'dune')"
+            )
+            conn.exec_driver_sql(
+                "INSERT INTO person (id, tmdb_id, name) VALUES (1, 10, 'A'), (2, 20, 'B')"
+            )
+            conn.exec_driver_sql(
+                'INSERT INTO cast_credit (person_id, film_id, character, "order")'
+                " VALUES (1, 1, 'Paul', 0), (2, 1, NULL, 1)"
+            )
+            conn.commit()
+        run_migrations(database)
+        with database.write_session() as s:
+            assert s.scalar(text("SELECT count(*) FROM person")) == 2
+            assert s.scalar(text("SELECT count(*) FROM cast_credit")) == 2
+            assert s.scalar(text("SELECT details_fetched_at FROM person WHERE id = 1")) is None
+            s.add(m.PersonCredit(person_id=1, media_type="movie", tmdb_id=438631))
+            person = s.get(m.Person, 1)
+            assert person is not None
+            person.biography = "Bio"
+            person.details_fetched_at = datetime.now(UTC)
+        with database.write_engine.connect() as conn:
+            cfg.attributes["connection"] = conn
+            command.downgrade(cfg, "0003")
+            conn.commit()
+        with database.read_session() as s:
+            assert s.scalar(text("SELECT count(*) FROM person")) == 2
+            assert s.scalar(text("SELECT count(*) FROM cast_credit")) == 2
+        insp = inspect(database.read_engine)
+        assert "person_credit" not in set(insp.get_table_names())
+        cols = {c["name"] for c in insp.get_columns("person")}
+        assert cols == {"id", "tmdb_id", "name", "profile_path"}
+        assert "ix_cast_credit_person_id" not in {
+            i["name"] for i in insp.get_indexes("cast_credit")
+        }
     finally:
         database.dispose()

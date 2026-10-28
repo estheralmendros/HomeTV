@@ -42,6 +42,7 @@ export const handlers = [
   http.get(`${API}/episodes/:id`, ({ params }) => HttpResponse.json(f.episodeDetail({ id: Number(params.id) }))),
   http.get(`${API}/genres`, () => HttpResponse.json({ items: [f.genre(), f.genre({ id: 35, name: 'Comedia', count: 40 })] })),
   http.get(`${API}/search`, () => HttpResponse.json({ films: [f.filmSummary()], shows: [f.showSummary()] })),
+  http.get(`${API}/people/:id`, ({ params }) => HttpResponse.json(f.personDetail({ person_id: Number(params.id) }))),
 
   // Watch state
   http.put(`${API}/progress`, async ({ request }) => {

@@ -11,6 +11,7 @@ import { AboutPage } from '@/features/about/AboutPage';
 import { FilmDetailPage } from '@/features/film/FilmDetailPage';
 import { HomePage } from '@/features/home/HomePage';
 import { LibraryPage } from '@/features/library/LibraryPage';
+import { PersonPage } from '@/features/person/PersonPage';
 import { ProfilePickerPage } from '@/features/profiles/ProfilePickerPage';
 import { SearchPage } from '@/features/search/SearchPage';
 import { BootstrapPage } from '@/features/setup/BootstrapPage';
@@ -56,6 +57,7 @@ export const appRoutes: RouteObject[] = [
               { path: 'search', element: <SearchPage /> },
               { path: 'films/:id', element: <FilmDetailPage /> },
               { path: 'shows/:id', element: <ShowDetailPage /> },
+              { path: 'people/:id', element: <PersonPage /> },
               { path: 'about', element: <AboutPage /> },
               { path: 'admin', element: <RequireAdmin />, children: adminRoutes },
             ],

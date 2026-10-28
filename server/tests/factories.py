@@ -7,6 +7,9 @@
 - ``add_show(s, title, episodes={season: count}, ...)`` -> ``(m.Show, {(s, e): m.Episode})``,
   each episode with one present file.
 - ``add_progress(s, profile_id, film_id=/episode_id=, ...)``.
+- ``add_person(s, name, ...)`` -> ``m.Person`` (unique ``tmdb_id`` by default);
+  ``add_cast_credit(s, person, film=/show=, character=)`` (local credit, next ``order``);
+  ``add_person_credit(s, person, media_type, tmdb_id, character=)`` (TMDB credit).
 """
 
 from datetime import UTC, date, datetime, timedelta
@@ -291,6 +294,62 @@ def add_progress(
         watched_at=watched_at or (T0 if watched else None),
         updated_at=updated_at or T0,
         media_file_id=media_file_id,
+    )
+    s.add(row)
+    s.flush()
+    return row
+
+
+def add_person(
+    s: Session,
+    name: str = "Actor",
+    *,
+    tmdb_id: int | None = None,
+    profile_path: str | None = None,
+    **extra: Any,
+) -> m.Person:
+    person = m.Person(
+        tmdb_id=tmdb_id if tmdb_id is not None else 9_000_000 + _next(),
+        name=name,
+        profile_path=profile_path,
+        **extra,
+    )
+    s.add(person)
+    s.flush()
+    return person
+
+
+def add_cast_credit(
+    s: Session,
+    person: m.Person,
+    *,
+    film: m.Film | None = None,
+    show: m.Show | None = None,
+    character: str | None = None,
+    order: int | None = None,
+) -> m.CastCredit:
+    row = m.CastCredit(
+        person_id=person.id,
+        film_id=film.id if film is not None else None,
+        show_id=show.id if show is not None else None,
+        character=character,
+        order=order if order is not None else _next(),
+    )
+    s.add(row)
+    s.flush()
+    return row
+
+
+def add_person_credit(
+    s: Session,
+    person: m.Person,
+    media_type: str,
+    tmdb_id: int,
+    *,
+    character: str | None = None,
+) -> m.PersonCredit:
+    row = m.PersonCredit(
+        person_id=person.id, media_type=media_type, tmdb_id=tmdb_id, character=character
     )
     s.add(row)
     s.flush()

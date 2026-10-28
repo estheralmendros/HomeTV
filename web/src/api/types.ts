@@ -235,6 +235,40 @@ export interface CastMember {
   profile_image: Image | null;
 }
 
+// GET /api/people/{person_id} (actor screen, cast-appearances prd.md FR-11).
+export interface PersonFilmAppearance {
+  kind: 'film';
+  item: FilmSummary;
+  character: string | null;
+}
+
+export interface PersonShowAppearance {
+  kind: 'show';
+  item: ShowSummary;
+  character: string | null;
+}
+
+/** A visible, matched catalog title of the person; `kind` always equals `item.type`. */
+export type PersonAppearance = PersonFilmAppearance | PersonShowAppearance;
+
+export interface PersonDetail {
+  person_id: number;
+  name: string;
+  /** `small` = w185, `large` = h632. */
+  profile_image: Image | null;
+  biography: string | null;
+  /** TMDB language tag of `biography` ("es-ES", "en-US"), null when no biography. */
+  biography_language: string | null;
+  birthday: IsoDate | null;
+  deathday: IsoDate | null;
+  /** As given by TMDB (English, untranslated). */
+  place_of_birth: string | null;
+  /** false = built from local data only: the list may miss titles. */
+  credits_complete: boolean;
+  /** Server order (year desc, title); never re-sorted by the client. */
+  appearances: PersonAppearance[];
+}
+
 export interface FilmDetail {
   type: 'film';
   id: number;

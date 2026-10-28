@@ -18,8 +18,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from sqlalchemy import and_, case, exists, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy import ColumnElement, and_, case, exists, func, select
+from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from hometv.api.errors import ApiError
 from hometv.api.schemas import (
@@ -36,6 +36,8 @@ from hometv.api.schemas import (
     LibraryCounts,
     MediaFile,
     Page,
+    PersonAppearance,
+    PersonDetail,
     Progress,
     SeasonDetail,
     ShowDetail,
@@ -555,14 +557,124 @@ def _cast(session: Session, fk: Any, item_id: int, limit: int) -> list[CastMembe
     ]
 
 
-def _not_found(kind: str, item_id: Any) -> ApiError:
+def not_found(kind: str, item_id: Any) -> ApiError:
     return ApiError(404, "not_found", f"{kind} {item_id} not found")
+
+
+# --- Person (actor screen) -----------------------------------------------------------------------
+
+
+def _library_id(library_type: str) -> Any:
+    """Scalar subquery of the library id: lets SQLite seek ``uq_*_library_id_tmdb_id``."""
+    return select(m.Library.id).where(m.Library.type == library_type).scalar_subquery()
+
+
+@dataclass(frozen=True)
+class _CreditSource[Item: (m.Film, m.Show)]:
+    """Where one kind of item credits a person: TMDB ``media_type`` + library, local FK."""
+
+    model: type[Item]
+    media_type: Literal["movie", "tv"]
+    library: Literal["films", "shows"]
+    cast_fk: InstrumentedAttribute[int | None]
+    visible: ColumnElement[bool]
+
+
+def _credited_items[Item: (m.Film, m.Show)](
+    session: Session, source: _CreditSource[Item], person_id: int
+) -> list[tuple[Item, str | None, str | None]]:
+    """``(item, tmdb_character, local_character)`` for the person's matched, visible items of
+    ``source.model``: TMDB credits ∪ local credits, two queries, each item once."""
+    model = source.model
+    common = (model.match_status == "matched", model.tmdb_id.is_not(None), source.visible)
+    via_tmdb = session.execute(
+        select(model, m.PersonCredit.character)
+        .join(
+            m.PersonCredit,
+            and_(
+                m.PersonCredit.tmdb_id == model.tmdb_id,
+                m.PersonCredit.media_type == source.media_type,
+            ),
+        )
+        .where(
+            m.PersonCredit.person_id == person_id,
+            model.library_id == _library_id(source.library),
+            *common,
+        )
+    ).all()
+    via_local = session.execute(
+        select(model, m.CastCredit.character)
+        .join(m.CastCredit, source.cast_fk == model.id)
+        .where(m.CastCredit.person_id == person_id, *common)
+        .order_by(m.CastCredit.order, m.CastCredit.id)
+    ).all()
+    merged: dict[int, tuple[Item, str | None, str | None]] = {
+        item.id: (item, character, None) for item, character in via_tmdb
+    }
+    for item, character in via_local:
+        found, tmdb_character, local_character = merged.get(item.id, (item, None, None))
+        merged[item.id] = (found, tmdb_character, local_character or character)
+    return list(merged.values())
+
+
+def person_detail(session: Session, profile_id: int, person_id: int) -> PersonDetail:
+    """The actor screen: the person and every matched, visible catalog item crediting them.
+
+    Items come from TMDB credits (``person_credit``, matched by TMDB id) ∪ local credits
+    (``cast_credit``); the TMDB character wins when not null. Order: year DESC (nulls last),
+    ``sort_title``, film before show, id. At most 7 queries, whatever the number of items.
+    """
+    person = session.get(m.Person, person_id)
+    if person is None:
+        raise not_found("Person", person_id)
+    films = _credited_items(
+        session,
+        _CreditSource(m.Film, "movie", "films", m.CastCredit.film_id, film_has_present_file()),
+        person_id,
+    )
+    shows = _credited_items(
+        session,
+        _CreditSource(m.Show, "tv", "shows", m.CastCredit.show_id, _show_visible()),
+        person_id,
+    )
+    out: list[FilmSummary | ShowSummary] = [
+        *film_summaries(session, profile_id, [item for item, _, _ in films]),
+        *show_summaries(session, profile_id, [item for item, _, _ in shows]),
+    ]
+    summaries = {(summary.type, summary.id): summary for summary in out}
+    credited: list[tuple[Literal["film", "show"], m.Film | m.Show, str | None, str | None]] = [
+        *(("film", item, tmdb_c, local_c) for item, tmdb_c, local_c in films),
+        *(("show", item, tmdb_c, local_c) for item, tmdb_c, local_c in shows),
+    ]
+    rows: list[tuple[tuple[Any, ...], PersonAppearance]] = []
+    for kind, item, tmdb_character, local_character in credited:
+        kind_rank = 0 if kind == "film" else 1
+        key = (item.year is None, -(item.year or 0), item.sort_title, kind_rank, item.id)
+        appearance = PersonAppearance(
+            kind=kind,
+            item=summaries[(kind, item.id)],
+            character=tmdb_character if tmdb_character is not None else local_character,
+        )
+        rows.append((key, appearance))
+    rows.sort(key=lambda row: row[0])
+    return PersonDetail(
+        person_id=person.id,
+        name=person.name,
+        profile_image=image("profile", person.profile_path),
+        biography=person.biography,
+        biography_language=person.biography_language,
+        birthday=person.birthday,
+        deathday=person.deathday,
+        place_of_birth=person.place_of_birth,
+        credits_complete=person.details_fetched_at is not None,
+        appearances=[appearance for _, appearance in rows],
+    )
 
 
 def film_detail(session: Session, profile_id: int, film_id: int, cast_limit: int) -> FilmDetail:
     film = session.scalar(select(m.Film).where(m.Film.id == film_id, film_has_present_file()))
     if film is None:
-        raise _not_found("Film", film_id)
+        raise not_found("Film", film_id)
     progress = _progress_map(session, profile_id, film_ids=[film.id])
     return FilmDetail(
         id=film.id,
@@ -620,7 +732,7 @@ def show_next_episode_id(
 def show_detail(session: Session, profile_id: int, show_id: int, cast_limit: int) -> ShowDetail:
     show = session.scalar(select(m.Show).where(m.Show.id == show_id, _show_visible()))
     if show is None:
-        raise _not_found("Show", show_id)
+        raise not_found("Show", show_id)
     episodes = _visible_episodes(session, m.Episode.show_id == show.id)
     rows = _progress_rows(session, profile_id, episode_ids=[e.id for e in episodes])
     watched = {k for k, r in rows.items() if r.watched}
@@ -684,7 +796,7 @@ def season_detail(
         )
     ).first()
     if row is None:
-        raise _not_found("Season", f"{show_id}/{season_number}")
+        raise not_found("Season", f"{show_id}/{season_number}")
     season, show = row
     episodes = _visible_episodes(session, m.Episode.season_id == season.id)
     return SeasonDetail(
@@ -705,7 +817,7 @@ def episode_detail(session: Session, profile_id: int, episode_id: int) -> Episod
         select(m.Episode).where(m.Episode.id == episode_id, present_file_exists())
     )
     if episode is None:
-        raise _not_found("Episode", episode_id)
+        raise not_found("Episode", episode_id)
     conds = [m.Episode.show_id == episode.show_id]
     if episode.season_number > 0:
         conds.append(m.Episode.season_number > 0)

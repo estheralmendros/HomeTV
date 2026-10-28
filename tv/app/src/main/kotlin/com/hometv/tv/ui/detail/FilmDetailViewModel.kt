@@ -49,6 +49,8 @@ sealed interface FilmDetailUiState {
         /** The button that should hold focus (initial: the first one). */
         val focus: ButtonId,
         val focusVersion: Int,
+        /** The cast card that opened the Person screen: it takes focus instead of [focus] on re-entry. */
+        val castFocus: CastFocus? = null,
     ) : FilmDetailUiState
 
     data class Error(val error: ScreenError) : FilmDetailUiState
@@ -89,6 +91,7 @@ class FilmDetailViewModel(
     private var dialog: ListDialogUi? = null
     private var focus: ButtonId? = null
     private var focusVersion = 0
+    private var castFocus: CastFocus? = null
     private var job: Job? = null
     private var seenGeneration = detailRefresh.generation()
 
@@ -115,9 +118,26 @@ class FilmDetailViewModel(
         }
     }
 
+    /**
+     * OK on a cast card (cast-appearances prd3 FR-T5): remember the card for the focus restore on
+     * Back, then open the Person screen. No `focusVersion` bump: the card already has focus.
+     */
+    fun onCastSelected(key: String, index: Int, personId: Long) {
+        castFocus = CastFocus(key, index)
+        publish()
+        _navigation.trySend(NavRequest.Person(personId))
+    }
+
     fun onButton(id: ButtonId) {
         val content = _state.value as? FilmDetailUiState.Content ?: return
         if (content.buttons.firstOrNull { it.id == id }?.enabled != true) return
+        // A button press gives focus back to the buttons (the pressed one while it exists). A remembered
+        // cast card is dropped and published before any navigation, so no screen re-entry sees it.
+        focus = id
+        if (castFocus != null) {
+            castFocus = null
+            publish()
+        }
         val file = currentFile() ?: return
         when (id) {
             ButtonId.RESUME, ButtonId.PLAY, ButtonId.PLAY_PART -> play(file, fromStart = false)
@@ -159,6 +179,7 @@ class FilmDetailViewModel(
     private fun closeDialog(opener: ButtonId) {
         dialog = null
         focus = opener
+        castFocus = null
         focusVersion++
         publish()
     }
@@ -241,6 +262,9 @@ class FilmDetailViewModel(
     private fun publish() {
         val f = film ?: return
         val buttons = buttons(f)
+        // Kept only while the cast still has that card at that position (a refetch can change the cast);
+        // a dropped card is forgotten, so a later refetch restoring the old cast does not bring it back.
+        castFocus = castFocus?.takeIf { c -> f.cast.getOrNull(c.index)?.let { castKey(it, c.index) } == c.key }
         _state.value = FilmDetailUiState.Content(
             film = f,
             meta = meta(f),
@@ -250,6 +274,7 @@ class FilmDetailViewModel(
             dialog = dialog,
             focus = focus?.takeIf { id -> buttons.any { it.id == id } } ?: buttons.first().id,
             focusVersion = focusVersion,
+            castFocus = castFocus,
         )
     }
 

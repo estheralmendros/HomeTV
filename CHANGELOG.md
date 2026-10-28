@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.4.0] - Released on 2026-10-28 by Esther Almendros Pérez
+
+### Added
+
+#### Server
+- Actor details: `GET /api/people/{id}` returns an actor's photo, name, birth and death dates, place of birth, biography and the titles of this catalog they appear in, each with the character they play, newest first. Only available titles are listed; titles outside the catalog are never shown.
+- The actor's details and full TMDB credits are fetched the first time the actor is opened (waiting up to 5 s) and cached for 30 days; after that the cached copy answers at once and is refreshed in the background. So actors billed after the first 15 of a title, or who appear only in an earlier season of a show, are found too. The biography is in Spanish, in English when TMDB has no Spanish one.
+- Without a TMDB key, or when TMDB can't be reached, the actor's titles come from the cast already stored in the catalog, marked as possibly incomplete (`credits_complete: false`).
+- Actor photos have a large size (`h632`) for the actor screen; the "Reparto" row keeps the small one.
+- Database migration `0004` adds the actor details and the `person_credit` table; run automatically at startup.
+
+#### Web app
+- The actors in "Reparto" on film and show pages are links to a new actor page (`/people/:id`): photo (or the actor's initial), name, life span with age ("27 de diciembre de 1995 (30 años)"), place of birth, the biography clamped to four lines with "Leer más", and "En tu catálogo" with the actor's titles, each card showing the character ("como …").
+- The actor page shows "Esta persona no está disponible." for an unknown actor, "No aparece en ningún título disponible de tu catálogo." when none of their titles is available, a note when the list may be incomplete, and the connection error with "Reintentar" when nothing could be loaded. An actor already on screen stays visible when a refresh fails (e.g. offline), and the page refreshes after playback.
+
+#### TV app
+- OK on a cast card in a film's "Reparto" opens the new Person screen: photo, name, life span, place of birth, a three-line biography that opens in full with OK (scroll with Up/Down, Back closes), and "En tu catálogo" with the actor's titles, ready to open and play. Back returns to the same cast card, and the Person screen refreshes after playback, keeping the focused card.
+- The Person screen shows "Esta persona no está disponible." for an actor that no longer exists, the empty and possibly-incomplete messages, and the usual connection error.
+
 ## [0.3.0] - Released on 2026-10-27 by Esther Almendros Pérez
 
 ### Added

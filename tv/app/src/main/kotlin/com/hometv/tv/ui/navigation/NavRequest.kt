@@ -35,4 +35,7 @@ sealed interface NavRequest {
     data class Play(val request: PlayRequest) : NavRequest
 
     data class Browse(val library: Library) : NavRequest
+
+    /** (10) Person: the actor screen, opened from Film detail's cast row. */
+    data class Person(val id: Long) : NavRequest
 }

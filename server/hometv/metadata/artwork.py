@@ -17,14 +17,14 @@ from hometv.metadata.tmdb import TmdbClient, TmdbError
 
 logger = logging.getLogger("hometv.artwork")
 
-ARTWORK_SIZES = frozenset({"w185", "w300", "w342", "w780", "w1280"})
+ARTWORK_SIZES = frozenset({"w185", "w300", "w342", "w780", "w1280", "h632"})
 FILE_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+\.(jpg|png|svg)$")
 ImageKind = Literal["poster", "backdrop", "still", "profile"]
 IMAGE_SIZES: dict[str, tuple[str, str]] = {
     "poster": ("w342", "w780"),
     "backdrop": ("w780", "w1280"),
     "still": ("w300", "w780"),
-    "profile": ("w185", "w185"),
+    "profile": ("w185", "h632"),  # h632: the actor screen photo, downloaded on demand
 }
 CONTENT_TYPES = {".jpg": "image/jpeg", ".png": "image/png", ".svg": "image/svg+xml"}
 

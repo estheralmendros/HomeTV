@@ -19,6 +19,8 @@ export const queryKeys = {
   season: (showId: number, seasonNumber: number) => ['season', showId, seasonNumber] as const,
   seasonsOf: (showId: number) => ['season', showId] as const,
   episode: (id: number) => ['episode', id] as const,
+  person: (id: number) => ['person', id] as const,
+  personAll: () => ['person'] as const,
   admin: {
     all: () => ['admin'] as const,
     scan: () => ['admin', 'scan'] as const,
@@ -48,6 +50,7 @@ export const staleTimes = {
   show: 30 * SECOND,
   season: 30 * SECOND,
   episode: 30 * SECOND,
+  person: 30 * SECOND,
   adminScan: 0,
   adminUnmatched: 0,
   adminTmdb: 5 * MINUTE,
@@ -82,10 +85,18 @@ export function invalidateAfter(event: InvalidationEvent): QueryKey[] {
         item.type === 'film'
           ? [queryKeys.film(item.id)]
           : [queryKeys.episode(item.id), queryKeys.show(item.showId), queryKeys.season(item.showId, item.seasonNumber)];
-      return [queryKeys.home(), ...itemKeys, queryKeys.libraryAll('films'), queryKeys.libraryAll('shows'), queryKeys.searchAll()];
+      return [
+        queryKeys.home(),
+        ...itemKeys,
+        queryKeys.libraryAll('films'),
+        queryKeys.libraryAll('shows'),
+        queryKeys.searchAll(),
+        // Actor pages carry watch state on their cards.
+        queryKeys.personAll(),
+      ];
     }
     case 'watchedFilm':
-      return [queryKeys.film(event.id), queryKeys.home(), queryKeys.libraryAll('films'), queryKeys.searchAll()];
+      return [queryKeys.film(event.id), queryKeys.home(), queryKeys.libraryAll('films'), queryKeys.searchAll(), queryKeys.personAll()];
     case 'watchedEpisodes':
       return [
         queryKeys.show(event.showId),
@@ -94,6 +105,7 @@ export function invalidateAfter(event: InvalidationEvent): QueryKey[] {
         queryKeys.home(),
         queryKeys.libraryAll('shows'),
         queryKeys.searchAll(),
+        queryKeys.personAll(),
       ];
     case 'catalogChanged':
       return [
@@ -101,6 +113,7 @@ export function invalidateAfter(event: InvalidationEvent): QueryKey[] {
         queryKeys.admin.unmatchedAll(), queryKeys.admin.scan(),
         // Title counts per folder change when a scan ends.
         queryKeys.admin.libraries(),
+        queryKeys.personAll(),
       ];
     case 'librariesChanged':
       return [queryKeys.admin.libraries(), queryKeys.admin.scan()];
