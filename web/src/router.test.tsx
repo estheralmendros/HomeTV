@@ -106,6 +106,7 @@ describe('route table', () => {
     ['/', 'Inicio', 'Inicio · HomeTV'],
     ['/films', 'Películas', 'Películas · HomeTV'],
     ['/shows', 'Series', 'Series · HomeTV'],
+    ['/watchlist', 'Mi lista · 0', 'Mi lista · HomeTV'],
     ['/search?q=dune', 'Buscar', 'Buscar · HomeTV'],
     ['/films/12', 'Dune', 'Dune (2021) · HomeTV'],
     ['/shows/7?season=2', 'The Office', 'The Office (2005) · HomeTV'],

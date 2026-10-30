@@ -20,7 +20,9 @@ import { PLAY_GLYPH } from '@/components/glyphs';
 import { NotAvailable } from '@/components/NotAvailable';
 import { SkeletonDetail, SkeletonRow } from '@/components/Skeleton';
 import { useToast } from '@/components/Toast';
+import { WatchlistToggle } from '@/components/WatchlistToggle';
 import { FixMatchButton } from '@/features/admin/FixMatchButton';
+import { useWatchlistToggle } from '@/features/watchlist/useWatchlistToggle';
 import { episodeCode, seasonLabel } from '@/lib/format';
 import { parseRouteId } from '@/lib/routeId';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
@@ -128,6 +130,7 @@ function ShowDetailView({ show }: { show: ShowDetail }) {
           watched={show.unwatched_episode_count > 0}
           label={show.unwatched_episode_count > 0 ? S.show.markShowWatched : S.show.markShowUnwatched}
         />
+        <ShowWatchlistToggle show={show} />
         {isAdmin && (
           <FixMatchButton
             mode={{ kind: 'show', id: show.id, title: show.title, year: show.year }}
@@ -152,6 +155,11 @@ function ShowDetailView({ show }: { show: ShowDetail }) {
       <CastRow cast={show.cast} />
     </div>
   );
+}
+
+function ShowWatchlistToggle({ show }: { show: ShowDetail }) {
+  const watchlist = useWatchlistToggle('show', show.id, show.in_watchlist);
+  return <WatchlistToggle inList={watchlist.inList} disabled={watchlist.pending} onToggle={watchlist.toggle} />;
 }
 
 function NextEpisodeButton({ show }: { show: ShowDetail }) {

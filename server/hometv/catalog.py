@@ -66,6 +66,7 @@ _HDR_LABELS = {"hdr10": "HDR10", "hlg": "HLG", "dolby_vision": "DV"}
 
 SortKey = Literal["title", "year", "added"]
 Order = Literal["asc", "desc"]
+WatchlistKind = Literal["film", "show"]  # re-exported by ``watchlist``
 
 
 # --- MediaFile -----------------------------------------------------------------------------------
@@ -253,7 +254,7 @@ def _progress_map(session: Session, profile_id: int, **kw: Any) -> dict[int, Pro
     return {k: progress_out(v) for k, v in _progress_rows(session, profile_id, **kw).items()}
 
 
-def _show_visible() -> Any:
+def show_visible() -> Any:
     episode = select(m.Episode.id).where(m.Episode.show_id == m.Show.id, present_file_exists())
     return exists(episode)
 
@@ -463,7 +464,7 @@ def _watched_condition(model: Any, profile_id: int, watched: bool) -> Any:
 def _filtered(
     model: Any, genre_model: Any, genre_fk: Any, profile_id: int, params: ListParams
 ) -> list[Any]:
-    conds: list[Any] = [film_has_present_file() if model is m.Film else _show_visible()]
+    conds: list[Any] = [film_has_present_file() if model is m.Film else show_visible()]
     if params.q is not None:
         conds.append(model.search_text.like(f"%{normalize_title(params.q)}%"))
     if params.year_from is not None or params.year_to is not None:
@@ -634,7 +635,7 @@ def person_detail(session: Session, profile_id: int, person_id: int) -> PersonDe
     )
     shows = _credited_items(
         session,
-        _CreditSource(m.Show, "tv", "shows", m.CastCredit.show_id, _show_visible()),
+        _CreditSource(m.Show, "tv", "shows", m.CastCredit.show_id, show_visible()),
         person_id,
     )
     out: list[FilmSummary | ShowSummary] = [
@@ -671,6 +672,16 @@ def person_detail(session: Session, profile_id: int, person_id: int) -> PersonDe
     )
 
 
+def in_watchlist(session: Session, profile_id: int, kind: WatchlistKind, item_id: int) -> bool:
+    """Whether the film or show ``item_id`` is in the profile's "Mi lista" (one EXISTS on the
+    unique index). Here, not in ``watchlist``, which imports this module."""
+    we = m.WatchlistEntry
+    column = we.film_id if kind == "film" else we.show_id
+    return bool(
+        session.scalar(select(exists().where(we.profile_id == profile_id, column == item_id)))
+    )
+
+
 def film_detail(session: Session, profile_id: int, film_id: int, cast_limit: int) -> FilmDetail:
     film = session.scalar(select(m.Film).where(m.Film.id == film_id, film_has_present_file()))
     if film is None:
@@ -694,6 +705,7 @@ def film_detail(session: Session, profile_id: int, film_id: int, cast_limit: int
         cast=_cast(session, m.CastCredit.film_id, film.id, cast_limit),
         media_files=film_media_files(session, film.id),
         progress=progress.get(film.id),
+        in_watchlist=in_watchlist(session, profile_id, "film", film.id),
         added_at=film.added_at,
     )
 
@@ -730,7 +742,7 @@ def show_next_episode_id(
 
 
 def show_detail(session: Session, profile_id: int, show_id: int, cast_limit: int) -> ShowDetail:
-    show = session.scalar(select(m.Show).where(m.Show.id == show_id, _show_visible()))
+    show = session.scalar(select(m.Show).where(m.Show.id == show_id, show_visible()))
     if show is None:
         raise not_found("Show", show_id)
     episodes = _visible_episodes(session, m.Episode.show_id == show.id)
@@ -779,6 +791,7 @@ def show_detail(session: Session, profile_id: int, show_id: int, cast_limit: int
         unwatched_episode_count=sum(
             1 for e in episodes if e.season_number > 0 and e.id not in watched
         ),
+        in_watchlist=in_watchlist(session, profile_id, "show", show.id),
         added_at=show.added_at,
     )
 
@@ -845,7 +858,7 @@ def search(session: Session, profile_id: int, q: str, limit: int) -> tuple[list,
     ).all()
     shows = session.scalars(
         select(m.Show)
-        .where(_show_visible(), m.Show.search_text.like(pattern))
+        .where(show_visible(), m.Show.search_text.like(pattern))
         .order_by(m.Show.sort_title, m.Show.id)
         .limit(limit)
     ).all()
@@ -858,7 +871,7 @@ def genres(session: Session, library: Literal["films", "shows"]) -> list[GenreCo
     if library == "films":
         link, fk, model, visible = m.FilmGenre, m.FilmGenre.film_id, m.Film, film_has_present_file()
     else:
-        link, fk, model, visible = m.ShowGenre, m.ShowGenre.show_id, m.Show, _show_visible()
+        link, fk, model, visible = m.ShowGenre, m.ShowGenre.show_id, m.Show, show_visible()
     rows = session.execute(
         select(m.Genre.id, m.Genre.name, func.count(func.distinct(model.id)))
         .join(link, link.genre_id == m.Genre.id)
@@ -1026,7 +1039,7 @@ def _recently_added(session: Session, profile_id: int, limit: int) -> list[Any]:
     ).all()
     shows = session.scalars(
         select(m.Show)
-        .where(_show_visible())
+        .where(show_visible())
         .order_by(m.Show.content_updated_at.desc(), m.Show.id.desc())
         .limit(limit)
     ).all()
@@ -1045,7 +1058,7 @@ def _recently_added(session: Session, profile_id: int, limit: int) -> list[Any]:
 
 def library_counts(session: Session) -> LibraryCounts:
     films = session.scalar(select(func.count(m.Film.id)).where(film_has_present_file())) or 0
-    shows = session.scalar(select(func.count(m.Show.id)).where(_show_visible())) or 0
+    shows = session.scalar(select(func.count(m.Show.id)).where(show_visible())) or 0
     return LibraryCounts(films=films, shows=shows, empty=films + shows == 0)
 
 

@@ -11,6 +11,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
+import okhttp3.mockwebserver.MockResponse
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -288,5 +289,82 @@ class RepositoriesTest {
         t.route("POST", "/api/profiles/5/session") { t.networkFailure() }
         assertThrows<ApiException.Unreachable> { catalog.film(12) }
         assertTrue(events.single() is AppEvent.ServerUnreachable)
+    }
+
+    // ---- Mi lista (watchlist prd3 FR-T2/FR-T3) -------------------------------------------
+
+    @Test
+    fun `the watchlist list sends type, sort, page and page_size and drops entries of unknown types`() = runTest {
+        t.route("GET", "/api/watchlist?type=all&sort=added&page=1&page_size=50") {
+            t.json(
+                """{"items": [
+                    {"kind": "film", "item": {"type": "film", "id": 12, "title": "Dune"}, "added_to_list_at": "2026-10-27T10:00:00Z"},
+                    {"kind": "game", "item": {"type": "game", "id": 1}, "added_to_list_at": "2026-10-27T09:00:00Z"},
+                    {"kind": "show", "item": {"type": "show", "id": 7, "title": "The Office"}, "added_to_list_at": "2026-10-26T10:00:00Z"}
+                ], "page": 1, "page_size": 50, "total": 3}""",
+            )
+        }
+        t.route("GET", "/api/watchlist?type=shows&sort=year&page=1&page_size=150") { t.json("""{"items": [], "page": 1, "page_size": 150, "total": 0}""") }
+        val watchlist = WatchlistRepository({ t.clients.api }, guard, backgroundScope)
+        val page = watchlist.list(WatchlistType.ALL, WatchlistSort.ADDED, 1)
+        assertEquals(listOf("film:12", "show:7"), page.items.map { it.item.key })
+        assertEquals(3, page.total)
+        assertEquals(0, watchlist.list(WatchlistType.SHOWS, WatchlistSort.YEAR, 1, pageSize = 150).total)
+        assertEquals(
+            listOf("GET /api/watchlist?type=all&sort=added&page=1&page_size=50", "GET /api/watchlist?type=shows&sort=year&page=1&page_size=150"),
+            t.paths(),
+        )
+        assertTrue(t.requests.all { it.getHeader("Authorization") == "Bearer old" })
+    }
+
+    @Test
+    fun `the watchlist wire values of kind, type and sort`() {
+        assertEquals(listOf("films", "shows"), WatchlistKind.entries.map { it.segment })
+        assertEquals(listOf("all", "films", "shows"), WatchlistType.entries.map { it.wire })
+        assertEquals(listOf("added", "title", "year"), WatchlistSort.entries.map { it.wire })
+    }
+
+    @Test
+    fun `a watchlist write is a PUT to add and a DELETE to remove, and a 204 is accepted`() = runTest {
+        t.route("PUT", "/api/watchlist/films/12") { MockResponse().setResponseCode(204) }
+        t.route("DELETE", "/api/watchlist/shows/4") { MockResponse().setResponseCode(204) }
+        val watchlist = WatchlistRepository({ t.clients.api }, guard, backgroundScope)
+        assertEquals(true, watchlist.write(WatchlistKind.FILM, 12, true).await())
+        assertEquals(false, watchlist.write(WatchlistKind.SHOW, 4, false).await())
+        assertEquals(listOf("PUT /api/watchlist/films/12", "DELETE /api/watchlist/shows/4"), t.paths())
+        assertEquals(0L, t.requests[0].bodySize)
+    }
+
+    @Test
+    fun `a watchlist write on a removed title fails with the 404 not_found`() = runTest {
+        t.route("PUT", "/api/watchlist/films/13") { t.error(404, "not_found") }
+        val watchlist = WatchlistRepository({ t.clients.api }, guard, backgroundScope)
+        val e = assertThrows<WatchlistWriteException> { watchlist.write(WatchlistKind.FILM, 13, true).await() }
+        val cause = e.cause
+        assertTrue(cause is ApiException.Http)
+        assertEquals(404, (cause as ApiException.Http).status)
+        assertEquals("not_found", cause.code)
+        assertEquals(null, e.acknowledged)
+    }
+
+    @Test
+    fun `watchlist calls renew the session once on a 401`() = runTest {
+        t.route("PUT", "/api/watchlist/films/12") { r ->
+            if (r.getHeader("Authorization") == "Bearer old") t.error(401, "unauthorized") else MockResponse().setResponseCode(204)
+        }
+        t.route("GET", "/api/watchlist?type=films&sort=title&page=2&page_size=50") { r ->
+            if (r.getHeader("Authorization") == "Bearer new") t.json("""{"items": [], "page": 2, "page_size": 50, "total": 0}""") else t.error(401, "unauthorized")
+        }
+        t.route("POST", "/api/profiles/5/session") { t.json(t.sessionJson("new")) }
+        val watchlist = WatchlistRepository({ t.clients.api }, guard, backgroundScope)
+        assertEquals(true, watchlist.write(WatchlistKind.FILM, 12, true).await())
+        watchlist.list(WatchlistType.FILMS, WatchlistSort.TITLE, 2)
+        assertEquals(
+            listOf(
+                "PUT /api/watchlist/films/12", "POST /api/profiles/5/session", "PUT /api/watchlist/films/12",
+                "GET /api/watchlist?type=films&sort=title&page=2&page_size=50",
+            ),
+            t.paths(),
+        )
     }
 }

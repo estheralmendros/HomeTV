@@ -248,6 +248,8 @@ data class FilmDetail(
     val media_files: List<MediaFile> = emptyList(),
     val progress: Progress? = null,
     val added_at: String? = null,
+    /** In this profile's "Mi lista" (watchlist prd.md FR-4); false when an older server omits it. */
+    val in_watchlist: Boolean = false,
     val type: String = "film",
 )
 
@@ -282,6 +284,8 @@ data class ShowDetail(
     val next_episode: EpisodeSummary? = null,
     val unwatched_episode_count: Int = 0,
     val added_at: String? = null,
+    /** In this profile's "Mi lista" (watchlist prd.md FR-4); false when an older server omits it. */
+    val in_watchlist: Boolean = false,
     val type: String = "show",
 )
 
@@ -343,6 +347,15 @@ data class PersonDetail(
     val place_of_birth: String? = null,
     val credits_complete: Boolean = false,
     val appearances: List<PersonAppearance> = emptyList(),
+)
+
+/** One title of "Mi lista" (`GET /api/watchlist`, watchlist prd.md FR-7): `kind` = `film` | `show`. */
+@Serializable
+data class WatchlistEntry(
+    val kind: String,
+    /** Polymorphic on `type` ([SummarySerializer]); `WatchlistRepository.list` drops other types. */
+    val item: Summary,
+    val added_to_list_at: String,
 )
 
 @Serializable

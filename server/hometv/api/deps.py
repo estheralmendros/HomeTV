@@ -25,7 +25,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from hometv.admin import TmdbProxy
-from hometv.api.errors import ApiError
+from hometv.api.errors import ApiError, unauthorized
 from hometv.config import Settings
 from hometv.db import models as m
 from hometv.db.engine import Database
@@ -103,10 +103,6 @@ LimiterDep = Annotated[UnlockLimiter, Depends(get_unlock_limiter)]
 
 _bearer = HTTPBearer(auto_error=False, description="Profile token (Authorization: Bearer)")
 BearerCredentials = Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)]
-
-
-def unauthorized() -> ApiError:
-    return ApiError(401, "unauthorized", "Authentication required")
 
 
 def profile_from_token(db: Database, tokens: TokenService, token: str | None) -> m.Profile:

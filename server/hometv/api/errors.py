@@ -51,6 +51,10 @@ class ApiError(Exception):
         self.headers = dict(headers or {})
 
 
+def unauthorized() -> ApiError:
+    return ApiError(401, "unauthorized", "Authentication required")
+
+
 def error_response(
     status_code: int,
     code: str,

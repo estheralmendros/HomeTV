@@ -4,11 +4,16 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Text
 import com.hometv.tv.ui.components.Artwork
 import com.hometv.tv.ui.theme.HomeTvColors
 
@@ -36,4 +41,14 @@ fun Backdrop(path: String?, height: Dp) {
             ),
         )
     }
+}
+
+/**
+ * "No se ha podido actualizar Mi lista." right under the action buttons (watchlist prd3 FR-T7): muted,
+ * one line, not the error color. [HomeTvColors.Muted] would be about 2.8:1 over a white backdrop, so it
+ * takes [DetailText.secondary], the muted tone made for the art.
+ */
+@Composable
+fun WatchlistErrorLine(text: String) {
+    Text(text, style = MaterialTheme.typography.bodyMedium, color = DetailText.secondary, maxLines = 1, modifier = Modifier.padding(top = 8.dp).testTag("watchlist_error"))
 }

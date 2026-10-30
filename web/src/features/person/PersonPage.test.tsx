@@ -256,6 +256,26 @@ describe('PersonPage', () => {
     await screen.findByRole('heading', { level: 1 });
   });
 
+  it('desktop: the biography sits in the text column, right below the place of birth', async () => {
+    renderPerson();
+    const heading = await screen.findByRole('heading', { level: 1, name: 'Timothée Chalamet' });
+    const column = heading.parentElement!;
+    const bio = screen.getByRole('region', { name: 'Biografía' });
+    expect(column).toContainElement(bio);
+    expect(column.lastElementChild).toBe(bio);
+    expect(screen.getByText('Manhattan, New York City, New York, USA').nextElementSibling).toBe(bio);
+  });
+
+  it('at 360 px: the biography goes below the header, at full width', async () => {
+    setViewportWidth(360);
+    renderPerson();
+    const heading = await screen.findByRole('heading', { level: 1, name: 'Timothée Chalamet' });
+    const header = heading.closest('header')!;
+    const bio = screen.getByRole('region', { name: 'Biografía' });
+    expect(header).not.toContainElement(bio);
+    expect(header.nextElementSibling).toBe(bio);
+  });
+
   it('at 360 px: the header holds the photo and the name', async () => {
     setViewportWidth(360);
     servePerson({ name: 'Kristin Scott Thomas-Fitzgerald-Worthington', place_of_birth: 'Redruth,Cornwall,England,UnitedKingdomOfGreatBritain' });

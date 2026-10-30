@@ -73,6 +73,7 @@ export const S = {
     setup: 'Configuración inicial',
     admin: 'Administración',
     about: 'Acerca de',
+    watchlist: 'Mi lista',
     player: 'Reproductor',
     notFound: 'Página no encontrada',
     error: 'Error',
@@ -90,6 +91,8 @@ export const S = {
     goHome: 'Ir a Inicio',
     previous: 'Anterior',
     next: 'Siguiente',
+    loadMore: 'Cargar más',
+    loadMoreError: 'No se han podido cargar más.',
     adminTag: 'Administrador',
     watched: 'Visto',
     markWatched: 'Marcar como visto',
@@ -106,6 +109,7 @@ export const S = {
     home: 'Inicio',
     films: 'Películas',
     shows: 'Series',
+    watchlist: 'Mi lista',
     search: 'Buscar',
     searchPlaceholder: 'Buscar títulos…',
     searchLabel: 'Buscar títulos',
@@ -426,8 +430,6 @@ export const S = {
     count: (n: number, type: 'films' | 'shows') =>
       type === 'films' ? plural(n, 'película', 'películas') : plural(n, 'serie', 'series'),
     noMatch: { films: 'Ninguna película coincide con estos filtros.', shows: 'Ninguna serie coincide con estos filtros.' },
-    loadMore: 'Cargar más',
-    loadMoreError: 'No se han podido cargar más.',
     filters: 'Filtros',
     clear: 'Borrar',
     apply: 'Aplicar',
@@ -634,6 +636,28 @@ export const S = {
     audio: {
       menu: 'Audio',
     },
+  },
+
+  /** "Mi lista" toggle, /watchlist page and toolbar. */
+  watchlist: {
+    toggle: 'Mi lista',
+    inList: 'En Mi lista',
+    add: 'Añadir a Mi lista',
+    remove: 'Quitar de Mi lista',
+    title: 'Mi lista',
+    heading: (n: number) => `Mi lista · ${countFormat.format(n)}`,
+    toolbar: 'Opciones de Mi lista',
+    typeLabel: 'Tipo',
+    typeAll: 'Todo',
+    typeFilms: 'Películas',
+    typeShows: 'Series',
+    sort: 'Orden',
+    sortAdded: 'Añadidos recientemente',
+    sortTitle: 'Título',
+    sortYear: 'Año',
+    empty: 'Tu lista está vacía. Añade películas y series desde su ficha con «Mi lista».',
+    noMatch: { films: 'No hay películas en tu lista.', shows: 'No hay series en tu lista.' },
+    showAll: 'Ver todo',
   },
 
   /** Actor screen (/people/:id). Dates are long es-ES; "–" is U+2013 with spaces. */

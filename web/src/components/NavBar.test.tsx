@@ -8,7 +8,7 @@ import { SESSION_KEY } from '@/auth/session';
 import { AppShell } from './AppShell';
 
 describe('NavBar', () => {
-  it('has the logo link and Inicio / Películas / Series links', () => {
+  it('has the logo link and Inicio / Películas / Series / Mi lista links', () => {
     renderWithProviders(<AppShell />);
     expect(screen.getByRole('link', { name: 'HomeTV, ir a Inicio' })).toHaveAttribute('href', '/');
     const nav = screen.getByRole('navigation', { name: 'Navegación principal' });
@@ -16,7 +16,16 @@ describe('NavBar', () => {
       ['Inicio', '/'],
       ['Películas', '/films'],
       ['Series', '/shows'],
+      ['Mi lista', '/watchlist'],
     ]);
+  });
+
+  it('marks "Mi lista" current on /watchlist (desktop)', async () => {
+    renderApp({ route: '/watchlist?type=films' });
+    const nav = await screen.findByRole('navigation', { name: 'Navegación principal' });
+    await screen.findByRole('heading', { level: 1, name: 'Mi lista · 0' });
+    expect(within(nav).getByRole('link', { name: 'Mi lista' })).toHaveAttribute('aria-current', 'page');
+    expect(within(nav).getByRole('link', { name: 'Series' })).not.toHaveAttribute('aria-current');
   });
 
   it('desktop (1280 px): links and search in the top bar, no tab bar', () => {
@@ -30,12 +39,25 @@ describe('NavBar', () => {
     setViewportWidth(719);
     renderWithProviders(<AppShell />);
     const tabs = screen.getByRole('navigation', { name: 'Secciones' });
-    expect(within(tabs).getAllByRole('link').map((a) => a.textContent)).toEqual(['Inicio', 'Películas', 'Series', 'Buscar']);
+    expect(within(tabs).getAllByRole('link').map((a) => a.textContent)).toEqual(['Inicio', 'Películas', 'Series', 'Mi lista', 'Buscar']);
+    expect(within(tabs).getByRole('link', { name: 'Mi lista' })).toHaveAttribute('href', '/watchlist');
     expect(within(tabs).getByRole('link', { name: 'Buscar' })).toHaveAttribute('href', '/search');
     expect(screen.queryByRole('navigation', { name: 'Navegación principal' })).not.toBeInTheDocument();
     expect(screen.queryByRole('searchbox', { name: 'Buscar títulos' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'HomeTV, ir a Inicio' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Menú de perfil de Ana' })).toBeInTheDocument();
+  });
+
+  it('360 px: five tabs, "Mi lista" goes to /watchlist and is marked current there', async () => {
+    setViewportWidth(360);
+    const { user, router } = renderApp({ route: '/' });
+    const tabs = await screen.findByRole('navigation', { name: 'Secciones' });
+    expect(within(tabs).getAllByRole('link').map((a) => a.textContent)).toEqual(['Inicio', 'Películas', 'Series', 'Mi lista', 'Buscar']);
+    await user.click(within(tabs).getByRole('link', { name: 'Mi lista' }));
+    await screen.findByRole('heading', { level: 1, name: 'Mi lista · 0' });
+    expect(currentUrl(router)).toBe('/watchlist');
+    expect(within(tabs).getByRole('link', { name: 'Mi lista' })).toHaveAttribute('aria-current', 'page');
+    expect(within(tabs).getByRole('link', { name: 'Inicio' })).not.toHaveAttribute('aria-current');
   });
 
   it('switches layouts when the viewport crosses 720 px', () => {

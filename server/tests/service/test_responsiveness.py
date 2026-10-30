@@ -9,6 +9,7 @@ the work was still in progress when the measurement window closed.
 
 import asyncio
 import contextlib
+import itertools
 import os
 import statistics
 import time
@@ -59,9 +60,17 @@ def instrument_write_sessions(db) -> list[float]:
     return holds
 
 
-async def measure(client, requests, *, seconds: float, workers: int = 2) -> dict[str, list]:
+async def measure(
+    client,
+    requests,
+    *,
+    seconds: float,
+    workers: int = 2,
+    expect: dict[str, int] | None = None,
+) -> dict[str, list]:
     """Run ``requests`` (name -> async callable returning a status) round-robin from
-    ``workers`` concurrent loops for ``seconds``; returns latencies in ms per name."""
+    ``workers`` concurrent loops for ``seconds``; returns latencies in ms per name. Every
+    status must be ``expect[name]`` (default 200)."""
     samples: dict[str, list[float]] = {name: [] for name in requests}
     deadline = time.perf_counter() + seconds
     names = list(requests)
@@ -73,7 +82,7 @@ async def measure(client, requests, *, seconds: float, workers: int = 2) -> dict
             start = time.perf_counter()
             status = await requests[name]()
             samples[name].append((time.perf_counter() - start) * 1000)
-            assert status == 200, (name, status)
+            assert status == (expect or {}).get(name, 200), (name, status)
             i += 1
 
     await asyncio.gather(*(loop(k) for k in range(workers)))
@@ -124,8 +133,20 @@ async def test_api_stays_responsive_during_a_slow_scan_of_500_files(app, client,
         }
         return (await client.put("/api/progress", json=body, headers=headers)).status_code
 
+    turn = itertools.count()  # shared by both workers: they interleave on the same entry
+
+    async def watchlist() -> int:
+        method = "PUT" if next(turn) % 2 == 0 else "DELETE"
+        url = f"/api/watchlist/films/{film.id}"
+        return (await client.request(method, url, headers=headers)).status_code
+
     await scheduler.trigger("manual")
-    samples = await measure(client, {"films": films, "progress": progress}, seconds=4.0)
+    samples = await measure(
+        client,
+        {"films": films, "progress": progress, "watchlist": watchlist},
+        seconds=4.0,
+        expect={"watchlist": 204},
+    )
 
     status = scheduler.status()
     assert status.state == "running"  # the whole window was during the scan
@@ -138,6 +159,13 @@ async def test_api_stays_responsive_during_a_slow_scan_of_500_files(app, client,
         assert p95(values) < P95_LIMIT_MS, (name, p95(values), max(values))
     assert holds, "the scan wrote to the database inside the window"
     assert max(holds) < 1.0, max(holds)
+    # Concurrent toggles never duplicate the entry; a sequential PUT then sticks.
+    with db.read_session() as s:
+        assert s.query(m.WatchlistEntry).filter_by(film_id=film.id).count() <= 1
+    r = await client.put(f"/api/watchlist/films/{film.id}", headers=headers)
+    assert r.status_code == 204
+    detail = await client.get(f"/api/films/{film.id}", headers=headers)
+    assert detail.json()["in_watchlist"] is True
 
 
 async def test_films_stay_responsive_during_background_keyframe_indexing(app, client, db):

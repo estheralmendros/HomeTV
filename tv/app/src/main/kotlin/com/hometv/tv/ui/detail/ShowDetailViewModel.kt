@@ -13,6 +13,8 @@ import com.hometv.tv.core.data.CatalogRepository
 import com.hometv.tv.core.data.SessionStore
 import com.hometv.tv.core.data.WatchRepository
 import com.hometv.tv.core.data.WatchTarget
+import com.hometv.tv.core.data.WatchlistKind
+import com.hometv.tv.core.data.WatchlistRepository
 import com.hometv.tv.core.util.Format
 import com.hometv.tv.data.DetailRefresh
 import com.hometv.tv.data.HomeRefresh
@@ -77,6 +79,8 @@ sealed interface ShowDetailUiState {
         val focusVersion: Int = 0,
         /** A season answered 404: "Este título ya no está disponible." [Volver] (Back refetches the show). */
         val seasonGone: Boolean = false,
+        /** "No se ha podido actualizar Mi lista." under the buttons after a failed write, until the next action. */
+        val watchlistError: UiText? = null,
     ) : ShowDetailUiState
 
     data class Error(val error: ScreenError) : ShowDetailUiState
@@ -84,12 +88,14 @@ sealed interface ShowDetailUiState {
 
 /**
  * Show detail (prd3 §7): next-episode button, show/season/episode watched toggles, seasons fetched
- * 250 ms after focus settles and cached, episode actions dialog, 404 handling.
+ * 250 ms after focus settles and cached, episode actions dialog, the optimistic "Mi lista" toggle
+ * (watchlist prd3 FR-T6), 404 handling.
  */
 class ShowDetailViewModel(
     private val showId: Long,
     private val catalog: CatalogRepository,
     private val watch: WatchRepository,
+    watchlist: WatchlistRepository,
     private val store: SessionStore,
     private val events: AppEventSink,
     private val refresh: HomeRefresh,
@@ -107,6 +113,18 @@ class ShowDetailViewModel(
     private var focusEpisode: Int? = null
     private var focusVersion = 0
     private var seasonGone = false
+
+    private val listToggle = DetailWatchlistToggle(
+        WatchlistKind.SHOW,
+        showId,
+        watchlist,
+        store,
+        viewModelScope,
+        showsContent = { _state.value is ShowDetailUiState.Content },
+        onRolledBack = { value -> show = show?.copy(in_watchlist = value) },
+        onScreenError = ::fail,
+        publish = ::publish,
+    )
     private var seasonJob: Job? = null
     private var job: Job? = null
     private var seenGeneration = detailRefresh.generation()
@@ -129,7 +147,7 @@ class ShowDetailViewModel(
         job = viewModelScope.launch {
             try {
                 seasonCache.clear()
-                show = catalog.show(showId)
+                apply(catalog.show(showId))
                 selected?.let { fetchSeason(it) }
                 publish()
             } catch (e: ApiException) {
@@ -140,15 +158,18 @@ class ShowDetailViewModel(
 
     fun onButton(id: ButtonId) {
         val s = show ?: return
+        clearWatchlistError()
         when (id) {
             ButtonId.PLAY, ButtonId.RESUME -> s.next_episode?.let { play(it.id, fromStart = false) }
             ButtonId.WATCHED -> changeWatched(WatchTarget.SHOW, showId, s.unwatched_episode_count > 0, clearCache = true)
+            ButtonId.WATCHLIST -> toggleWatchlist(s)
             else -> Unit
         }
     }
 
     /** Moving focus over a season selects it after 250 ms (debounced fetch, cached). */
     fun onSeasonFocused(number: Int) {
+        clearWatchlistError()
         seasonJob?.cancel()
         seasonJob = viewModelScope.launch {
             delay(SEASON_SETTLE_MS)
@@ -157,6 +178,7 @@ class ShowDetailViewModel(
     }
 
     fun onSeasonWatched() {
+        clearWatchlistError()
         val number = selected ?: return
         val season = seasonCache[number] ?: return
         val summary = show?.seasons?.firstOrNull { it.season_number == number }
@@ -164,9 +186,13 @@ class ShowDetailViewModel(
         changeWatched(WatchTarget.SEASON, season.id, watched, clearCache = false)
     }
 
-    fun onEpisodeClick(row: EpisodeRowUi) = play(row.id, fromStart = false)
+    fun onEpisodeClick(row: EpisodeRowUi) {
+        clearWatchlistError()
+        play(row.id, fromStart = false)
+    }
 
     fun onEpisodeLongClick(row: EpisodeRowUi) {
+        listToggle.clearError()
         actions = EpisodeActionsUi(row.id, UiText.Res(if (row.watched) R.string.mark_unwatched else R.string.mark_watched))
         publish()
     }
@@ -179,6 +205,7 @@ class ShowDetailViewModel(
     fun onEpisodePlayFromStart() {
         val a = actions ?: return
         actions = null
+        listToggle.clearError()
         publish()
         play(a.episodeId, fromStart = true)
     }
@@ -186,6 +213,7 @@ class ShowDetailViewModel(
     fun onEpisodeToggleWatched() {
         val a = actions ?: return
         actions = null
+        listToggle.clearError()
         val episode = seasonCache[selected]?.episodes?.firstOrNull { it.id == a.episodeId }
         focusEpisode = seasonCache[selected]?.episodes?.indexOfFirst { it.id == a.episodeId }?.takeIf { it >= 0 }
         changeWatched(WatchTarget.EPISODE, a.episodeId, episode?.progress?.watched != true, clearCache = false)
@@ -199,6 +227,28 @@ class ShowDetailViewModel(
         load()
     }
 
+    /**
+     * Optimistic (watchlist prd3 FR-T6): the label flips at once, focus stays on the button (no
+     * refetch). The write runs in `appScope`, coalesced per title, so it survives Back; this
+     * ViewModel only awaits it to confirm or roll back.
+     */
+    private fun toggleWatchlist(s: ShowDetail) {
+        val target = !s.in_watchlist
+        show = s.copy(in_watchlist = target)
+        publish()
+        listToggle.toggle(target)
+    }
+
+    /** The next action (a button, a season focus change, an episode action) hides the failed-write line. */
+    private fun clearWatchlistError() {
+        if (listToggle.clearError()) publish()
+    }
+
+    /** A fetched show; a list write still in flight wins over its `in_watchlist` until it settles (FR-T6 step 9). */
+    private fun apply(fetched: ShowDetail) {
+        show = fetched.copy(in_watchlist = listToggle.fetched(fetched.in_watchlist, show?.in_watchlist))
+    }
+
     private fun play(episodeId: Long, fromStart: Boolean) {
         _navigation.trySend(NavRequest.Play(PlayRequest("episode", episodeId, fromStart = fromStart)))
     }
@@ -210,7 +260,7 @@ class ShowDetailViewModel(
                 refresh.markStale()
                 if (clearCache) seasonCache.clear() else selected?.let { seasonCache.remove(it) }
                 focusVersion++
-                show = catalog.show(showId)
+                apply(catalog.show(showId))
                 selected?.let { fetchSeason(it) }
                 publish()
             } catch (e: ApiException) {
@@ -226,7 +276,7 @@ class ShowDetailViewModel(
         job = viewModelScope.launch {
             try {
                 val detail = catalog.show(showId)
-                show = detail
+                apply(detail)
                 val initial = selected
                     ?: detail.next_episode?.season_number?.takeIf { n -> detail.seasons.any { it.season_number == n } }
                     ?: detail.seasons.firstOrNull()?.season_number
@@ -283,19 +333,21 @@ class ShowDetailViewModel(
             focusEpisodeIndex = focusEpisode,
             focusVersion = focusVersion,
             seasonGone = seasonGone,
+            watchlistError = listToggle.error,
         )
     }
 
     private fun buttons(s: ShowDetail): List<DetailButton> {
         val next = s.next_episode
         val watched = DetailButton(ButtonId.WATCHED, UiText.Res(if (s.unwatched_episode_count == 0) R.string.mark_show_unwatched else R.string.mark_show_watched))
-        if (next == null) return listOf(watched)
+        val list = watchlistButton(s.in_watchlist)
+        if (next == null) return listOf(watched, list)
         val code = Format.episodeCode(next.season_number, next.episode_number)
         val progress = next.progress
         val resume = progress != null && !progress.watched && progress.position_seconds >= MIN_RESUME_SECONDS
         val play = if (resume) DetailButton(ButtonId.RESUME, UiText.Res(R.string.show_resume_episode, listOf(code)))
         else DetailButton(ButtonId.PLAY, UiText.Res(R.string.show_play_episode, listOf(code)))
-        return listOf(play, watched)
+        return listOf(play, watched, list)
     }
 
     private fun pane(s: ShowDetail, season: SeasonDetail): SeasonPaneUi {

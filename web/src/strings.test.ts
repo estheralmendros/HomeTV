@@ -121,6 +121,7 @@ const DYNAMIC_PARENTS = [
   'errors.byCode',
   'show.status',
   'library.noMatch',
+  'watchlist.noMatch',
   'player.gone',
   'player.unsupported',
   'admin.scan.states',

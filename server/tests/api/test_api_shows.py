@@ -164,8 +164,10 @@ async def test_show_detail(client, db, user):
         "seasons",
         "next_episode",
         "unwatched_episode_count",
+        "in_watchlist",
         "added_at",
     }
+    assert d["in_watchlist"] is False
     assert (d["status"], d["tmdb_id"], d["genres"]) == (
         "Ended",
         2316,
@@ -313,3 +315,14 @@ async def test_show_list_watched_filter(client, db, user, admin):
     assert titles(await _get(client, admin, "/api/shows?watched=true")) == ["Lost"]
     r = await client.get("/api/shows?watched=0", headers=user.headers)
     assert (r.status_code, r.json()["error"]["code"]) == (422, "validation_error")
+
+
+@pytest.mark.parametrize("page", [0, 1_000_001, 2**62])
+async def test_page_out_of_range_is_422(client, user, page):
+    r = await client.get(f"/api/shows?page={page}", headers=user.headers)
+    assert (r.status_code, r.json()["error"]["code"]) == (422, "validation_error")
+
+
+async def test_page_upper_bound_accepted(client, user):
+    page = await _get(client, user, "/api/shows?page=1000000&page_size=200")
+    assert (page["page"], page["items"]) == (1_000_000, [])

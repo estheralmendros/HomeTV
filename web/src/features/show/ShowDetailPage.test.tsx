@@ -305,6 +305,103 @@ describe('ShowDetailPage', () => {
     });
   });
 
+  describe('Mi lista toggle', () => {
+    const NOT_AVAILABLE =
+      'Esta serie no está disponible. Puede que se haya eliminado o que sus archivos estén en un disco desconectado.';
+
+    /** Stateful server list for show 7; PUT/DELETE are held open until `release()`. */
+    function serveWatchlist(initial: boolean) {
+      const state = { inList: initial };
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      const write = (next: boolean) => async () => {
+        await gate;
+        state.inList = next;
+        return new HttpResponse(null, { status: 204 });
+      };
+      server.use(
+        http.get(`${API}/shows/:id`, ({ params }) => HttpResponse.json(f.showDetail({ id: Number(params.id), in_watchlist: state.inList }))),
+        http.put(`${API}/watchlist/shows/:id`, write(true)),
+        http.delete(`${API}/watchlist/shows/:id`, write(false)),
+      );
+      return release;
+    }
+
+    it('sits after "Marcar serie como vista" and before "Corregir identificación"', async () => {
+      renderShow('/shows/7', { profile: f.adminProfile() });
+      const markShow = await screen.findByRole('button', { name: 'Marcar serie como vista' });
+      const toggle = screen.getByRole('button', { name: 'Añadir a Mi lista' });
+      expect(markShow.nextElementSibling).toBe(toggle);
+      expect(toggle.nextElementSibling).toBe(screen.getByRole('button', { name: 'Corregir identificación' }));
+      expect(toggle).toHaveTextContent('+Mi lista');
+      expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('flips before the response, is disabled while pending, then PUTs, refetches the show, no toast', async () => {
+      const release = serveWatchlist(false);
+      const rec = recordRequests();
+      const { user } = renderShow();
+      await user.click(await screen.findByRole('button', { name: 'Añadir a Mi lista' }));
+      const toggle = await screen.findByRole('button', { name: 'Quitar de Mi lista' });
+      expect(toggle).toHaveTextContent('✓En Mi lista');
+      expect(toggle).toHaveAttribute('aria-pressed', 'true');
+      expect(toggle).toBeDisabled();
+      const showGets = rec.find('GET', '/api/shows/7').length;
+      release();
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Quitar de Mi lista' })).toBeEnabled());
+      await waitFor(() => expect(rec.find('GET', '/api/shows/7').length).toBeGreaterThan(showGets));
+      expect(rec.find('PUT', '/api/watchlist/shows/7')).toHaveLength(1);
+      expect(screen.getByRole('status', { name: 'Notificaciones' })).toBeEmptyDOMElement();
+      rec.dispose();
+    });
+
+    it('sends DELETE when the show is already in the list', async () => {
+      const release = serveWatchlist(true);
+      const rec = recordRequests();
+      const { user } = renderShow();
+      await user.click(await screen.findByRole('button', { name: 'Quitar de Mi lista' }));
+      expect(await screen.findByRole('button', { name: 'Añadir a Mi lista' })).toHaveAttribute('aria-pressed', 'false');
+      release();
+      await waitFor(() => expect(rec.find('DELETE', '/api/watchlist/shows/7')).toHaveLength(1));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Añadir a Mi lista' })).toBeEnabled());
+      rec.dispose();
+    });
+
+    it('rolls back on a 500 and shows the error toast', async () => {
+      server.use(
+        http.put(`${API}/watchlist/shows/:id`, async () => {
+          await delay(50);
+          return apiError(500, 'internal_error');
+        }),
+      );
+      const { user } = renderShow();
+      await user.click(await screen.findByRole('button', { name: 'Añadir a Mi lista' }));
+      expect(await screen.findByRole('button', { name: 'Quitar de Mi lista' })).toBeInTheDocument();
+      expect(await screen.findByText('Se ha producido un error inesperado (internal_error).')).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: 'Añadir a Mi lista' })).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('a 404 shows the toast, then the settle refetch turns the page into NotAvailable', async () => {
+      let gone = false;
+      server.use(
+        http.put(`${API}/watchlist/shows/:id`, () => {
+          gone = true;
+          return apiError(404, 'not_found');
+        }),
+        http.get(`${API}/shows/:id`, ({ params }) =>
+          gone ? apiError(404, 'not_found') : HttpResponse.json(f.showDetail({ id: Number(params.id) })),
+        ),
+      );
+      const { user } = renderShow();
+      await user.click(await screen.findByRole('button', { name: 'Añadir a Mi lista' }));
+      const toasts = await screen.findByRole('status', { name: 'Notificaciones' });
+      expect(
+        await within(toasts).findByText('Este contenido no está disponible. Puede que se haya eliminado o que su disco esté desconectado.'),
+      ).toBeInTheDocument();
+      expect(await screen.findByText(NOT_AVAILABLE)).toBeInTheDocument();
+    });
+  });
+
   it('404: says the show may be on a disconnected drive, with Volver a Series', async () => {
     server.use(http.get(`${API}/shows/:id`, () => apiError(404, 'not_found')));
     renderShow();

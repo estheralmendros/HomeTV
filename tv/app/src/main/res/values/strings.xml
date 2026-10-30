@@ -27,6 +27,7 @@
     <string name="nav_shows">Series</string>
     <string name="nav_search">Buscar</string>
     <string name="nav_settings">Ajustes</string>
+    <string name="nav_watchlist">Mi lista</string>
 
     <!-- (1) Server setup -->
     <string name="setup_subtitle">Conéctate a tu servidor doméstico</string>
@@ -82,6 +83,23 @@
     <string name="sort_year_desc">Año (más recientes)</string>
     <string name="sort_year_asc">Año (más antiguos)</string>
     <string name="sort_added_desc">Añadidos recientemente</string>
+
+    <!-- (11) Mi lista (watchlist prd3 §5); the sort entries reuse the Browse sort_* strings -->
+    <string name="watchlist_title">Mi lista</string>
+    <string name="watchlist_toggle">Mi lista</string>
+    <string name="watchlist_in_list">En Mi lista</string>
+    <string name="watchlist_add">Añadir a Mi lista</string>
+    <string name="watchlist_remove">Quitar de Mi lista</string>
+    <string name="watchlist_update_failed">No se ha podido actualizar Mi lista.</string>
+    <string name="watchlist_type">Tipo: %1$s</string>
+    <string name="dialog_type">Tipo</string>
+    <string name="watchlist_type_all">Todo</string>
+    <string name="watchlist_type_films">Películas</string>
+    <string name="watchlist_type_shows">Series</string>
+    <string name="watchlist_empty">Tu lista está vacía. Añade películas y series desde su ficha con «Mi lista».</string>
+    <string name="watchlist_no_films">No hay películas en tu lista.</string>
+    <string name="watchlist_no_shows">No hay series en tu lista.</string>
+    <string name="watchlist_show_all">Ver todo</string>
 
     <!-- (6) Search -->
     <string name="search_placeholder">Buscar películas y series</string>

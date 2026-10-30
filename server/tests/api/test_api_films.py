@@ -175,12 +175,15 @@ async def test_pagination(client, db, user):
     assert (page["page"], page["page_size"], page["total"]) == (2, 2, 5)
     assert _titles(page) == ["Film 2", "Film 3"]
     assert (await _list(client, user, "?page=9&page_size=2"))["items"] == []
+    assert (await _list(client, user, "?page=1000000&page_size=200"))["items"] == []
 
 
 @pytest.mark.parametrize(
     "query",
     [
         "?page=0",
+        "?page=1000001",
+        f"?page={2**62}",
         "?page_size=0",
         "?page_size=201",
         "?sort=rating",
@@ -349,8 +352,10 @@ async def test_film_detail_shape(client, db, user):
         "cast",
         "media_files",
         "progress",
+        "in_watchlist",
         "added_at",
     }
+    assert d["in_watchlist"] is False
     assert (d["release_date"], d["tagline"], d["runtime_minutes"], d["vote_average"]) == (
         "2021-09-15",
         "Más allá del miedo",

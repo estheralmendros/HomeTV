@@ -534,6 +534,15 @@ class ShowSummary(BaseModel):
     unwatched_episode_count: int
 
 
+class WatchlistEntry(BaseModel):
+    """One title of "Mi lista"; ``kind`` always equals ``item.type``. ``added_to_list_at`` is
+    when the profile added it (``item.added_at`` is when the title entered the catalog)."""
+
+    kind: Literal["film", "show"]
+    item: Annotated[FilmSummary | ShowSummary, Field(discriminator="type")]
+    added_to_list_at: UtcDateTime
+
+
 class EpisodeSummary(BaseModel):
     type: Literal["episode"] = "episode"
     id: int
@@ -617,6 +626,7 @@ class FilmDetail(BaseModel):
     cast: list[CastMember]
     media_files: list[MediaFile]
     progress: Progress | None
+    in_watchlist: bool
     added_at: UtcDateTime
 
 
@@ -649,6 +659,7 @@ class ShowDetail(BaseModel):
     seasons: list[ShowSeason]
     next_episode: EpisodeSummary | None
     unwatched_episode_count: int
+    in_watchlist: bool
     added_at: UtcDateTime
 
 

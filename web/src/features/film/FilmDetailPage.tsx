@@ -20,7 +20,9 @@ import { ProgressBar } from '@/components/ProgressBar';
 import { SkeletonDetail } from '@/components/Skeleton';
 import { useToast } from '@/components/Toast';
 import { WatchedToggle } from '@/components/WatchedToggle';
+import { WatchlistToggle } from '@/components/WatchlistToggle';
 import { FixMatchButton } from '@/features/admin/FixMatchButton';
+import { useWatchlistToggle } from '@/features/watchlist/useWatchlistToggle';
 import { formatDuration, formatRating, formatRuntime } from '@/lib/format';
 import { parseRouteId } from '@/lib/routeId';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
@@ -103,6 +105,7 @@ function FilmActions({ film }: { film: FilmDetail }) {
       {selected ? <PlayButtons film={film} fileId={selected.id} /> : <NoPlayableFile />}
       <div className={styles.secondary}>
         <FilmWatchedToggle film={film} />
+        <FilmWatchlistToggle film={film} />
         {p && !p.watched && p.position_seconds > 0 && (
           <span className={styles.progress}>
             <ProgressBar value={p.position_seconds} max={p.duration_seconds} />
@@ -150,6 +153,11 @@ function NoPlayableFile() {
       <p className={styles.hint}>{S.film.noPlayableFile}</p>
     </>
   );
+}
+
+function FilmWatchlistToggle({ film }: { film: FilmDetail }) {
+  const watchlist = useWatchlistToggle('film', film.id, film.in_watchlist);
+  return <WatchlistToggle inList={watchlist.inList} disabled={watchlist.pending} onToggle={watchlist.toggle} />;
 }
 
 /** Optimistic: patch progress.watched in ['film', id], roll back + toast on error, invalidate on settle. */

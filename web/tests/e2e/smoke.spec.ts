@@ -61,3 +61,68 @@ test('profile → films grid → play a direct film → back → Continue Watchi
   const continueWatching = page.locator('section', { has: page.getByRole('heading', { name: 'Seguir viendo' }) });
   await expect(continueWatching.getByRole('link', { name: new RegExp(FILM) }).first()).toBeVisible();
 });
+
+// "Mi lista" (watchlist prd2 AC-W13/AC-W14): real layout checks jsdom cannot make.
+test('360 px: the five tab labels fit without truncation', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 740 });
+  await bootstrapOrPickProfile(page);
+  const tabs = page.getByRole('navigation', { name: 'Secciones' }).getByRole('link');
+  await expect(tabs).toHaveText(['Inicio', 'Películas', 'Series', 'Mi lista', 'Buscar']);
+  const overflowing = await tabs.evaluateAll((links) =>
+    links.filter((a) => a.scrollWidth > a.clientWidth).map((a) => a.textContent),
+  );
+  expect(overflowing).toEqual([]);
+});
+
+test('768 px: "Mi lista" in the NavBar stays on one line (as tall as "Inicio")', async ({ page }) => {
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await bootstrapOrPickProfile(page);
+  const nav = page.getByRole('navigation', { name: 'Navegación principal' });
+  const height = (name: string) =>
+    nav.getByRole('link', { name }).evaluate((a) => a.getBoundingClientRect().height);
+  expect(await height('Mi lista')).toBe(await height('Inicio'));
+});
+
+test('add a film to Mi lista, see it on /watchlist, remove it', async ({ page }) => {
+  await bootstrapOrPickProfile(page);
+  await page.getByRole('navigation', { name: 'Navegación principal' }).getByRole('link', { name: 'Películas' }).click();
+  await page.getByRole('main').getByRole('link', { name: new RegExp(FILM) }).first().click();
+  await expect(page).toHaveURL(/\/films\/\d+/);
+  const filmUrl = page.url();
+  const add = page.getByRole('button', { name: 'Añadir a Mi lista' });
+  const remove = page.getByRole('button', { name: 'Quitar de Mi lista' });
+  const toggle = add.or(remove);
+  await expect(toggle).toBeVisible();
+  // The live profile's list: whatever state the film starts in is restored at the end, even when a
+  // step fails (finally). Restoring a listed film re-adds it, so it gets a new added_at and moves
+  // to the top of the "Añadidos recientemente" order.
+  const initiallyListed = (await toggle.getAttribute('aria-pressed')) === 'true';
+  try {
+    if (initiallyListed) {
+      await remove.click();
+      await expect(add).toBeEnabled();
+    }
+
+    await add.click();
+    await expect(remove).toBeEnabled();
+    await page.getByRole('navigation', { name: 'Navegación principal' }).getByRole('link', { name: 'Mi lista' }).click();
+    await expect(page).toHaveURL(/\/watchlist/);
+    await expect(page.getByRole('heading', { level: 1, name: /^Mi lista · / })).toBeVisible();
+    await expect(page.getByRole('main').getByRole('link', { name: new RegExp(FILM) }).first()).toBeVisible();
+
+    await page.goto(filmUrl);
+    await remove.click();
+    await expect(add).toBeEnabled();
+    await page.getByRole('navigation', { name: 'Navegación principal' }).getByRole('link', { name: 'Mi lista' }).click();
+    await expect(page.getByRole('heading', { level: 1, name: /^Mi lista · / })).toBeVisible();
+    await expect(page.getByRole('main').getByRole('link', { name: new RegExp(FILM) })).toHaveCount(0);
+  } finally {
+    await page.goto(filmUrl);
+    await expect(toggle).toBeEnabled();
+    if (((await toggle.getAttribute('aria-pressed')) === 'true') !== initiallyListed) {
+      await toggle.click();
+      await expect(toggle).toHaveAttribute('aria-pressed', String(initiallyListed));
+      await expect(toggle).toBeEnabled();
+    }
+  }
+});

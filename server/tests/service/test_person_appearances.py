@@ -1,12 +1,9 @@
 """``catalog.person_detail`` (actor screen FR-9/FR-10): visibility, TMDB ∪ local credits,
 ordering, per-profile summaries and a bounded query count."""
 
-from collections.abc import Iterator
-from contextlib import contextmanager
 from datetime import UTC, date, datetime
 
 import pytest
-from sqlalchemy import event
 
 from hometv import catalog
 from hometv.api.errors import ApiError
@@ -22,6 +19,7 @@ from tests.factories import (
     add_progress,
     add_show,
 )
+from tests.stubs import capture_selects
 
 
 @pytest.fixture
@@ -198,22 +196,6 @@ def test_summaries_are_per_profile(mdb, profiles):
     assert isinstance(for_a["show"], ShowSummary) and isinstance(for_b["show"], ShowSummary)
     assert (for_a["show"].episode_count, for_a["show"].unwatched_episode_count) == (3, 2)
     assert for_b["show"].unwatched_episode_count == 3
-
-
-@contextmanager
-def capture_selects(db: Database) -> Iterator[list[tuple[str, object]]]:
-    """Every SELECT the read engine runs, with its parameters."""
-    statements: list[tuple[str, object]] = []
-
-    def before(_conn, _cursor, statement, parameters, *_args):
-        if statement.lstrip().upper().startswith("SELECT"):
-            statements.append((statement, parameters))
-
-    event.listen(db.read_engine, "before_cursor_execute", before)
-    try:
-        yield statements
-    finally:
-        event.remove(db.read_engine, "before_cursor_execute", before)
 
 
 def _seed_appearances(db: Database, films: int, shows: int) -> int:

@@ -4,12 +4,14 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { LIBRARY_PAGE_SIZE, listFilms, listShows } from '@/api/catalog';
 import { errorMessage } from '@/api/errors';
+import { nextPageParam } from '@/api/paging';
 import { queryKeys, staleTimes } from '@/api/queryKeys';
 import type { FilmSummary, LibraryQuery, LibraryType, Page, ShowSummary } from '@/api/types';
 import { useIsAdmin } from '@/auth/useCurrentProfile';
 import { EmptyLibrary } from '@/components/EmptyLibrary';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
+import { LoadMoreFooter } from '@/components/LoadMoreFooter';
 import { SkeletonGrid } from '@/components/Skeleton';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
 import { useInfiniteScrollSentinel } from '@/lib/useInfiniteScrollSentinel';
@@ -23,10 +25,6 @@ type LibraryPageData = Page<FilmSummary | ShowSummary>;
 
 function fetchPage(type: LibraryType, query: LibraryQuery, signal: AbortSignal): Promise<LibraryPageData> {
   return type === 'films' ? listFilms(query, signal) : listShows(query, signal);
-}
-
-export function nextPageParam(last: LibraryPageData): number | undefined {
-  return last.page * last.page_size < last.total ? last.page + 1 : undefined;
 }
 
 export function LibraryPage({ type }: { type: LibraryType }) {
@@ -67,24 +65,7 @@ export function LibraryPage({ type }: { type: LibraryType }) {
     body = (
       <>
         <PosterGrid items={items} showUnmatchedTags={isAdmin} />
-        <div className={styles.more} ref={sentinelRef}>
-          {list.isFetchNextPageError ? (
-            <>
-              <p className={styles.moreError} role="alert">
-                {S.library.loadMoreError}
-              </p>
-              <button type="button" className="button" onClick={() => void list.fetchNextPage()}>
-                {S.common.retry}
-              </button>
-            </>
-          ) : (
-            list.hasNextPage && (
-              <button type="button" className="button" disabled={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>
-                {S.library.loadMore}
-              </button>
-            )
-          )}
-        </div>
+        <LoadMoreFooter list={list} sentinelRef={sentinelRef} />
       </>
     );
 

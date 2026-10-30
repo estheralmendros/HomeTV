@@ -42,6 +42,9 @@ class SessionGuard(
 ) {
     private val mutex = Mutex()
 
+    /** The profile the current session belongs to (null when none is remembered). */
+    fun currentProfileId(): Long? = store.session.value.profileId
+
     /**
      * Renews the session that [failedToken] belonged to. When another caller already replaced that
      * token while this one waited, returns [RenewOutcome.Renewed] without a request.

@@ -6,6 +6,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { genresQuery } from '@/api/queries';
 import type { GenreCount, LibraryType, SortField, SortOrder } from '@/api/types';
 import { Modal } from '@/components/Modal';
+import toolbarStyles from '@/components/Toolbar.module.css';
 import { cx } from '@/lib/cx';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import { PHONE_QUERY, useMediaQuery } from '@/lib/useMediaQuery';
@@ -47,7 +48,7 @@ export function LibraryToolbar({ type, library }: { type: LibraryType; library: 
   const phone = useMediaQuery(PHONE_QUERY);
 
   return (
-    <div className={styles.toolbar} role="group" aria-label={S.library.toolbar}>
+    <div className={toolbarStyles.toolbar} role="group" aria-label={S.library.toolbar}>
       <TitleFilter value={params.q} onCommit={(q) => update({ q })} />
       {phone ? (
         <button type="button" className="button" onClick={() => setSheetOpen(true)}>
@@ -101,7 +102,7 @@ function TitleFilter({ value, onCommit }: { value: string; onCommit: (q: string)
   return (
     <input
       type="search"
-      className={cx(styles.input, styles.search)}
+      className={cx(toolbarStyles.input, styles.search)}
       value={text}
       maxLength={MAX_QUERY_LENGTH}
       placeholder={S.library.filterPlaceholder}
@@ -125,11 +126,11 @@ function SortFields({
   const id = useId();
   return (
     <>
-      <label className={styles.field} htmlFor={id}>
+      <label className={toolbarStyles.field} htmlFor={id}>
         {S.library.sort}
         <select
           id={id}
-          className={styles.select}
+          className={toolbarStyles.select}
           value={sort}
           onChange={(event) => onSort(event.target.value as SortField)}
         >
@@ -161,11 +162,11 @@ function GenreField({
   // Until the list arrives, keep a selected genre representable.
   const known = genres?.some((g) => g.id === value) ?? false;
   return (
-    <label className={styles.field} htmlFor={id}>
+    <label className={toolbarStyles.field} htmlFor={id}>
       {S.library.genre}
       <select
         id={id}
-        className={styles.select}
+        className={toolbarStyles.select}
         value={value === null || !known ? '' : String(value)}
         onChange={(event) => onChange(event.target.value ? Number(event.target.value) : null)}
       >
@@ -183,11 +184,11 @@ function GenreField({
 function WatchedField({ value, onChange }: { value: boolean | null; onChange: (watched: boolean | null) => void }) {
   const id = useId();
   return (
-    <label className={styles.field} htmlFor={id}>
+    <label className={toolbarStyles.field} htmlFor={id}>
       {S.library.watched}
       <select
         id={id}
-        className={styles.select}
+        className={toolbarStyles.select}
         value={value === null ? '' : String(value)}
         onChange={(event) => onChange(event.target.value === '' ? null : event.target.value === 'true')}
       >
@@ -225,7 +226,7 @@ function YearInput({
 }) {
   const id = useId();
   return (
-    <label className={styles.field} htmlFor={id}>
+    <label className={toolbarStyles.field} htmlFor={id}>
       {label}
       <input
         id={id}
@@ -233,7 +234,7 @@ function YearInput({
         inputMode="numeric"
         min={MIN_YEAR}
         max={MAX_YEAR}
-        className={cx(styles.input, styles.year)}
+        className={cx(toolbarStyles.input, styles.year)}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onBlur={onBlur}

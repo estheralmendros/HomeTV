@@ -49,12 +49,13 @@ class AppNavigator(
         if (isThisPlayer) nav.popBackStack()
     }
 
-    /** Top-nav tabs: Browse/Search/Settings sit directly above Home, so Back always returns to Home. */
+    /** Top-nav tabs: Browse/Search/Mi lista/Settings sit directly above Home, so Back always returns to Home. */
     fun openTab(tab: NavTab) {
         val route: Route = when (tab) {
             NavTab.HOME -> return backToHome(null)
             NavTab.FILMS -> Route.Browse(Library.FILMS.wire)
             NavTab.SHOWS -> Route.Browse(Library.SHOWS.wire)
+            NavTab.WATCHLIST -> Route.Watchlist
             NavTab.SEARCH -> Route.Search
             NavTab.SETTINGS -> Route.Settings
         }
@@ -64,7 +65,7 @@ class AppNavigator(
         }
     }
 
-    /** Back from Browse / Search / Settings: Home with focus on the corresponding tab. */
+    /** Back from Browse / Search / Mi lista / Settings: Home with focus on the corresponding tab. */
     fun backToHome(tab: NavTab?) {
         val home = runCatching { nav.getBackStackEntry<Route.Home>() }.getOrNull()
         if (home == null) {

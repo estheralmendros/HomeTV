@@ -19,6 +19,7 @@ import com.hometv.tv.core.api.ShowDetail
 import com.hometv.tv.core.api.ShowSummary
 import com.hometv.tv.core.api.WatchedRequest
 import com.hometv.tv.core.api.WatchedResponse
+import com.hometv.tv.core.api.WatchlistEntry
 import com.hometv.tv.core.data.FakeHomeTvApi
 import java.util.Collections
 import retrofit2.Response
@@ -53,6 +54,12 @@ open class ScriptedApi : FakeHomeTvApi() {
     var onWatched: suspend (WatchedRequest) -> WatchedResponse = { WatchedResponse(1) }
     val watchedBodies: MutableList<WatchedRequest> = Collections.synchronizedList(mutableListOf())
 
+    /** `GET /api/watchlist` ("Mi lista", watchlist prd3); an empty list by default. */
+    var onWatchlist: suspend (type: String, sort: String, page: Int, pageSize: Int) -> Page<WatchlistEntry> = { _, _, p, s -> Page(emptyList(), p, s, 0) }
+
+    /** `PUT` ([inList] true) / `DELETE` ([inList] false) `/api/watchlist/{segment}/{id}`: return to answer 204, throw to fail, suspend to gate. */
+    var onWatchlistWrite: suspend (segment: String, id: Long, inList: Boolean) -> Unit = { _, _, _ -> }
+
     // Playback: `POST .../playback`, `PUT /api/progress`, HLS keep-alive and DELETE.
     var onPlayback: suspend (Long, PlaybackRequest) -> PlaybackResponse = { _, _ -> throw httpError(404, "not_found") }
     val playbackBodies: MutableList<Pair<Long, PlaybackRequest>> = Collections.synchronizedList(mutableListOf())
@@ -84,6 +91,10 @@ open class ScriptedApi : FakeHomeTvApi() {
     override suspend fun season(showId: Long, seasonNumber: Int): SeasonDetail = log("GET /api/shows/$showId/seasons/$seasonNumber") { onSeason(showId, seasonNumber) }
     override suspend fun episode(id: Long): EpisodeDetail = log("GET /api/episodes/$id") { onEpisode(id) }
     override suspend fun search(query: String, limit: Int): SearchResponse = log("GET /api/search?q=$query&limit=$limit") { onSearch(query, limit) }
+    override suspend fun watchlist(type: String, sort: String, page: Int, pageSize: Int): Page<WatchlistEntry> =
+        log("GET /api/watchlist?type=$type&sort=$sort&page=$page&page_size=$pageSize") { onWatchlist(type, sort, page, pageSize) }
+    override suspend fun addToWatchlist(segment: String, id: Long) = log("PUT /api/watchlist/$segment/$id") { onWatchlistWrite(segment, id, true) }
+    override suspend fun removeFromWatchlist(segment: String, id: Long) = log("DELETE /api/watchlist/$segment/$id") { onWatchlistWrite(segment, id, false) }
     override suspend fun setWatched(body: WatchedRequest): WatchedResponse = log("POST /api/watched") {
         watchedBodies += body
         onWatched(body)

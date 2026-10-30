@@ -289,6 +289,8 @@ export interface FilmDetail {
   media_files: MediaFile[];
   progress: Progress | null;
   added_at: Timestamp;
+  /** The current profile has this film in "Mi lista". */
+  in_watchlist: boolean;
 }
 
 export interface ShowSeason {
@@ -323,7 +325,38 @@ export interface ShowDetail {
   next_episode: EpisodeSummary | null;
   unwatched_episode_count: number;
   added_at: Timestamp;
+  /** The current profile has this show in "Mi lista". */
+  in_watchlist: boolean;
 }
+
+// "Mi lista" (watchlist prd.md FR-8): GET /api/watchlist, PUT/DELETE /api/watchlist/{films|shows}/{id}.
+export type WatchlistKind = 'film' | 'show';
+export type WatchlistType = 'all' | 'films' | 'shows';
+export type WatchlistSort = 'added' | 'title' | 'year';
+
+export interface WatchlistQuery {
+  /** Omitted = 'all'. */
+  type?: WatchlistType;
+  /** Omitted = 'added' (newest first); fixed directions. */
+  sort?: WatchlistSort;
+  page?: number;
+  page_size?: number;
+}
+
+export interface WatchlistFilmEntry {
+  kind: 'film';
+  item: FilmSummary;
+  added_to_list_at: Timestamp;
+}
+
+export interface WatchlistShowEntry {
+  kind: 'show';
+  item: ShowSummary;
+  added_to_list_at: Timestamp;
+}
+
+/** A visible title of the profile's list; `kind` always equals `item.type`. */
+export type WatchlistEntry = WatchlistFilmEntry | WatchlistShowEntry;
 
 export interface SeasonDetail {
   id: number;

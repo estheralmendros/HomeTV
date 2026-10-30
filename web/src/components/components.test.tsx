@@ -18,6 +18,7 @@ import { Row } from './Row';
 import { SkeletonGrid, SkeletonRow } from './Skeleton';
 import { ToastProvider, useToast } from './Toast';
 import { WatchedToggle } from './WatchedToggle';
+import { WatchlistToggle } from './WatchlistToggle';
 
 describe('CastRow', () => {
   it('renders a person listed twice (two characters) without a duplicate-key warning', () => {
@@ -243,6 +244,35 @@ describe('WatchedToggle', () => {
   it('compact mode keeps the accessible name', () => {
     render(<WatchedToggle watched={false} onToggle={vi.fn()} compact />);
     expect(screen.getByRole('button', { name: 'Marcar como visto' })).toHaveTextContent('○');
+  });
+});
+
+describe('WatchlistToggle', () => {
+  it('not in the list: "Mi lista" with a hidden "+", named "Añadir a Mi lista", not pressed', async () => {
+    const onToggle = vi.fn();
+    render(<WatchlistToggle inList={false} onToggle={onToggle} />);
+    const button = screen.getByRole('button', { name: 'Añadir a Mi lista' });
+    expect(button).toHaveTextContent('+Mi lista');
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+    expect(within(button).getByText('+')).toHaveAttribute('aria-hidden', 'true');
+    await userEvent.click(button);
+    expect(onToggle).toHaveBeenLastCalledWith(true);
+  });
+
+  it('in the list: "En Mi lista" with a hidden "✓", named "Quitar de Mi lista", pressed', async () => {
+    const onToggle = vi.fn();
+    render(<WatchlistToggle inList onToggle={onToggle} />);
+    const button = screen.getByRole('button', { name: 'Quitar de Mi lista' });
+    expect(button).toHaveTextContent('✓En Mi lista');
+    expect(button).toHaveAttribute('aria-pressed', 'true');
+    expect(within(button).getByText('✓')).toHaveAttribute('aria-hidden', 'true');
+    await userEvent.click(button);
+    expect(onToggle).toHaveBeenLastCalledWith(false);
+  });
+
+  it('can be disabled', () => {
+    render(<WatchlistToggle inList={false} onToggle={vi.fn()} disabled />);
+    expect(screen.getByRole('button', { name: 'Añadir a Mi lista' })).toBeDisabled();
   });
 });
 

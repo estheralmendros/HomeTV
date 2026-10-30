@@ -30,4 +30,10 @@ class DetailLegibilityTest {
         val ratio = contrast(HomeTvColors.OnBackground, worstBackground)
         assertTrue(ratio >= 4.5, "title/synopsis contrast over a white backdrop: $ratio:1 (needs ≥ 4.5)")
     }
+
+    @Test
+    fun `the Mi lista failure line (secondary tone) is not the error color`() {
+        // WatchlistErrorLine draws in DetailText.secondary, readable over a white backdrop (test above).
+        assertTrue(DetailText.secondary != HomeTvColors.Error)
+    }
 }

@@ -122,15 +122,26 @@ private fun ShowContent(state: ShowDetailUiState.Content, vm: ShowDetailViewMode
         Text(show.title, style = MaterialTheme.typography.displaySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(state.meta.resolve(), style = MaterialTheme.typography.titleMedium, color = DetailText.secondary, modifier = Modifier.padding(top = 6.dp))
         show.overview?.let { Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp).fillMaxWidth(0.7f)) }
-        Row(Modifier.padding(vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        val error = state.watchlistError
+        // With the failed-write line, it takes the buttons' bottom padding (watchlist prd3 FR-T7).
+        Row(Modifier.padding(top = 16.dp, bottom = if (error == null) 16.dp else 0.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             state.buttons.forEach { button ->
                 ActionButton(
                     button.text.resolve(),
                     { vm.onButton(button.id) },
                     Modifier.focusRequester(buttons[button.id]).testTag("button_${button.id.name}"),
-                    icon = if (button.id == ButtonId.PLAY || button.id == ButtonId.RESUME) R.drawable.ic_play else null,
+                    icon = when (button.id) {
+                        ButtonId.PLAY, ButtonId.RESUME -> R.drawable.ic_play
+                        ButtonId.WATCHLIST -> watchlistIcon(show.in_watchlist)
+                        else -> null
+                    },
+                    contentDescription = button.description?.resolve(),
                 )
             }
+        }
+        if (error != null) {
+            WatchlistErrorLine(error.resolve())
+            Spacer(Modifier.height(8.dp))
         }
         Row(Modifier.fillMaxWidth().weight(1f)) {
             LazyColumn(Modifier.width(260.dp).fillMaxSize(), contentPadding = PaddingValues(vertical = 4.dp)) {

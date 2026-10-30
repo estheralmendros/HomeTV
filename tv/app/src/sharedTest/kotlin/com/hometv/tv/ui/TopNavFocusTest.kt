@@ -31,7 +31,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class TopNavFocusTest : UiTestBase() {
     /** The text tabs (Search is a lens icon without a label, see `SearchTabTest`). */
-    private val labels = mapOf(NavTab.HOME to "Inicio", NavTab.FILMS to "Películas", NavTab.SHOWS to "Series", NavTab.SETTINGS to "Ajustes")
+    private val labels = mapOf(NavTab.HOME to "Inicio", NavTab.FILMS to "Películas", NavTab.SHOWS to "Series", NavTab.WATCHLIST to "Mi lista", NavTab.SETTINGS to "Ajustes")
 
     /** "Ajustes" is an admin-only tab (prd3 §3 step 1): sign in as an admin so every label is on the bar. */
     private fun signInAsAdmin() {
@@ -132,5 +132,48 @@ class TopNavFocusTest : UiTestBase() {
             val offset = centerY(content) - row
             assertTrue("'$name' is ${"%.1f".format(offset)} dp off the center of the pill row", kotlin.math.abs(offset) <= 1f)
         }
+    }
+
+    /**
+     * Fully on screen and inside the 48 dp horizontal safe area. Vertically the bar keeps its existing
+     * place (12 dp padding, tabs from 14 dp: it predates this check), so only "on screen" is asserted there.
+     */
+    private fun assertTabFits(tab: NavTab) {
+        val tag = "tab_${tab.name}"
+        assertFullyVisible(tag)
+        val node = node(tag).fetchSemanticsNode()
+        val density = node.layoutInfo.density.density
+        val screen = rule.onAllNodes(androidx.compose.ui.test.isRoot()).fetchSemanticsNodes().first().size.width / density
+        val left = node.positionInRoot.x / density
+        val right = left + node.size.width / density
+        val margin = com.hometv.tv.ui.theme.HomeTvDimens.SafeHorizontal.value
+        assertTrue("'$tag' spans $left..$right dp, outside the $margin dp side margins", left >= margin - 0.5f && right <= screen - margin + 0.5f)
+    }
+
+    @Test
+    fun theAdminBarShowsSixTabsInsideTheSafeAreaWithMiListaAfterSeries() {
+        // watchlist prd3 FR-T4 / AC-T1: [🔍] [Inicio] [Películas] [Series] [Mi lista] [Ajustes].
+        useLibrary()
+        signInAsAdmin()
+        launch()
+        NavTab.entries.forEach(::assertTabFits)
+        val lefts = NavTab.entries.map { node("tab_${it.name}").fetchSemanticsNode().positionInRoot.x }
+        assertTrue("the tabs are laid out in enum order: $lefts", lefts.zipWithNext().all { (a, b) -> a < b })
+        press(Key.DirectionUp)
+        press(Key.DirectionRight, times = 2)
+        assertFocused("tab_SHOWS")
+        press(Key.DirectionRight)
+        assertFocused("tab_WATCHLIST")
+        assertReadable(NavTab.WATCHLIST, on = HomeTvColors.OnBackground, where = "focused, on the pill")
+        press(Key.DirectionRight)
+        assertFocused("tab_SETTINGS")
+    }
+
+    @Test
+    fun viewersSeeMiListaAsTheLastTab() {
+        useLibrary()
+        launch()
+        assertTrue(rule.onAllNodes(hasTestTag("tab_SETTINGS"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
+        assertTabFits(NavTab.WATCHLIST)
     }
 }

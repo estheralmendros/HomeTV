@@ -1,7 +1,7 @@
 // Query key factory, stale times and the invalidation table (prd2 § State & data fetching).
 // Keys never include the profile id: switching profile clears the whole cache.
 import type { QueryKey } from '@tanstack/react-query';
-import type { LibraryQuery, LibraryType, TmdbType, UnmatchedQuery } from './types';
+import type { LibraryQuery, LibraryType, TmdbType, UnmatchedQuery, WatchlistKind, WatchlistSort, WatchlistType } from './types';
 
 export const queryKeys = {
   info: () => ['info'] as const,
@@ -21,6 +21,9 @@ export const queryKeys = {
   episode: (id: number) => ['episode', id] as const,
   person: (id: number) => ['person', id] as const,
   personAll: () => ['person'] as const,
+  /** "Mi lista" infinite list; `params` excludes `page`/`page_size`. */
+  watchlist: (params: { type: WatchlistType; sort: WatchlistSort }) => ['watchlist', 'list', params] as const,
+  watchlistAll: () => ['watchlist'] as const,
   admin: {
     all: () => ['admin'] as const,
     scan: () => ['admin', 'scan'] as const,
@@ -33,6 +36,12 @@ export const queryKeys = {
     /** Folder browser listing; `null` = the browse root. A child of `libraries()` (prefix). */
     browse: (path: string | null) => ['admin', 'libraries', 'browse', path] as const,
   },
+};
+
+/** Mutation keys: a write in flight is visible to every component (and survives a remount). */
+export const mutationKeys = {
+  /** PUT/DELETE /api/watchlist/{films|shows}/{id}. */
+  watchlistWrite: (kind: WatchlistKind, id: number) => ['watchlistWrite', kind, id] as const,
 };
 
 const SECOND = 1000;
@@ -51,6 +60,7 @@ export const staleTimes = {
   season: 30 * SECOND,
   episode: 30 * SECOND,
   person: 30 * SECOND,
+  watchlist: 30 * SECOND,
   adminScan: 0,
   adminUnmatched: 0,
   adminTmdb: 5 * MINUTE,
@@ -71,6 +81,8 @@ export type InvalidationEvent =
   | { type: 'watchedEpisodes'; showId: number }
   /** Match / resolve success, scan finished. */
   | { type: 'catalogChanged' }
+  /** PUT/DELETE /api/watchlist/... settled (success or failure). */
+  | { type: 'watchlistChanged'; kind: WatchlistKind; id: number }
   /** PUT /api/admin/libraries success (folders saved, a `libraries` scan may have started). */
   | { type: 'librariesChanged' }
   /** Profile create / edit / delete. */
@@ -91,12 +103,16 @@ export function invalidateAfter(event: InvalidationEvent): QueryKey[] {
         queryKeys.libraryAll('films'),
         queryKeys.libraryAll('shows'),
         queryKeys.searchAll(),
-        // Actor pages carry watch state on their cards.
+        // Actor pages and "Mi lista" carry watch state on their cards.
         queryKeys.personAll(),
+        queryKeys.watchlistAll(),
       ];
     }
     case 'watchedFilm':
-      return [queryKeys.film(event.id), queryKeys.home(), queryKeys.libraryAll('films'), queryKeys.searchAll(), queryKeys.personAll()];
+      return [
+        queryKeys.film(event.id), queryKeys.home(), queryKeys.libraryAll('films'), queryKeys.searchAll(), queryKeys.personAll(),
+        queryKeys.watchlistAll(),
+      ];
     case 'watchedEpisodes':
       return [
         queryKeys.show(event.showId),
@@ -106,6 +122,7 @@ export function invalidateAfter(event: InvalidationEvent): QueryKey[] {
         queryKeys.libraryAll('shows'),
         queryKeys.searchAll(),
         queryKeys.personAll(),
+        queryKeys.watchlistAll(),
       ];
     case 'catalogChanged':
       return [
@@ -114,7 +131,10 @@ export function invalidateAfter(event: InvalidationEvent): QueryKey[] {
         // Title counts per folder change when a scan ends.
         queryKeys.admin.libraries(),
         queryKeys.personAll(),
+        queryKeys.watchlistAll(),
       ];
+    case 'watchlistChanged':
+      return [event.kind === 'film' ? queryKeys.film(event.id) : queryKeys.show(event.id), queryKeys.watchlistAll()];
     case 'librariesChanged':
       return [queryKeys.admin.libraries(), queryKeys.admin.scan()];
     case 'profilesChanged':

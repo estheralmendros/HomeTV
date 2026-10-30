@@ -92,6 +92,22 @@ interface HomeTvApi {
     @POST("api/watched")
     suspend fun setWatched(@Body body: WatchedRequest): WatchedResponse
 
+    /** "Mi lista" (watchlist prd.md FR-8): `type` = `all` | `films` | `shows`, `sort` = `added` | `title` | `year`. */
+    @GET("api/watchlist")
+    suspend fun watchlist(
+        @Query("type") type: String,
+        @Query("sort") sort: String,
+        @Query("page") page: Int,
+        @Query("page_size") pageSize: Int,
+    ): Page<WatchlistEntry>
+
+    /** [segment] = `films` | `shows`; 204 with no body. */
+    @PUT("api/watchlist/{segment}/{id}")
+    suspend fun addToWatchlist(@Path("segment") segment: String, @Path("id") id: Long)
+
+    @DELETE("api/watchlist/{segment}/{id}")
+    suspend fun removeFromWatchlist(@Path("segment") segment: String, @Path("id") id: Long)
+
     @POST("api/media-files/{id}/playback")
     suspend fun playback(@Path("id") mediaFileId: Long, @Body body: PlaybackRequest): PlaybackResponse
 

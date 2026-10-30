@@ -57,6 +57,13 @@ export const handlers = [
   }),
   http.post(`${API}/watched`, () => HttpResponse.json({ updated: 1 })),
 
+  // Mi lista
+  http.get(`${API}/watchlist`, () => HttpResponse.json(f.page([], { page_size: 50 }))),
+  http.put(`${API}/watchlist/films/:id`, () => new HttpResponse(null, { status: 204 })),
+  http.delete(`${API}/watchlist/films/:id`, () => new HttpResponse(null, { status: 204 })),
+  http.put(`${API}/watchlist/shows/:id`, () => new HttpResponse(null, { status: 204 })),
+  http.delete(`${API}/watchlist/shows/:id`, () => new HttpResponse(null, { status: 204 })),
+
   // Media & playback
   http.get(`${API}/media-files/:id`, ({ params }) => HttpResponse.json(f.mediaFile({ id: Number(params.id) }))),
   http.post(`${API}/media-files/:id/playback`, ({ params }) =>

@@ -10,6 +10,8 @@
 - ``add_person(s, name, ...)`` -> ``m.Person`` (unique ``tmdb_id`` by default);
   ``add_cast_credit(s, person, film=/show=, character=)`` (local credit, next ``order``);
   ``add_person_credit(s, person, media_type, tmdb_id, character=)`` (TMDB credit).
+- ``add_profile(s, name, avatar_id=, is_admin=, pin_hash=)`` -> ``m.Profile`` (non-admin, no PIN).
+- ``add_watchlist_entry(s, profile_id, film=/show=, added_at=)`` ("Mi lista", default ``T0``).
 """
 
 from datetime import UTC, date, datetime, timedelta
@@ -350,6 +352,39 @@ def add_person_credit(
 ) -> m.PersonCredit:
     row = m.PersonCredit(
         person_id=person.id, media_type=media_type, tmdb_id=tmdb_id, character=character
+    )
+    s.add(row)
+    s.flush()
+    return row
+
+
+def add_profile(
+    s: Session,
+    name: str = "A",
+    *,
+    avatar_id: str = "avatar-01",
+    is_admin: bool = False,
+    pin_hash: str | None = None,
+) -> m.Profile:
+    row = m.Profile(name=name, avatar_id=avatar_id, is_admin=is_admin, pin_hash=pin_hash)
+    s.add(row)
+    s.flush()
+    return row
+
+
+def add_watchlist_entry(
+    s: Session,
+    profile_id: int,
+    *,
+    film: m.Film | None = None,
+    show: m.Show | None = None,
+    added_at: datetime | None = None,
+) -> m.WatchlistEntry:
+    row = m.WatchlistEntry(
+        profile_id=profile_id,
+        film_id=film.id if film is not None else None,
+        show_id=show.id if show is not None else None,
+        added_at=added_at or T0,
     )
     s.add(row)
     s.flush()

@@ -45,6 +45,8 @@ import type {
   UnmatchedEntry,
   VideoInfo,
   WatcherStatus,
+  WatchlistFilmEntry,
+  WatchlistShowEntry,
 } from '@/api/types';
 import type { StoredSession } from '@/auth/session';
 
@@ -307,6 +309,7 @@ export function filmDetail(overrides: Partial<FilmDetail> = {}): FilmDetail {
     media_files: [mediaFile()],
     progress: null,
     added_at: T0,
+    in_watchlist: false,
     ...overrides,
   };
 }
@@ -346,8 +349,21 @@ export function showDetail(overrides: Partial<ShowDetail> = {}): ShowDetail {
     next_episode: episodeSummary(),
     unwatched_episode_count: 150,
     added_at: T0,
+    in_watchlist: false,
     ...overrides,
   };
+}
+
+export const WATCHLIST_ADDED_AT = '2026-10-27T18:04:11Z';
+
+/** Dune (film 12) in "Mi lista". */
+export function watchlistFilmEntry(overrides: Partial<WatchlistFilmEntry> = {}): WatchlistFilmEntry {
+  return { kind: 'film', item: filmSummary(), added_to_list_at: WATCHLIST_ADDED_AT, ...overrides };
+}
+
+/** The Office (show 7) in "Mi lista". */
+export function watchlistShowEntry(overrides: Partial<WatchlistShowEntry> = {}): WatchlistShowEntry {
+  return { kind: 'show', item: showSummary(), added_to_list_at: WATCHLIST_ADDED_AT, ...overrides };
 }
 
 export function seasonDetail(overrides: Partial<SeasonDetail> = {}): SeasonDetail {

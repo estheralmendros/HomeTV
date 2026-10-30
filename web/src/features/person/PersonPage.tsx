@@ -14,6 +14,7 @@ import { NotAvailable } from '@/components/NotAvailable';
 import { SkeletonDetail } from '@/components/Skeleton';
 import { PosterGrid } from '@/features/library/PosterGrid';
 import { parseRouteId } from '@/lib/routeId';
+import { PHONE_QUERY, useMediaQuery } from '@/lib/useMediaQuery';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
 import { S } from '@/strings.es';
 import { appearanceSubtitle } from './appearanceSubtitle';
@@ -50,11 +51,23 @@ function primaryLanguage(tag: string | null): string | undefined {
 function PersonView({ person }: { person: PersonDetail }) {
   const bioId = useId();
   const catalogId = useId();
+  const isPhone = useMediaQuery(PHONE_QUERY);
   const lifeSpan = lifeSpanText(person.birthday, person.deathday, todayIso());
   const subtitleFor = useMemo(() => {
     const byItem = new Map(person.appearances.map((a) => [`${a.kind}-${a.item.id}`, appearanceSubtitle(a)]));
     return (item: FilmSummary | ShowSummary) => byItem.get(`${item.type}-${item.id}`) ?? null;
   }, [person.appearances]);
+
+  // Desktop: in the text column under the place of birth (as on the TV); phones: below the header,
+  // where the column next to the photo is too narrow.
+  const biography = person.biography !== null && (
+    <section className={isPhone ? styles.section : styles.bio} aria-labelledby={bioId}>
+      <h2 id={bioId} className={styles.heading}>
+        {S.person.biography}
+      </h2>
+      <Biography text={person.biography} lang={primaryLanguage(person.biography_language)} />
+    </section>
+  );
 
   return (
     <div className="page">
@@ -75,17 +88,11 @@ function PersonView({ person }: { person: PersonDetail }) {
           <h1 className={styles.name}>{person.name}</h1>
           {lifeSpan !== null && <p className={styles.lifeSpan}>{lifeSpan}</p>}
           {person.place_of_birth !== null && <p className={styles.place}>{person.place_of_birth}</p>}
+          {!isPhone && biography}
         </div>
       </header>
 
-      {person.biography !== null && (
-        <section className={styles.section} aria-labelledby={bioId}>
-          <h2 id={bioId} className={styles.heading}>
-            {S.person.biography}
-          </h2>
-          <Biography text={person.biography} lang={primaryLanguage(person.biography_language)} />
-        </section>
-      )}
+      {isPhone && biography}
 
       <section className={styles.section} aria-labelledby={catalogId}>
         <h2 id={catalogId} className={styles.heading}>

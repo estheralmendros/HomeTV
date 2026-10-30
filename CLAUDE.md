@@ -19,7 +19,8 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     `hometv/parser.py`: pure modules (no I/O).
   - `hometv/probe.py`: ffprobe wrapper (injectable `runner`) + pure `normalize()`.
   - `hometv/db/engine.py`: `Database` (read/write engines, `write_session()`),
-    `run_migrations()`. `db/models.py`: full data model. `db/migrations/versions/`: Alembic.
+    `run_migrations()`. `db/models.py`: full data model (incl. `WatchlistEntry`: profile + film|show,
+    partial unique per target, `added_at`). `db/migrations/versions/`: Alembic (head `0005`).
   - `hometv/libraries.py`: library folders owned by the DB (`library_folder`, seeded once per
     library: env/YAML > present `media_file` roots > empty; `library.folders_seeded_at`). Pure
     `normalize_folder`/`same_folders`/`choose_seed`/`validate_change`/`split_removals`/
@@ -55,7 +56,8 @@ is a contract shared by the web and TV clients: change it deliberately and updat
   - `hometv/metadata/`: `tmdb.py` (`TmdbClient`: limiter, retries, language fallback;
     `person_details` = `/person/{id}` + `combined_credits`, biography fallback without credits,
     `BIOGRAPHY_LANGUAGE_KEY`), `matching.py` (pure `choose_match`), `enrich.py` (`Enricher`,
-    `merge_items`, admin `match_item`/`resolve_unmatched`), `artwork.py` (`ArtworkCache`,
+    `merge_items` (moves progress and watchlist entries, `_merge_watchlist` keeps the earlier
+    `added_at`), admin `match_item`/`resolve_unmatched`), `artwork.py` (`ArtworkCache`,
     `image()` Image object; profile = `w185`/`h632`, both lazy).
   - `hometv/admin.py`: admin services (`list_unmatched`, `unmatched_count`, `TmdbProxy`).
   - `hometv/profiles.py`: PIN hashing, `TokenService` (profile/admin tokens, injectable
@@ -63,9 +65,18 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     `create_profile`, `update_profile`, `delete_profile`).
   - `hometv/watch.py`: pure rules (90 %, last part, in-progress, `next_up`) +
     `report_progress` / `mark_watched`. `hometv/catalog.py`: batched list/detail/home/search
-    queries returning the pydantic shapes (`media_file_out`, `media_label`, `not_found` 404 helper;
+    queries returning the pydantic shapes (`media_file_out`, `media_label`, `not_found` 404 helper,
+    `show_visible()` EXISTS, `WatchlistKind`, `in_watchlist(session, profile_id, kind, item_id)` (one
+    EXISTS; `FilmDetail`/`ShowDetail.in_watchlist`);
     `person_detail`: TMDB credits (`person_credit`, `library_id` subquery so SQLite seeks
     `uq_*_library_id_tmdb_id`) ∪ local `cast_credit`, matched + visible only, ≤ 7 queries).
+  - `hometv/watchlist.py` ("Mi lista", per profile): `add`/`remove` (one write each, visible
+    title only else 404 `not_found` on both; `add` = `ON CONFLICT DO NOTHING`, keeps `added_at`; FK
+    `IntegrityError` (profile deleted after auth) -> 401 `unauthorized`, any other one re-raised;
+    `WatchlistKind` re-exported from `catalog`), `list_entries(session,
+    profile_id, WatchlistParams(type all|films|shows, sort added|title|year, page, page_size))`
+    (one SQL over `watchlist_entry` LEFT JOIN film/show: visible only, fixed directions, ties by
+    entry id; ≤ 6 queries). Hidden entries kept; purge/profile deletion cascade via FKs.
   - `hometv/people.py` (actor screen): pure `normalize_credits`/`normalize_person`/`is_fresh`
     (`PERSON_TTL` 30 d, `PERSON_FETCH_WAIT_SECONDS` 5); `PersonService` (`app.state.people`:
     `detail()` single-flight fetch task per person in `_inflight`, never-fetched waits
@@ -102,18 +113,21 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     awaits the arming walk); the `finally` stops the watcher before the scheduler and
     `people.stop()` before `tmdb.aclose()`; `run()`
     single-worker entry (console script `hometv`, the container CMD).
-  - `hometv/api/`: `errors.py` (envelope), `deps.py` (auth deps), `schemas.py`,
-    `list_params.py` (films/shows query params), `routes_*.py` (system, profiles, catalog,
-    films, shows, people (async `GET /api/people/{id}`, `PeopleDep`), watch, artwork, admin,
+  - `hometv/api/`: `errors.py` (envelope, `unauthorized()` so services need not import `deps`), `deps.py` (auth deps), `schemas.py`,
+    `list_params.py` (films/shows query params; `PageNumber` = `page` 1..`MAX_PAGE` (1 000 000), also used by the watchlist list), `routes_*.py` (system, profiles, catalog,
+    films, shows, people (async `GET /api/people/{id}`, `PeopleDep`), watch, watchlist
+    (`PUT`/`DELETE /api/watchlist/{films|shows}/{id}` 204, `GET /api/watchlist?type=&sort=` →
+    `Page[WatchlistEntry]` (`kind`, `item`, `added_to_list_at`); Bearer only), artwork, admin,
     media).
   - `tests/`: `unit/` (pure), `service/` (tmp dirs + SQLite, stubs), `api/` (in-process
     httpx), `integration/` (real ffmpeg/ffprobe, marker `integration`; `test_inotify_backend.py`
     also marked `inotify`: no ffmpeg needed, skipped off Linux), `perf/` (marker `perf`, incl.
-    `test_scoped_scan_perf.py`, `test_people_perf.py`), `fixtures/`, `factories.py` (`add_film`/
+    `test_scoped_scan_perf.py`, `test_people_perf.py`, `test_watchlist_perf.py`), `fixtures/`, `factories.py` (`add_film`/
     `add_show`/`add_file(root=, rel=, library=)`/`add_progress`/`add_person`/`add_cast_credit`/
-    `add_person_credit`),
+    `add_person_credit`/`add_watchlist_entry(s, profile_id, film=|show=, added_at=)`/`add_profile(s, name)`),
     `stubs.py` (`FakeProc`, `Spawner`, `ScaledClock`, `wait_until`, `FakeWatchBackend` (`emit`,
-    `calls`/`ops`, `fail_with`, `alive`, `gate(op)`/`open_gate`), `BackendFactory`),
+    `calls`/`ops`, `fail_with`, `alive`, `gate(op)`/`open_gate`), `BackendFactory`, `capture_selects`/
+    `capture_writes` (SQL statement recorders for query-count tests)),
     `fmp4_builder.py` (synthetic fMP4), `hls_stub.py` (argv-driven stub ffmpeg for API tests).
 - `web/`: React 18 + TS (strict, `noUncheckedIndexedAccess`, alias `@/`) + Vite 5 SPA, Node 24
   (`.nvmrc`), TanStack Query 5, React Router 6 data router, hls.js (lazy), CSS Modules over
@@ -122,9 +136,13 @@ is a contract shared by the web and TV clients: change it deliberately and updat
   - `src/strings.es.ts`: `S`, the only UI string catalog (es-ES; functions for values/plurals).
   - `src/api/`: `client.ts` (`apiFetch`, 401 hook, `X-Admin-Token`), `errors.ts` (`ApiError`,
     `errorMessage`), `types.ts` (REST shapes, snake_case), one module per area,
-    `queryKeys.ts` (`queryKeys`, `staleTimes`, `invalidateAfter(event)`; `['person', id]` /
-    `personAll()` is invalidated by `playerExit`/`watchedFilm`/`watchedEpisodes`/`catalogChanged`),
-    `queries.ts`, `people.ts` (`getPerson`).
+    `queryKeys.ts` (`queryKeys`, `mutationKeys` (`watchlistWrite(kind, id)`), `staleTimes`, `invalidateAfter(event)`; `['person', id]` /
+    `personAll()` and `watchlistAll()` (`['watchlist']`; list key `watchlist({type, sort})`) are
+    invalidated by `playerExit`/`watchedFilm`/`watchedEpisodes`/`catalogChanged`; event
+    `watchlistChanged {kind, id}` → the film/show detail + `['watchlist']`),
+    `queries.ts`, `people.ts` (`getPerson`), `watchlist.ts` (`getWatchlist`/`addToWatchlist`/
+    `removeFromWatchlist`, `WATCHLIST_PAGE_SIZE` 50), `paging.ts` (generic `nextPageParam<T>`, shared
+    by the library grids and Mi lista).
   - `src/auth/`: per-tab session (`AuthProvider`, `session.ts`), `BootGate`/`RequireProfile`/
     `RequireAdmin`, in-memory `adminUnlock`, `useAdminAction` (keypad + one retry on
     `admin_locked`), `AdminPinModal`.
@@ -136,10 +154,19 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     lock-screen play/pause/seek handlers + metadata, feature-detected); `PlayerRoute` is the stable
     shell (fullscreen root + the single `<video>`, `PlayerShellContext`), `PlayerPage` is keyed by
     `pathname + ?file=` and holds all per-playback state.
-  - `src/features/<screen>/` (setup, profiles, home, library, search, film, show, person, admin, about),
+  - `src/features/<screen>/` (setup, profiles, home, library, search, film, show, person, watchlist, admin, about),
+    `features/watchlist/` ("Mi lista"): `WatchlistPage` (`/watchlist`, eager; single `<h1>` "Mi lista" →
+    "Mi lista · {total}" once page 1 loads; `WatchlistToolbar` = type buttons (`aria-pressed`) + sort
+    `<select>`, no order toggle, pressed type = accent fill; `PosterGrid` + `LoadMoreFooter`, items deduped by `type-id`; empty
+    vs filtered empty + "Ver todo"), `useWatchlistParams` (URL `?type=films|shows&sort=title|year`,
+    defaults/invalid not written, replace navigation, `showAll`; setters build on the latest requested
+    params until the URL changes from outside, no ref written in render), `useWatchlistToggle(kind, id, inList)`
+    (optimistic `in_watchlist` patch of the detail key, rollback + toast, `watchlistChanged` on settle,
+    `pending` = `useIsMutating(mutationKeys.watchlistWrite)` so it survives a remount,
+    no success toast; used by Film detail's secondary row and Show detail's hero),
     `features/person/`: `PersonPage` (`/people/:id`, eager; `NotAvailable` (also a 404 on refetch)/skeleton/
     `ErrorState` (only without cached data)/keyed `PersonView`: header photo `Artwork kind="poster"` + initials placeholder, name, life span,
-    place; "Biografía"; "En tu catálogo" = `PosterGrid` + `subtitleFor`, empty text, `credits_complete`
+    place, then "Biografía" in that text column (below the header under `PHONE_QUERY`); "En tu catálogo" = `PosterGrid` + `subtitleFor`, empty text, `credits_complete`
     note), `Biography` (4-line clamp, "Leer más/menos" only when `useOverflows`), pure `lifeSpan`
     (`formatLongDate`/`ageOn`/`todayIso`/`lifeSpanText`, `Date.UTC` round-trip validation) and
     `appearanceSubtitle`,
@@ -149,17 +176,22 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     (`scanFinishedToast`, `isScanStatus`, pure `scopeLabel`), `LibrariesPage` (Bibliotecas: pure `libraryDraft` reducer, save = plan → server-built
     confirmation → PUT; results on the page), `AddFolderDialog`, `FolderBrowser` (keeps the last good
     listing as the way back), `adminQueries` (`useLibrariesQuery`, `useBrowseQuery`),
-    `src/components/` (shared UI; `Artwork` `largeAt2x` (false = `small` only) and `placeholder`
+    `src/components/` (shared UI; `LoadMoreFooter` (sentinel + "Cargar más"/retry, Library and Mi lista; strings `S.common.loadMore`/`loadMoreError`),
+    `Toolbar.module.css` (toolbar/field/input/select classes shared by both toolbars); `Artwork` `largeAt2x` (false = `small` only) and `placeholder`
     (null/failed image); `PosterCard`/`SummaryCard` `subtitle` (also in the link name via
     `S.cards.withSubtitle`), `PosterGrid` `subtitleFor`; `CastRow` items are `<Link>`s to
-    `/people/{person_id}` named "name, character", `small` only, initials circle), `src/lib/`
+    `/people/{person_id}` named "name, character", `small` only, initials circle; `WatchlistToggle`
+    (presentational: "Mi lista"/"En Mi lista", named "Añadir a/Quitar de Mi lista", `aria-pressed`);
+    `NavBar` links Inicio/Películas/Series/Mi lista (`.link` nowrap), `MobileTabBar` five equal tabs
+    + Buscar, never truncated (`NavBar.styles.test.ts` checks the CSS source)), `src/lib/`
     (`format`, `languages`, `chunkReload`, `RouteErrorBoundary`, `lazyRoute`, hooks incl.
     `useOverflows(ref, active, content)` (clamped-text overflow, re-measured on `content` change and
     by `ResizeObserver` when present, keeps its value while inactive)), `router.tsx` (lazy `/admin/*` and `/watch/*`).
   - `tests/`: `setup.ts` (MSW `onUnhandledRequest: 'error'`, media/TextTrack stubs, resets),
     `fixtures.ts` (`f.*` factories), `msw/handlers.ts` (`handlers`, `apiError`),
     `msw/server.ts` (`recordRequests()`), `renderWithProviders.tsx`, `player.tsx`, `fakeHls.ts`,
-    `flush.ts`, `capsEnvs.ts`, `media.ts`, `e2e/smoke.spec.ts` (optional Playwright).
+    `flush.ts`, `capsEnvs.ts`, `media.ts`, `e2e/smoke.spec.ts` (optional Playwright; also the 360 px
+    tab bar / 768 px NavBar layout checks and a Mi lista add/remove round trip).
 - `deploy/`: `Dockerfile` (multi-stage linux/amd64: `server-build` uv venv, `web-build`
   `node:24-bookworm-slim` on `$BUILDPLATFORM` (`npm ci && npm run build`), `runtime`
   python:3.12-slim-bookworm + Debian ffmpeg 5.1 + `web/dist` in `/app/web/dist`, user `hometv`
@@ -178,12 +210,19 @@ is a contract shared by the web and TV clients: change it deliberately and updat
   - `core/` (pure Kotlin/JVM, package `com.hometv.tv.core`): `api/` (`HomeTvApi` Retrofit,
     `ApiModels` DTOs, `ApiException`/`apiCall`, `ApiClients` (API / stream / validation OkHttp),
     `AuthInterceptor` Bearer for the server host only), `data/` (`SessionStore` StateFlow +
-    `InMemorySessionStore`, `SessionGuard` single-flight `renew` → Renewed|ProfileGone|Unreachable,
+    `InMemorySessionStore`, `SessionGuard` single-flight `renew` → Renewed|ProfileGone|Unreachable, `currentProfileId()`,
     `withRenewal(Origin.Foreground|Background)`, repositories, `AppEvents`, `NextEpisodeResolver`
     (D12), `CatalogRepository.person(id)` (`GET /api/people/{id}`, drops non film/show appearances),
     `ProfileRepository.verifyAdminPin` → `PinCheck` (the only PIN on the TV: server change; an
     expired token renews once, `invalid_pin` never renews), `PlaybackRepository` (`preparing` loop as a `Flow<PlaybackProgress>`, POSTs in
-    `appScope`; `subtitleLoop`, keep-alive, DELETE)), `playback/` (pure `ClientCapsBuilder`,
+    `appScope`; `subtitleLoop`, keep-alive, DELETE), `WatchlistRepository` ("Mi lista": `list(type,
+    sort, page, pageSize = 50)` drops non film/show items; `write(kind, id, inList)` → `Deferred<Boolean>`,
+    a per-title worker in `appScope` (latest wish wins, one request in flight, plain-lock map, the
+    acknowledged value lives for one worker run; each wish records its profile and a follow-up made
+    under a profile no longer current is dropped, its `Deferred` completed with the acknowledged value),
+    `WatchlistWriteException(acknowledged, cause)`,
+    `writing`/`isWriting`/`awaitIdle`; enums `WatchlistKind`/`WatchlistType`/`WatchlistSort` carry wire
+    values only)), `playback/` (pure `ClientCapsBuilder`,
     `VersionSelector` (D10–D13), `TrackRules`, `TrackCheck`, `PlaybackErrorMapper`,
     `PlaybackPlanner`, `SeekAccumulator`, `ProgressReporter`, the `PlayerController` interface (its `Listener.onRemote*` carry
     media-session commands, no Media3 types in `core`)),
@@ -193,7 +232,8 @@ is a contract shared by the web and TV clients: change it deliberately and updat
   - `app/` (`com.hometv.tv`): `MainActivity` (offers every key to `KeyDispatch` before Compose
     focus; screens register with `KeyEventInterceptor { event -> Boolean }`), `di/AppContainer`
     (manual DI: store, `clients()` rebuilt per server URL, `guard`, repositories, `events`,
-    `sessionExpired`, `appScope`, `codecs`, `playerLaunches`, `homeRefresh`, `detailRefresh`, one
+    `sessionExpired`, `appScope`, `codecs`, `playerLaunches`, `homeRefresh`, `detailRefresh`,
+    `watchlist` + `watchlistMemory` (Mi lista sort for the app session; the type filter lives in the ViewModel and resets when the screen is left, like the Browse filters), one
     shared Coil cache base for the per-server `ImageLoader`s, one factory per ViewModel), `data/`
     (`DataStoreSessionStore`, `HomeCache` (write IOExceptions are logged and swallowed),
     `HomeRefresh`, `DetailRefresh` (generation counter marked by `AppNavigator.play`; Film/Show
@@ -203,15 +243,33 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     (`get` answers from an in-memory index, no disk I/O), `ExoPlayerController` (the ExoPlayer is
     private; `attach/detach(PlayerView)`; owns a Media3 `MediaSession` over `RemoteCommandPlayer`
     while attached), `ExoTrackMapper`), `ui/`
-    (`HomeTvRoot` NavHost, `navigation/` (`Route` incl. `Route.Person(id)`, `NavRequest.Person`,
-    `AppNavigator.openPerson`), `text/` (`UiText`, `UiFormat`, `StringResolver`), `components/`
-    (`PosterCard(…, subtitle, subtitleTestTag)` one muted line, `TextDialog` (scrollable read-only
+    (`HomeTvRoot` NavHost, `navigation/` (`Route` incl. `Route.Person(id)` and `Route.Watchlist`,
+    `NavRequest.Person`, `AppNavigator.openPerson`, `openTab(NavTab.WATCHLIST)` above Home), `text/`
+    (`UiText`, `UiFormat`, `StringResolver`), `components/` (`TopNav` tabs = `NavTab` order: Search,
+    Inicio, Películas, Series, `WATCHLIST` "Mi lista", Ajustes (admins);
+    `PosterCard(…, subtitle, subtitleTestTag)` one muted line, `ActionButton(contentDescription=)`,
+    `TextDialog` (scrollable read-only
     text, Up/Down scroll ¾ viewport, Back closes), `Artwork(placeholder=)`), `common/ScreenError`
     (`PersonGone` → "Esta persona no está disponible." [Volver], no `AppEvent`), theme
     `HomeTvDimens.WIDE_FOCUSED_SCALE` (1.02, wide blocks), one package per screen; `detail/` Film
     detail cast OK → `onCastSelected` → `NavRequest.Person`, `CastFocus(key, index)` restores the
     card on Back (`castKey` in `DetailModels`; `onButton` sets `focus = id` and clears `castFocus`
-    before navigating); `person/` (`PersonViewModel`: `PersonUiState`, `AppearanceCard`,
+    before navigating); Film/Show detail "Mi lista" button `ButtonId.WATCHLIST` right after `WATCHED`
+    (`watchlistButton(inList)` text + `description`, icon `ic_check`/`ic_add`): optimistic, no refetch,
+    shared `DetailWatchlistToggle` (holds `confirmed`, the awaited `WatchlistRepository.write` and the
+    inline error): confirm or roll back (`e.acknowledged ?: confirmed`) with `WatchlistErrorLine` (tag
+    `watchlist_error`, `DetailText.secondary`, cleared by the next action), a late rollback only
+    updates the model unless the screen shows Content; 404/401/ProfileGone go through `fail(e.cause)`
+    (`ScreenError.replacesScreen()`); a refetch while `isWriting` keeps the shown value; Film detail
+    buttons follow row order with Left/Right across `FlowRow` rows, overview `maxLines` 3 with ≥ 4
+    buttons (else 5, tag `film_overview`); `browse/PosterGridPane` (the 6-column grid, `grid_<i>`,
+    first-row Up on the header, failed-page row, focus restore; shared by Browse and Mi lista);
+    `watchlist/` (`WatchlistViewModel`: Browse paging rules, `WatchlistDialog` SORT/TYPE, `empty` vs
+    `noMatches` + `showAll`, `headerFocusVersion` when no card, one paging job with `JobKind`
+    PAGE1/MORE/RESUME (PAGE1 and RESUME `awaitIdle()` first), `onVisible()` (only after an `onHidden()` = `ON_STOP` since the last resume) = `awaitIdle()` then reload in place of
+    `max(lastPage, 1)` pages (one request ≤ 4 pages, else pages of 50), focus by `lastFocusedKey` only
+    after `onCardClick` or with `bodyHasFocus`; `WatchlistScreen` tags `watchlist_header`/`_sort`/`_type`/
+    `_empty`/`_no_matches`/`_show_all`/`_retry`, Back → Home on the "Mi lista" tab); `person/` (`PersonViewModel`: `PersonUiState`, `AppearanceCard`,
     `PersonFocus` Bio|Card(key)|None changed only on OK / bio close / gone target, never per D-pad
     move; `PersonScreen`: 960×540 dp fit (1-line name, 3-line bio block, 1-line subtitle, note in the
     header), lazy rows use `focusRestorer(<remembered card>)`; Film cast and Person rows restore
@@ -221,11 +279,13 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     screen)). `res/values/strings.xml` is the only catalog; the APK keeps only `es` resources
     (`localeFilters`).
   - Tests: `app/src/test` (ViewModel/glue tests, JUnit 5; `ui/player/PlayerSessionStateTest` covers
-    the §8 session table with `FakePlayerController`), `app/src/sharedTest` (Compose focus/navigation
+    the §8 session table with `FakePlayerController`; `TestRepos(appScope =)` gives the real
+    repositories incl. `watchlist`, pass a scope on the test dispatcher for virtual time), `app/src/sharedTest` (Compose focus/navigation
     tests on Robolectric via `UiTestBase` (`assertFullyVisible`/`assertInsideSafeArea`, overridable
     `clock` passed to `testContainer`, e.g. a fixed date for age texts) +
-    `testContainer` + `ScriptedApi` (`onPerson` seam, 404 by default; `PersonFocusTest`); also
-    compiled into `androidTest`).
+    `testContainer` + `ScriptedApi` (`onPerson` seam, 404 by default; `PersonFocusTest`;
+    `onWatchlist` (empty page by default) / `onWatchlistWrite(segment, id, inList)` seams, gate a write
+    by suspending in it; `WatchlistFocusTest`, `DetailWatchlistTest`); also compiled into `androidTest`).
 
 ## Commands
 

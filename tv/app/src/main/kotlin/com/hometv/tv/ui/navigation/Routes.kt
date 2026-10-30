@@ -25,6 +25,10 @@ sealed interface Route {
     @Serializable
     data object Settings : Route
 
+    /** (11) Mi lista: the profile's watchlist (watchlist prd3), a top-nav tab after "Series". */
+    @Serializable
+    data object Watchlist : Route
+
     @Serializable
     data class FilmDetail(val id: Long) : Route
 
