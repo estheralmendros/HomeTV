@@ -22,6 +22,7 @@ from hometv.api import (
     routes_shows,
     routes_system,
     routes_watch,
+    routes_watchlist,
 )
 from hometv.api.errors import install_error_handlers
 from hometv.api.schemas import ErrorResponse
@@ -168,6 +169,7 @@ def create_app(
     app.include_router(routes_shows.router)
     app.include_router(routes_people.router)
     app.include_router(routes_watch.router)
+    app.include_router(routes_watchlist.router)
     app.include_router(routes_artwork.router)
     app.include_router(routes_media.router)
     app.include_router(routes_admin.unlock_router)

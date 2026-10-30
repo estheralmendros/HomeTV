@@ -129,21 +129,37 @@ private fun FilmContent(state: FilmDetailUiState.Content, vm: FilmDetailViewMode
                         Text(state.meta.resolve(), style = MaterialTheme.typography.titleMedium, color = DetailText.secondary, modifier = Modifier.padding(top = 8.dp))
                         if (state.matched) {
                             film.tagline?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp)) }
-                            film.overview?.let { Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 5, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp)) }
+                            // watchlist prd3 FR-T8: 4+ buttons may wrap onto more rows, so the overview gives back two lines.
+                            val overviewLines = if (state.buttons.size >= 4) OVERVIEW_LINES_COMPACT else OVERVIEW_LINES
+                            film.overview?.let {
+                                Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = overviewLines, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp).testTag("film_overview"))
+                            }
                         } else {
                             Text(stringResource(R.string.detail_metadata_unavailable), style = MaterialTheme.typography.bodyMedium, color = DetailText.secondary, modifier = Modifier.padding(top = 8.dp))
                         }
                         FlowRow(Modifier.padding(top = 20.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            state.buttons.forEach { button ->
+                            state.buttons.forEachIndexed { index, button ->
+                                // Left/Right follow the row order across wrapped rows (watchlist prd3 FR-T11: Right from
+                                // "Marcar como visto" reaches "Mi lista" even when it starts the next row).
+                                val previous = state.buttons.getOrNull(index - 1)?.id
+                                val next = state.buttons.getOrNull(index + 1)?.id
                                 ActionButton(
                                     text = button.text.resolve(),
                                     onClick = { vm.onButton(button.id) },
                                     enabled = button.enabled,
-                                    icon = if (button.id in PLAY_BUTTONS) R.drawable.ic_play else null,
-                                    modifier = Modifier.focusRequester(buttons[button.id]).testTag("button_${button.id.name}"),
+                                    icon = buttonIcon(button.id, film.in_watchlist),
+                                    contentDescription = button.description?.resolve(),
+                                    modifier = Modifier
+                                        .focusRequester(buttons[button.id])
+                                        .focusProperties {
+                                            if (previous != null) left = buttons[previous]
+                                            if (next != null) right = buttons[next]
+                                        }
+                                        .testTag("button_${button.id.name}"),
                                 )
                             }
                         }
+                        state.watchlistError?.let { WatchlistErrorLine(it.resolve()) }
                         state.unplayableMessage?.let { Text(it.resolve(), color = HomeTvColors.Error, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 12.dp)) }
                     }
                 }
@@ -211,6 +227,17 @@ private val CAST_CARD_WIDTH = 108.dp
 private val CAST_ROW_PADDING = 8.dp
 
 private val PLAY_BUTTONS = setOf(ButtonId.RESUME, ButtonId.PLAY, ButtonId.PLAY_PART)
+
+/** The play icon, the "Mi lista" check / "+" (watchlist prd3 FR-T5), else none. */
+private fun buttonIcon(id: ButtonId, inList: Boolean): Int? = when (id) {
+    in PLAY_BUTTONS -> R.drawable.ic_play
+    ButtonId.WATCHLIST -> watchlistIcon(inList)
+    else -> null
+}
+
+/** The overview's lines with up to 3 buttons, and with 4 or more (watchlist prd3 FR-T8). */
+private const val OVERVIEW_LINES = 5
+private const val OVERVIEW_LINES_COMPACT = 3
 private val BACKDROP_HEIGHT = 420.dp
 
 /**

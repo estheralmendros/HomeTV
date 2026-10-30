@@ -22,11 +22,16 @@ import com.hometv.tv.ui.common.ScreenError
 import com.hometv.tv.ui.navigation.NavRequest
 import com.hometv.tv.ui.navigation.PlayRequest
 import com.hometv.tv.ui.text.UiText
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -35,7 +40,7 @@ import org.junit.jupiter.api.extension.RegisterExtension
 class ShowDetailViewModelTest {
     @JvmField @RegisterExtension val main = MainDispatcherExtension()
 
-    private val repos = TestRepos()
+    private val repos = TestRepos(appScope = CoroutineScope(SupervisorJob() + main.dispatcher))
     private val refresh = HomeRefresh()
     private val detailRefresh = DetailRefresh()
 
@@ -65,7 +70,7 @@ class ShowDetailViewModelTest {
         repos.api.onSeason = { _, n -> seasons[n] ?: throw httpError(404, "not_found") }
     }
 
-    private fun vm() = ShowDetailViewModel(7, repos.catalog, repos.watch, repos.store, repos.events, refresh, detailRefresh)
+    private fun vm() = ShowDetailViewModel(7, repos.catalog, repos.watch, repos.watchlist, repos.store, repos.events, refresh, detailRefresh)
 
     private fun ShowDetailViewModel.content() = state.value as ShowDetailUiState.Content
 
@@ -78,7 +83,7 @@ class ShowDetailViewModelTest {
         assertEquals(listOf("GET /api/shows/7", "GET /api/shows/7/seasons/2"), repos.api.calls)
         val content = vm.content()
         assertEquals(2, content.selectedSeason)
-        assertEquals(listOf(ButtonId.RESUME, ButtonId.WATCHED), content.buttons.map { it.id })
+        assertEquals(listOf(ButtonId.RESUME, ButtonId.WATCHED, ButtonId.WATCHLIST), content.buttons.map { it.id })
         assertEquals(UiText.Res(R.string.show_resume_episode, listOf(EpisodeCode(2, 3))), content.buttons[0].text)
         assertEquals(UiText.Res(R.string.mark_show_watched), content.buttons[1].text)
         assertEquals(2, content.season!!.entryIndex, "Right from the season list lands on T2 E3")
@@ -97,7 +102,7 @@ class ShowDetailViewModelTest {
         show = show.copy(next_episode = null, unwatched_episode_count = 0)
         val done = vm()
         advanceUntilIdle()
-        assertEquals(listOf(DetailButton(ButtonId.WATCHED, UiText.Res(R.string.mark_show_unwatched))), done.content().buttons)
+        assertEquals(listOf(DetailButton(ButtonId.WATCHED, UiText.Res(R.string.mark_show_unwatched)), watchlistButton(false)), done.content().buttons)
         assertEquals(1, done.content().selectedSeason, "no next episode: the first season")
     }
 
@@ -221,7 +226,7 @@ class ShowDetailViewModelTest {
         assertEquals(2, repos.api.count("GET /api/shows/7/seasons/2"), "the selected season is refetched")
         val content = vm.content()
         assertEquals(2, content.selectedSeason, "the selected season is kept")
-        assertEquals(listOf(ButtonId.RESUME, ButtonId.WATCHED), content.buttons.map { it.id })
+        assertEquals(listOf(ButtonId.RESUME, ButtonId.WATCHED, ButtonId.WATCHLIST), content.buttons.map { it.id })
         assertEquals(UiText.Res(R.string.show_resume_episode, listOf(EpisodeCode(3, 1))), content.buttons[0].text)
         assertTrue(content.season!!.episodes[2].watched, "T2 E3 shows its watched mark")
         vm.onButton(ButtonId.RESUME)
@@ -251,5 +256,143 @@ class ShowDetailViewModelTest {
         advanceUntilIdle()
         assertEquals(ShowDetailUiState.Error(ScreenError.ItemGone), gone.state.value)
         assertEquals(AppEvent.ItemGone("show", 7), repos.received.last())
+    }
+
+    // ---- Mi lista (watchlist prd3 FR-T5/FR-T6) --------------------------------------------
+
+    private fun ShowDetailViewModel.watchlistButton() = content().buttons.first { it.id == ButtonId.WATCHLIST }
+
+    private fun writes() = repos.api.calls.filter { it.contains("/api/watchlist/") }
+
+    @Test
+    fun `the Mi lista button follows the watched button, also without a next episode`() = runTest(main.dispatcher) {
+        show = show.copy(in_watchlist = true)
+        val vm = vm()
+        advanceUntilIdle()
+        assertEquals(DetailButton(ButtonId.WATCHLIST, UiText.Res(R.string.watchlist_in_list), description = UiText.Res(R.string.watchlist_remove)), vm.watchlistButton())
+
+        show = show.copy(next_episode = null, in_watchlist = false)
+        val noNext = vm()
+        advanceUntilIdle()
+        assertEquals(listOf(ButtonId.WATCHED, ButtonId.WATCHLIST), noNext.content().buttons.map { it.id })
+        assertEquals(DetailButton(ButtonId.WATCHLIST, UiText.Res(R.string.watchlist_toggle), description = UiText.Res(R.string.watchlist_add)), noNext.watchlistButton())
+    }
+
+    @Test
+    fun `OK flips the label at once and sends the write without a refetch`() = runTest(main.dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        repos.api.onWatchlistWrite = { _, _, _ -> gate.await() }
+        val vm = vm()
+        advanceUntilIdle()
+        val calls = repos.api.calls.size
+        vm.onButton(ButtonId.WATCHLIST)
+        assertEquals(UiText.Res(R.string.watchlist_in_list), vm.watchlistButton().text)
+        assertNull(vm.content().watchlistError)
+        runCurrent()
+        assertEquals(listOf("PUT /api/watchlist/shows/7"), writes())
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(calls + 1, repos.api.calls.size, "only the PUT: no refetch")
+        assertTrue(vm.content().show.in_watchlist)
+        assertFalse(refresh.consumeStale())
+    }
+
+    @Test
+    fun `a failed write rolls back with the inline line, cleared by a button, a season focus or an episode action`() = runTest(main.dispatcher) {
+        repos.api.onWatchlistWrite = { _, _, _ -> throw httpError(500, "internal_error") }
+        val vm = vm()
+        advanceUntilIdle()
+        val clearers = listOf<() -> Unit>(
+            { vm.onButton(ButtonId.WATCHLIST) },
+            { vm.onSeasonFocused(1) },
+            { vm.onEpisodeLongClick(vm.content().season!!.episodes[0]) },
+        )
+        clearers.forEach { clear ->
+            vm.onEpisodeActionsDismiss()
+            vm.onButton(ButtonId.WATCHLIST)
+            advanceUntilIdle()
+            assertFalse(vm.content().show.in_watchlist)
+            assertEquals(UiText.Res(R.string.watchlist_toggle), vm.watchlistButton().text)
+            assertEquals(UiText.Res(R.string.watchlist_update_failed), vm.content().watchlistError)
+            clear()
+            assertNull(vm.content().watchlistError)
+            advanceUntilIdle()
+        }
+    }
+
+    @Test
+    fun `a late rollback keeps an error screen or the Loading screen of a retry`() = runTest(main.dispatcher) {
+        val gates = mutableListOf<CompletableDeferred<Unit>>()
+        repos.api.onWatchlistWrite = { _, _, _ -> CompletableDeferred<Unit>().also { gates += it }.await() }
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onButton(ButtonId.WATCHLIST)
+        runCurrent()
+        repos.api.onWatched = { throw java.net.ConnectException("refused") }
+        vm.onButton(ButtonId.WATCHED)
+        advanceUntilIdle()
+        val error = vm.state.value
+        assertTrue(error is ShowDetailUiState.Error, "the watched toggle failed: $error")
+        gates[0].completeExceptionally(java.io.IOException("reset"))
+        advanceUntilIdle()
+        assertEquals(error, vm.state.value, "the rollback does not replace the error screen")
+
+        val load = CompletableDeferred<Unit>()
+        repos.api.onShow = { load.await(); show }
+        vm.retry()
+        runCurrent()
+        assertEquals(ShowDetailUiState.Loading, vm.state.value)
+        load.complete(Unit)
+        advanceUntilIdle()
+        assertFalse(vm.content().show.in_watchlist)
+
+        vm.onButton(ButtonId.WATCHLIST)
+        runCurrent()
+        val reload = CompletableDeferred<Unit>()
+        repos.api.onShow = { reload.await(); show }
+        vm.retry()
+        runCurrent()
+        gates[1].completeExceptionally(java.io.IOException("reset"))
+        runCurrent()
+        assertEquals(ShowDetailUiState.Loading, vm.state.value, "the rollback does not replace Loading")
+        reload.complete(Unit)
+        advanceUntilIdle()
+        assertFalse(vm.content().show.in_watchlist)
+    }
+
+    @Test
+    fun `a 404 on the write is ItemGone, a 401 after renewal is the sign-in error`() = runTest(main.dispatcher) {
+        repos.recordEvents(backgroundScope)
+        repos.api.onWatchlistWrite = { _, _, _ -> throw httpError(404, "not_found") }
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onButton(ButtonId.WATCHLIST)
+        advanceUntilIdle()
+        assertEquals(ShowDetailUiState.Error(ScreenError.ItemGone), vm.state.value)
+        assertEquals(listOf<AppEvent>(AppEvent.ItemGone("show", 7)), repos.received)
+
+        repos.api.onWatchlistWrite = { _, _, _ -> throw httpError(401, "unauthorized") }
+        val signIn = vm()
+        advanceUntilIdle()
+        signIn.onButton(ButtonId.WATCHLIST)
+        advanceUntilIdle()
+        assertEquals(ShowDetailUiState.Error(ScreenError.SignIn), signIn.state.value)
+    }
+
+    @Test
+    fun `a refetch during the write keeps the shown value`() = runTest(main.dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        repos.api.onWatchlistWrite = { _, _, _ -> gate.await() }
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onButton(ButtonId.WATCHLIST)
+        detailRefresh.markStale()
+        vm.onVisible()
+        advanceUntilIdle()
+        assertEquals(2, repos.api.count("GET /api/shows/7"))
+        assertTrue(vm.content().show.in_watchlist)
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertTrue(vm.content().show.in_watchlist)
     }
 }

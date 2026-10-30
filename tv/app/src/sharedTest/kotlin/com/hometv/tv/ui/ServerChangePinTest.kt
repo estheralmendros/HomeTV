@@ -24,9 +24,9 @@ class ServerChangePinTest : UiTestBase() {
     }
 
     private fun openSettings() {
-        // Inicio → Películas → Series → Ajustes (Search is the lens left of Inicio).
+        // Inicio → Películas → Series → Mi lista → Ajustes (Search is the lens left of Inicio).
         press(Key.DirectionUp)
-        press(Key.DirectionRight, times = 3)
+        press(Key.DirectionRight, times = 4)
         press(Key.DirectionCenter)
     }
 
@@ -43,7 +43,7 @@ class ServerChangePinTest : UiTestBase() {
         // A viewer has no "Ajustes" tab (prd3 §3 step 1): the step that reaches it for an admin lands on
         // the avatar, so there is no way to [Cambiar servidor].
         press(Key.DirectionUp)
-        press(Key.DirectionRight, times = 3)
+        press(Key.DirectionRight, times = 4)
         assertFocused("nav_avatar")
         assertTrue("no Ajustes tab for a viewer", absent("tab_SETTINGS"))
         assertTrue("no [Cambiar servidor] for a viewer", absent("settings_change_server"))

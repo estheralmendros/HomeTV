@@ -1,0 +1,17 @@
+.header {
+  margin: 0 0 var(--space-3);
+}
+
+.types {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* Selected type: filled like .button-primary (white on the accent, 4.8:1), so it never reads as hover. */
+.type[aria-pressed='true'],
+.type[aria-pressed='true']:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: #fff;
+  background: var(--color-accent);
+}

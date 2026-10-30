@@ -16,6 +16,7 @@ import { ProfilePickerPage } from '@/features/profiles/ProfilePickerPage';
 import { SearchPage } from '@/features/search/SearchPage';
 import { BootstrapPage } from '@/features/setup/BootstrapPage';
 import { ShowDetailPage } from '@/features/show/ShowDetailPage';
+import { WatchlistPage } from '@/features/watchlist/WatchlistPage';
 import { lazyRoute } from '@/lib/lazyRoute';
 import { RouteErrorBoundary } from '@/lib/RouteErrorBoundary';
 
@@ -54,6 +55,7 @@ export const appRoutes: RouteObject[] = [
               { index: true, element: <HomePage /> },
               { path: 'films', element: <LibraryPage type="films" /> },
               { path: 'shows', element: <LibraryPage type="shows" /> },
+              { path: 'watchlist', element: <WatchlistPage /> },
               { path: 'search', element: <SearchPage /> },
               { path: 'films/:id', element: <FilmDetailPage /> },
               { path: 'shows/:id', element: <ShowDetailPage /> },

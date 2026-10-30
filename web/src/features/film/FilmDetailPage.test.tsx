@@ -1,8 +1,10 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
+import { onlineManager } from '@tanstack/react-query';
 import { delay, http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import type { FilmDetail, MediaFile } from '@/api/types';
 import * as f from '../../../tests/fixtures';
+import { tick } from '../../../tests/flush';
 import { API, apiError } from '../../../tests/msw/handlers';
 import { recordRequests, server } from '../../../tests/msw/server';
 import { currentUrl, findProbedLocation, renderWithProviders } from '../../../tests/renderWithProviders';
@@ -186,6 +188,150 @@ describe('FilmDetailPage', () => {
       expect(screen.getByRole('button', { name: 'Marcar como no visto' })).toBeInTheDocument();
       expect(await screen.findByText('Se ha producido un error inesperado (internal_error).')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Marcar como visto' })).toHaveAttribute('aria-pressed', 'false');
+    });
+  });
+
+  describe('Mi lista toggle', () => {
+    const NOT_AVAILABLE =
+      'Esta película no está disponible. Puede que se haya eliminado o que su archivo esté en un disco desconectado.';
+
+    /**
+     * A stateful list on the server: GET /api/films/:id reports membership, PUT/DELETE change it once
+     * `release()` is called (the write is held open until then).
+     */
+    function serveWatchlist(initial: boolean) {
+      const state = { inList: initial };
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      const write = (next: boolean) => async () => {
+        await gate;
+        state.inList = next;
+        return new HttpResponse(null, { status: 204 });
+      };
+      server.use(
+        http.get(`${API}/films/:id`, ({ params }) => HttpResponse.json(f.filmDetail({ id: Number(params.id), in_watchlist: state.inList }))),
+        http.put(`${API}/watchlist/films/:id`, write(true)),
+        http.delete(`${API}/watchlist/films/:id`, write(false)),
+      );
+      return release;
+    }
+
+    it('sits in the secondary row right after the watched toggle, also without a playable file', async () => {
+      serveFilm({ media_files: [] });
+      renderFilm();
+      const watched = await screen.findByRole('button', { name: 'Marcar como visto' });
+      const toggle = screen.getByRole('button', { name: 'Añadir a Mi lista' });
+      expect(watched.nextElementSibling).toBe(toggle);
+      expect(toggle).toHaveTextContent('+Mi lista');
+      expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('flips before the response, is disabled while pending, then PUTs, refetches the detail, no toast', async () => {
+      const release = serveWatchlist(false);
+      const rec = recordRequests();
+      const { user } = renderFilm();
+      await user.click(await screen.findByRole('button', { name: 'Añadir a Mi lista' }));
+      const toggle = await screen.findByRole('button', { name: 'Quitar de Mi lista' });
+      expect(toggle).toHaveTextContent('✓En Mi lista');
+      expect(toggle).toHaveAttribute('aria-pressed', 'true');
+      expect(toggle).toBeDisabled();
+      const detailGets = rec.find('GET', '/api/films/12').length;
+      release();
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Quitar de Mi lista' })).toBeEnabled());
+      await waitFor(() => expect(rec.find('GET', '/api/films/12').length).toBeGreaterThan(detailGets));
+      expect(rec.find('PUT', '/api/watchlist/films/12')).toHaveLength(1);
+      expect(screen.getByRole('status', { name: 'Notificaciones' })).toBeEmptyDOMElement();
+      rec.dispose();
+    });
+
+    it('stays disabled after leaving and re-entering the page while the write is in flight', async () => {
+      const release = serveWatchlist(false);
+      const rec = recordRequests();
+      const { user, router } = renderFilm();
+      await user.click(await screen.findByRole('button', { name: 'Añadir a Mi lista' }));
+      expect(await screen.findByRole('button', { name: 'Quitar de Mi lista' })).toBeDisabled();
+      await act(() => router.navigate('/films'));
+      expect(screen.queryByRole('button', { name: /Mi lista/ })).not.toBeInTheDocument();
+      await act(() => router.navigate('/films/12'));
+      expect(await screen.findByRole('button', { name: 'Quitar de Mi lista' })).toBeDisabled();
+      release();
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Quitar de Mi lista' })).toBeEnabled());
+      expect(rec.find('PUT', '/api/watchlist/films/12')).toHaveLength(1);
+      rec.dispose();
+    });
+
+    it('sends DELETE when the film is already in the list', async () => {
+      const release = serveWatchlist(true);
+      const rec = recordRequests();
+      const { user } = renderFilm();
+      const toggle = await screen.findByRole('button', { name: 'Quitar de Mi lista' });
+      expect(toggle).toHaveTextContent('✓En Mi lista');
+      await user.click(toggle);
+      expect(await screen.findByRole('button', { name: 'Añadir a Mi lista' })).toHaveAttribute('aria-pressed', 'false');
+      release();
+      await waitFor(() => expect(rec.find('DELETE', '/api/watchlist/films/12')).toHaveLength(1));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Añadir a Mi lista' })).toBeEnabled());
+      expect(rec.find('PUT', /\/api\/watchlist\//)).toHaveLength(0);
+      rec.dispose();
+    });
+
+    it('rolls back on a 500 and shows the error toast', async () => {
+      server.use(
+        http.put(`${API}/watchlist/films/:id`, async () => {
+          await delay(50);
+          return apiError(500, 'internal_error');
+        }),
+      );
+      const { user } = renderFilm();
+      await user.click(await screen.findByRole('button', { name: 'Añadir a Mi lista' }));
+      expect(await screen.findByRole('button', { name: 'Quitar de Mi lista' })).toBeInTheDocument();
+      expect(await screen.findByText('Se ha producido un error inesperado (internal_error).')).toBeInTheDocument();
+      const toggle = await screen.findByRole('button', { name: 'Añadir a Mi lista' });
+      expect(toggle).toHaveAttribute('aria-pressed', 'false');
+      expect(toggle).toHaveTextContent('+Mi lista');
+    });
+
+    it('browser offline: rolls back with the connection toast; nothing is sent once back online', async () => {
+      server.use(http.put(`${API}/watchlist/films/:id`, () => HttpResponse.error()));
+      const rec = recordRequests();
+      const { user } = renderFilm();
+      const toggle = await screen.findByRole('button', { name: 'Añadir a Mi lista' });
+      onlineManager.setOnline(false);
+      try {
+        await user.click(toggle);
+        expect(await screen.findByText('No se puede conectar con el servidor.')).toBeInTheDocument();
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Añadir a Mi lista' })).toBeEnabled());
+        expect(screen.getByRole('button', { name: 'Añadir a Mi lista' })).toHaveAttribute('aria-pressed', 'false');
+        const puts = rec.find('PUT', '/api/watchlist/films/12').length;
+        onlineManager.setOnline(true);
+        // A paused mutation would resume (and send its PUT) here.
+        for (let i = 0; i < 20; i++) await tick();
+        expect(rec.find('PUT', '/api/watchlist/films/12')).toHaveLength(puts);
+        expect(screen.getByRole('button', { name: 'Añadir a Mi lista' })).toHaveAttribute('aria-pressed', 'false');
+      } finally {
+        onlineManager.setOnline(true);
+        rec.dispose();
+      }
+    });
+
+    it('a 404 shows the toast, then the settle refetch turns the page into NotAvailable', async () => {
+      let gone = false;
+      server.use(
+        http.put(`${API}/watchlist/films/:id`, () => {
+          gone = true;
+          return apiError(404, 'not_found', { message: 'Film not found' });
+        }),
+        http.get(`${API}/films/:id`, ({ params }) =>
+          gone ? apiError(404, 'not_found') : HttpResponse.json(f.filmDetail({ id: Number(params.id) })),
+        ),
+      );
+      const { user } = renderFilm();
+      await user.click(await screen.findByRole('button', { name: 'Añadir a Mi lista' }));
+      const toasts = await screen.findByRole('status', { name: 'Notificaciones' });
+      expect(
+        await within(toasts).findByText('Este contenido no está disponible. Puede que se haya eliminado o que su disco esté desconectado.'),
+      ).toBeInTheDocument();
+      expect(await screen.findByText(NOT_AVAILABLE)).toBeInTheDocument();
     });
   });
 

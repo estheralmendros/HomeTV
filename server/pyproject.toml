@@ -42,6 +42,8 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 addopts = "-ra --strict-markers"
+# A test still running after 5 min dumps every thread's stack (a rare keyframe_indexer hang).
+faulthandler_timeout = 300
 markers = [
     "integration: requires real ffmpeg/ffprobe binaries (skipped when missing)",
     "perf: performance benchmarks (excluded from the default run)",

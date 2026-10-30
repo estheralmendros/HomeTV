@@ -14,7 +14,7 @@ from hometv import scheduler as scheduler_module
 from hometv.db import models as m
 from hometv.metadata.tmdb import TMDB_BASE_URL
 from hometv.scanner import ensure_libraries
-from tests.factories import add_file, add_film
+from tests.factories import add_file, add_film, add_watchlist_entry
 
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures" / "tmdb"
 
@@ -500,6 +500,7 @@ class TestTmdbProxies:
         with db.write_session() as s:
             dune = add_film(s, "Dune", year=2021, match_status="pending")
             duna = add_film(s, "Duna", year=2021, match_status="unmatched")
+            add_watchlist_entry(s, admin.id, film=duna)
             dune_id, duna_id = dune.id, duna.id
         h = admin.admin_headers
         r = await client.post(
@@ -514,11 +515,13 @@ class TestTmdbProxies:
             "matched",
         )
         assert len(detail["media_files"]) == 1 and detail["cast"]
+        assert detail["in_watchlist"] is False
         r = await client.post(
             f"/api/admin/films/{duna_id}/match", json={"tmdb_id": 438631}, headers=h
         )
         assert r.status_code == 200 and r.json()["id"] == dune_id  # survivor of the merge
         assert len(r.json()["media_files"]) == 2
+        assert r.json()["in_watchlist"] is True  # the loser's entry moved to the survivor
         r = await client.post("/api/admin/films/999/match", json={"tmdb_id": 438631}, headers=h)
         assert _err(r) == (404, "not_found")
         r = await client.post(f"/api/admin/films/{dune_id}/match", json={"tmdb_id": 0}, headers=h)

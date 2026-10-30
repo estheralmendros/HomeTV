@@ -256,6 +256,23 @@ def _merge_progress(session: Session, column: Any, loser_id: int, survivor_id: i
     session.flush()
 
 
+def _merge_watchlist(session: Session, column: Any, loser_id: int, survivor_id: int) -> None:
+    """Move "Mi lista" entries from loser to survivor; when a profile has both keep one, with
+    the earlier ``added_at``."""
+    we = m.WatchlistEntry
+    for row in list(session.scalars(select(we).where(column == loser_id))):
+        other = session.scalar(
+            select(we).where(we.profile_id == row.profile_id, column == survivor_id)
+        )
+        if other is not None:
+            other.added_at = min(other.added_at, row.added_at)
+            session.delete(row)
+            session.flush()
+            continue
+        session.execute(update(we).where(we.id == row.id).values({column.key: survivor_id}))
+    session.flush()
+
+
 def _write_alias(
     session: Session, kind: ItemKind, loser: m.Film | m.Show, survivor_id: int
 ) -> None:
@@ -290,6 +307,7 @@ def merge_items(
             update(m.MediaFile).where(m.MediaFile.film_id == loser.id).values(film_id=survivor.id)
         )
         _merge_progress(session, m.PlaybackProgress.film_id, loser.id, survivor.id)
+        _merge_watchlist(session, m.WatchlistEntry.film_id, loser.id, survivor.id)
         session.execute(delete(m.UnmatchedEntry).where(m.UnmatchedEntry.film_id == loser.id))
         session.delete(loser)
         session.flush()
@@ -346,6 +364,7 @@ def merge_items(
         session.delete(season)
     session.flush()
     survivor.content_updated_at = max(survivor.content_updated_at, loser.content_updated_at)
+    _merge_watchlist(session, m.WatchlistEntry.show_id, loser.id, survivor.id)
     session.execute(delete(m.UnmatchedEntry).where(m.UnmatchedEntry.show_id == loser.id))
     session.delete(loser)
     session.flush()

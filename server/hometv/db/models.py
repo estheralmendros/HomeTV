@@ -494,6 +494,37 @@ class PlaybackProgress(Base):
     updated_at: Mapped[datetime] = _now_col(onupdate=utcnow)
 
 
+class WatchlistEntry(Base):
+    """One title of a profile's "Mi lista" (a film or a whole show); ``added_at`` is the list's
+    own timestamp (API ``added_to_list_at``)."""
+
+    __tablename__ = "watchlist_entry"
+    __table_args__ = (
+        CheckConstraint(_EXACTLY_ONE_FILM_SHOW, name="exactly_one_target"),
+        Index(
+            "uq_watchlist_entry_profile_id_film_id",
+            "profile_id",
+            "film_id",
+            unique=True,
+            sqlite_where=text("film_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_watchlist_entry_profile_id_show_id",
+            "profile_id",
+            "show_id",
+            unique=True,
+            sqlite_where=text("show_id IS NOT NULL"),
+        ),
+        Index("ix_watchlist_entry_profile_id_added_at", "profile_id", "added_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_id: Mapped[int] = _fk("profile.id")
+    film_id: Mapped[int | None] = _fk("film.id", nullable=True)
+    show_id: Mapped[int | None] = _fk("show.id", nullable=True)
+    added_at: Mapped[datetime] = _now_col()
+
+
 UNMATCHED_REASONS = (
     "no_title",
     "no_season",

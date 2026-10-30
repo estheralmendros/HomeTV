@@ -39,11 +39,14 @@
   color: var(--color-text-muted);
   font-weight: 600;
   padding: var(--space-2) 0;
+  white-space: nowrap;
+  /* Every link reserves the underline, so the current one is not 2px taller. */
+  border-bottom: 2px solid transparent;
 }
 
 .link[aria-current='page'] {
   color: var(--color-text);
-  border-bottom: 2px solid var(--color-accent);
+  border-bottom-color: var(--color-accent);
 }
 
 .spacer {
@@ -99,7 +102,7 @@
   right: 0;
   bottom: 0;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   height: var(--tabbar-height);
   padding-bottom: env(safe-area-inset-bottom);
   background: var(--color-surface);
@@ -109,7 +112,10 @@
 .tab {
   display: grid;
   place-items: center;
+  padding: 0 2px;
   text-decoration: none;
+  text-align: center;
+  white-space: nowrap;
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
   font-weight: 600;

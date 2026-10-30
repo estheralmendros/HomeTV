@@ -50,4 +50,29 @@ class ApiModelsTest {
         assertEquals(false, bare.credits_complete)
         assertEquals(emptyList<PersonAppearance>(), bare.appearances)
     }
+
+    @Test
+    fun `a Mi lista page with a film and a show entry decodes`() {
+        val json = """
+            {"items": [
+               {"kind": "film", "item": {"type": "film", "id": 12, "title": "Dune", "year": 2021, "progress": {"position_seconds": 10.0, "watched": false}}, "added_to_list_at": "2026-10-27T10:00:00Z", "extra": 1},
+               {"kind": "show", "item": {"type": "show", "id": 7, "title": "The Office", "unwatched_episode_count": 150}, "added_to_list_at": "2026-10-26T10:00:00Z"}
+             ], "page": 1, "page_size": 50, "total": 2}
+        """.trimIndent()
+        val page = ApiJson.decodeFromString(Page.serializer(WatchlistEntry.serializer()), json)
+        assertEquals(2, page.total)
+        assertEquals(listOf("film", "show"), page.items.map { it.kind })
+        assertEquals(listOf("film:12", "show:7"), page.items.map { it.item.key })
+        assertTrue(page.items[0].item is FilmSummary)
+        assertEquals(150, (page.items[1].item as ShowSummary).unwatched_episode_count)
+        assertEquals("2026-10-27T10:00:00Z", page.items[0].added_to_list_at)
+    }
+
+    @Test
+    fun `in_watchlist decodes on film and show detail and defaults to false for older servers`() {
+        assertTrue(ApiJson.decodeFromString(FilmDetail.serializer(), """{"id": 12, "title": "Dune", "in_watchlist": true}""").in_watchlist)
+        assertTrue(ApiJson.decodeFromString(ShowDetail.serializer(), """{"id": 7, "title": "The Office", "in_watchlist": true}""").in_watchlist)
+        assertEquals(false, ApiJson.decodeFromString(FilmDetail.serializer(), """{"id": 12, "title": "Dune"}""").in_watchlist)
+        assertEquals(false, ApiJson.decodeFromString(ShowDetail.serializer(), """{"id": 7, "title": "The Office"}""").in_watchlist)
+    }
 }

@@ -10,6 +10,9 @@ fake change-detection backend.
 ``("add_tree"|"remove"|"close", root)``; ``fail_with[root]`` makes ``add_tree(root)`` raise;
 ``alive`` drives ``is_alive()``; ``gate(op, roots=None)`` blocks that operation (in its worker
 thread) until ``open_gate(op)`` or ``abort()``; ``max_active`` observes concurrent calls.
+
+``capture_selects(db)`` / ``capture_writes(db)``: context managers collecting the SQL the read
+engine runs (SELECTs with parameters) / every statement the write engine runs.
 """
 
 import asyncio
@@ -17,8 +20,13 @@ import itertools
 import signal
 import threading
 import time
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Iterator, Sequence
+from contextlib import contextmanager
 from typing import Any
+
+from sqlalchemy import event
+
+from hometv.db.engine import Database
 
 _pids = itertools.count(50_000)
 
@@ -263,3 +271,34 @@ class BackendFactory:
     @property
     def last(self) -> FakeWatchBackend:
         return self.created[-1]
+
+
+@contextmanager
+def capture_selects(db: Database) -> Iterator[list[tuple[str, object]]]:
+    """Every SELECT the read engine runs, with its parameters."""
+    statements: list[tuple[str, object]] = []
+
+    def before(_conn: Any, _cursor: Any, statement: str, parameters: object, *_args: Any) -> None:
+        if statement.lstrip().upper().startswith("SELECT"):
+            statements.append((statement, parameters))
+
+    event.listen(db.read_engine, "before_cursor_execute", before)
+    try:
+        yield statements
+    finally:
+        event.remove(db.read_engine, "before_cursor_execute", before)
+
+
+@contextmanager
+def capture_writes(db: Database) -> Iterator[list[str]]:
+    """Every statement the write engine runs."""
+    statements: list[str] = []
+
+    def before(_conn: Any, _cursor: Any, statement: str, *_args: Any) -> None:
+        statements.append(statement)
+
+    event.listen(db.write_engine, "before_cursor_execute", before)
+    try:
+        yield statements
+    finally:
+        event.remove(db.write_engine, "before_cursor_execute", before)

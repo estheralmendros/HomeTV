@@ -25,6 +25,7 @@ import com.hometv.tv.core.data.SessionGuard
 import com.hometv.tv.core.data.SessionStore
 import com.hometv.tv.core.data.SubtitleSource
 import com.hometv.tv.core.data.WatchRepository
+import com.hometv.tv.core.data.WatchlistRepository
 import com.hometv.tv.core.playback.CapsForFile
 import com.hometv.tv.core.playback.ClientCapsBuilder
 import com.hometv.tv.core.util.ServerUrl
@@ -55,6 +56,8 @@ import com.hometv.tv.ui.profiles.ProfilesViewModel
 import com.hometv.tv.ui.search.SearchViewModel
 import com.hometv.tv.ui.settings.SettingsViewModel
 import com.hometv.tv.ui.setup.SetupViewModel
+import com.hometv.tv.ui.watchlist.WatchlistMemory
+import com.hometv.tv.ui.watchlist.WatchlistViewModel
 import java.io.File
 import java.time.Clock
 import java.time.LocalDate
@@ -85,8 +88,9 @@ data class AppConfig(
  * Exposes: [store] (loaded before the API client is built: `AuthInterceptor` reads the token
  * synchronously), [clients] (API + stream OkHttp clients and Retrofit, rebuilt when the server URL
  * changes), [api], [guard], the repositories, [events] (global `AppEvent` bus), [appScope]
- * (`SupervisorJob() + Dispatchers.IO`, process lifetime: final progress PUT, HLS DELETE),
- * [codecs] + [capsForFile] (capability hook), [playerLaunches], [homeRefresh], [detailRefresh], [account],
+ * (`SupervisorJob() + Dispatchers.IO`, process lifetime: final progress PUT, HLS DELETE, [watchlist] writes),
+ * [codecs] + [capsForFile] (capability hook), [playerLaunches], [homeRefresh], [detailRefresh],
+ * [watchlistMemory], [account],
  * [imageLoader] and one factory function per ViewModel.
  */
 class AppContainer(
@@ -125,6 +129,7 @@ class AppContainer(
     val catalog = CatalogRepository(api, guard)
     val profiles = ProfileRepository(api, store, guard)
     val watch = WatchRepository(api, guard)
+    val watchlist = WatchlistRepository(api, guard, appScope)
     val playback = PlaybackRepository(api, guard, appScope, SubtitleSource { url -> OkHttpSubtitleSource(clients().streamClient).fetch(url) })
     val nextEpisodes = NextEpisodeResolver(fetch = { id -> catalog.episode(id, Origin.Background) })
     val serverRepository = ServerRepository(validationClient)
@@ -132,6 +137,7 @@ class AppContainer(
     val homeRefresh = HomeRefresh()
     val detailRefresh = DetailRefresh()
     val browseSorts = BrowseSortMemory()
+    val watchlistMemory = WatchlistMemory()
     val playerLaunches = PlayerLaunches()
 
     private val _sessionExpired = MutableStateFlow(false)
@@ -234,9 +240,11 @@ class AppContainer(
 
     fun searchViewModel() = SearchViewModel(catalog, store)
 
-    fun filmDetailViewModel(id: Long) = FilmDetailViewModel(id, catalog, watch, store, ::capsForFile, events, homeRefresh, detailRefresh)
+    fun watchlistViewModel() = WatchlistViewModel(watchlist, store, watchlistMemory)
 
-    fun showDetailViewModel(id: Long) = ShowDetailViewModel(id, catalog, watch, store, events, homeRefresh, detailRefresh)
+    fun filmDetailViewModel(id: Long) = FilmDetailViewModel(id, catalog, watch, watchlist, store, ::capsForFile, events, homeRefresh, detailRefresh)
+
+    fun showDetailViewModel(id: Long) = ShowDetailViewModel(id, catalog, watch, watchlist, store, events, homeRefresh, detailRefresh)
 
     /** The actor screen; "today" (ages) is the [clock]'s date in the device's time zone. */
     fun personViewModel(id: Long) = PersonViewModel(id, catalog, store, detailRefresh, today = { LocalDate.now(clock.withZone(ZoneId.systemDefault())) })

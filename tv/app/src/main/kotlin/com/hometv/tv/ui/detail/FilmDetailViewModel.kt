@@ -12,6 +12,8 @@ import com.hometv.tv.core.data.CatalogRepository
 import com.hometv.tv.core.data.SessionStore
 import com.hometv.tv.core.data.WatchRepository
 import com.hometv.tv.core.data.WatchTarget
+import com.hometv.tv.core.data.WatchlistKind
+import com.hometv.tv.core.data.WatchlistRepository
 import com.hometv.tv.core.playback.CapsForFile
 import com.hometv.tv.core.playback.Choice
 import com.hometv.tv.core.playback.Grouping
@@ -51,6 +53,8 @@ sealed interface FilmDetailUiState {
         val focusVersion: Int,
         /** The cast card that opened the Person screen: it takes focus instead of [focus] on re-entry. */
         val castFocus: CastFocus? = null,
+        /** "No se ha podido actualizar Mi lista." under the buttons after a failed write, until the next action. */
+        val watchlistError: UiText? = null,
     ) : FilmDetailUiState
 
     data class Error(val error: ScreenError) : FilmDetailUiState
@@ -58,12 +62,14 @@ sealed interface FilmDetailUiState {
 
 /**
  * Film detail (prd3 §6): Resume/Play buttons from `VersionSelector` (D10 next part, D11 matching
- * versions), the Version / Part / Part-version dialogs, the watched toggle, 404 → ItemGone.
+ * versions), the Version / Part / Part-version dialogs, the watched toggle, the optimistic "Mi lista"
+ * toggle (watchlist prd3 FR-T6), 404 → ItemGone.
  */
 class FilmDetailViewModel(
     private val filmId: Long,
     private val catalog: CatalogRepository,
     private val watch: WatchRepository,
+    watchlist: WatchlistRepository,
     private val store: SessionStore,
     private val caps: suspend () -> CapsForFile,
     private val events: AppEventSink,
@@ -92,6 +98,18 @@ class FilmDetailViewModel(
     private var focus: ButtonId? = null
     private var focusVersion = 0
     private var castFocus: CastFocus? = null
+
+    private val listToggle = DetailWatchlistToggle(
+        WatchlistKind.FILM,
+        filmId,
+        watchlist,
+        store,
+        viewModelScope,
+        showsContent = { _state.value is FilmDetailUiState.Content },
+        onRolledBack = { value -> film = film?.copy(in_watchlist = value) },
+        onScreenError = ::fail,
+        publish = ::publish,
+    )
     private var job: Job? = null
     private var seenGeneration = detailRefresh.generation()
 
@@ -124,6 +142,7 @@ class FilmDetailViewModel(
      */
     fun onCastSelected(key: String, index: Int, personId: Long) {
         castFocus = CastFocus(key, index)
+        listToggle.clearError()
         publish()
         _navigation.trySend(NavRequest.Person(personId))
     }
@@ -134,10 +153,11 @@ class FilmDetailViewModel(
         // A button press gives focus back to the buttons (the pressed one while it exists). A remembered
         // cast card is dropped and published before any navigation, so no screen re-entry sees it.
         focus = id
-        if (castFocus != null) {
-            castFocus = null
-            publish()
-        }
+        val hadCastFocus = castFocus != null
+        castFocus = null
+        if (listToggle.clearError() || hadCastFocus) publish()
+        // Before the file check: the list toggle also works on a film with no playable file.
+        if (id == ButtonId.WATCHLIST) return toggleWatchlist()
         val file = currentFile() ?: return
         when (id) {
             ButtonId.RESUME, ButtonId.PLAY, ButtonId.PLAY_PART -> play(file, fromStart = false)
@@ -146,6 +166,7 @@ class FilmDetailViewModel(
             ButtonId.VERSION -> openDialog(versionDialog())
             ButtonId.PART -> openDialog(partDialog())
             ButtonId.PART_VERSION -> openDialog(partVersionDialog())
+            ButtonId.WATCHLIST -> Unit
         }
     }
 
@@ -178,6 +199,7 @@ class FilmDetailViewModel(
 
     private fun closeDialog(opener: ButtonId) {
         dialog = null
+        listToggle.clearError()
         focus = opener
         castFocus = null
         focusVersion++
@@ -208,6 +230,19 @@ class FilmDetailViewModel(
         }
     }
 
+    /**
+     * Optimistic (watchlist prd3 FR-T6): the label flips at once, focus stays on the button (no
+     * `focusVersion` bump, no refetch). The write runs in `appScope`, coalesced per title, so it
+     * survives Back; this ViewModel only awaits it to confirm or roll back.
+     */
+    private fun toggleWatchlist() {
+        val f = film ?: return
+        val target = !f.in_watchlist
+        film = f.copy(in_watchlist = target)
+        publish()
+        listToggle.toggle(target)
+    }
+
     private fun load() {
         job?.cancel()
         _state.value = FilmDetailUiState.Loading
@@ -227,8 +262,9 @@ class FilmDetailViewModel(
      * a finished part moves on to the next one (D10).
      */
     private suspend fun fetch(afterPlayback: Boolean = false) {
-        val detail = catalog.film(filmId)
+        val fetched = catalog.film(filmId)
         val caps = capsForFile ?: caps().also { capsForFile = it }
+        val detail = fetched.copy(in_watchlist = listToggle.fetched(fetched.in_watchlist, film?.in_watchlist))
         film = detail
         val files = detail.media_files
         choice = VersionSelector.defaultChoice(files, caps, detail.progress)
@@ -275,6 +311,7 @@ class FilmDetailViewModel(
             focus = focus?.takeIf { id -> buttons.any { it.id == id } } ?: buttons.first().id,
             focusVersion = focusVersion,
             castFocus = castFocus,
+            watchlistError = listToggle.error,
         )
     }
 
@@ -312,7 +349,7 @@ class FilmDetailViewModel(
                 }
             }
         }
-        return play + watched + extra
+        return play + watched + watchlistButton(f.in_watchlist) + extra
     }
 
     private fun versionDialog(): ListDialogUi? {

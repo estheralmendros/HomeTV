@@ -11,6 +11,7 @@ import * as playback from './playback';
 import * as profiles from './profiles';
 import * as system from './system';
 import * as watch from './watch';
+import * as watchlist from './watchlist';
 
 let rec: ReturnType<typeof recordRequests>;
 beforeEach(() => {
@@ -59,6 +60,14 @@ describe('endpoint modules', () => {
       { method: 'PUT', path: '/api/progress', body: { item_type: 'film', item_id: 12, media_file_id: 91, position_seconds: 10, duration_seconds: 100 } }],
     ['setWatched', () => watch.setWatched({ target: 'season', id: 70, watched: true }),
       { method: 'POST', path: '/api/watched', body: { target: 'season', id: 70, watched: true } }],
+    ['getWatchlist (defaults omitted)', () => watchlist.getWatchlist({}),
+      { method: 'GET', path: '/api/watchlist', query: {}, bearer: 'Bearer tok' }],
+    ['getWatchlist (all params)', () => watchlist.getWatchlist({ type: 'shows', sort: 'year', page: 2, page_size: 50 }),
+      { method: 'GET', path: '/api/watchlist', query: { type: 'shows', sort: 'year', page: '2', page_size: '50' } }],
+    ['addToWatchlist film', () => watchlist.addToWatchlist('film', 12), { method: 'PUT', path: '/api/watchlist/films/12', body: null }],
+    ['addToWatchlist show', () => watchlist.addToWatchlist('show', 7), { method: 'PUT', path: '/api/watchlist/shows/7', body: null }],
+    ['removeFromWatchlist film', () => watchlist.removeFromWatchlist('film', 12), { method: 'DELETE', path: '/api/watchlist/films/12' }],
+    ['removeFromWatchlist show', () => watchlist.removeFromWatchlist('show', 7), { method: 'DELETE', path: '/api/watchlist/shows/7' }],
     ['getMediaFile', () => playback.getMediaFile(91), { path: '/api/media-files/91' }],
     ['requestPlayback', () => playback.requestPlayback(91, { client_caps: caps, audio_stream_index: null, start_position_seconds: 0, previous_session_id: null }),
       { method: 'POST', path: '/api/media-files/91/playback', body: { client_caps: caps, audio_stream_index: null, start_position_seconds: 0, previous_session_id: null } }],
@@ -85,5 +94,14 @@ describe('endpoint modules', () => {
   ])('%s', async (_name, call, expected) => {
     await call();
     expect(await last()).toMatchObject(expected);
+  });
+
+  it('watchlist writes resolve undefined on 204', async () => {
+    await expect(watchlist.addToWatchlist('film', 12)).resolves.toBeUndefined();
+    await expect(watchlist.removeFromWatchlist('show', 7)).resolves.toBeUndefined();
+  });
+
+  it('pages the watchlist by 50', () => {
+    expect(watchlist.WATCHLIST_PAGE_SIZE).toBe(50);
   });
 });

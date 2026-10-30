@@ -7,6 +7,7 @@ import com.hometv.tv.core.api.Genre
 import com.hometv.tv.core.api.MediaFile
 import com.hometv.tv.core.api.Progress
 import com.hometv.tv.core.api.WatchedRequest
+import com.hometv.tv.core.api.WatchedResponse
 import com.hometv.tv.core.data.AppEvent
 import com.hometv.tv.core.playback.CapsForFile
 import com.hometv.tv.core.playback.F
@@ -19,13 +20,18 @@ import com.hometv.tv.ui.common.ScreenError
 import com.hometv.tv.ui.navigation.NavRequest
 import com.hometv.tv.ui.navigation.PlayRequest
 import com.hometv.tv.ui.text.UiText
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.RegisterExtension
@@ -33,7 +39,7 @@ import org.junit.jupiter.api.extension.RegisterExtension
 class FilmDetailViewModelTest {
     @JvmField @RegisterExtension val main = MainDispatcherExtension()
 
-    private val repos = TestRepos()
+    private val repos = TestRepos(appScope = CoroutineScope(SupervisorJob() + main.dispatcher))
     private val refresh = HomeRefresh()
     private val detailRefresh = DetailRefresh()
     private var caps = CapsForFile.of(F.caps)
@@ -43,7 +49,7 @@ class FilmDetailViewModelTest {
         repos.api.onFilm = { film }
     }
 
-    private fun vm() = FilmDetailViewModel(12, repos.catalog, repos.watch, repos.store, { caps }, repos.events, refresh, detailRefresh)
+    private fun vm() = FilmDetailViewModel(12, repos.catalog, repos.watch, repos.watchlist, repos.store, { caps }, repos.events, refresh, detailRefresh)
 
     private fun FilmDetailViewModel.content() = state.value as FilmDetailUiState.Content
 
@@ -60,7 +66,7 @@ class FilmDetailViewModelTest {
         withFiles(F.file(1, duration = 7200.0), progress = F.progress(1, position = 3723.0))
         val vm = vm()
         advanceUntilIdle()
-        assertEquals(listOf(ButtonId.RESUME, ButtonId.PLAY_FROM_START, ButtonId.WATCHED), vm.buttons())
+        assertEquals(listOf(ButtonId.RESUME, ButtonId.PLAY_FROM_START, ButtonId.WATCHED, ButtonId.WATCHLIST), vm.buttons())
         assertEquals(UiText.Res(R.string.detail_resume_from, listOf("1:02:03")), vm.text(ButtonId.RESUME))
         assertEquals(UiText.Res(R.string.mark_watched), vm.text(ButtonId.WATCHED))
         vm.onButton(ButtonId.RESUME)
@@ -74,12 +80,12 @@ class FilmDetailViewModelTest {
         withFiles(F.file(1), progress = F.progress(1, position = 20.0))
         val vm = vm()
         advanceUntilIdle()
-        assertEquals(listOf(ButtonId.PLAY, ButtonId.WATCHED), vm.buttons())
+        assertEquals(listOf(ButtonId.PLAY, ButtonId.WATCHED, ButtonId.WATCHLIST), vm.buttons())
 
         withFiles(F.file(1), progress = F.progress(1, position = 3000.0, watched = true))
         val watched = vm()
         advanceUntilIdle()
-        assertEquals(listOf(ButtonId.PLAY, ButtonId.WATCHED), watched.buttons())
+        assertEquals(listOf(ButtonId.PLAY, ButtonId.WATCHED, ButtonId.WATCHLIST), watched.buttons())
         assertEquals(UiText.Res(R.string.mark_unwatched), watched.text(ButtonId.WATCHED))
     }
 
@@ -117,12 +123,12 @@ class FilmDetailViewModelTest {
         withFiles(uhd, cut, progress = F.progress(1, position = 3723.0, duration = 9360.0))
         val noHevc = vm()
         advanceUntilIdle()
-        assertEquals(listOf(ButtonId.PLAY, ButtonId.WATCHED, ButtonId.VERSION), noHevc.buttons())
+        assertEquals(listOf(ButtonId.PLAY, ButtonId.WATCHED, ButtonId.WATCHLIST, ButtonId.VERSION), noHevc.buttons())
 
         caps = CapsForFile.of(F.hevcCaps)
         val vm = vm()
         advanceUntilIdle()
-        assertEquals(listOf(ButtonId.RESUME, ButtonId.PLAY_FROM_START, ButtonId.WATCHED, ButtonId.VERSION), vm.buttons())
+        assertEquals(listOf(ButtonId.RESUME, ButtonId.PLAY_FROM_START, ButtonId.WATCHED, ButtonId.WATCHLIST, ButtonId.VERSION), vm.buttons())
         assertEquals(UiText.Res(R.string.detail_version, listOf("2160p HEVC HDR10 · EAC3 5.1")), vm.text(ButtonId.VERSION))
         vm.onButton(ButtonId.VERSION)
         val dialog = vm.content().dialog!!
@@ -130,7 +136,7 @@ class FilmDetailViewModelTest {
         assertEquals(0, dialog.selected)
         vm.onDialogSelect(1)
         assertEquals(null, vm.content().dialog)
-        assertEquals(listOf(ButtonId.PLAY, ButtonId.WATCHED, ButtonId.VERSION), vm.buttons())
+        assertEquals(listOf(ButtonId.PLAY, ButtonId.WATCHED, ButtonId.WATCHLIST, ButtonId.VERSION), vm.buttons())
         vm.onButton(ButtonId.PLAY)
         assertEquals(NavRequest.Play(PlayRequest("film", 12, mediaFileId = 2)), vm.navigation.first())
         assertEquals(ButtonId.VERSION, vm.content().focus, "focus returns to the dialog opener")
@@ -145,11 +151,11 @@ class FilmDetailViewModelTest {
         withFiles(p2a, p1b, standalone, p1a)
         val vm = vm()
         advanceUntilIdle()
-        assertEquals(listOf(ButtonId.PLAY, ButtonId.WATCHED, ButtonId.VERSION), vm.buttons(), "no progress: the standalone version")
+        assertEquals(listOf(ButtonId.PLAY, ButtonId.WATCHED, ButtonId.WATCHLIST, ButtonId.VERSION), vm.buttons(), "no progress: the standalone version")
         vm.onButton(ButtonId.VERSION)
         assertEquals(listOf<UiText>(UiText.Data("2160p H264"), UiText.Res(R.string.detail_in_parts, listOf("2"))), vm.content().dialog!!.items)
         vm.onDialogSelect(1)
-        assertEquals(listOf(ButtonId.PLAY, ButtonId.WATCHED, ButtonId.VERSION, ButtonId.PART, ButtonId.PART_VERSION), vm.buttons())
+        assertEquals(listOf(ButtonId.PLAY, ButtonId.WATCHED, ButtonId.WATCHLIST, ButtonId.VERSION, ButtonId.PART, ButtonId.PART_VERSION), vm.buttons())
         assertEquals(UiText.Res(R.string.detail_version, listOf(UiText.Res(R.string.detail_in_parts, listOf("2")))), vm.text(ButtonId.VERSION))
         assertEquals(UiText.Res(R.string.detail_part_of, listOf("1", "2")), vm.text(ButtonId.PART))
         assertEquals(UiText.Res(R.string.detail_part_version, listOf("1080p H264 · AC3 5.1")), vm.text(ButtonId.PART_VERSION))
@@ -163,7 +169,7 @@ class FilmDetailViewModelTest {
         vm.onButton(ButtonId.PART)
         assertEquals(listOf<UiText>(UiText.Res(R.string.part_n, listOf("1")), UiText.Res(R.string.part_n, listOf("2"))), vm.content().dialog!!.items)
         vm.onDialogSelect(1)
-        assertEquals(listOf(ButtonId.PLAY, ButtonId.WATCHED, ButtonId.VERSION, ButtonId.PART), vm.buttons(), "part 2 has one version")
+        assertEquals(listOf(ButtonId.PLAY, ButtonId.WATCHED, ButtonId.WATCHLIST, ButtonId.VERSION, ButtonId.PART), vm.buttons(), "part 2 has one version")
         vm.onButton(ButtonId.PLAY)
         assertEquals(NavRequest.Play(PlayRequest("film", 12, mediaFileId = 21)), vm.navigation.first())
     }
@@ -173,11 +179,11 @@ class FilmDetailViewModelTest {
         withFiles(F.part(11, 1), F.part(21, 2), progress = F.progress(21, position = 600.0, duration = 3000.0))
         val vm = vm()
         advanceUntilIdle()
-        assertEquals(listOf(ButtonId.RESUME, ButtonId.PLAY_FROM_START, ButtonId.WATCHED, ButtonId.PART), vm.buttons())
+        assertEquals(listOf(ButtonId.RESUME, ButtonId.PLAY_FROM_START, ButtonId.WATCHED, ButtonId.WATCHLIST, ButtonId.PART), vm.buttons())
         assertEquals(UiText.Res(R.string.detail_part_of, listOf("2", "2")), vm.text(ButtonId.PART))
         vm.onButton(ButtonId.PART)
         vm.onDialogSelect(0)
-        assertEquals(listOf(ButtonId.PLAY, ButtonId.WATCHED, ButtonId.PART), vm.buttons())
+        assertEquals(listOf(ButtonId.PLAY, ButtonId.WATCHED, ButtonId.WATCHLIST, ButtonId.PART), vm.buttons())
     }
 
     @Test
@@ -188,7 +194,7 @@ class FilmDetailViewModelTest {
         )
         val vm = vm()
         advanceUntilIdle()
-        assertEquals(listOf(ButtonId.PLAY_PART, ButtonId.WATCHED, ButtonId.PART, ButtonId.PART_VERSION), vm.buttons())
+        assertEquals(listOf(ButtonId.PLAY_PART, ButtonId.WATCHED, ButtonId.WATCHLIST, ButtonId.PART, ButtonId.PART_VERSION), vm.buttons())
         assertEquals(UiText.Res(R.string.detail_play_part, listOf("2")), vm.text(ButtonId.PLAY_PART))
         vm.onButton(ButtonId.PLAY_PART)
         assertEquals(NavRequest.Play(PlayRequest("film", 12, mediaFileId = 22)), vm.navigation.first())
@@ -205,7 +211,7 @@ class FilmDetailViewModelTest {
         withFiles(F.part(11, 1), F.part(21, 2), progress = F.progress(11, position = 600.0, duration = 3000.0))
         val vm = vm()
         advanceUntilIdle()
-        assertEquals(listOf(ButtonId.RESUME, ButtonId.PLAY_FROM_START, ButtonId.WATCHED, ButtonId.PART), vm.buttons())
+        assertEquals(listOf(ButtonId.RESUME, ButtonId.PLAY_FROM_START, ButtonId.WATCHED, ButtonId.WATCHLIST, ButtonId.PART), vm.buttons())
         vm.onButton(ButtonId.RESUME)
         assertEquals(NavRequest.Play(PlayRequest("film", 12, mediaFileId = 11)), vm.navigation.first())
 
@@ -214,7 +220,7 @@ class FilmDetailViewModelTest {
         assertTrue(vm.state.value is FilmDetailUiState.Content, "refetched in place, never Loading")
         advanceUntilIdle()
         assertEquals(2, repos.api.count("GET /api/films/12"))
-        assertEquals(listOf(ButtonId.PLAY_PART, ButtonId.WATCHED, ButtonId.PART), vm.buttons())
+        assertEquals(listOf(ButtonId.PLAY_PART, ButtonId.WATCHED, ButtonId.WATCHLIST, ButtonId.PART), vm.buttons())
         assertEquals(UiText.Res(R.string.detail_play_part, listOf("2")), vm.text(ButtonId.PLAY_PART))
         assertEquals(ButtonId.PLAY_PART, vm.content().focus, "focus moves to the button that replaced Resume")
         vm.onButton(ButtonId.PLAY_PART)
@@ -245,7 +251,7 @@ class FilmDetailViewModelTest {
         advanceUntilIdle()
         vm.onButton(ButtonId.VERSION)
         vm.onDialogSelect(1)
-        assertEquals(listOf(ButtonId.PLAY, ButtonId.WATCHED, ButtonId.VERSION), vm.buttons())
+        assertEquals(listOf(ButtonId.PLAY, ButtonId.WATCHED, ButtonId.WATCHLIST, ButtonId.VERSION), vm.buttons())
         vm.onButton(ButtonId.VERSION)
         vm.onDialogDismiss()
 
@@ -259,7 +265,7 @@ class FilmDetailViewModelTest {
         withFiles(uhd, progress = F.progress(1, position = 3723.0, duration = 9360.0))
         returnFromPlayer(vm)
         advanceUntilIdle()
-        assertEquals(listOf(ButtonId.RESUME, ButtonId.PLAY_FROM_START, ButtonId.WATCHED), vm.buttons(), "the chosen file is gone: default choice")
+        assertEquals(listOf(ButtonId.RESUME, ButtonId.PLAY_FROM_START, ButtonId.WATCHED, ButtonId.WATCHLIST), vm.buttons(), "the chosen file is gone: default choice")
     }
 
     @Test
@@ -275,7 +281,7 @@ class FilmDetailViewModelTest {
         withFiles(F.part(11, 1), F.part(21, 2), progress = F.progress(11, position = 2990.0, duration = 3000.0))
         returnFromPlayer(vm)
         advanceUntilIdle()
-        assertEquals(listOf(ButtonId.PLAY_PART, ButtonId.WATCHED, ButtonId.PART), vm.buttons())
+        assertEquals(listOf(ButtonId.PLAY_PART, ButtonId.WATCHED, ButtonId.WATCHLIST, ButtonId.PART), vm.buttons())
         vm.onButton(ButtonId.PLAY_PART)
         assertEquals(NavRequest.Play(PlayRequest("film", 12, mediaFileId = 21)), vm.navigation.first())
     }
@@ -419,7 +425,7 @@ class FilmDetailViewModelTest {
         withCast(F.file(1, duration = 7200.0), progress = F.progress(1, position = 600.0))
         returnFromPlayer(vm)
         advanceUntilIdle()
-        assertEquals(listOf(ButtonId.RESUME, ButtonId.PLAY_FROM_START, ButtonId.WATCHED), vm.buttons())
+        assertEquals(listOf(ButtonId.RESUME, ButtonId.PLAY_FROM_START, ButtonId.WATCHED, ButtonId.WATCHLIST), vm.buttons())
         assertEquals(ButtonId.RESUME, vm.content().focus)
         assertEquals(null, vm.content().castFocus)
     }
@@ -485,5 +491,295 @@ class FilmDetailViewModelTest {
         vm.onDialogDismiss()
         assertEquals(null, vm.content().castFocus)
         assertEquals(ButtonId.VERSION, vm.content().focus)
+    }
+
+    // ---- Mi lista (watchlist prd3 FR-T5/FR-T6) --------------------------------------------
+
+    /** The write answers only when the returned gate is completed (suspended until released). */
+    private fun gateWrites(): MutableList<CompletableDeferred<Unit>> {
+        val gates = mutableListOf<CompletableDeferred<Unit>>()
+        repos.api.onWatchlistWrite = { _, _, _ -> CompletableDeferred<Unit>().also { gates += it }.await() }
+        return gates
+    }
+
+    private fun FilmDetailViewModel.watchlistButton() = content().buttons.first { it.id == ButtonId.WATCHLIST }
+
+    private fun writes() = repos.api.calls.filter { it.contains("/api/watchlist/") }
+
+    @Test
+    fun `the Mi lista button follows the watched button, with its text and accessible name`() = runTest(main.dispatcher) {
+        withFiles(F.file(1, duration = 7200.0), progress = F.progress(1, position = 3723.0))
+        val vm = vm()
+        advanceUntilIdle()
+        assertEquals(listOf(ButtonId.RESUME, ButtonId.PLAY_FROM_START, ButtonId.WATCHED, ButtonId.WATCHLIST), vm.buttons())
+        assertEquals(DetailButton(ButtonId.WATCHLIST, UiText.Res(R.string.watchlist_toggle), description = UiText.Res(R.string.watchlist_add)), vm.watchlistButton())
+
+        film = film.copy(in_watchlist = true)
+        val inList = vm()
+        advanceUntilIdle()
+        assertEquals(DetailButton(ButtonId.WATCHLIST, UiText.Res(R.string.watchlist_in_list), description = UiText.Res(R.string.watchlist_remove)), inList.watchlistButton())
+    }
+
+    @Test
+    fun `OK flips the label before the server answers and never refetches or moves focus`() = runTest(main.dispatcher) {
+        withFiles(F.file(1))
+        val gates = gateWrites()
+        val vm = vm()
+        advanceUntilIdle()
+        val version = vm.content().focusVersion
+        vm.onButton(ButtonId.WATCHLIST)
+        assertEquals(UiText.Res(R.string.watchlist_in_list), vm.watchlistButton().text, "flipped at once")
+        assertTrue(vm.content().film.in_watchlist)
+        assertNull(vm.content().watchlistError)
+        runCurrent()
+        assertEquals(listOf("PUT /api/watchlist/films/12"), writes())
+        gates.single().complete(Unit)
+        advanceUntilIdle()
+        assertEquals(1, repos.api.count("GET /api/films/12"), "no refetch")
+        assertEquals(UiText.Res(R.string.watchlist_in_list), vm.watchlistButton().text)
+        assertEquals(ButtonId.WATCHLIST, vm.content().focus)
+        assertEquals(version, vm.content().focusVersion)
+        assertNull(vm.content().watchlistError)
+        assertFalse(refresh.consumeStale(), "Home has no list row")
+
+        vm.onButton(ButtonId.WATCHLIST)
+        advanceUntilIdle()
+        gates.last().complete(Unit)
+        advanceUntilIdle()
+        assertEquals(listOf("PUT /api/watchlist/films/12", "DELETE /api/watchlist/films/12"), writes())
+        assertEquals(UiText.Res(R.string.watchlist_toggle), vm.watchlistButton().text)
+    }
+
+    @Test
+    fun `a failed write reverts the label and shows the inline line until the next action`() = runTest(main.dispatcher) {
+        withFiles(F.file(1))
+        repos.api.onWatchlistWrite = { _, _, _ -> throw com.hometv.tv.core.data.FakeHomeTvApi.httpError(500, "internal_error") }
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onButton(ButtonId.WATCHLIST)
+        advanceUntilIdle()
+        assertFalse(vm.content().film.in_watchlist)
+        assertEquals(UiText.Res(R.string.watchlist_toggle), vm.watchlistButton().text)
+        assertEquals(UiText.Res(R.string.watchlist_update_failed), vm.content().watchlistError)
+        assertEquals(ButtonId.WATCHLIST, vm.content().focus)
+        vm.onButton(ButtonId.WATCHED)
+        assertNull(vm.content().watchlistError, "cleared by the next action")
+    }
+
+    @Test
+    fun `the inline line is also cleared by a cast card and by a dialog`() = runTest(main.dispatcher) {
+        withCast(F.file(1), F.file(2, label = "720p"))
+        val gates = gateWrites()
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onButton(ButtonId.WATCHLIST)
+        runCurrent()
+        gates[0].completeExceptionally(java.io.IOException("reset"))
+        advanceUntilIdle()
+        assertEquals(UiText.Res(R.string.watchlist_update_failed), vm.content().watchlistError)
+        vm.onCastSelected(castKey(cast[0], 0), 0, 3)
+        assertNull(vm.content().watchlistError)
+
+        // The failure lands while the Version dialog is open: closing the dialog clears the line.
+        vm.onButton(ButtonId.WATCHLIST)
+        runCurrent()
+        vm.onButton(ButtonId.VERSION)
+        gates[1].completeExceptionally(java.io.IOException("reset"))
+        advanceUntilIdle()
+        assertEquals(UiText.Res(R.string.watchlist_update_failed), vm.content().watchlistError)
+        vm.onDialogDismiss()
+        assertNull(vm.content().watchlistError)
+    }
+
+    @Test
+    fun `a PUT that succeeded before a failing DELETE leaves the title in the list with the inline line`() = runTest(main.dispatcher) {
+        withFiles(F.file(1))
+        val gates = gateWrites()
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onButton(ButtonId.WATCHLIST)
+        runCurrent()
+        vm.onButton(ButtonId.WATCHLIST)
+        assertFalse(vm.content().film.in_watchlist)
+        gates[0].complete(Unit)
+        runCurrent()
+        assertEquals(listOf("PUT /api/watchlist/films/12", "DELETE /api/watchlist/films/12"), writes())
+        gates[1].completeExceptionally(com.hometv.tv.core.data.FakeHomeTvApi.httpError(503, "internal_error"))
+        advanceUntilIdle()
+        assertTrue(vm.content().film.in_watchlist)
+        assertEquals(UiText.Res(R.string.watchlist_in_list), vm.watchlistButton().text)
+        assertEquals(UiText.Res(R.string.watchlist_update_failed), vm.content().watchlistError)
+    }
+
+    @Test
+    fun `unreachable, 5xx, other HTTP errors and an undecodable answer roll back with the inline line`() = runTest(main.dispatcher) {
+        withFiles(F.file(1))
+        film = film.copy(in_watchlist = true)
+        val failures = listOf<() -> Throwable>(
+            { java.net.ConnectException("refused") },
+            { com.hometv.tv.core.data.FakeHomeTvApi.httpError(500, "internal_error") },
+            { com.hometv.tv.core.data.FakeHomeTvApi.httpError(409, "conflict") },
+            { com.hometv.tv.core.data.FakeHomeTvApi.httpError(404, "profile_not_found") },
+            { kotlinx.serialization.SerializationException("bad body") },
+        )
+        val vm = vm()
+        advanceUntilIdle()
+        failures.forEach { failure ->
+            repos.api.onWatchlistWrite = { _, _, _ -> throw failure() }
+            vm.onButton(ButtonId.WATCHLIST)
+            assertFalse(vm.content().film.in_watchlist)
+            advanceUntilIdle()
+            assertTrue(vm.content().film.in_watchlist, "rolled back after ${failure()}")
+            assertEquals(UiText.Res(R.string.watchlist_update_failed), vm.content().watchlistError)
+        }
+        assertTrue(vm.state.value is FilmDetailUiState.Content)
+    }
+
+    @Test
+    fun `a late rollback keeps an error screen the watched toggle put up`() = runTest(main.dispatcher) {
+        withFiles(F.file(1))
+        val gates = gateWrites()
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onButton(ButtonId.WATCHLIST)
+        runCurrent()
+        repos.api.onWatched = { throw java.net.ConnectException("refused") }
+        vm.onButton(ButtonId.WATCHED)
+        advanceUntilIdle()
+        val error = vm.state.value
+        assertTrue(error is FilmDetailUiState.Error, "the watched toggle failed: $error")
+        gates.single().completeExceptionally(java.io.IOException("reset"))
+        advanceUntilIdle()
+        assertEquals(error, vm.state.value, "the rollback does not replace the error screen")
+
+        // Retry reloads the detail with the server's value (the rollback only updated the model).
+        repos.api.onWatched = { WatchedResponse(1) }
+        vm.retry()
+        advanceUntilIdle()
+        assertFalse(vm.content().film.in_watchlist)
+        assertNull(vm.content().watchlistError)
+    }
+
+    @Test
+    fun `a late rollback keeps the Loading screen of a retry`() = runTest(main.dispatcher) {
+        withFiles(F.file(1))
+        val gates = gateWrites()
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onButton(ButtonId.WATCHLIST)
+        runCurrent()
+        val load = CompletableDeferred<Unit>()
+        repos.api.onFilm = { load.await(); film }
+        vm.retry()
+        runCurrent()
+        assertEquals(FilmDetailUiState.Loading, vm.state.value)
+        gates.single().completeExceptionally(java.io.IOException("reset"))
+        runCurrent()
+        assertEquals(FilmDetailUiState.Loading, vm.state.value, "the rollback does not replace Loading")
+        load.complete(Unit)
+        advanceUntilIdle()
+        assertFalse(vm.content().film.in_watchlist)
+    }
+
+    @Test
+    fun `a 404 on the write shows the gone screen and emits ItemGone`() = runTest(main.dispatcher) {
+        withFiles(F.file(1))
+        repos.recordEvents(backgroundScope)
+        repos.api.onWatchlistWrite = { _, _, _ -> throw com.hometv.tv.core.data.FakeHomeTvApi.httpError(404, "not_found") }
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onButton(ButtonId.WATCHLIST)
+        advanceUntilIdle()
+        assertEquals(FilmDetailUiState.Error(ScreenError.ItemGone), vm.state.value)
+        assertEquals(listOf<AppEvent>(AppEvent.ItemGone("film", 12)), repos.received)
+        assertTrue(refresh.consumeStale())
+    }
+
+    @Test
+    fun `a 401 on the retried write shows the sign-in error, not the inline line`() = runTest(main.dispatcher) {
+        withFiles(F.file(1))
+        repos.api.onWatchlistWrite = { _, _, _ -> throw com.hometv.tv.core.data.FakeHomeTvApi.httpError(401, "unauthorized") }
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onButton(ButtonId.WATCHLIST)
+        advanceUntilIdle()
+        assertEquals(listOf("PUT /api/watchlist/films/12", "PUT /api/watchlist/films/12"), writes(), "one renewal, one retry")
+        assertEquals(FilmDetailUiState.Error(ScreenError.SignIn), vm.state.value)
+    }
+
+    @Test
+    fun `a renewal answering profile_not_found leaves only ProfileGone, with no inline line and no ItemGone`() = runTest(main.dispatcher) {
+        withFiles(F.file(1))
+        repos.recordEvents(backgroundScope)
+        repos.api.onWatchlistWrite = { _, _, _ -> throw com.hometv.tv.core.data.FakeHomeTvApi.httpError(401, "unauthorized") }
+        repos.api.onCreateSession = { throw com.hometv.tv.core.data.FakeHomeTvApi.httpError(404, "profile_not_found") }
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onButton(ButtonId.WATCHLIST)
+        advanceUntilIdle()
+        assertEquals(FilmDetailUiState.Error(ScreenError.ProfileGone), vm.state.value)
+        assertEquals(listOf<AppEvent>(AppEvent.AuthExpired), repos.received, "only the guard's event")
+    }
+
+    @Test
+    fun `three quick presses send the final state once`() = runTest(main.dispatcher) {
+        withFiles(F.file(1))
+        val vm = vm()
+        advanceUntilIdle()
+        repeat(3) { vm.onButton(ButtonId.WATCHLIST) }
+        assertTrue(vm.content().film.in_watchlist)
+        advanceUntilIdle()
+        assertEquals(listOf("PUT /api/watchlist/films/12"), writes())
+        assertTrue(vm.content().film.in_watchlist)
+        assertNull(vm.content().watchlistError)
+    }
+
+    @Test
+    fun `the button works on a film with no playable file`() = runTest(main.dispatcher) {
+        withFiles()
+        val vm = vm()
+        advanceUntilIdle()
+        assertEquals(listOf(ButtonId.PLAY, ButtonId.WATCHED, ButtonId.WATCHLIST), vm.buttons())
+        vm.onButton(ButtonId.WATCHLIST)
+        advanceUntilIdle()
+        assertEquals(listOf("PUT /api/watchlist/films/12"), writes())
+        assertTrue(vm.content().film.in_watchlist)
+    }
+
+    @Test
+    fun `a refetch while the write is in flight keeps the shown value`() = runTest(main.dispatcher) {
+        withFiles(F.file(1))
+        val gates = gateWrites()
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onButton(ButtonId.WATCHLIST)
+        returnFromPlayer(vm)
+        advanceUntilIdle()
+        assertEquals(2, repos.api.count("GET /api/films/12"))
+        assertTrue(vm.content().film.in_watchlist, "the fetched false is overridden while writing")
+        gates.single().complete(Unit)
+        advanceUntilIdle()
+        film = film.copy(in_watchlist = true)
+        returnFromPlayer(vm)
+        advanceUntilIdle()
+        assertTrue(vm.content().film.in_watchlist)
+    }
+
+    @Test
+    fun `a write survives the ViewModel being cleared`() = runTest(main.dispatcher) {
+        withFiles(F.file(1))
+        val gates = gateWrites()
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onButton(ButtonId.WATCHLIST)
+        val store = androidx.lifecycle.ViewModelStore()
+        store.put("detail", vm)
+        store.clear()
+        runCurrent()
+        assertEquals(listOf("PUT /api/watchlist/films/12"), writes())
+        assertTrue(repos.watchlist.writing.value)
+        gates.single().complete(Unit)
+        advanceUntilIdle()
+        assertFalse(repos.watchlist.writing.value, "the write completed")
     }
 }

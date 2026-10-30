@@ -17,6 +17,7 @@ from hometv.metadata.enrich import Enricher, match_item, merge_items, resolve_un
 from hometv.metadata.tmdb import TMDB_BASE_URL, TMDB_IMAGE_BASE_URL, TmdbClient
 from hometv.scan_report import ScanReport
 from hometv.scanner import Scanner
+from tests.factories import add_film, add_profile, add_show, add_watchlist_entry
 
 from .conftest import MediaTree
 
@@ -417,13 +418,6 @@ async def test_two_pending_films_resolving_to_same_id_merge_without_integrity_er
     assert _count(mdb, m.Film) == 1
 
 
-def _seed_profile(s, name="Esther") -> int:
-    p = m.Profile(name=name, avatar_id="avatar-01")
-    s.add(p)
-    s.flush()
-    return p.id
-
-
 async def test_merge_films_moves_files_and_keeps_latest_progress(
     mdb, media: MediaTree, settings, stub_probe
 ):
@@ -433,7 +427,7 @@ async def test_merge_films_moves_files_and_keeps_latest_progress(
     survivor, loser = _all(mdb, m.Film)
     now = m.utcnow()
     with mdb.write_session() as s:
-        p1, p2, p3 = (_seed_profile(s, n) for n in ("A", "B", "C"))
+        p1, p2, p3 = (add_profile(s, n).id for n in ("A", "B", "C"))
         s.get(m.Film, survivor.id).tmdb_id = 438631
         s.add_all(
             [
@@ -502,7 +496,7 @@ async def test_merge_shows_with_overlapping_seasons_and_episodes(
         s.get(m.Show, survivor.id).tmdb_id = 2316
         for season in s.scalars(select(m.Season)):
             season.metadata_fetched_at = m.utcnow()
-        pid = _seed_profile(s)
+        pid = add_profile(s, "Esther").id
         s2e1 = {
             e.show_id: e.id
             for e in s.scalars(
@@ -548,6 +542,54 @@ async def test_merge_shows_with_overlapping_seasons_and_episodes(
     assert (progress.episode_id, progress.position_seconds) == (s2e1.id, 2)
 
 
+def _seed_merge_watchlist(mdb, kind: str):
+    """Loser + survivor of ``kind`` and four profiles' entries: loser only (A), both with the
+    loser earlier (B), both with the survivor earlier (C), survivor only (D)."""
+    t0 = m.utcnow() - timedelta(days=10)
+    with mdb.write_session() as s:
+        if kind == "film":
+            survivor, loser = add_film(s, "Dune"), add_film(s, "Dune Part One")
+        else:
+            survivor, loser = add_show(s, "The Office")[0], add_show(s, "The Office US")[0]
+        a, b, c, d = (add_profile(s, n).id for n in ("A", "B", "C", "D"))
+        for pid, item, days in [
+            (a, loser, 1),
+            (b, loser, 2),
+            (b, survivor, 3),
+            (c, loser, 5),
+            (c, survivor, 4),
+            (d, survivor, 6),
+        ]:
+            add_watchlist_entry(s, pid, **{kind: item}, added_at=t0 + timedelta(days=days))
+        ids = {
+            (e.profile_id, e.film_id or e.show_id): e.id
+            for e in s.scalars(select(m.WatchlistEntry))
+        }
+        return loser.id, survivor.id, (a, b, c, d), t0, ids
+
+
+@pytest.mark.parametrize("kind", ["film", "show"])
+def test_merge_moves_watchlist_entries_keeping_the_earlier_added_at(mdb, kind):
+    loser, survivor, (a, b, c, d), t0, ids = _seed_merge_watchlist(mdb, kind)
+    model = m.Film if kind == "film" else m.Show
+    with mdb.write_session() as s:
+        merge_items(s, kind, s.get(model, loser), s.get(model, survivor))
+
+    entries = {e.profile_id: e for e in _all(mdb, m.WatchlistEntry)}
+    assert len(_all(mdb, m.WatchlistEntry)) == 4  # one per profile
+    column = "film_id" if kind == "film" else "show_id"
+    assert {getattr(e, column) for e in entries.values()} == {survivor}
+    assert {e.film_id if kind == "show" else e.show_id for e in entries.values()} == {None}
+    assert {pid: e.added_at for pid, e in entries.items()} == {
+        a: t0 + timedelta(days=1),  # moved
+        b: t0 + timedelta(days=2),  # loser's earlier date
+        c: t0 + timedelta(days=4),  # survivor's earlier date
+        d: t0 + timedelta(days=6),  # unchanged
+    }
+    assert entries[a].id == ids[(a, loser)]
+    assert entries[d].id == ids[(d, survivor)]
+
+
 async def test_admin_match_during_fetch_wins_over_stale_enrichment(
     mdb, media: MediaTree, settings, stub_probe, tmdb, client, artwork
 ):
@@ -581,8 +623,16 @@ async def test_match_item_refetches_and_merges(
     _dune_routes(tmdb)
     await _scan(mdb, settings, stub_probe)
     dune, duna = _all(mdb, m.Film)
+    with mdb.write_session() as s:
+        a, b = add_profile(s, "A").id, add_profile(s, "B").id
+        kept = add_watchlist_entry(s, a, film=s.get(m.Film, dune.id)).id
+        add_watchlist_entry(s, b, film=s.get(m.Film, duna.id))
 
     assert await match_item(mdb, settings, client, artwork, "film", dune.id, 438631) == dune.id
+    # a re-match without a duplicate keeps the entry
+    assert [
+        (e.id, e.film_id) for e in _all(mdb, m.WatchlistEntry, m.WatchlistEntry.profile_id == a)
+    ] == [(kept, dune.id)]
     assert _all(mdb, m.Film)[0].match_status == "matched"
     assert len(_all(mdb, m.CastCredit)) == 15
     # matching again refreshes (cast cleared first, no duplicates)
@@ -592,6 +642,9 @@ async def test_match_item_refetches_and_merges(
     survivor = await match_item(mdb, settings, client, artwork, "film", duna.id, 438631)
     assert survivor == dune.id
     assert [f.id for f in _all(mdb, m.Film)] == [dune.id]
+    entries = _all(mdb, m.WatchlistEntry)
+    assert sorted((e.profile_id, e.film_id) for e in entries) == [(a, dune.id), (b, dune.id)]
+    assert kept in {e.id for e in entries}
 
 
 async def test_match_item_errors(

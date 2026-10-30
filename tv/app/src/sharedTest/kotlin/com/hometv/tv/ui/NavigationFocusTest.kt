@@ -201,7 +201,7 @@ class NavigationFocusTest : UiTestBase() {
         api.onMe = { Profile(5, "Esther", "avatar-05", is_admin = true) }
         launch()
         press(Key.DirectionUp)
-        press(Key.DirectionRight, times = 3)
+        press(Key.DirectionRight, times = 4)
         assertFocused("tab_SETTINGS")
         press(Key.DirectionCenter)
         // An admin's Settings starts on [Cambiar servidor] (prd3 §11 step 3).
@@ -228,7 +228,7 @@ class NavigationFocusTest : UiTestBase() {
     }
 
     @Test
-    fun aViewerHasNoSettingsTabAndRightFromSeriesGoesToTheAvatar() {
+    fun aViewerHasNoSettingsTabAndRightFromMiListaGoesToTheAvatar() {
         useLibrary() // the default test profile is a viewer
         launch()
         press(Key.DirectionUp)
@@ -236,6 +236,8 @@ class NavigationFocusTest : UiTestBase() {
         assertFocused("tab_SHOWS")
         assertTrue("no Ajustes tab for a viewer (prd3 §3 step 1)", rule.onAllNodes(hasTestTag("tab_SETTINGS"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
         rule.onAllNodesWithText("Ajustes", useUnmergedTree = true).assertCountEquals(0)
+        press(Key.DirectionRight)
+        assertFocused("tab_WATCHLIST")
         press(Key.DirectionRight)
         assertFocused("nav_avatar")
     }

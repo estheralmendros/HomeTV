@@ -52,20 +52,29 @@ class FilmCastFocusTest : UiTestBase() {
     private fun pageScroll(): Float =
         node("film_detail_page").fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange].value()
 
+    /** Lines the overview was laid out on. */
+    private fun overviewLines(): Int {
+        val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+        node("film_overview").fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult].action?.invoke(layouts)
+        return layouts.first().lineCount
+    }
+
+    private val longOverview = List(12) { "En un lejano futuro, la galaxia conocida es gobernada por casas nobles." }.joinToString(" ")
+
     @Test
     fun aFilmInProgressShowsItsWholeHeaderWheneverTheButtonsHaveFocus() {
-        // The Dune case: tagline + a 5-line overview + three buttons on two rows
-        // (Reanudar / Ver desde el principio / Marcar como visto).
+        // The Dune case: tagline + a long overview + four buttons on two rows
+        // (Reanudar / Ver desde el principio / Marcar como visto, then Mi lista).
         // A TV (FEATURE_LEANBACK): Compose then scrolls focus into view with its pivot spec, as on the device.
         shadowOf(ApplicationProvider.getApplicationContext<Context>().packageManager).setSystemFeature(PackageManager.FEATURE_LEANBACK, true)
         useLibrary()
-        val overview = List(12) { "En un lejano futuro, la galaxia conocida es gobernada por casas nobles." }.joinToString(" ")
         api.onFilm = { id ->
             FilmDetail(
                 id = id, title = "Dune", year = 2021, runtime_minutes = 155, match_status = "matched",
-                tagline = "Más allá del miedo, el destino espera.", overview = overview,
+                tagline = "Más allá del miedo, el destino espera.", overview = longOverview,
                 media_files = listOf(F.file(1)), cast = cast,
                 progress = Progress(position_seconds = 38.0, duration_seconds = 9300.0, media_file_id = 1),
+                in_watchlist = false,
             )
         }
         launch()
@@ -77,14 +86,24 @@ class FilmCastFocusTest : UiTestBase() {
         // prd3 §6 step 1: while a header button has focus the page is at the top (title, poster and
         // buttons all on screen), not scrolled to show the cast row.
         assertEquals("page scroll with the focus on Reanudar", 0f, pageScroll(), 0.5f)
-        // prd3 §6 step 2: "Reanudar desde 0:38", "Ver desde el principio" and "Marcar como visto" share one row.
+        // watchlist prd3 FR-T8: with 4 or more buttons the overview is clamped to 3 lines.
+        assertTrue("the overview takes ${overviewLines()} lines", overviewLines() <= 3)
+        // prd3 §6 step 2 (amended): "Reanudar desde 0:38", "Ver desde el principio" and "Marcar como visto"
+        // share the first row; "Mi lista" wraps onto the next one.
         rule.onNodeWithText("Ver desde el principio", useUnmergedTree = true).assertExists()
         val rows = listOf("button_RESUME", "button_PLAY_FROM_START", "button_WATCHED").map { node(it).fetchSemanticsNode().positionInRoot.y }
         assertTrue("the three buttons are on one row (tops at $rows px)", rows.distinct().size == 1)
+        val watchlistTop = node("button_WATCHLIST").fetchSemanticsNode().positionInRoot.y
+        assertTrue("Mi lista is on the next row ($watchlistTop px vs ${rows.first()} px)", watchlistTop > rows.first())
+        assertFullyVisible("button_WATCHLIST")
         // prd3 §6 step 1: the whole cast row (photos, names, characters) is on screen too, nothing cut off.
         assertFullyVisible("cast_1:0")
         assertFullyVisible("cast_7:6")
 
+        // Down goes row by row: "Mi lista" (below Reanudar), then the cast.
+        press(Key.DirectionDown)
+        assertFocused("button_WATCHLIST")
+        assertEquals("page scroll with the focus on Mi lista", 0f, pageScroll(), 0.5f)
         press(Key.DirectionDown)
         assertFocused("cast_1:0")
         settle()
@@ -96,6 +115,24 @@ class FilmCastFocusTest : UiTestBase() {
         assertFocused("button_RESUME")
         settle()
         assertEquals("page scroll back on Reanudar", 0f, pageScroll(), 0.5f)
+    }
+
+    @Test
+    fun aFilmWithThreeButtonsKeepsTheFiveLineOverview() {
+        useLibrary()
+        api.onFilm = { id ->
+            FilmDetail(
+                id = id, title = "Dune", year = 2021, runtime_minutes = 155, match_status = "matched",
+                overview = longOverview, media_files = listOf(F.file(1)), cast = cast,
+            )
+        }
+        launch()
+        press(Key.DirectionDown)
+        press(Key.DirectionRight)
+        press(Key.DirectionCenter)
+        assertFocused("button_PLAY")
+        listOf("button_PLAY", "button_WATCHED", "button_WATCHLIST").forEach { node(it).assertExists() }
+        assertEquals(5, overviewLines())
     }
 
     /**
@@ -131,6 +168,9 @@ class FilmCastFocusTest : UiTestBase() {
         press(Key.DirectionRight)
         press(Key.DirectionCenter)
         assertFocused("button_RESUME")
+        // "Mi lista" wraps below Reanudar (watchlist prd3 FR-T8): Down reaches it first, then the cast.
+        press(Key.DirectionDown)
+        assertFocused("button_WATCHLIST")
         press(Key.DirectionDown)
         assertFocused("cast_1:0")
         settle()

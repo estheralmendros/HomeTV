@@ -23,6 +23,7 @@ import com.hometv.tv.core.api.ShowDetail
 import com.hometv.tv.core.api.ShowSummary
 import com.hometv.tv.core.api.WatchedRequest
 import com.hometv.tv.core.api.WatchedResponse
+import com.hometv.tv.core.api.WatchlistEntry
 import okhttp3.Headers.Companion.headersOf
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Protocol
@@ -51,6 +52,9 @@ open class FakeHomeTvApi : HomeTvApi {
     override suspend fun search(query: String, limit: Int): SearchResponse = unused()
     override suspend fun putProgress(body: ProgressRequest): Progress = unused()
     override suspend fun setWatched(body: WatchedRequest): WatchedResponse = unused()
+    override suspend fun watchlist(type: String, sort: String, page: Int, pageSize: Int): Page<WatchlistEntry> = unused()
+    override suspend fun addToWatchlist(segment: String, id: Long): Unit = unused()
+    override suspend fun removeFromWatchlist(segment: String, id: Long): Unit = unused()
     override suspend fun playback(mediaFileId: Long, body: PlaybackRequest): PlaybackResponse = unused()
     override suspend fun keepAlive(sessionId: String): Response<Unit> = unused()
     override suspend fun deleteHlsSession(sessionId: String): Response<Unit> = unused()

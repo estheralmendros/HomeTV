@@ -1,4 +1,7 @@
-"""Query parameters shared by GET /api/films and GET /api/shows (PRD REST "Catalog")."""
+"""Query parameters shared by GET /api/films and GET /api/shows (PRD REST "Catalog").
+
+``PageNumber`` (``MAX_PAGE``) is also used by GET /api/watchlist.
+"""
 
 from typing import Annotated, Literal
 
@@ -9,9 +12,13 @@ from hometv.catalog import ListParams, Order, SortKey
 
 Year = Annotated[int | None, Query(ge=1900, le=2100)]
 
+# Upper bound for every paged list: keeps (page - 1) * page_size inside SQLite's int64 OFFSET.
+MAX_PAGE = 1_000_000
+PageNumber = Annotated[int, Query(ge=1, le=MAX_PAGE)]
+
 
 def list_params(
-    page: Annotated[int, Query(ge=1)] = 1,
+    page: PageNumber = 1,
     page_size: Annotated[int, Query(ge=1, le=200)] = 50,
     q: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
     sort: SortKey = "title",

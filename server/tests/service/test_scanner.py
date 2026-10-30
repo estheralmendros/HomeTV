@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 from hometv.db import models as m
 from hometv.scan_report import ScanReport
 from hometv.scanner import FsOps, Scanner
+from tests.factories import add_profile
 
 from .conftest import MediaTree, StubProbe
 
@@ -43,6 +44,33 @@ def _count(mdb, model) -> int:
 def _entries(mdb) -> list[tuple[int | None, str]]:
     with mdb.read_session() as s:
         return [(e.media_file_id, e.reason) for e in s.scalars(select(m.UnmatchedEntry))]
+
+
+def _profile_id(s) -> int:
+    profile = s.scalar(select(m.Profile).where(m.Profile.name == "P1"))
+    if profile is None:
+        profile = add_profile(s, "P1")
+    return profile.id
+
+
+def _list_everything(mdb) -> None:
+    """Put every film and show in profile P1's "Mi lista"."""
+    with mdb.write_session() as s:
+        pid = _profile_id(s)
+        s.add_all(m.WatchlistEntry(profile_id=pid, film_id=f.id) for f in s.scalars(select(m.Film)))
+        s.add_all(m.WatchlistEntry(profile_id=pid, show_id=x.id) for x in s.scalars(select(m.Show)))
+
+
+def _listed_titles(mdb) -> list[str]:
+    """Titles with a "Mi lista" row (hidden or not), sorted."""
+    with mdb.read_session() as s:
+        films = s.scalars(
+            select(m.Film.title).join(m.WatchlistEntry, m.WatchlistEntry.film_id == m.Film.id)
+        )
+        shows = s.scalars(
+            select(m.Show.title).join(m.WatchlistEntry, m.WatchlistEntry.show_id == m.Show.id)
+        )
+        return sorted([*films, *shows])
 
 
 # --- First scan / unchanged / changed --------------------------------------------------------
@@ -219,6 +247,7 @@ async def test_grace_zero_purges_file_and_orphans(
     media.show("Fargo/Season 1/Fargo.S01E01.mkv")  # keeps the shows root non-empty
     settings = media_settings(scan={"missing_grace_days": 0})
     await _scan(mdb, settings, stub_probe)
+    _list_everything(mdb)
 
     a.unlink()
     e1.unlink()
@@ -231,6 +260,7 @@ async def test_grace_zero_purges_file_and_orphans(
     assert [s.title for s in _all(mdb, m.Show)] == ["Fargo"]
     assert _count(mdb, m.Season) == 1
     assert _count(mdb, m.Episode) == 1
+    assert _listed_titles(mdb) == ["Alien", "Fargo"]  # purged titles' entries cascade
 
 
 async def test_missing_file_is_purged_only_after_grace_period(
@@ -240,8 +270,10 @@ async def test_missing_file_is_purged_only_after_grace_period(
     media.add("Alien (1979)/Alien (1979).mkv")
     settings = media_settings(scan={"missing_grace_days": 7})
     await _scan(mdb, settings, stub_probe)
+    _list_everything(mdb)
     a.unlink()
     await _scan(mdb, settings, stub_probe)
+    assert _listed_titles(mdb) == ["Alien", "Dune"]  # inside the grace period: kept
     row = _file(mdb, a)
     with mdb.write_session() as s:
         s.get(m.MediaFile, row.id).missing_since = m.utcnow() - timedelta(days=8)
@@ -251,6 +283,31 @@ async def test_missing_file_is_purged_only_after_grace_period(
     assert report.counts["removed"] == 1
     assert _file(mdb, a) is None
     assert [f.title for f in _all(mdb, m.Film)] == ["Alien"]
+    assert _listed_titles(mdb) == ["Alien"]
+
+
+async def test_relinking_every_file_of_a_title_drops_its_watchlist_entries(
+    mdb, media: MediaTree, media_settings, stub_probe
+):
+    """FR-5 (Implementation Decision 11): the old item loses its last file, ``delete_orphans``
+    deletes it at the end of the scan and its entries cascade; no carry-over to the new item."""
+    a = media.add("Dune (2021)/Dune (2021).mkv")
+    media.add("Alien (1979)/Alien (1979).mkv")
+    settings = media_settings()
+    await _scan(mdb, settings, stub_probe)
+    with mdb.write_session() as s:
+        dune = s.scalar(select(m.Film).where(m.Film.title == "Dune"))
+        alien = s.scalar(select(m.Film).where(m.Film.title == "Alien"))
+        pid = _profile_id(s)
+        s.add(m.WatchlistEntry(profile_id=pid, film_id=dune.id))
+        s.get(m.MediaFile, _file(mdb, a).id).film_id = alien.id  # what every relink ends with
+        dune_id = dune.id
+
+    await _scan(mdb, settings, stub_probe)
+
+    with mdb.read_session() as s:
+        assert s.get(m.Film, dune_id) is None
+    assert _all(mdb, m.WatchlistEntry) == []
 
 
 # --- Root safety ------------------------------------------------------------------------------

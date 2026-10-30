@@ -39,6 +39,7 @@ import com.hometv.tv.ui.text.ResourcesStringResolver
 import com.hometv.tv.ui.text.UiFormat
 import com.hometv.tv.ui.theme.HomeTvColors
 import com.hometv.tv.ui.theme.HomeTvTheme
+import com.hometv.tv.ui.watchlist.WatchlistScreen
 
 val LocalAppContainer = staticCompositionLocalOf<AppContainer> { error("AppContainer not provided") }
 
@@ -125,6 +126,9 @@ private fun AppNavHost(container: AppContainer, onExit: () -> Unit) {
         }
         composable<Route.Search> {
             SearchScreen(viewModel { container.searchViewModel() }, navigator, avatar, showSettings)
+        }
+        composable<Route.Watchlist> {
+            WatchlistScreen(viewModel { container.watchlistViewModel() }, navigator, avatar, showSettings)
         }
         composable<Route.Settings> {
             SettingsScreen(viewModel { container.settingsViewModel() }, navigator, avatar, showSettings)

@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 
 from hometv.db import models as m
 from hometv.db.engine import HEAD_REVISION, Database, run_migrations
+from tests.factories import add_profile
 
 EXPECTED_TABLES = {
     "library",
@@ -31,6 +32,7 @@ EXPECTED_TABLES = {
     "scan_run",
     "library_folder",
     "person_credit",
+    "watchlist_entry",
 }
 
 
@@ -51,7 +53,7 @@ def test_migration_creates_every_table(db):
 def test_migration_is_at_head_and_idempotent(db):
     run_migrations(db)
     with db.read_engine.connect() as conn:
-        assert MigrationContext.configure(conn).get_current_revision() == HEAD_REVISION == "0004"
+        assert MigrationContext.configure(conn).get_current_revision() == HEAD_REVISION == "0005"
 
 
 @pytest.mark.filterwarnings("ignore:.*expression-based index:UserWarning")
@@ -220,6 +222,12 @@ def test_all_data_model_columns_exist(db):
     } <= cols["scan_run"]
     assert "folders_seeded_at" in cols["library"]
     assert {"id", "library_id", "path", "created_at"} <= cols["library_folder"]
+    assert {"id", "profile_id", "film_id", "show_id", "added_at"} <= cols["watchlist_entry"]
+    assert {
+        "uq_watchlist_entry_profile_id_film_id",
+        "uq_watchlist_entry_profile_id_show_id",
+        "ix_watchlist_entry_profile_id_added_at",
+    } <= {i["name"] for i in insp.get_indexes("watchlist_entry")}
 
 
 def test_wal_mode_after_migration(db):
@@ -420,6 +428,60 @@ def test_progress_exactly_one_target_and_unique_per_profile(db):
         p = s.scalars(select(m.Profile)).one()
         s.add(m.PlaybackProgress(profile_id=p.id, position_seconds=2, duration_seconds=10))
         s.flush()
+
+
+def test_watchlist_entry_exactly_one_target_and_unique_per_profile(db):
+    with db.write_session() as s:
+        film = _film(s, _library(s))
+        show = _show(s, _library(s, "shows"))
+        a, b = add_profile(s, "A"), add_profile(s, "B")
+        assert film.id == show.id == 1
+        s.add(m.WatchlistEntry(profile_id=a.id, film_id=film.id))
+        s.add(m.WatchlistEntry(profile_id=b.id, film_id=film.id))  # two profiles, same film
+        s.add(m.WatchlistEntry(profile_id=a.id, show_id=show.id))  # film 1 and show 1: fine
+        s.flush()
+        entry = s.scalars(select(m.WatchlistEntry)).first()
+        assert entry is not None and entry.added_at.tzinfo is not None
+    with pytest.raises(IntegrityError), db.write_session() as s:
+        s.add(m.WatchlistEntry(profile_id=1, film_id=1, show_id=1))
+        s.flush()
+    with pytest.raises(IntegrityError), db.write_session() as s:
+        s.add(m.WatchlistEntry(profile_id=1))
+        s.flush()
+    with pytest.raises(IntegrityError), db.write_session() as s:
+        s.add(m.WatchlistEntry(profile_id=1, film_id=1))
+        s.flush()
+    with pytest.raises(IntegrityError), db.write_session() as s:
+        s.add(m.WatchlistEntry(profile_id=1, show_id=1))
+        s.flush()
+    with db.read_session() as s:
+        assert s.scalar(text("SELECT count(*) FROM watchlist_entry")) == 3
+
+
+def test_watchlist_entry_cascades(db):
+    with db.write_session() as s:
+        film = _film(s, _library(s))
+        show = _show(s, _library(s, "shows"))
+        a, b = add_profile(s, "A"), add_profile(s, "B")
+        for p in (a, b):
+            s.add(m.WatchlistEntry(profile_id=p.id, film_id=film.id))
+            s.add(m.WatchlistEntry(profile_id=p.id, show_id=show.id))
+
+    def count(where: str) -> int:
+        with db.read_session() as s:
+            return int(s.scalar(text(f"SELECT count(*) FROM watchlist_entry WHERE {where}")) or 0)
+
+    assert count("1") == 4
+    with db.write_session() as s:
+        s.execute(text("DELETE FROM profile WHERE name = 'A'"))
+    assert count("1") == 2
+    with db.write_session() as s:
+        s.execute(text("DELETE FROM film"))
+    assert count("film_id IS NOT NULL") == 0
+    assert count("1") == 1
+    with db.write_session() as s:
+        s.execute(text("DELETE FROM show"))
+    assert count("1") == 0
 
 
 def test_unmatched_entry_partial_unique_per_file_and_reason(db):
@@ -692,5 +754,39 @@ def test_upgrade_from_0003_keeps_persons(tmp_path):
         assert "ix_cast_credit_person_id" not in {
             i["name"] for i in insp.get_indexes("cast_credit")
         }
+    finally:
+        database.dispose()
+
+
+def test_upgrade_from_0004_adds_watchlist_and_downgrade_drops_it(tmp_path):
+    from alembic import command
+
+    from hometv.db.engine import alembic_config
+
+    database = Database(tmp_path / "old.db")
+    try:
+        cfg = alembic_config(database)
+        with database.write_engine.connect() as conn:
+            cfg.attributes["connection"] = conn
+            command.upgrade(cfg, "0004")
+            conn.exec_driver_sql(
+                "INSERT INTO profile (id, name, avatar_id, is_admin) VALUES (1, 'A', 'a', 0)"
+            )
+            conn.commit()
+        assert "watchlist_entry" not in set(inspect(database.read_engine).get_table_names())
+        run_migrations(database)
+        with database.write_session() as s:
+            film = _film(s, _library(s))
+            s.add(m.WatchlistEntry(profile_id=1, film_id=film.id))
+        with database.write_engine.connect() as conn:
+            cfg.attributes["connection"] = conn
+            command.downgrade(cfg, "0004")
+            conn.commit()
+        tables = set(inspect(database.read_engine).get_table_names())
+        assert "watchlist_entry" not in tables
+        assert {"profile", "film"} <= tables
+        with database.read_session() as s:
+            assert s.scalar(text("SELECT count(*) FROM profile")) == 1
+            assert s.scalar(text("SELECT count(*) FROM film")) == 1
     finally:
         database.dispose()

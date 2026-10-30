@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from './errors';
 import { createQueryClient, shouldRetry } from './queryClient';
-import { invalidateAfter, queryKeys, staleTimes } from './queryKeys';
+import { invalidateAfter, mutationKeys, queryKeys, staleTimes } from './queryKeys';
 
 describe('queryKeys', () => {
   it('builds the PRD keys', () => {
@@ -20,6 +20,8 @@ describe('queryKeys', () => {
     expect(queryKeys.episode(345)).toEqual(['episode', 345]);
     expect(queryKeys.person(3)).toEqual(['person', 3]);
     expect(queryKeys.personAll()).toEqual(['person']);
+    expect(queryKeys.watchlist({ type: 'all', sort: 'added' })).toEqual(['watchlist', 'list', { type: 'all', sort: 'added' }]);
+    expect(queryKeys.watchlistAll()).toEqual(['watchlist']);
     expect(queryKeys.admin.scan()).toEqual(['admin', 'scan']);
     expect(queryKeys.admin.unmatched({ library: 'films', page: 2 })).toEqual(['admin', 'unmatched', { library: 'films', page: 2 }]);
     expect(queryKeys.admin.unmatchedAll()).toEqual(['admin', 'unmatched']);
@@ -31,10 +33,15 @@ describe('queryKeys', () => {
     expect(queryKeys.admin.browse('/media/Disco2')).toEqual(['admin', 'libraries', 'browse', '/media/Disco2']);
   });
 
+  it('builds the mutation keys', () => {
+    expect(mutationKeys.watchlistWrite('film', 12)).toEqual(['watchlistWrite', 'film', 12]);
+    expect(mutationKeys.watchlistWrite('show', 7)).toEqual(['watchlistWrite', 'show', 7]);
+  });
+
   it('has the PRD stale times', () => {
     expect(staleTimes).toEqual({
       info: Infinity, profiles: 30_000, me: 300_000, home: 0, library: 30_000, genres: 300_000, search: 30_000,
-      film: 30_000, show: 30_000, season: 30_000, episode: 30_000, person: 30_000, adminScan: 0, adminUnmatched: 0, adminTmdb: 300_000,
+      film: 30_000, show: 30_000, season: 30_000, episode: 30_000, person: 30_000, watchlist: 30_000, adminScan: 0, adminUnmatched: 0, adminTmdb: 300_000,
       adminLibraries: 0, adminBrowse: 0,
     });
   });
@@ -44,31 +51,40 @@ describe('invalidateAfter', () => {
   const lists = [['films', 'list'], ['shows', 'list'], ['search']];
 
   it('player exit of a film', () => {
-    expect(invalidateAfter({ type: 'playerExit', item: { type: 'film', id: 12 } })).toEqual([['home'], ['film', 12], ...lists, ['person']]);
+    expect(invalidateAfter({ type: 'playerExit', item: { type: 'film', id: 12 } })).toEqual([
+      ['home'], ['film', 12], ...lists, ['person'], ['watchlist'],
+    ]);
   });
 
   it('player exit of an episode (detail + show + season)', () => {
     expect(
       invalidateAfter({ type: 'playerExit', item: { type: 'episode', id: 345, showId: 7, seasonNumber: 2 } }),
-    ).toEqual([['home'], ['episode', 345], ['show', 7], ['season', 7, 2], ...lists, ['person']]);
+    ).toEqual([['home'], ['episode', 345], ['show', 7], ['season', 7, 2], ...lists, ['person'], ['watchlist']]);
   });
 
   it('watched film', () => {
-    expect(invalidateAfter({ type: 'watchedFilm', id: 12 })).toEqual([['film', 12], ['home'], ['films', 'list'], ['search'], ['person']]);
+    expect(invalidateAfter({ type: 'watchedFilm', id: 12 })).toEqual([
+      ['film', 12], ['home'], ['films', 'list'], ['search'], ['person'], ['watchlist'],
+    ]);
   });
 
   it('watched episode / season / show', () => {
     expect(invalidateAfter({ type: 'watchedEpisodes', showId: 7 })).toEqual([
-      ['show', 7], ['season', 7], ['episode'], ['home'], ['shows', 'list'], ['search'], ['person'],
+      ['show', 7], ['season', 7], ['episode'], ['home'], ['shows', 'list'], ['search'], ['person'], ['watchlist'],
     ]);
   });
 
   it('match / resolve success and scan finished', () => {
     const keys = [
       ['home'], ['films'], ['shows'], ['genres'], ['search'], ['film'], ['show'], ['season'], ['episode'],
-      ['admin', 'unmatched'], ['admin', 'scan'], ['admin', 'libraries'], ['person'],
+      ['admin', 'unmatched'], ['admin', 'scan'], ['admin', 'libraries'], ['person'], ['watchlist'],
     ];
     expect(invalidateAfter({ type: 'catalogChanged' })).toEqual(keys);
+  });
+
+  it('watchlist toggled: the detail and every watchlist list', () => {
+    expect(invalidateAfter({ type: 'watchlistChanged', kind: 'film', id: 12 })).toEqual([['film', 12], ['watchlist']]);
+    expect(invalidateAfter({ type: 'watchlistChanged', kind: 'show', id: 7 })).toEqual([['show', 7], ['watchlist']]);
   });
 
   it('library folders saved: the libraries (and browse, by prefix) and the scan status', () => {

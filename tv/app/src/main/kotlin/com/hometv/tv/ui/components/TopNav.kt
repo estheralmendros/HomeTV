@@ -51,6 +51,7 @@ enum class NavTab(@param:StringRes val label: Int, @param:DrawableRes val icon: 
     HOME(R.string.nav_home),
     FILMS(R.string.nav_films),
     SHOWS(R.string.nav_shows),
+    WATCHLIST(R.string.nav_watchlist),
     SETTINGS(R.string.nav_settings),
     ;
 

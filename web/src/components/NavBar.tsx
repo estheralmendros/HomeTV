@@ -13,6 +13,7 @@ const SECTIONS = [
   { to: '/', label: S.nav.home, end: true },
   { to: '/films', label: S.nav.films, end: false },
   { to: '/shows', label: S.nav.shows, end: false },
+  { to: '/watchlist', label: S.nav.watchlist, end: false },
 ] as const;
 
 /** Top bar: logo, section links, search and the avatar menu. Below 720 px: logo + avatar (see MobileTabBar). */
@@ -127,7 +128,10 @@ function AvatarMenu() {
   );
 }
 
-/** Below 720 px (COMPACT_NAV_QUERY): bottom tab bar "Inicio", "Películas", "Series", "Buscar". */
+/**
+ * Below 720 px (COMPACT_NAV_QUERY): bottom tab bar with five equal tabs "Inicio", "Películas",
+ * "Series", "Mi lista", "Buscar" (72 px each at 360 px; labels never truncate).
+ */
 export function MobileTabBar() {
   const compact = useMediaQuery(COMPACT_NAV_QUERY);
   if (!compact) return null;

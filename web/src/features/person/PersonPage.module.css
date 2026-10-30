@@ -51,6 +51,16 @@
   margin-bottom: var(--space-5);
 }
 
+/* Desktop biography, in the header's text column under the place of birth. */
+.bio {
+  margin-top: var(--space-3);
+}
+
+.bio .heading {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-md);
+}
+
 .heading {
   font-size: var(--font-size-lg);
 }
