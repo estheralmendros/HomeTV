@@ -35,6 +35,9 @@ object HomeTvColors {
     /** The focus ring: light, 3 dp (prd3 Focus & navigation AC). */
     val FocusRing = Color(0xFFFFFFFF)
     val Progress = Color(0xFFE53935)
+
+    /** Rating stars (amber; ≥ 3:1 on Background and Surface, a graphic). Empty stars use [Muted]. */
+    val Rating = Color(0xFFFFC107)
     val Placeholder = Color(0xFF2E3542)
 }
 

@@ -202,6 +202,7 @@ private fun PersonContent(state: PersonUiState.Content, vm: PersonViewModel) {
                             .focusProperties { up = if (hasBio) bio else FocusRequester.Cancel },
                         subtitle = card.subtitle?.resolve(),
                         subtitleTestTag = "appearance_${key}_subtitle",
+                        myRating = card.item.myRating,
                     )
                 }
             }

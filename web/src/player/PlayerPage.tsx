@@ -3,18 +3,26 @@
 // session, reporter and subtitle cache, while the shell's <video> and fullscreen root survive.
 // Wiring (order matters: unmount cleanups run in declaration order):
 //   start decision → LOAD → useProgressReporter → usePlaybackSession → UI.
+// Rating prompt (ratings prd2 FR-W9): a `rating_prompt` from a report shows nothing during playback;
+// at `ended` with no next item the inline RatingForm replaces "Fin de la reproducción" until it is
+// answered. Leaving with the form visible = Ahora no; leaving without it offers the prompt to the
+// host (RatingPromptHost), which shows it over the screen returned to.
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type PointerEvent } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { errorMessage, isApiError } from '@/api/errors';
 import { getEpisode, getFilm } from '@/api/catalog';
-import { queryKeys, staleTimes } from '@/api/queryKeys';
+import { mutationKeys, queryKeys, staleTimes } from '@/api/queryKeys';
 import type { EpisodeDetail, FilmDetail, ItemType, MediaFile } from '@/api/types';
 import { useAuth } from '@/auth/AuthProvider';
 import { useCurrentProfile } from '@/auth/useCurrentProfile';
 import { ErrorState } from '@/components/ErrorState';
 import { Spinner } from '@/components/Spinner';
+import { RatingForm } from '@/features/ratings/RatingDialog';
+import { useRatingPrompt } from '@/features/ratings/ratingPrompt';
+import { dismissInBackground } from '@/features/ratings/useRatingWrite';
 import { clearChunkReloadMarker } from '@/lib/chunkReload';
+import { cx } from '@/lib/cx';
 import { episodeLabel } from '@/lib/episodes';
 import { reloader } from '@/lib/reload';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
@@ -109,6 +117,8 @@ export function PlayerPage({ type, id }: PlayerPageProps) {
   const [state, dispatch] = useReducer(playerReducer, undefined, initialPlayerState);
   const tracker = useRef(new PositionTracker()).current;
   const [appUpdated, setAppUpdated] = useState(false);
+  /** The inline rating form was answered (saved, Ahora no, 404): the end dialog shows. */
+  const [ratingHandled, setRatingHandled] = useState(false);
 
   const source: DecisionSource | undefined = query.data ?? ready?.source;
   const files = query.data?.media_files ?? ready?.files ?? [];
@@ -141,7 +151,15 @@ export function PlayerPage({ type, id }: PlayerPageProps) {
   }, [isGone, queryClient]);
 
   // --- 2. reporter BEFORE session (its final report runs before the element is released) -------
-  const reporter = useProgressReporter({ item, fileId: state.fileId, stateName: state.name, hasPlayed: state.hasPlayed, tracker });
+  const { offer, markHandled } = useRatingPrompt();
+  const reporter = useProgressReporter({
+    item,
+    fileId: state.fileId,
+    stateName: state.name,
+    hasPlayed: state.hasPlayed,
+    tracker,
+    onFinalPrompt: offer,
+  });
   const session = usePlaybackSession({ state, dispatch, video, tracker, onAppUpdated: () => setAppUpdated(true) });
 
   // --- toasts ------------------------------------------------------------------------------
@@ -242,7 +260,13 @@ export function PlayerPage({ type, id }: PlayerPageProps) {
 
   const screen = SCREEN_STATES.has(state.name) || appUpdated;
   const hideControls = useAutoHide(state.name === 'playing' && menu === null);
-  const shortcutsEnabled = !screen && state.name !== 'preparing';
+  // The end state waits for next-episode resolution (no flash of either block while loading).
+  const endedAtLastItem =
+    state.name === 'ended' && !nextUp.nextEpisode && !nextPartFile && (nextUp.noNextEpisode || query.isError);
+  const endedWithRating = endedAtLastItem && reporter.ratingPrompt !== null && !ratingHandled;
+  const endedWithoutPrompt = endedAtLastItem && !endedWithRating;
+  // Player keys and media-session handlers are off while the rating form shows.
+  const shortcutsEnabled = !screen && state.name !== 'preparing' && !endedWithRating;
   const title = playerTitle(type, source, currentFile);
 
   useKeyboardShortcuts(
@@ -300,6 +324,27 @@ export function PlayerPage({ type, id }: PlayerPageProps) {
 
   useDocumentTitle(source ? title : null);
 
+  // Unmount only (no deps; the cleanup reads a ref, never render values): leaving with the rating
+  // form visible = Ahora no, unless its save is in flight (the PUT decides); leaving without it
+  // offers the prompt (a no-op for a title already answered: every answer marks it handled).
+  const exit = { formVisible: endedWithRating, prompt: reporter.ratingPrompt, offer, markHandled, queryClient };
+  const exitState = useRef(exit);
+  exitState.current = exit;
+  useEffect(
+    () => () => {
+      const { formVisible, prompt, offer, markHandled, queryClient } = exitState.current;
+      if (prompt === null) return;
+      if (formVisible) {
+        markHandled(prompt.kind, prompt.id);
+        const saving = queryClient.isMutating({ mutationKey: mutationKeys.ratingWrite(prompt.kind, prompt.id) }) > 0;
+        if (!saving) dismissInBackground(prompt.kind, prompt.id);
+      } else {
+        offer(prompt);
+      }
+    },
+    [],
+  );
+
   // --- render --------------------------------------------------------------------------------
   const loadFailed = decision === null && query.isError && !itemGone && state.name === 'idle';
   const crossTabToast: PlayerToast[] = crossTabNotice
@@ -312,8 +357,6 @@ export function PlayerPage({ type, id }: PlayerPageProps) {
         },
       ]
     : [];
-  const endedWithoutPrompt =
-    state.name === 'ended' && !nextUp.nextEpisode && !nextPartFile && (nextUp.noNextEpisode || query.isError);
 
   return (
     <div
@@ -394,6 +437,19 @@ export function PlayerPage({ type, id }: PlayerPageProps) {
 
       {nextPartFile && currentFile?.part_number != null && nextPartFile.part_number != null && (
         <NextPartPrompt finishedPart={currentFile.part_number} nextPart={nextPartFile.part_number} onPlay={playNextPart} onBack={goBack} />
+      )}
+
+      {endedWithRating && reporter.ratingPrompt && (
+        <div className={cx(styles.prompt, styles.ratingPrompt)} role="dialog" aria-label={S.ratings.question}>
+          <RatingForm
+            mode="prompt"
+            inline
+            target={reporter.ratingPrompt}
+            initial={null}
+            notify={notify}
+            onAnswered={() => setRatingHandled(true)}
+          />
+        </div>
       )}
 
       {endedWithoutPrompt && (

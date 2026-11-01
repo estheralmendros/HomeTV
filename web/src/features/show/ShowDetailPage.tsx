@@ -22,6 +22,8 @@ import { SkeletonDetail, SkeletonRow } from '@/components/Skeleton';
 import { useToast } from '@/components/Toast';
 import { WatchlistToggle } from '@/components/WatchlistToggle';
 import { FixMatchButton } from '@/features/admin/FixMatchButton';
+import { useRatingPrompt } from '@/features/ratings/ratingPrompt';
+import { RatingsBlock } from '@/features/ratings/RatingsBlock';
 import { useWatchlistToggle } from '@/features/watchlist/useWatchlistToggle';
 import { episodeCode, seasonLabel } from '@/lib/format';
 import { parseRouteId } from '@/lib/routeId';
@@ -47,7 +49,9 @@ export function ShowDetailPage() {
       </div>
     );
   }
-  if (show.isError) {
+  // Only a failed first load replaces the page: a failed background refetch (e.g. the one after a
+  // rating write with the server down) keeps the cached detail and any open dialog on screen.
+  if (show.data === undefined) {
     return (
       <div className="page">
         <ErrorState message={errorMessage(show.error)} onRetry={() => void show.refetch()} />
@@ -119,7 +123,20 @@ function ShowDetailView({ show }: { show: ShowDetail }) {
         poster={show.poster}
         backdrop={show.backdrop}
         meta={showMeta(show)}
-        extra={show.unwatched_episode_count > 0 && <p className={styles.unwatched}>{S.common.unwatched(show.unwatched_episode_count)}</p>}
+        extra={
+          <>
+            {show.unwatched_episode_count > 0 && <p className={styles.unwatched}>{S.common.unwatched(show.unwatched_episode_count)}</p>}
+            <RatingsBlock
+              kind="show"
+              id={show.id}
+              title={show.title}
+              poster={show.poster}
+              myRating={show.my_rating}
+              ratings={show.ratings}
+              average={show.household_average}
+            />
+          </>
+        }
         overview={show.overview}
       >
         <NextEpisodeButton show={show} />
@@ -220,7 +237,7 @@ function SeasonSection({ show, season, onGone }: { show: ShowDetail; season: Sho
   );
 }
 
-/** "Marcar temporada/serie como (no) vista" → POST /api/watched; toast with `updated`. */
+/** "Marcar temporada/serie como (no) vista" → POST /api/watched; toast with `updated`; offers a `rating_prompt`. */
 function MarkWatchedButton({
   showId,
   target,
@@ -236,9 +253,13 @@ function MarkWatchedButton({
 }) {
   const queryClient = useQueryClient();
   const toast = useToast();
+  const { offer } = useRatingPrompt();
   const mutation = useMutation({
     mutationFn: () => setWatched({ target, id, watched }),
-    onSuccess: (result) => toast.show(S.show.markedToast(result.updated, watched)),
+    onSuccess: (result) => {
+      toast.show(S.show.markedToast(result.updated, watched));
+      if (result.rating_prompt) offer(result.rating_prompt);
+    },
     onError: (err) => toast.show(errorMessage(err)),
     onSettled: () => runInvalidation(queryClient, { type: 'watchedEpisodes', showId }),
   });

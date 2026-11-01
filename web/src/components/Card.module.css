@@ -66,6 +66,27 @@
   font-weight: 700;
 }
 
+/* The viewer's rating (bottom-left; above the progress bar when there is one). */
+.rating {
+  position: absolute;
+  left: var(--space-2);
+  bottom: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px var(--space-2) 2px 6px;
+  border-radius: var(--radius-round);
+  background: rgb(11 13 18 / 0.85);
+  color: var(--color-rating);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.ratingAboveProgress {
+  bottom: calc(var(--space-2) + 4px + var(--space-1));
+}
+
 .tag {
   position: absolute;
   left: var(--space-2);

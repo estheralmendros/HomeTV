@@ -1,5 +1,6 @@
-// Hand-written from prd.md § REST API Reference (Rev 9). Field names are 1:1 with the server
-// (snake_case). Re-diff against server/hometv/api/schemas.py when prd.md changes.
+// Hand-written from prd.md § REST API Reference (Rev 9), plus the later feature PRDs (watchlist,
+// cast appearances, ratings). Field names are 1:1 with the server (snake_case). Re-diff against
+// server/hometv/api/schemas.py when a PRD changes.
 
 /** ISO 8601 UTC timestamp, e.g. "2026-10-21T18:04:05Z". */
 export type Timestamp = string;
@@ -28,6 +29,48 @@ export interface Progress {
   watched_at: Timestamp | null;
   media_file_id: number | null;
   updated_at: Timestamp;
+}
+
+// --- Ratings (ratings-per-user prd.md FR-11) ------------------------------------------------
+
+/** A title as a whole: films and shows (seasons and episodes are never rated nor listed). */
+export type TitleKind = 'film' | 'show';
+
+/** A rated title: films and shows only (seasons and episodes are never rated). */
+export type RatingKind = TitleKind;
+
+/** A profile as shown next to a rating (detail, activity). */
+export interface ProfileRef {
+  id: number;
+  name: string;
+  avatar_id: string;
+}
+
+/** "¿Qué te ha parecido?": the title the requester has just finished (no rating nor dismissal yet). */
+export interface RatingPrompt {
+  kind: RatingKind;
+  id: number;
+  title: string;
+  poster: Image | null;
+}
+
+/** PUT /api/progress response: the stored `Progress` plus the prompt. */
+export interface ProgressReport extends Progress {
+  rating_prompt: RatingPrompt | null;
+}
+
+/** Another profile's rating of a title (detail; newest first). */
+export interface OtherRating {
+  profile: ProfileRef;
+  /** 0.5 … 5 in ½ steps. */
+  stars: number;
+  rated_at: Timestamp;
+}
+
+/** Mean of every visible rating of a title (one decimal), only from 2 ratings on. */
+export interface HouseholdAverage {
+  stars: number;
+  count: number;
 }
 
 // --- System & profiles ---------------------------------------------------------------------
@@ -160,6 +203,8 @@ export interface FilmSummary {
   match_status: MatchStatus;
   added_at: Timestamp;
   progress: Progress | null;
+  /** The requester's rating (null: not rated). */
+  my_rating: number | null;
 }
 
 export interface ShowSummary {
@@ -175,6 +220,8 @@ export interface ShowSummary {
   season_count: number;
   episode_count: number;
   unwatched_episode_count: number;
+  /** The requester's rating (null: not rated). */
+  my_rating: number | null;
 }
 
 export interface EpisodeSummary {
@@ -291,6 +338,12 @@ export interface FilmDetail {
   added_at: Timestamp;
   /** The current profile has this film in "Mi lista". */
   in_watchlist: boolean;
+  /** The requester's rating (null: not rated). */
+  my_rating: number | null;
+  /** Other profiles' ratings, newest first (server order). */
+  ratings: OtherRating[];
+  /** null below 2 ratings. */
+  household_average: HouseholdAverage | null;
 }
 
 export interface ShowSeason {
@@ -327,10 +380,16 @@ export interface ShowDetail {
   added_at: Timestamp;
   /** The current profile has this show in "Mi lista". */
   in_watchlist: boolean;
+  /** The requester's rating (null: not rated). */
+  my_rating: number | null;
+  /** Other profiles' ratings, newest first (server order). */
+  ratings: OtherRating[];
+  /** null below 2 ratings. */
+  household_average: HouseholdAverage | null;
 }
 
 // "Mi lista" (watchlist prd.md FR-8): GET /api/watchlist, PUT/DELETE /api/watchlist/{films|shows}/{id}.
-export type WatchlistKind = 'film' | 'show';
+export type WatchlistKind = TitleKind;
 export type WatchlistType = 'all' | 'films' | 'shows';
 export type WatchlistSort = 'added' | 'title' | 'year';
 
@@ -339,6 +398,9 @@ export interface WatchlistQuery {
   type?: WatchlistType;
   /** Omitted = 'added' (newest first); fixed directions. */
   sort?: WatchlistSort;
+  /** Omitted = all; true / false: the library `watched` rule (films: the profile's progress; shows:
+   * every non-special episode watched / some non-special episode not watched). */
+  watched?: boolean;
   page?: number;
   page_size?: number;
 }
@@ -357,6 +419,27 @@ export interface WatchlistShowEntry {
 
 /** A visible title of the profile's list; `kind` always equals `item.type`. */
 export type WatchlistEntry = WatchlistFilmEntry | WatchlistShowEntry;
+
+// GET /api/activity: every visible rating of the household, newest first.
+export interface ActivityFilmEntry {
+  profile: ProfileRef;
+  kind: 'film';
+  /** The requester's summary (its `my_rating` is the viewer's). */
+  item: FilmSummary;
+  stars: number;
+  rated_at: Timestamp;
+}
+
+export interface ActivityShowEntry {
+  profile: ProfileRef;
+  kind: 'show';
+  item: ShowSummary;
+  stars: number;
+  rated_at: Timestamp;
+}
+
+/** One rating of the household; `kind` always equals `item.type`. */
+export type ActivityEntry = ActivityFilmEntry | ActivityShowEntry;
 
 export interface SeasonDetail {
   id: number;
@@ -420,6 +503,8 @@ export interface WatchedRequest {
 
 export interface WatchedResponse {
   updated: number;
+  /** Set when this request finished a title the requester has neither rated nor dismissed. */
+  rating_prompt: RatingPrompt | null;
 }
 
 // --- Playback ------------------------------------------------------------------------------

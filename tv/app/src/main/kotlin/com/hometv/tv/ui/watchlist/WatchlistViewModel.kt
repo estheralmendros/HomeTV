@@ -26,21 +26,24 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * Mi lista sort for the app session (not persisted), like `BrowseSortMemory`. The type filter is not
- * here: like the Browse filters it lives in the screen's ViewModel and resets when the screen is left.
+ * Mi lista sort for the app session (not persisted), like `BrowseSortMemory`. The type and "Estado"
+ * filters are not here: like the Browse filters they live in the screen's ViewModel and reset when the
+ * screen is left.
  */
 class WatchlistMemory {
     @Volatile var sort: WatchlistSort = WatchlistSort.ADDED
 }
 
-enum class WatchlistDialogKind { SORT, TYPE }
+enum class WatchlistDialogKind { SORT, TYPE, WATCHED }
 
-/** The open list dialog ("Ordenar" / "Tipo"): [items] with a ✓ and initial focus on [selected] (Browse's `BrowseDialog` twin). */
+/** The open list dialog ("Ordenar" / "Tipo" / "Estado"): [items] with a ✓ and initial focus on [selected] (Browse's `BrowseDialog` twin). */
 data class WatchlistDialog(val kind: WatchlistDialogKind, val title: UiText, val items: List<UiText>, val selected: Int)
 
 data class WatchlistUiState(
     val sort: WatchlistSort,
     val type: WatchlistType,
+    /** The "Estado" filter: null = "Todos", true = "Vistos", false = "No vistos" (the library rule). */
+    val watched: Boolean? = null,
     val dialog: WatchlistDialog? = null,
     val items: List<PosterItem> = emptyList(),
     val total: Int = 0,
@@ -62,14 +65,25 @@ data class WatchlistUiState(
     /** "Tipo: Todo". */
     val typeLabel: UiText get() = UiText.Res(R.string.watchlist_type, listOf(UiText.Res(typeRes(type))))
 
-    /** Nothing in the list at all (type ALL). */
-    val empty: Boolean get() = type == WatchlistType.ALL && !loading && error == null && items.isEmpty()
+    /** "Estado: Todos". */
+    val watchedLabel: UiText get() = UiText.Res(R.string.watchlist_watched, listOf(UiText.Res(watchedRes(watched))))
 
-    /** A type filter with no results. */
-    val noMatches: Boolean get() = type != WatchlistType.ALL && !loading && error == null && items.isEmpty()
+    private val filtered: Boolean get() = type != WatchlistType.ALL || watched != null
 
-    /** "No hay películas en tu lista." / "No hay series en tu lista." */
-    val noMatchesText: UiText get() = UiText.Res(if (type == WatchlistType.FILMS) R.string.watchlist_no_films else R.string.watchlist_no_shows)
+    /** Nothing in the list at all (type ALL, Estado Todos). */
+    val empty: Boolean get() = !filtered && !loading && error == null && items.isEmpty()
+
+    /** A type and/or Estado filter with no results. */
+    val noMatches: Boolean get() = filtered && !loading && error == null && items.isEmpty()
+
+    /** "No hay películas en tu lista." / "No hay series en tu lista." (type only), else the generic filters text. */
+    val noMatchesText: UiText get() = UiText.Res(
+        when {
+            watched != null -> R.string.watchlist_no_matches_filters
+            type == WatchlistType.FILMS -> R.string.watchlist_no_films
+            else -> R.string.watchlist_no_shows
+        },
+    )
 
     companion object {
         /** The Browse sort strings: they name the fixed server directions. */
@@ -84,13 +98,23 @@ data class WatchlistUiState(
             WatchlistType.FILMS -> R.string.watchlist_type_films
             WatchlistType.SHOWS -> R.string.watchlist_type_shows
         }
+
+        /** Masculine (Mi lista mixes films and shows); Browse's library filter says Todas / Vistas / No vistas. */
+        fun watchedRes(watched: Boolean?): Int = when (watched) {
+            null -> R.string.watchlist_watched_all
+            true -> R.string.watchlist_watched_yes
+            false -> R.string.watchlist_watched_no
+        }
+
+        /** The "Estado" dialog entries, in order. */
+        val watchedOptions: List<Boolean?> = listOf(null, true, false)
     }
 }
 
 /**
  * (11) Mi lista (watchlist prd3 FR-T9): the Browse grid rules (pages of 50, 6 columns, the next page
  * when focus reaches the last two loaded rows, one request in flight, inline failed page + [retry]),
- * the "Ordenar" / "Tipo" list dialogs, and a reload in place when the screen resumes after being
+ * the "Ordenar" / "Tipo" / "Estado" list dialogs, and a reload in place when the screen resumes after being
  * stopped ([onHidden], [onVisible]) that picks up changes made on a detail screen, on the web or on
  * another TV.
  *
@@ -150,9 +174,23 @@ class WatchlistViewModel(
         }
     }
 
+    fun openWatchedDialog() {
+        val options = WatchlistUiState.watchedOptions
+        _state.update {
+            it.copy(
+                dialog = WatchlistDialog(
+                    WatchlistDialogKind.WATCHED,
+                    UiText.Res(R.string.dialog_watched),
+                    options.map { w -> UiText.Res(WatchlistUiState.watchedRes(w)) },
+                    options.indexOf(it.watched),
+                ),
+            )
+        }
+    }
+
     /**
      * A new pick reloads page 1 and focuses the first card (none: focus stays on the opener); the current
-     * entry only closes. A sort is remembered for the app session, a type only for this screen.
+     * entry only closes. A sort is remembered for the app session, a type or Estado only for this screen.
      */
     fun onDialogSelect(index: Int) {
         val dialog = _state.value.dialog ?: return
@@ -164,6 +202,7 @@ class WatchlistViewModel(
                 _state.update { it.copy(sort = sort) }
             }
             WatchlistDialogKind.TYPE -> _state.update { it.copy(type = WatchlistType.entries[index]) }
+            WatchlistDialogKind.WATCHED -> _state.update { it.copy(watched = WatchlistUiState.watchedOptions[index]) }
         }
         reload(focusFirst = true, fromDialog = true)
     }
@@ -173,9 +212,9 @@ class WatchlistViewModel(
         _state.update { it.copy(dialog = null) }
     }
 
-    /** "Ver todo" on the filtered empty state. */
+    /** "Ver todo" on the filtered empty state: clears the type and Estado, keeps the sort. */
     fun showAll() {
-        _state.update { it.copy(type = WatchlistType.ALL) }
+        _state.update { it.copy(type = WatchlistType.ALL, watched = null) }
         reload(focusFirst = true)
     }
 
@@ -248,9 +287,9 @@ class WatchlistViewModel(
     private suspend fun fetchLoaded(pages: Int): Pair<List<PosterItem>, Int> {
         val state = _state.value
         val results = if (pages <= MAX_RELOAD_PAGES_IN_ONE) {
-            listOf(watchlist.list(state.type, state.sort, 1, pages * PAGE_SIZE))
+            listOf(watchlist.list(state.type, state.sort, 1, pages * PAGE_SIZE, state.watched))
         } else {
-            (1..pages).map { watchlist.list(state.type, state.sort, it, PAGE_SIZE) }
+            (1..pages).map { watchlist.list(state.type, state.sort, it, PAGE_SIZE, state.watched) }
         }
         val items = results.flatMap { page -> page.items.mapNotNull { PosterItem.of(it.item) } }.distinctBy { it.key }
         return items to results.last().total
@@ -336,7 +375,7 @@ class WatchlistViewModel(
 
     private suspend fun fetch(page: Int): Pair<List<PosterItem>, Int>? = try {
         val state = _state.value
-        watchlist.list(state.type, state.sort, page).let { result -> result.items.mapNotNull { PosterItem.of(it.item) } to result.total }
+        watchlist.list(state.type, state.sort, page, watched = state.watched).let { result -> result.items.mapNotNull { PosterItem.of(it.item) } to result.total }
     } catch (e: ApiException) {
         _state.update { it.copy(loading = false, error = ScreenError.from(e, store.session.value.serverUrl)) }
         null

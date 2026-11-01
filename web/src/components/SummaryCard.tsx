@@ -30,6 +30,7 @@ export function SummaryCard({ item, to, showUnmatchedTag = false, subtitle = nul
         progress={p && !p.watched && p.position_seconds > 0 ? { position: p.position_seconds, duration: p.duration_seconds } : null}
         tag={tag}
         subtitle={subtitle}
+        myRating={item.my_rating}
       />
     );
   }
@@ -42,6 +43,7 @@ export function SummaryCard({ item, to, showUnmatchedTag = false, subtitle = nul
       badge={item.unwatched_episode_count > 0 ? S.common.unwatched(item.unwatched_episode_count) : null}
       tag={tag}
       subtitle={subtitle}
+      myRating={item.my_rating}
     />
   );
 }

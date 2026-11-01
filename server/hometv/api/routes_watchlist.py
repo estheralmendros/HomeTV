@@ -1,4 +1,5 @@
-""" "Mi lista": PUT/DELETE /api/watchlist/{films|shows}/{id}, GET /api/watchlist (FR-8).
+""" "Mi lista": PUT/DELETE /api/watchlist/{films|shows}/{id}, GET /api/watchlist (FR-8;
+``type``, ``sort``, ``watched=true|false`` (the library rule), ``page``, ``page_size``).
 
 Profile Bearer only (no ``?token=``, no admin token, no PIN); the profile comes from the token.
 Writes are idempotent and answer 204 with an empty body; unknown or hidden titles are 404.
@@ -10,7 +11,7 @@ from fastapi import APIRouter, Query, Response
 
 from hometv import watchlist
 from hometv.api.deps import CurrentProfile, Db, ReadSession
-from hometv.api.list_params import PageNumber
+from hometv.api.list_params import PageNumber, WatchedParam, watched_flag
 from hometv.api.schemas import ErrorResponse, Page, WatchlistEntry
 from hometv.watchlist import WatchlistParams, WatchlistSort, WatchlistType
 
@@ -31,10 +32,13 @@ def get_watchlist(
     session: ReadSession,
     kind: Annotated[WatchlistType, Query(alias="type")] = "all",
     sort: WatchlistSort = "added",
+    watched: WatchedParam = None,
     page: PageNumber = 1,
     page_size: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> Page[WatchlistEntry]:
-    params = WatchlistParams(type=kind, sort=sort, page=page, page_size=page_size)
+    params = WatchlistParams(
+        type=kind, sort=sort, watched=watched_flag(watched), page=page, page_size=page_size
+    )
     return watchlist.list_entries(session, profile.id, params)
 
 

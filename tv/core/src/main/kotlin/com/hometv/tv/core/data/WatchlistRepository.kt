@@ -67,8 +67,9 @@ class WatchlistRepository(
     val writing: StateFlow<Boolean> = _writing.asStateFlow()
 
     /** Entries whose item is not a film/show summary are dropped (like `CatalogRepository.person`). */
-    suspend fun list(type: WatchlistType, sort: WatchlistSort, page: Int, pageSize: Int = PAGE_SIZE): Page<WatchlistEntry> =
-        guard.withRenewal(Origin.Foreground) { apiCall { api().watchlist(type.wire, sort.wire, page, pageSize) } }.let { p ->
+    /** [watched]: the "Estado" filter (null = all; the library `watched` rule on the server). */
+    suspend fun list(type: WatchlistType, sort: WatchlistSort, page: Int, pageSize: Int = PAGE_SIZE, watched: Boolean? = null): Page<WatchlistEntry> =
+        guard.withRenewal(Origin.Foreground) { apiCall { api().watchlist(type.wire, sort.wire, page, pageSize, watched) } }.let { p ->
             p.copy(items = p.items.filter { it.item is FilmSummary || it.item is ShowSummary })
         }
 

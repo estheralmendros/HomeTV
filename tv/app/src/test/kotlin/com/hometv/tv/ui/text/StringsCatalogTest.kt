@@ -26,6 +26,9 @@ class StringsCatalogTest {
             "Marcar como visto", "Audio y subtítulos", "Desactivados", "Forzados", "Externo", "Predeterminado", "(convertido)",
             "Probar otra versión", "Preparando el vídeo…", "Reintentar", "Cancelar", "Volver", "¿Quién está viendo?", "Servidor",
             "Cambiar servidor", "Desconocido", "En tu catálogo", "Biografía",
+            // ratings prd.md glossary
+            "Actividad", "Tu puntuación", "Media de la familia", "¿Qué te ha parecido?", "Puntuar", "Cambiar", "Guardar",
+            "Ahora no", "Quitar puntuación", "Puntuación guardada", "Sin puntuación",
         )
         val missing = glossary.filterNot { it in all }
         assertEquals(emptyList<String>(), missing)
@@ -105,6 +108,40 @@ class StringsCatalogTest {
             "watchlist_no_films|No hay películas en tu lista.",
             "watchlist_no_shows|No hay series en tu lista.",
             "watchlist_show_all|Ver todo",
+            "watchlist_watched|Estado: %1\$s",
+            "watchlist_watched_all|Todos",
+            "watchlist_watched_yes|Vistos",
+            "watchlist_watched_no|No vistos",
+            "watchlist_no_matches_filters|Ningún título de tu lista coincide con los filtros.",
+            "nav_activity|Actividad",
+            "activity_title|Actividad",
+            "rating_rate|Puntuar",
+            "rating_change|Cambiar",
+            "rating_mine|Tu puntuación",
+            "rating_mine_description|Tu puntuación: %1\$s. %2\$s",
+            "rating_average|Media de la familia",
+            "rating_average_value|%1\$s (%2\$s)",
+            "rating_question|¿Qué te ha parecido?",
+            "rating_save|Guardar",
+            "rating_not_now|Ahora no",
+            "rating_remove|Quitar puntuación",
+            "rating_saved|Puntuación guardada",
+            "rating_save_failed|No se ha podido guardar la puntuación.",
+            "rating_update_failed|No se ha podido actualizar tu puntuación.",
+            "rating_none|Sin puntuación",
+            "rating_empty_value|—",
+            "rating_more|y %1\$s más",
+            "rating_others_title|Puntuaciones",
+            "card_my_rating|tu puntuación: %1\$s",
+            "activity_row|%1\$s ha puntuado %2\$s con",
+            "activity_row_own|Has puntuado %1\$s con",
+            "activity_row_description|%1\$s ha puntuado %2\$s con %3\$s, %4\$s",
+            "activity_row_own_description|Has puntuado %1\$s con %2\$s, %3\$s",
+            "activity_row_description_untimed|%1\$s ha puntuado %2\$s con %3\$s",
+            "activity_row_own_description_untimed|Has puntuado %1\$s con %2\$s",
+            "activity_empty|Todavía nadie ha puntuado nada. Cuando alguien puntúe una película o serie, aparecerá aquí.",
+            "time_just_now|ahora mismo",
+            "time_yesterday|ayer",
         ],
     )
     fun `catalog text`(name: String, expected: String) {
@@ -136,5 +173,11 @@ class StringsCatalogTest {
         assertEquals("quedan unos 3 min", catalog.plural(com.hometv.tv.R.plurals.minutes_left, 3, "3"))
         assertEquals("1 año", catalog.plural(com.hometv.tv.R.plurals.person_age, 1, "1"))
         assertEquals("30 años", catalog.plural(com.hometv.tv.R.plurals.person_age, 30, "30"))
+        assertEquals("1 estrella", catalog.plural(com.hometv.tv.R.plurals.rating_stars, 1, "1"))
+        assertEquals("4,5 estrellas", catalog.plural(com.hometv.tv.R.plurals.rating_stars, 2, "4,5"))
+        assertEquals("hace 1 minuto", catalog.plural(com.hometv.tv.R.plurals.time_minutes_ago, 1, "1"))
+        assertEquals("hace 5 minutos", catalog.plural(com.hometv.tv.R.plurals.time_minutes_ago, 5, "5"))
+        assertEquals("hace 1 hora", catalog.plural(com.hometv.tv.R.plurals.time_hours_ago, 1, "1"))
+        assertEquals("hace 3 horas", catalog.plural(com.hometv.tv.R.plurals.time_hours_ago, 3, "3"))
     }
 }

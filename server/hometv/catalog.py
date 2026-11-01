@@ -16,6 +16,7 @@ from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Literal
 
 from sqlalchemy import ColumnElement, and_, case, exists, func, select
@@ -33,11 +34,15 @@ from hometv.api.schemas import (
     GenreRef,
     HomeEpisode,
     HomeResponse,
+    HouseholdAverage,
+    ItemKind,
     LibraryCounts,
     MediaFile,
+    OtherRating,
     Page,
     PersonAppearance,
     PersonDetail,
+    ProfileRef,
     Progress,
     SeasonDetail,
     ShowDetail,
@@ -66,7 +71,21 @@ _HDR_LABELS = {"hdr10": "HDR10", "hlg": "HLG", "dolby_vision": "DV"}
 
 SortKey = Literal["title", "year", "added"]
 Order = Literal["asc", "desc"]
-WatchlistKind = Literal["film", "show"]  # re-exported by ``watchlist``
+WatchlistKind = ItemKind  # re-exported by ``watchlist``
+
+
+# --- Ratings (pure) -----------------------------------------------------------------------------
+
+
+def stars_from_x2(stars_x2: int) -> float:
+    return stars_x2 / 2
+
+
+def household_average(sum_x2: int, count: int) -> float:
+    """Mean of ``count`` ratings whose ``stars_x2`` add up to ``sum_x2``, in stars, one decimal,
+    half up (4.25 -> 4.3)."""
+    mean = Decimal(sum_x2) / Decimal(2 * count)
+    return float(mean.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
 
 
 # --- MediaFile -----------------------------------------------------------------------------------
@@ -267,8 +286,24 @@ def _season_visible() -> Any:
 # --- Summaries -----------------------------------------------------------------------------------
 
 
+def _my_ratings(
+    session: Session, profile_id: int, kind: ItemKind, ids: Sequence[int]
+) -> dict[int, float]:
+    """The profile's stars per title of the batch (one query on the title-led unique index;
+    none for an empty batch)."""
+    if not ids:
+        return {}
+    column = m.Rating.film_id if kind == "film" else m.Rating.show_id
+    rows = session.execute(
+        select(column, m.Rating.stars_x2).where(m.Rating.profile_id == profile_id, column.in_(ids))
+    )
+    return {item_id: stars_from_x2(x2) for item_id, x2 in rows if item_id is not None}
+
+
 def film_summaries(session: Session, profile_id: int, films: Sequence[m.Film]) -> list[FilmSummary]:
-    progress = _progress_map(session, profile_id, film_ids=[f.id for f in films])
+    ids = [f.id for f in films]
+    progress = _progress_map(session, profile_id, film_ids=ids)
+    mine = _my_ratings(session, profile_id, "film", ids)
     return [
         FilmSummary(
             id=f.id,
@@ -280,6 +315,7 @@ def film_summaries(session: Session, profile_id: int, films: Sequence[m.Film]) -
             match_status=f.match_status,
             added_at=f.added_at,
             progress=progress.get(f.id),
+            my_rating=mine.get(f.id),
         )
         for f in films
     ]
@@ -325,7 +361,9 @@ def show_counts(
 
 
 def show_summaries(session: Session, profile_id: int, shows: Sequence[m.Show]) -> list[ShowSummary]:
-    counts = show_counts(session, profile_id, [s.id for s in shows])
+    ids = [s.id for s in shows]
+    counts = show_counts(session, profile_id, ids)
+    mine = _my_ratings(session, profile_id, "show", ids)
     out = []
     for s in shows:
         c = counts.get(s.id, ShowCounts())
@@ -342,6 +380,7 @@ def show_summaries(session: Session, profile_id: int, shows: Sequence[m.Show]) -
                 season_count=c.season_count,
                 episode_count=c.episode_count,
                 unwatched_episode_count=c.unwatched_episode_count,
+                my_rating=mine.get(s.id),
             )
         )
     return out
@@ -452,7 +491,9 @@ def _show_has_episode(profile_id: int, *, watched: bool) -> Any:
     return exists(episode)
 
 
-def _watched_condition(model: Any, profile_id: int, watched: bool) -> Any:
+def watched_condition(model: Any, profile_id: int, watched: bool) -> Any:
+    """The library ``watched`` filter for the profile, correlated to ``model`` (``m.Film`` or
+    ``m.Show`` in the enclosing query); shared with "Mi lista" (``watchlist.list_entries``)."""
     if model is m.Film:
         return _film_watched(profile_id) if watched else ~_film_watched(profile_id)
     unwatched = _show_has_episode(profile_id, watched=False)
@@ -476,7 +517,7 @@ def _filtered(
     if params.genre is not None:
         conds.append(exists().where(genre_fk == model.id, genre_model.genre_id == params.genre))
     if params.watched is not None:
-        conds.append(_watched_condition(model, profile_id, params.watched))
+        conds.append(watched_condition(model, profile_id, params.watched))
     return conds
 
 
@@ -623,7 +664,7 @@ def person_detail(session: Session, profile_id: int, person_id: int) -> PersonDe
 
     Items come from TMDB credits (``person_credit``, matched by TMDB id) ∪ local credits
     (``cast_credit``); the TMDB character wins when not null. Order: year DESC (nulls last),
-    ``sort_title``, film before show, id. At most 7 queries, whatever the number of items.
+    ``sort_title``, film before show, id. At most 9 queries, whatever the number of items.
     """
     person = session.get(m.Person, person_id)
     if person is None:
@@ -643,7 +684,7 @@ def person_detail(session: Session, profile_id: int, person_id: int) -> PersonDe
         *show_summaries(session, profile_id, [item for item, _, _ in shows]),
     ]
     summaries = {(summary.type, summary.id): summary for summary in out}
-    credited: list[tuple[Literal["film", "show"], m.Film | m.Show, str | None, str | None]] = [
+    credited: list[tuple[ItemKind, m.Film | m.Show, str | None, str | None]] = [
         *(("film", item, tmdb_c, local_c) for item, tmdb_c, local_c in films),
         *(("show", item, tmdb_c, local_c) for item, tmdb_c, local_c in shows),
     ]
@@ -672,6 +713,56 @@ def person_detail(session: Session, profile_id: int, person_id: int) -> PersonDe
     )
 
 
+def require_visible(session: Session, kind: ItemKind, item_id: int) -> None:
+    """404 ``not_found`` (same message as detail) unless the film/show ``item_id`` is visible:
+    one SELECT of the id. Shared by the watchlist and rating writes."""
+    if kind == "film":
+        label, query = (
+            "Film",
+            select(m.Film.id).where(m.Film.id == item_id, film_has_present_file()),
+        )
+    else:
+        label, query = "Show", select(m.Show.id).where(m.Show.id == item_id, show_visible())
+    if session.scalar(query) is None:
+        raise not_found(label, item_id)
+
+
+@dataclass(frozen=True)
+class ItemRatings:
+    my_rating: float | None
+    others: list[OtherRating]
+    average: HouseholdAverage | None
+
+
+def item_ratings(session: Session, profile_id: int, kind: ItemKind, item_id: int) -> ItemRatings:
+    """Detail rating block: one SELECT of every rating of the title (<= one per profile) joined
+    to ``profile``, newest first (ties by id); split here into the requester's stars, the other
+    profiles' rows and the household average (``None`` below 2 ratings, requester included)."""
+    r, p = m.Rating, m.Profile
+    column = r.film_id if kind == "film" else r.show_id
+    rows = session.execute(
+        select(r.profile_id, r.stars_x2, r.rated_at, p.name, p.avatar_id)
+        .join(p, p.id == r.profile_id)
+        .where(column == item_id)
+        .order_by(r.rated_at.desc(), r.id.desc())
+    ).all()
+    mine = next((stars_from_x2(row.stars_x2) for row in rows if row.profile_id == profile_id), None)
+    others = [
+        OtherRating(
+            profile=ProfileRef(id=row.profile_id, name=row.name, avatar_id=row.avatar_id),
+            stars=stars_from_x2(row.stars_x2),
+            rated_at=row.rated_at,
+        )
+        for row in rows
+        if row.profile_id != profile_id
+    ]
+    average = None
+    if len(rows) >= 2:
+        sum_x2 = sum(row.stars_x2 for row in rows)
+        average = HouseholdAverage(stars=household_average(sum_x2, len(rows)), count=len(rows))
+    return ItemRatings(my_rating=mine, others=others, average=average)
+
+
 def in_watchlist(session: Session, profile_id: int, kind: WatchlistKind, item_id: int) -> bool:
     """Whether the film or show ``item_id`` is in the profile's "Mi lista" (one EXISTS on the
     unique index). Here, not in ``watchlist``, which imports this module."""
@@ -687,6 +778,7 @@ def film_detail(session: Session, profile_id: int, film_id: int, cast_limit: int
     if film is None:
         raise not_found("Film", film_id)
     progress = _progress_map(session, profile_id, film_ids=[film.id])
+    rated = item_ratings(session, profile_id, "film", film.id)
     return FilmDetail(
         id=film.id,
         title=film.title,
@@ -706,6 +798,9 @@ def film_detail(session: Session, profile_id: int, film_id: int, cast_limit: int
         media_files=film_media_files(session, film.id),
         progress=progress.get(film.id),
         in_watchlist=in_watchlist(session, profile_id, "film", film.id),
+        my_rating=rated.my_rating,
+        ratings=rated.others,
+        household_average=rated.average,
         added_at=film.added_at,
     )
 
@@ -765,6 +860,7 @@ def show_detail(session: Session, profile_id: int, show_id: int, cast_limit: int
         )
         for s in seasons_rows
     ]
+    rated = item_ratings(session, profile_id, "show", show.id)
     next_id = show_next_episode_id(episodes, rows)
     next_episode = None
     if next_id is not None:
@@ -792,6 +888,9 @@ def show_detail(session: Session, profile_id: int, show_id: int, cast_limit: int
             1 for e in episodes if e.season_number > 0 and e.id not in watched
         ),
         in_watchlist=in_watchlist(session, profile_id, "show", show.id),
+        my_rating=rated.my_rating,
+        ratings=rated.others,
+        household_average=rated.average,
         added_at=show.added_at,
     )
 

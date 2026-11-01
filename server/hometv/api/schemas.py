@@ -27,6 +27,10 @@ def _iso_utc(value: datetime) -> str:
 UtcDateTime = Annotated[datetime, PlainSerializer(_iso_utc, return_type=str, when_used="always")]
 """Timestamp serialized as ISO 8601 UTC with ``Z`` (``"2026-10-21T18:04:05Z"``)."""
 
+ItemKind = Literal["film", "show"]
+"""A rateable / listable catalog title (never an episode): the one item-kind type, imported by
+``watch``, ``catalog`` (also as ``WatchlistKind``), ``ratings`` and ``metadata.enrich``."""
+
 
 # --- Errors --------------------------------------------------------------------------------
 
@@ -417,12 +421,57 @@ class ResolveRequest(BaseModel):
 
 
 class ResolveTarget(BaseModel):
-    type: Literal["film", "show"]
+    type: ItemKind
     id: int
 
 
 class ResolveResponse(BaseModel):
     target: ResolveTarget
+
+
+# --- Ratings -------------------------------------------------------------------------------
+
+
+Stars = Annotated[float, Field(strict=True, ge=0.5, le=5.0, multiple_of=0.5)]
+"""½-5 stars in ½ steps; a JSON int (``4``) is accepted, a string or a bool is not."""
+
+
+class RatingRequest(BaseModel):
+    stars: Stars
+
+
+def stars_to_x2(stars: float) -> int:
+    """API stars (½ steps) -> stored ``stars_x2`` (rounded, so a float a hair off a ½ step that
+    passed ``multiple_of`` still stores the intended value)."""
+    return round(stars * 2)
+
+
+class ProfileRef(BaseModel):
+    id: int
+    name: str
+    avatar_id: str
+
+
+class OtherRating(BaseModel):
+    """Another profile's rating of a title (detail ``ratings``, newest first)."""
+
+    profile: ProfileRef
+    stars: float
+    rated_at: UtcDateTime
+
+
+class HouseholdAverage(BaseModel):
+    stars: float  # one decimal, half up; every profile's rating, the viewer's included
+    count: int  # >= 2
+
+
+class RatingPrompt(BaseModel):
+    """ "¿Qué te ha parecido?": the film or show the request just finished (never an episode)."""
+
+    kind: ItemKind
+    id: int
+    title: str
+    poster: Image | None
 
 
 # --- Watch state ---------------------------------------------------------------------------
@@ -453,6 +502,13 @@ class WatchedRequest(BaseModel):
 
 class WatchedResponse(BaseModel):
     updated: int
+    rating_prompt: RatingPrompt | None
+
+
+class ProgressReport(Progress):
+    """``PUT /api/progress`` answer: the stored progress plus the rating prompt (ratings FR-8)."""
+
+    rating_prompt: RatingPrompt | None
 
 
 # --- Catalog -------------------------------------------------------------------------------
@@ -517,6 +573,7 @@ class FilmSummary(BaseModel):
     match_status: str
     added_at: UtcDateTime
     progress: Progress | None
+    my_rating: float | None
 
 
 class ShowSummary(BaseModel):
@@ -532,15 +589,28 @@ class ShowSummary(BaseModel):
     season_count: int
     episode_count: int
     unwatched_episode_count: int
+    my_rating: float | None
 
 
 class WatchlistEntry(BaseModel):
     """One title of "Mi lista"; ``kind`` always equals ``item.type``. ``added_to_list_at`` is
     when the profile added it (``item.added_at`` is when the title entered the catalog)."""
 
-    kind: Literal["film", "show"]
+    kind: ItemKind
     item: Annotated[FilmSummary | ShowSummary, Field(discriminator="type")]
     added_to_list_at: UtcDateTime
+
+
+class ActivityEntry(BaseModel):
+    """One rating of the household ("Actividad"); ``kind`` always equals ``item.type``. ``item``
+    is the requester's summary (its ``my_rating`` is the viewer's), ``stars`` the row's
+    profile's rating."""
+
+    profile: ProfileRef
+    kind: ItemKind
+    item: Annotated[FilmSummary | ShowSummary, Field(discriminator="type")]
+    stars: float
+    rated_at: UtcDateTime
 
 
 class EpisodeSummary(BaseModel):
@@ -587,7 +657,7 @@ class CastMember(BaseModel):
 class PersonAppearance(BaseModel):
     """A catalog item of the actor screen; ``kind`` always equals ``item.type``."""
 
-    kind: Literal["film", "show"]
+    kind: ItemKind
     item: Annotated[FilmSummary | ShowSummary, Field(discriminator="type")]
     character: str | None
 
@@ -627,6 +697,9 @@ class FilmDetail(BaseModel):
     media_files: list[MediaFile]
     progress: Progress | None
     in_watchlist: bool
+    my_rating: float | None
+    ratings: list[OtherRating]  # other profiles only, newest first
+    household_average: HouseholdAverage | None
     added_at: UtcDateTime
 
 
@@ -660,6 +733,9 @@ class ShowDetail(BaseModel):
     next_episode: EpisodeSummary | None
     unwatched_episode_count: int
     in_watchlist: bool
+    my_rating: float | None
+    ratings: list[OtherRating]  # other profiles only, newest first
+    household_average: HouseholdAverage | None
     added_at: UtcDateTime
 
 

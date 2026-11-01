@@ -21,6 +21,7 @@ FILM_SUMMARY_KEYS = {
     "match_status",
     "added_at",
     "progress",
+    "my_rating",
 }
 SHOW_SUMMARY_KEYS = {
     "type",
@@ -35,6 +36,7 @@ SHOW_SUMMARY_KEYS = {
     "season_count",
     "episode_count",
     "unwatched_episode_count",
+    "my_rating",
 }
 PROGRESS_KEYS = {
     "position_seconds",
@@ -166,6 +168,37 @@ async def test_filters_sorts_and_paging(client, db, user):
     )
 
 
+async def test_watched_filter(client, db, user, admin):
+    with db.write_session() as s:
+        seen = add_film(s, "Alien")
+        fresh = add_film(s, "Zodiac")
+        done, done_eps = add_show(s, "Breaking Bad", episodes={1: 1})
+        partial, partial_eps = add_show(s, "The Office", episodes={1: 2})
+        add_progress(s, user.id, film_id=seen.id, watched=True)
+        add_progress(s, admin.id, film_id=fresh.id, watched=True)
+        add_progress(s, user.id, episode_id=done_eps[(1, 1)].id, watched=True)
+        add_progress(s, user.id, episode_id=partial_eps[(1, 1)].id, watched=True)
+        for item in (seen, fresh):
+            add_watchlist_entry(s, user.id, film=item, added_at=T0)
+        for item in (done, partial):
+            add_watchlist_entry(s, user.id, show=item, added_at=T0)
+
+    def names(page: dict) -> tuple[list[str], int]:
+        return [e["item"]["title"] for e in page["items"]], page["total"]
+
+    assert names(await _list(client, user, "?sort=title&watched=true")) == (
+        ["Alien", "Breaking Bad"],
+        2,
+    )
+    assert names(await _list(client, user, "?sort=title&watched=false")) == (
+        ["The Office", "Zodiac"],
+        2,
+    )
+    assert names(await _list(client, user, "?type=films&watched=false")) == (["Zodiac"], 1)
+    assert names(await _list(client, user, "?type=shows&watched=true")) == (["Breaking Bad"], 1)
+    assert (await _list(client, user, "?sort=title"))["total"] == 4
+
+
 @pytest.mark.parametrize(
     ("query", "same_as"),
     [
@@ -241,6 +274,10 @@ async def test_not_found_envelope_for_unknown_and_hidden_ids(client, db, user):
         ("GET", f"/api/watchlist?page={2**62}"),
         ("GET", "/api/watchlist?page_size=0"),
         ("GET", "/api/watchlist?page_size=201"),
+        ("GET", "/api/watchlist?watched=1"),
+        ("GET", "/api/watchlist?watched=yes"),
+        ("GET", "/api/watchlist?watched=True"),
+        ("GET", "/api/watchlist?watched="),
     ],
 )
 async def test_validation_errors(client, user, method, url):
@@ -313,7 +350,7 @@ async def test_routes_in_openapi(client):
         for method in methods:
             assert paths[path][method]["tags"] == ["watchlist"]
     get_params = {p["name"] for p in paths["/api/watchlist"]["get"]["parameters"]}
-    assert get_params == {"type", "sort", "page", "page_size"}
+    assert get_params == {"type", "sort", "watched", "page", "page_size"}
     schemas = spec["components"]["schemas"]
     assert set(schemas["WatchlistEntry"]["properties"]) == ENTRY_KEYS
     assert "in_watchlist" in schemas["FilmDetail"]["required"]

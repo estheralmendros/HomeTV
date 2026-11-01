@@ -4,6 +4,7 @@ import com.hometv.tv.core.api.ApiException
 import com.hometv.tv.core.api.Fixtures
 import com.hometv.tv.core.api.FilmSummary
 import com.hometv.tv.core.api.ProgressRequest
+import com.hometv.tv.core.api.RatingPrompt
 import com.hometv.tv.core.api.ShowSummary
 import com.hometv.tv.core.api.apiCall
 import java.time.Instant
@@ -267,12 +268,24 @@ class RepositoriesTest {
     @Test
     fun `watched POST body for every target`() = runTest {
         t.route("POST", "/api/watched") { t.json("""{"updated": 22}""") }
-        assertEquals(22, watch.setWatched(WatchTarget.SEASON, 70, true))
+        assertEquals(22, watch.setWatched(WatchTarget.SEASON, 70, true).updated)
         watch.setWatched(WatchTarget.SHOW, 7, false)
         watch.setWatched(WatchTarget.FILM, 12, true)
         watch.setWatched(WatchTarget.EPISODE, 345, false)
         assertEquals(Json.parseToJsonElement("""{"target":"season","id":70,"watched":true}"""), body(0))
         assertEquals(listOf("show", "film", "episode"), (1..3).map { body(it)["target"].toString().trim('"') })
+    }
+
+    @Test
+    fun `watched and progress answers carry the rating prompt`() = runTest {
+        val prompt = """{"kind": "show", "id": 7, "title": "The Office", "poster": null}"""
+        t.route("POST", "/api/watched") { t.json("""{"updated": 1, "rating_prompt": $prompt}""") }
+        t.route("PUT", "/api/progress") { t.json(Fixtures.progressJson.trimEnd('}') + """, "rating_prompt": $prompt}""") }
+        val result = watch.setWatched(WatchTarget.EPISODE, 345, true)
+        assertEquals(WatchedResult(1, RatingPrompt("show", 7, "The Office")), result)
+        val report = watch.putProgress(ProgressRequest("episode", 345, 91, 1300.0, 1320.0))
+        assertEquals(RatingPrompt("show", 7, "The Office"), report.rating_prompt)
+        assertEquals(1234.5, report.position_seconds)
     }
 
     @Test
@@ -315,6 +328,26 @@ class RepositoriesTest {
             t.paths(),
         )
         assertTrue(t.requests.all { it.getHeader("Authorization") == "Bearer old" })
+    }
+
+    @Test
+    fun `the watchlist list sends watched only when set, as true or false`() = runTest {
+        val empty = """{"items": [], "page": 1, "page_size": 50, "total": 0}"""
+        t.route("GET", "/api/watchlist?type=films&sort=title&page=1&page_size=50&watched=true") { t.json(empty) }
+        t.route("GET", "/api/watchlist?type=all&sort=added&page=2&page_size=50&watched=false") { t.json(empty) }
+        t.route("GET", "/api/watchlist?type=all&sort=added&page=1&page_size=50") { t.json(empty) }
+        val watchlist = WatchlistRepository({ t.clients.api }, guard, backgroundScope)
+        watchlist.list(WatchlistType.FILMS, WatchlistSort.TITLE, 1, watched = true)
+        watchlist.list(WatchlistType.ALL, WatchlistSort.ADDED, 2, watched = false)
+        watchlist.list(WatchlistType.ALL, WatchlistSort.ADDED, 1, watched = null)
+        assertEquals(
+            listOf(
+                "GET /api/watchlist?type=films&sort=title&page=1&page_size=50&watched=true",
+                "GET /api/watchlist?type=all&sort=added&page=2&page_size=50&watched=false",
+                "GET /api/watchlist?type=all&sort=added&page=1&page_size=50",
+            ),
+            t.paths(),
+        )
     }
 
     @Test

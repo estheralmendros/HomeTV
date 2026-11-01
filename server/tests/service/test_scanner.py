@@ -54,11 +54,16 @@ def _profile_id(s) -> int:
 
 
 def _list_everything(mdb) -> None:
-    """Put every film and show in profile P1's "Mi lista"."""
+    """Put every film and show in profile P1's "Mi lista", rate it and dismiss its prompt."""
     with mdb.write_session() as s:
         pid = _profile_id(s)
-        s.add_all(m.WatchlistEntry(profile_id=pid, film_id=f.id) for f in s.scalars(select(m.Film)))
-        s.add_all(m.WatchlistEntry(profile_id=pid, show_id=x.id) for x in s.scalars(select(m.Show)))
+        films, shows = list(s.scalars(select(m.Film))), list(s.scalars(select(m.Show)))
+        s.add_all(m.WatchlistEntry(profile_id=pid, film_id=f.id) for f in films)
+        s.add_all(m.WatchlistEntry(profile_id=pid, show_id=x.id) for x in shows)
+        s.add_all(m.Rating(profile_id=pid, film_id=f.id, stars_x2=8) for f in films)
+        s.add_all(m.Rating(profile_id=pid, show_id=x.id, stars_x2=8) for x in shows)
+        s.add_all(m.RatingDismissal(profile_id=pid, film_id=f.id) for f in films)
+        s.add_all(m.RatingDismissal(profile_id=pid, show_id=x.id) for x in shows)
 
 
 def _listed_titles(mdb) -> list[str]:
@@ -71,6 +76,17 @@ def _listed_titles(mdb) -> list[str]:
             select(m.Show.title).join(m.WatchlistEntry, m.WatchlistEntry.show_id == m.Show.id)
         )
         return sorted([*films, *shows])
+
+
+def _rated_titles(mdb) -> tuple[list[str], list[str]]:
+    """Titles with a rating row, titles with a rating dismissal row (hidden or not), sorted."""
+    out = []
+    with mdb.read_session() as s:
+        for model in (m.Rating, m.RatingDismissal):
+            films = s.scalars(select(m.Film.title).join(model, model.film_id == m.Film.id))
+            shows = s.scalars(select(m.Show.title).join(model, model.show_id == m.Show.id))
+            out.append(sorted([*films, *shows]))
+    return out[0], out[1]
 
 
 # --- First scan / unchanged / changed --------------------------------------------------------
@@ -261,6 +277,7 @@ async def test_grace_zero_purges_file_and_orphans(
     assert _count(mdb, m.Season) == 1
     assert _count(mdb, m.Episode) == 1
     assert _listed_titles(mdb) == ["Alien", "Fargo"]  # purged titles' entries cascade
+    assert _rated_titles(mdb) == (["Alien", "Fargo"], ["Alien", "Fargo"])  # ratings too
 
 
 async def test_missing_file_is_purged_only_after_grace_period(
@@ -274,6 +291,7 @@ async def test_missing_file_is_purged_only_after_grace_period(
     a.unlink()
     await _scan(mdb, settings, stub_probe)
     assert _listed_titles(mdb) == ["Alien", "Dune"]  # inside the grace period: kept
+    assert _rated_titles(mdb) == (["Alien", "Dune"], ["Alien", "Dune"])
     row = _file(mdb, a)
     with mdb.write_session() as s:
         s.get(m.MediaFile, row.id).missing_since = m.utcnow() - timedelta(days=8)
@@ -284,6 +302,7 @@ async def test_missing_file_is_purged_only_after_grace_period(
     assert _file(mdb, a) is None
     assert [f.title for f in _all(mdb, m.Film)] == ["Alien"]
     assert _listed_titles(mdb) == ["Alien"]
+    assert _rated_titles(mdb) == (["Alien"], ["Alien"])
 
 
 async def test_relinking_every_file_of_a_title_drops_its_watchlist_entries(
@@ -300,6 +319,8 @@ async def test_relinking_every_file_of_a_title_drops_its_watchlist_entries(
         alien = s.scalar(select(m.Film).where(m.Film.title == "Alien"))
         pid = _profile_id(s)
         s.add(m.WatchlistEntry(profile_id=pid, film_id=dune.id))
+        s.add(m.Rating(profile_id=pid, film_id=dune.id, stars_x2=9))
+        s.add(m.RatingDismissal(profile_id=pid, film_id=dune.id))
         s.get(m.MediaFile, _file(mdb, a).id).film_id = alien.id  # what every relink ends with
         dune_id = dune.id
 
@@ -308,6 +329,7 @@ async def test_relinking_every_file_of_a_title_drops_its_watchlist_entries(
     with mdb.read_session() as s:
         assert s.get(m.Film, dune_id) is None
     assert _all(mdb, m.WatchlistEntry) == []
+    assert _all(mdb, m.Rating) == [] and _all(mdb, m.RatingDismissal) == []
 
 
 # --- Root safety ------------------------------------------------------------------------------

@@ -62,25 +62,58 @@ test('profile → films grid → play a direct film → back → Continue Watchi
   await expect(continueWatching.getByRole('link', { name: new RegExp(FILM) }).first()).toBeVisible();
 });
 
-// "Mi lista" (watchlist prd2 AC-W13/AC-W14): real layout checks jsdom cannot make.
-test('360 px: the five tab labels fit without truncation', async ({ page }) => {
+// Navigation layout (watchlist prd2 AC-W13/AC-W14, ratings prd2 FR-W15 / W-AC-14/14a): real layout
+// checks jsdom cannot make.
+const SECTION_LABELS = ['Inicio', 'Películas', 'Series', 'Mi lista', 'Actividad'];
+
+test('360 px: the five section tabs fit without truncation; "Buscar" is an icon link in the banner', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 740 });
   await bootstrapOrPickProfile(page);
   const tabs = page.getByRole('navigation', { name: 'Secciones' }).getByRole('link');
-  await expect(tabs).toHaveText(['Inicio', 'Películas', 'Series', 'Mi lista', 'Buscar']);
+  await expect(tabs).toHaveText(SECTION_LABELS);
   const overflowing = await tabs.evaluateAll((links) =>
     links.filter((a) => a.scrollWidth > a.clientWidth).map((a) => a.textContent),
   );
   expect(overflowing).toEqual([]);
+  await expect(page.getByRole('banner').getByRole('link', { name: 'Buscar' })).toBeVisible();
 });
 
-test('768 px: "Mi lista" in the NavBar stays on one line (as tall as "Inicio")', async ({ page }) => {
+test('768 px: "Mi lista" and "Actividad" in the NavBar stay on one line (as tall as "Inicio")', async ({ page }) => {
   await page.setViewportSize({ width: 768, height: 1024 });
   await bootstrapOrPickProfile(page);
   const nav = page.getByRole('navigation', { name: 'Navegación principal' });
   const height = (name: string) =>
     nav.getByRole('link', { name }).evaluate((a) => a.getBoundingClientRect().height);
   expect(await height('Mi lista')).toBe(await height('Inicio'));
+  expect(await height('Actividad')).toBe(await height('Inicio'));
+});
+
+const noHorizontalOverflow = (page: Page) =>
+  page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+
+for (const width of [720, 959]) {
+  test(`${width} px: the five links on one line, a "Buscar" icon link and no search field, no overflow`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await bootstrapOrPickProfile(page);
+    const links = page.getByRole('navigation', { name: 'Navegación principal' }).getByRole('link');
+    await expect(links).toHaveText(SECTION_LABELS);
+    const tops = await links.evaluateAll((all) => all.map((a) => Math.round(a.getBoundingClientRect().top)));
+    expect(new Set(tops).size).toBe(1);
+    const banner = page.getByRole('banner');
+    await expect(banner.getByRole('link', { name: 'Buscar' })).toBeVisible();
+    await expect(banner.getByRole('searchbox')).toHaveCount(0);
+    expect(await noHorizontalOverflow(page)).toBe(true);
+  });
+}
+
+test('960 px: the search field is shown, at least 160 px wide, no overflow', async ({ page }) => {
+  await page.setViewportSize({ width: 960, height: 900 });
+  await bootstrapOrPickProfile(page);
+  const field = page.getByRole('banner').getByRole('searchbox', { name: 'Buscar títulos' });
+  await expect(field).toBeVisible();
+  expect(await field.evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThanOrEqual(160);
+  await expect(page.getByRole('banner').getByRole('link', { name: 'Buscar' })).toHaveCount(0);
+  expect(await noHorizontalOverflow(page)).toBe(true);
 });
 
 test('add a film to Mi lista, see it on /watchlist, remove it', async ({ page }) => {

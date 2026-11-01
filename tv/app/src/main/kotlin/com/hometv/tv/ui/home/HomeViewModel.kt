@@ -15,6 +15,7 @@ import com.hometv.tv.core.data.BrowseSort
 import com.hometv.tv.core.data.CatalogRepository
 import com.hometv.tv.core.data.SessionStore
 import com.hometv.tv.core.util.Format
+import com.hometv.tv.core.util.Stars
 import com.hometv.tv.data.HomeCache
 import com.hometv.tv.data.HomePayload
 import com.hometv.tv.data.HomeRefresh
@@ -74,6 +75,8 @@ data class ItemCard(
     val badge: String?,
     /** Shown under poster cards. */
     val year: String? = null,
+    /** This profile's rating: the poster card's star badge (ratings prd3 FR-T13). */
+    val myRating: Stars? = null,
 ) : HomeCard
 
 /** Trailing "Ver todo" card of the Películas / Series rows. */
@@ -277,11 +280,11 @@ class HomeViewModel(
             is FilmSummary -> ItemCard(
                 key, s, style, s.title, null,
                 if (style == CardStyle.LANDSCAPE) s.backdrop?.small ?: s.poster?.small else s.poster?.small,
-                progressOf(s.progress), s.progress?.watched == true, null, s.year?.toString(),
+                progressOf(s.progress), s.progress?.watched == true, null, s.year?.toString(), Stars.of(s.my_rating),
             )
             is ShowSummary -> ItemCard(
                 key, s, style, s.title, null, if (style == CardStyle.LANDSCAPE) s.backdrop?.small ?: s.poster?.small else s.poster?.small,
-                null, false, s.unwatched_episode_count.takeIf { it > 0 }?.let(Format::count), s.year?.toString(),
+                null, false, s.unwatched_episode_count.takeIf { it > 0 }?.let(Format::count), s.year?.toString(), Stars.of(s.my_rating),
             )
             is EpisodeSummary -> ItemCard(
                 key, s, style, s.show_title, episodeLine(s),

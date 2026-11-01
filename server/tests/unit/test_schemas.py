@@ -99,6 +99,7 @@ def _summary(type_: str) -> dict:
         "overview": None,
         "match_status": "matched",
         "added_at": "2026-10-20T10:00:00Z",
+        "my_rating": None,
     }
     if type_ == "film":
         return base | {"progress": None}

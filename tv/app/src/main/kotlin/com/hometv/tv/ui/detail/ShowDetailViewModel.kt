@@ -4,12 +4,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.hometv.tv.R
 import com.hometv.tv.core.api.ApiException
+import com.hometv.tv.core.api.Avatar
 import com.hometv.tv.core.api.EpisodeSummary
 import com.hometv.tv.core.api.SeasonDetail
 import com.hometv.tv.core.api.ShowDetail
 import com.hometv.tv.core.data.AppEvent
 import com.hometv.tv.core.data.AppEventSink
 import com.hometv.tv.core.data.CatalogRepository
+import com.hometv.tv.core.data.RatingKind
+import com.hometv.tv.core.data.RatingsRepository
 import com.hometv.tv.core.data.SessionStore
 import com.hometv.tv.core.data.WatchRepository
 import com.hometv.tv.core.data.WatchTarget
@@ -18,10 +21,12 @@ import com.hometv.tv.core.data.WatchlistRepository
 import com.hometv.tv.core.util.Format
 import com.hometv.tv.data.DetailRefresh
 import com.hometv.tv.data.HomeRefresh
+import com.hometv.tv.data.RatingPrompts
 import com.hometv.tv.ui.common.ScreenError
 import com.hometv.tv.ui.home.HomeViewModel
 import com.hometv.tv.ui.navigation.NavRequest
 import com.hometv.tv.ui.navigation.PlayRequest
+import com.hometv.tv.ui.ratings.RatingDialogUi
 import com.hometv.tv.ui.text.UiFormat
 import com.hometv.tv.ui.text.UiText
 import kotlinx.coroutines.Job
@@ -81,6 +86,16 @@ sealed interface ShowDetailUiState {
         val seasonGone: Boolean = false,
         /** "No se ha podido actualizar Mi lista." under the buttons after a failed write, until the next action. */
         val watchlistError: UiText? = null,
+        /** The ratings block under the buttons (ratings prd3 FR-T11). */
+        val ratingsRow: RatingsRowUi = RatingsRowUi.EMPTY,
+        val ratingDialog: RatingDialogUi? = null,
+        /** The "Puntuaciones" list ("y N más"). */
+        val othersDialog: ListDialogUi? = null,
+        /**
+         * One-shot focus on a ratings chip, applied with [focusVersion] before [focusEpisodeIndex]: set only
+         * by closing a rating dialog / the list, cleared by every other focus change.
+         */
+        val focusButton: ButtonId? = null,
     ) : ShowDetailUiState
 
     data class Error(val error: ScreenError) : ShowDetailUiState
@@ -96,10 +111,14 @@ class ShowDetailViewModel(
     private val catalog: CatalogRepository,
     private val watch: WatchRepository,
     watchlist: WatchlistRepository,
+    ratings: RatingsRepository,
+    private val ratingPrompts: RatingPrompts,
     private val store: SessionStore,
     private val events: AppEventSink,
     private val refresh: HomeRefresh,
     private val detailRefresh: DetailRefresh,
+    /** `/api/info` avatars (the other profiles' colours in the ratings block). */
+    avatars: () -> List<Avatar> = { emptyList() },
 ) : ViewModel() {
     private val _state = MutableStateFlow<ShowDetailUiState>(ShowDetailUiState.Loading)
     val state: StateFlow<ShowDetailUiState> = _state.asStateFlow()
@@ -112,6 +131,7 @@ class ShowDetailViewModel(
     private var actions: EpisodeActionsUi? = null
     private var focusEpisode: Int? = null
     private var focusVersion = 0
+    private var focusButton: ButtonId? = null
     private var seasonGone = false
 
     private val listToggle = DetailWatchlistToggle(
@@ -125,8 +145,23 @@ class ShowDetailViewModel(
         onScreenError = ::fail,
         publish = ::publish,
     )
+    private val ratingsBlock = DetailRatings(
+        RatingKind.SHOW,
+        showId,
+        ratings,
+        viewModelScope,
+        avatars,
+        onScreenError = ::fail,
+        onDialogClosed = { requestButtonFocus(ButtonId.RATING_MINE) },
+        refetch = ::refetchSilently,
+        showsContent = { _state.value is ShowDetailUiState.Content },
+        publishScreen = ::publish,
+    )
     private var seasonJob: Job? = null
     private var job: Job? = null
+
+    /** A rating change asked for a silent refetch while [job] was fetching. */
+    private var refetchPending = false
     private var seenGeneration = detailRefresh.generation()
 
     init {
@@ -151,13 +186,15 @@ class ShowDetailViewModel(
                 selected?.let { fetchSeason(it) }
                 publish()
             } catch (e: ApiException) {
-                fail(e)
+                return@launch fail(e)
             }
+            if (refetchPending) silentFetches()
         }
     }
 
     fun onButton(id: ButtonId) {
         val s = show ?: return
+        focusButton = null
         clearWatchlistError()
         when (id) {
             ButtonId.PLAY, ButtonId.RESUME -> s.next_episode?.let { play(it.id, fromStart = false) }
@@ -167,8 +204,47 @@ class ShowDetailViewModel(
         }
     }
 
+    /** OK on `rating_mine` ([Puntuar] / [Cambiar]): the manual rating dialog (FR-T11). */
+    fun onRatingMine() {
+        val s = show ?: return
+        listToggle.clearError()
+        ratingsBlock.open(s.title, s.poster?.small)
+        publish()
+    }
+
+    /** OK on `rating_more` ("y N más"): the "Puntuaciones" list. */
+    fun onRatingMore() {
+        listToggle.clearError()
+        ratingsBlock.openOthers()
+        publish()
+    }
+
+    /** OK on an item or Back on the "Puntuaciones" list: focus back on `rating_more`. */
+    fun onOthersDialogClose() {
+        ratingsBlock.closeOthers()
+        requestButtonFocus(ButtonId.RATING_MORE)
+    }
+
+    /** The open manual rating dialog's keys and buttons, forwarded to [DetailRatings]. */
+    fun onRatingStep(delta: Int) = ratingsBlock.step(delta)
+
+    fun onRatingSave() = ratingsBlock.save()
+
+    fun onRatingSecondary() = ratingsBlock.secondary()
+
+    fun onRatingRemove() = ratingsBlock.remove()
+
+    fun onRatingDismiss() = ratingsBlock.dismiss()
+
+    private fun requestButtonFocus(id: ButtonId) {
+        focusButton = id
+        focusVersion++
+        publish()
+    }
+
     /** Moving focus over a season selects it after 250 ms (debounced fetch, cached). */
     fun onSeasonFocused(number: Int) {
+        focusButton = null
         clearWatchlistError()
         seasonJob?.cancel()
         seasonJob = viewModelScope.launch {
@@ -192,7 +268,9 @@ class ShowDetailViewModel(
     }
 
     fun onEpisodeLongClick(row: EpisodeRowUi) {
+        focusButton = null
         listToggle.clearError()
+        ratingsBlock.clearError()
         actions = EpisodeActionsUi(row.id, UiText.Res(if (row.watched) R.string.mark_unwatched else R.string.mark_watched))
         publish()
     }
@@ -239,14 +317,37 @@ class ShowDetailViewModel(
         listToggle.toggle(target)
     }
 
-    /** The next action (a button, a season focus change, an episode action) hides the failed-write line. */
+    /** The next action (a button, a season focus change, an episode action) hides the failed-write lines. */
     private fun clearWatchlistError() {
-        if (listToggle.clearError()) publish()
+        val cleared = listToggle.clearError() or ratingsBlock.clearError()
+        if (cleared) publish()
     }
 
     /** A fetched show; a list write still in flight wins over its `in_watchlist` until it settles (FR-T6 step 9). */
     private fun apply(fetched: ShowDetail) {
         show = fetched.copy(in_watchlist = listToggle.fetched(fetched.in_watchlist, show?.in_watchlist))
+        ratingsBlock.fetched(fetched.my_rating, fetched.ratings, fetched.household_average)
+    }
+
+    /** After a rating change: the average and the other profiles, refetched in place (no Loading, focus kept). */
+    private fun refetchSilently() {
+        if (_state.value !is ShowDetailUiState.Content) return
+        // A fetch in flight may have left before the write committed: one more runs after it.
+        if (job?.isActive == true) return run { refetchPending = true }
+        job = viewModelScope.launch { silentFetches() }
+    }
+
+    /** One silent fetch, again while a change asked for one meanwhile; failures keep what the row shows. */
+    private suspend fun silentFetches() {
+        do {
+            refetchPending = false
+            try {
+                apply(catalog.show(showId))
+                publish()
+            } catch (_: ApiException) {
+                return // Silent: the next visit refetches.
+            }
+        } while (refetchPending)
     }
 
     private fun play(episodeId: Long, fromStart: Boolean) {
@@ -256,9 +357,12 @@ class ShowDetailViewModel(
     private fun changeWatched(target: WatchTarget, id: Long, watched: Boolean, clearCache: Boolean) {
         viewModelScope.launch {
             try {
-                watch.setWatched(target, id, watched)
+                val result = watch.setWatched(target, id, watched)
+                // The root host opens the prompt over this screen (ratings prd3 FR-T10).
+                result.ratingPrompt?.let { ratingPrompts.offer(store.session.value.profileId, it) }
                 refresh.markStale()
                 if (clearCache) seasonCache.clear() else selected?.let { seasonCache.remove(it) }
+                focusButton = null
                 focusVersion++
                 apply(catalog.show(showId))
                 selected?.let { fetchSeason(it) }
@@ -271,6 +375,7 @@ class ShowDetailViewModel(
 
     private fun load() {
         job?.cancel()
+        refetchPending = false
         _state.value = ShowDetailUiState.Loading
         seenGeneration = detailRefresh.generation()
         job = viewModelScope.launch {
@@ -285,8 +390,9 @@ class ShowDetailViewModel(
                 initial?.let { fetchSeason(it) }
                 publish()
             } catch (e: ApiException) {
-                fail(e)
+                return@launch fail(e)
             }
+            if (refetchPending) silentFetches()
         }
     }
 
@@ -294,6 +400,7 @@ class ShowDetailViewModel(
         if (selected == number && seasonCache.containsKey(number)) return
         selected = number
         focusEpisode = null
+        focusButton = null
         publish()
         fetchSeason(number)
         publish()
@@ -322,6 +429,7 @@ class ShowDetailViewModel(
         val s = show ?: return
         if (_state.value is ShowDetailUiState.Error) return
         val number = selected
+        val ratingsRow = ratingsBlock.row()
         _state.value = ShowDetailUiState.Content(
             show = s,
             meta = meta(s),
@@ -334,6 +442,10 @@ class ShowDetailViewModel(
             focusVersion = focusVersion,
             seasonGone = seasonGone,
             watchlistError = listToggle.error,
+            ratingsRow = ratingsRow,
+            ratingDialog = ratingsBlock.dialog,
+            othersDialog = ratingsBlock.othersDialog,
+            focusButton = focusButton?.let { if (it == ButtonId.RATING_MORE && ratingsRow.moreCount == 0) ButtonId.RATING_MINE else it },
         )
     }
 

@@ -4,11 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.hometv.tv.R
 import com.hometv.tv.core.api.ApiException
+import com.hometv.tv.core.api.Avatar
 import com.hometv.tv.core.api.FilmDetail
 import com.hometv.tv.core.api.MediaFile
 import com.hometv.tv.core.data.AppEvent
 import com.hometv.tv.core.data.AppEventSink
 import com.hometv.tv.core.data.CatalogRepository
+import com.hometv.tv.core.data.RatingKind
+import com.hometv.tv.core.data.RatingsRepository
 import com.hometv.tv.core.data.SessionStore
 import com.hometv.tv.core.data.WatchRepository
 import com.hometv.tv.core.data.WatchTarget
@@ -22,9 +25,11 @@ import com.hometv.tv.core.playback.VersionSelector
 import com.hometv.tv.core.util.Format
 import com.hometv.tv.data.DetailRefresh
 import com.hometv.tv.data.HomeRefresh
+import com.hometv.tv.data.RatingPrompts
 import com.hometv.tv.ui.common.ScreenError
 import com.hometv.tv.ui.navigation.NavRequest
 import com.hometv.tv.ui.navigation.PlayRequest
+import com.hometv.tv.ui.ratings.RatingDialogUi
 import com.hometv.tv.ui.text.UiText
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -55,6 +60,12 @@ sealed interface FilmDetailUiState {
         val castFocus: CastFocus? = null,
         /** "No se ha podido actualizar Mi lista." under the buttons after a failed write, until the next action. */
         val watchlistError: UiText? = null,
+        /** The ratings block under the buttons (ratings prd3 FR-T11). */
+        val ratingsRow: RatingsRowUi = RatingsRowUi.EMPTY,
+        /** The manual rating dialog ([Puntuar] / [Cambiar]). */
+        val ratingDialog: RatingDialogUi? = null,
+        /** The "Puntuaciones" list ("y N más"); separate from [dialog] (never picks a version). */
+        val othersDialog: ListDialogUi? = null,
     ) : FilmDetailUiState
 
     data class Error(val error: ScreenError) : FilmDetailUiState
@@ -70,11 +81,15 @@ class FilmDetailViewModel(
     private val catalog: CatalogRepository,
     private val watch: WatchRepository,
     watchlist: WatchlistRepository,
+    ratings: RatingsRepository,
+    private val ratingPrompts: RatingPrompts,
     private val store: SessionStore,
     private val caps: suspend () -> CapsForFile,
     private val events: AppEventSink,
     private val refresh: HomeRefresh,
     private val detailRefresh: DetailRefresh,
+    /** `/api/info` avatars (the other profiles' colours in the ratings block). */
+    avatars: () -> List<Avatar> = { emptyList() },
 ) : ViewModel() {
     private sealed interface Entry {
         data class Standalone(val fileId: Long) : Entry
@@ -110,7 +125,22 @@ class FilmDetailViewModel(
         onScreenError = ::fail,
         publish = ::publish,
     )
+    private val ratingsBlock = DetailRatings(
+        RatingKind.FILM,
+        filmId,
+        ratings,
+        viewModelScope,
+        avatars,
+        onScreenError = ::fail,
+        onDialogClosed = { requestFocus(ButtonId.RATING_MINE) },
+        refetch = ::refetchSilently,
+        showsContent = { _state.value is FilmDetailUiState.Content },
+        publishScreen = ::publish,
+    )
     private var job: Job? = null
+
+    /** A rating change asked for a silent refetch while [job] was fetching. */
+    private var refetchPending = false
     private var seenGeneration = detailRefresh.generation()
 
     init {
@@ -131,8 +161,9 @@ class FilmDetailViewModel(
             try {
                 fetch(afterPlayback = true)
             } catch (e: ApiException) {
-                fail(e)
+                return@launch fail(e)
             }
+            if (refetchPending) silentFetches()
         }
     }
 
@@ -143,6 +174,7 @@ class FilmDetailViewModel(
     fun onCastSelected(key: String, index: Int, personId: Long) {
         castFocus = CastFocus(key, index)
         listToggle.clearError()
+        ratingsBlock.clearError()
         publish()
         _navigation.trySend(NavRequest.Person(personId))
     }
@@ -155,7 +187,8 @@ class FilmDetailViewModel(
         focus = id
         val hadCastFocus = castFocus != null
         castFocus = null
-        if (listToggle.clearError() || hadCastFocus) publish()
+        val cleared = listToggle.clearError() or ratingsBlock.clearError()
+        if (cleared || hadCastFocus) publish()
         // Before the file check: the list toggle also works on a film with no playable file.
         if (id == ButtonId.WATCHLIST) return toggleWatchlist()
         val file = currentFile() ?: return
@@ -167,8 +200,42 @@ class FilmDetailViewModel(
             ButtonId.PART -> openDialog(partDialog())
             ButtonId.PART_VERSION -> openDialog(partVersionDialog())
             ButtonId.WATCHLIST -> Unit
+            // The ratings chips have their own handlers and never call onButton.
+            ButtonId.RATING_MINE, ButtonId.RATING_MORE -> Unit
         }
     }
+
+    /** OK on `rating_mine` ([Puntuar] / [Cambiar]): the manual rating dialog (FR-T11). */
+    fun onRatingMine() {
+        val f = film ?: return
+        listToggle.clearError()
+        ratingsBlock.open(f.title, f.poster?.small)
+        publish()
+    }
+
+    /** OK on `rating_more` ("y N más"): the "Puntuaciones" list. */
+    fun onRatingMore() {
+        listToggle.clearError()
+        ratingsBlock.openOthers()
+        publish()
+    }
+
+    /** OK on an item or Back on the "Puntuaciones" list: focus back on `rating_more` (`userChose` untouched). */
+    fun onOthersDialogClose() {
+        ratingsBlock.closeOthers()
+        requestFocus(ButtonId.RATING_MORE)
+    }
+
+    /** The open manual rating dialog's keys and buttons, forwarded to [DetailRatings]. */
+    fun onRatingStep(delta: Int) = ratingsBlock.step(delta)
+
+    fun onRatingSave() = ratingsBlock.save()
+
+    fun onRatingSecondary() = ratingsBlock.secondary()
+
+    fun onRatingRemove() = ratingsBlock.remove()
+
+    fun onRatingDismiss() = ratingsBlock.dismiss()
 
     fun onDialogSelect(index: Int) {
         val open = dialog ?: return
@@ -200,7 +267,12 @@ class FilmDetailViewModel(
     private fun closeDialog(opener: ButtonId) {
         dialog = null
         listToggle.clearError()
-        focus = opener
+        requestFocus(opener)
+    }
+
+    /** Focus goes to [id] (a button or a ratings chip) on the next composition. */
+    private fun requestFocus(id: ButtonId) {
+        focus = id
         castFocus = null
         focusVersion++
         publish()
@@ -219,7 +291,9 @@ class FilmDetailViewModel(
         val watched = film?.progress?.watched == true
         viewModelScope.launch {
             try {
-                watch.setWatched(WatchTarget.FILM, filmId, !watched)
+                val result = watch.setWatched(WatchTarget.FILM, filmId, !watched)
+                // The root host opens the prompt over this screen (ratings prd3 FR-T10).
+                result.ratingPrompt?.let { ratingPrompts.offer(store.session.value.profileId, it) }
                 refresh.markStale()
                 focus = ButtonId.WATCHED
                 focusVersion++
@@ -243,16 +317,38 @@ class FilmDetailViewModel(
         listToggle.toggle(target)
     }
 
+    /** After a rating change: the average and the other profiles, refetched in place (no Loading, focus kept). */
+    private fun refetchSilently() {
+        if (_state.value !is FilmDetailUiState.Content) return
+        // A fetch in flight may have left before the write committed: one more runs after it.
+        if (job?.isActive == true) return run { refetchPending = true }
+        job = viewModelScope.launch { silentFetches() }
+    }
+
+    /** One silent fetch, again while a change asked for one meanwhile; failures keep what the row shows. */
+    private suspend fun silentFetches() {
+        do {
+            refetchPending = false
+            try {
+                fetch()
+            } catch (_: ApiException) {
+                return // Silent: the next visit refetches.
+            }
+        } while (refetchPending)
+    }
+
     private fun load() {
         job?.cancel()
+        refetchPending = false
         _state.value = FilmDetailUiState.Loading
         seenGeneration = detailRefresh.generation()
         job = viewModelScope.launch {
             try {
                 fetch()
             } catch (e: ApiException) {
-                fail(e)
+                return@launch fail(e)
             }
+            if (refetchPending) silentFetches()
         }
     }
 
@@ -266,6 +362,7 @@ class FilmDetailViewModel(
         val caps = capsForFile ?: caps().also { capsForFile = it }
         val detail = fetched.copy(in_watchlist = listToggle.fetched(fetched.in_watchlist, film?.in_watchlist))
         film = detail
+        ratingsBlock.fetched(detail.my_rating, detail.ratings, detail.household_average)
         val files = detail.media_files
         choice = VersionSelector.defaultChoice(files, caps, detail.progress)
         val followParts = afterPlayback && entry == Entry.InParts && choice?.group is VersionGroup.Part
@@ -301,6 +398,7 @@ class FilmDetailViewModel(
         // Kept only while the cast still has that card at that position (a refetch can change the cast);
         // a dropped card is forgotten, so a later refetch restoring the old cast does not bring it back.
         castFocus = castFocus?.takeIf { c -> f.cast.getOrNull(c.index)?.let { castKey(it, c.index) } == c.key }
+        val ratingsRow = ratingsBlock.row()
         _state.value = FilmDetailUiState.Content(
             film = f,
             meta = meta(f),
@@ -308,10 +406,18 @@ class FilmDetailViewModel(
             buttons = buttons,
             unplayableMessage = if (choice == null) UiText.Res(R.string.detail_unplayable) else null,
             dialog = dialog,
-            focus = focus?.takeIf { id -> buttons.any { it.id == id } } ?: buttons.first().id,
+            // The ratings chips survive the filter: `rating_mine` is always on Content, `rating_more` only with "y N más".
+            focus = when (val target = focus) {
+                ButtonId.RATING_MINE -> target
+                ButtonId.RATING_MORE -> if (ratingsRow.moreCount > 0) target else ButtonId.RATING_MINE
+                else -> target?.takeIf { id -> buttons.any { it.id == id } } ?: buttons.first().id
+            },
             focusVersion = focusVersion,
             castFocus = castFocus,
             watchlistError = listToggle.error,
+            ratingsRow = ratingsRow,
+            ratingDialog = ratingsBlock.dialog,
+            othersDialog = ratingsBlock.othersDialog,
         )
     }
 

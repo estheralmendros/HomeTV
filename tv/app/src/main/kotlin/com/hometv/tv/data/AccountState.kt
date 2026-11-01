@@ -30,7 +30,7 @@ class AccountState(private val profiles: ProfileRepository) {
     /** `#RRGGBB` of the current profile's avatar, from `/api/info`. */
     fun avatarColor(): String? {
         val avatar = _profile.value?.avatar_id ?: return null
-        return _info.value?.avatars?.firstOrNull { it.id == avatar }?.color
+        return ProfileAvatar.color(avatar, _info.value?.avatars)
     }
 
     /**

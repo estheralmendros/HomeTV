@@ -10,6 +10,8 @@ from hometv.watch import (
     first_unwatched,
     is_in_progress,
     is_last_part,
+    is_title_finished,
+    last_episode,
     next_up,
     watched_ratio,
 )
@@ -114,3 +116,61 @@ def test_first_unwatched():
     assert first_unwatched(EPISODES, {}) == 2  # specials excluded
     assert first_unwatched(EPISODES, _state(e2=(True, 0), e4=(True, 0))) == 3
     assert first_unwatched(EPISODES, {i: EpisodeState(True, 0) for i in range(2, 7)}) is None
+
+
+# --- "Finished" rule (ratings PRD FR-7) ----------------------------------------------------------
+
+
+def _film_reaches(position: float, part: int | None = None, parts: tuple[int, ...] = ()) -> bool:
+    outcome = apply_progress_rule(
+        position, 10000.0, ratio=watched_ratio("film"), rule_applies=is_last_part(part, parts)
+    )
+    return outcome.reaches_watched
+
+
+@pytest.mark.parametrize(
+    ("case", "film_watched", "expected"),
+    [
+        (1, _film_reaches(9600.0), True),  # single-file film watched by playback (>= 95 %)
+        (2, _film_reaches(9600.0, part=2, parts=(1, 2)), True),  # last part reaches the rule
+        (3, _film_reaches(9900.0, part=1, parts=(1, 2)), False),  # non-final part at 99 %
+        (4, True, True),  # "Marcar como visto"
+    ],
+)
+def test_film_finished(case, film_watched, expected):
+    assert is_title_finished("film", film_watched=film_watched) is expected
+
+
+def _eps(*codes: tuple[int, int]) -> list[EpisodeKey]:
+    """Episodes with ids ``season * 100 + episode`` (S2E10 -> 210)."""
+    return [EpisodeKey(s * 100 + e, s, e) for s, e in codes]
+
+
+_S1_S2 = [(s, e) for s in (1, 2) for e in range(1, 11)]
+_S1_S2_LAST_MISSING = [c for c in _S1_S2 if c != (2, 10)]  # S2E10's file missing
+
+
+@pytest.mark.parametrize(
+    ("case", "present", "watched", "expected_last", "finished"),
+    [
+        (5, _S1_S2, {210}, 210, True),
+        (6, _S1_S2, set(range(101, 111)), 210, False),  # all of S1, not S2E10
+        (7, _S1_S2, {210}, 210, True),  # S3 announced on TMDB, not on disk: not an input
+        (8, _S1_S2_LAST_MISSING, {209}, 209, True),
+        (9, [(0, 1), (0, 2), (0, 3)], {3}, 3, True),  # specials-only show
+        (10, [(0, 5), (1, 1), (1, 2), (1, 3)], {103}, 103, True),  # specials excluded
+        (11, [(0, 5), (1, 1), (1, 2), (1, 3)], {5}, 103, False),  # only the special watched
+        (12, _S1_S2, {209, 210}, 210, True),  # S2E9-E10 in one file: siblings marked
+        (13, [], set(), None, False),  # no present episode
+    ],
+)
+def test_show_finished(case, present, watched, expected_last, finished):
+    last = last_episode(_eps(*present))
+    assert last == expected_last
+    assert is_title_finished("show", last_episode_id=last, watched_episode_ids=watched) is finished
+
+
+def test_last_episode_prefers_regular_seasons_over_higher_numbered_specials():
+    assert last_episode(_eps((0, 99), (1, 1))) == 101
+    assert last_episode(_eps((0, 2), (0, 7), (0, 3))) == 7
+    assert last_episode(_eps((3, 1), (2, 12), (3, 2))) == 302

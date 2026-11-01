@@ -8,7 +8,7 @@ import { SESSION_KEY } from '@/auth/session';
 import { AppShell } from './AppShell';
 
 describe('NavBar', () => {
-  it('has the logo link and Inicio / Películas / Series / Mi lista links', () => {
+  it('has the logo link and Inicio / Películas / Series / Mi lista / Actividad links', () => {
     renderWithProviders(<AppShell />);
     expect(screen.getByRole('link', { name: 'HomeTV, ir a Inicio' })).toHaveAttribute('href', '/');
     const nav = screen.getByRole('navigation', { name: 'Navegación principal' });
@@ -17,7 +17,15 @@ describe('NavBar', () => {
       ['Películas', '/films'],
       ['Series', '/shows'],
       ['Mi lista', '/watchlist'],
+      ['Actividad', '/activity'],
     ]);
+  });
+
+  it('marks "Actividad" current on /activity', async () => {
+    renderApp({ route: '/activity' });
+    const nav = await screen.findByRole('navigation', { name: 'Navegación principal' });
+    await screen.findByRole('heading', { level: 1, name: 'Actividad' });
+    expect(within(nav).getByRole('link', { name: 'Actividad' })).toHaveAttribute('aria-current', 'page');
   });
 
   it('marks "Mi lista" current on /watchlist (desktop)', async () => {
@@ -28,31 +36,64 @@ describe('NavBar', () => {
     expect(within(nav).getByRole('link', { name: 'Series' })).not.toHaveAttribute('aria-current');
   });
 
-  it('desktop (1280 px): links and search in the top bar, no tab bar', () => {
+  it('desktop (1280 px): links and the search field in the top bar, no icon link, no tab bar', () => {
     renderWithProviders(<AppShell />);
     expect(screen.getByRole('navigation', { name: 'Navegación principal' })).toBeInTheDocument();
     expect(screen.getByRole('searchbox', { name: 'Buscar títulos' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Buscar' })).not.toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Secciones' })).not.toBeInTheDocument();
   });
 
-  it('below 720 px: the bottom tab bar with Buscar instead of the top links and search', () => {
+  it.each([720, 800, 959])('%s px: the five links and a "Buscar" icon link instead of the search field', (px) => {
+    setViewportWidth(px);
+    renderWithProviders(<AppShell />);
+    const nav = screen.getByRole('navigation', { name: 'Navegación principal' });
+    expect(within(nav).getAllByRole('link')).toHaveLength(5);
+    expect(screen.queryByRole('searchbox', { name: 'Buscar títulos' })).not.toBeInTheDocument();
+    const banner = screen.getByRole('banner');
+    const icon = within(banner).getByRole('link', { name: 'Buscar' });
+    expect(icon).toHaveAttribute('href', '/search');
+    expect(icon.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+    expect(screen.queryByRole('navigation', { name: 'Secciones' })).not.toBeInTheDocument();
+  });
+
+  it('960 px: the search field again', () => {
+    setViewportWidth(960);
+    renderWithProviders(<AppShell />);
+    expect(screen.getByRole('searchbox', { name: 'Buscar títulos' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Buscar' })).not.toBeInTheDocument();
+  });
+
+  it('below 720 px: the bottom tab bar has the five sections; "Buscar" is an icon link in the top bar, just before the avatar', () => {
     setViewportWidth(719);
     renderWithProviders(<AppShell />);
     const tabs = screen.getByRole('navigation', { name: 'Secciones' });
-    expect(within(tabs).getAllByRole('link').map((a) => a.textContent)).toEqual(['Inicio', 'Películas', 'Series', 'Mi lista', 'Buscar']);
+    expect(within(tabs).getAllByRole('link').map((a) => a.textContent)).toEqual(['Inicio', 'Películas', 'Series', 'Mi lista', 'Actividad']);
     expect(within(tabs).getByRole('link', { name: 'Mi lista' })).toHaveAttribute('href', '/watchlist');
-    expect(within(tabs).getByRole('link', { name: 'Buscar' })).toHaveAttribute('href', '/search');
+    expect(within(tabs).getByRole('link', { name: 'Actividad' })).toHaveAttribute('href', '/activity');
+    expect(within(tabs).queryByRole('link', { name: 'Buscar' })).not.toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Navegación principal' })).not.toBeInTheDocument();
     expect(screen.queryByRole('searchbox', { name: 'Buscar títulos' })).not.toBeInTheDocument();
+    const banner = screen.getByRole('banner');
+    const search = within(banner).getByRole('link', { name: 'Buscar' });
+    expect(search).toHaveAttribute('href', '/search');
+    expect(search.nextElementSibling).toContainElement(screen.getByRole('button', { name: 'Menú de perfil de Ana' }));
     expect(screen.getByRole('link', { name: 'HomeTV, ir a Inicio' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Menú de perfil de Ana' })).toBeInTheDocument();
+  });
+
+  it('the "Buscar" icon link is marked current on /search', async () => {
+    setViewportWidth(360);
+    renderApp({ route: '/search' });
+    await screen.findByRole('heading', { level: 1, name: 'Buscar' });
+    expect(within(screen.getByRole('banner')).getByRole('link', { name: 'Buscar' })).toHaveAttribute('aria-current', 'page');
   });
 
   it('360 px: five tabs, "Mi lista" goes to /watchlist and is marked current there', async () => {
     setViewportWidth(360);
     const { user, router } = renderApp({ route: '/' });
     const tabs = await screen.findByRole('navigation', { name: 'Secciones' });
-    expect(within(tabs).getAllByRole('link').map((a) => a.textContent)).toEqual(['Inicio', 'Películas', 'Series', 'Mi lista', 'Buscar']);
+    expect(within(tabs).getAllByRole('link').map((a) => a.textContent)).toEqual(['Inicio', 'Películas', 'Series', 'Mi lista', 'Actividad']);
+    expect(within(screen.getByRole('banner')).getByRole('link', { name: 'Buscar' })).toBeInTheDocument();
     await user.click(within(tabs).getByRole('link', { name: 'Mi lista' }));
     await screen.findByRole('heading', { level: 1, name: 'Mi lista · 0' });
     expect(currentUrl(router)).toBe('/watchlist');

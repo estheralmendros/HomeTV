@@ -9,6 +9,7 @@ import com.hometv.tv.core.api.ServerInfo
 import com.hometv.tv.core.data.ProfileRepository
 import com.hometv.tv.core.data.SessionStore
 import com.hometv.tv.ui.common.ScreenError
+import com.hometv.tv.ui.components.AvatarUi
 import com.hometv.tv.ui.text.UiText
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -79,7 +80,7 @@ class ProfilesViewModel(
                 }
                 info = serverInfo
                 val colors = serverInfo?.avatars.orEmpty().associate { it.id to it.color }
-                val items = list.map { ProfileUi(it.id, it.name, initial(it.name), colors[it.avatar_id]) }
+                val items = list.map { ProfileUi(it.id, it.name, AvatarUi.initial(it.name), colors[it.avatar_id]) }
                 val remembered = store.session.value.profileId
                 val focus = items.firstOrNull { it.id == remembered }?.id ?: items.firstOrNull()?.id
                 _state.value = ProfilesUiState.Content(items, focus, message)
@@ -108,6 +109,4 @@ class ProfilesViewModel(
             }
         }
     }
-
-    private fun initial(name: String): String = name.trim().take(1).uppercase()
 }

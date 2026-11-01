@@ -100,6 +100,13 @@ describe('HomePage', () => {
       expect(await findProbedLocation()).toBe('/watch/film/12');
     });
 
+    it('a rated film card carries the rating badge in its name (ratings prd2 FR-W11)', async () => {
+      serveHome(f.homeResponse({ continue_watching: [f.filmSummary({ progress: f.progress(), my_rating: 4.5 })] }));
+      renderHome();
+      const row = await screen.findByRole('region', { name: 'Seguir viendo' });
+      expect(within(row).getByRole('link', { name: 'Dune (2021), tu puntuación: 4,5 estrellas' })).toHaveAttribute('href', '/watch/film/12');
+    });
+
     it('episode cards open /watch/episode/{id} without ?file=; the home media_files pick a playable sibling (D11)', async () => {
       const files: MediaFile[] = [
         f.episodeFile({ id: 501, video: HEVC, label: '2160p HEVC', duration_seconds: 1320 }),

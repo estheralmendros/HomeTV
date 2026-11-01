@@ -21,6 +21,7 @@ SHOW_SUMMARY_KEYS = {
     "season_count",
     "episode_count",
     "unwatched_episode_count",
+    "my_rating",
 }
 EPISODE_SUMMARY_KEYS = {
     "type",
@@ -94,6 +95,7 @@ async def test_show_list_summary_counts(client, db, user):
         "season_count": 2,  # specials excluded
         "episode_count": 4,  # specials and hidden episodes excluded
         "unwatched_episode_count": 3,
+        "my_rating": None,
     }
 
 
@@ -165,9 +167,13 @@ async def test_show_detail(client, db, user):
         "next_episode",
         "unwatched_episode_count",
         "in_watchlist",
+        "my_rating",
+        "ratings",
+        "household_average",
         "added_at",
     }
     assert d["in_watchlist"] is False
+    assert (d["my_rating"], d["ratings"], d["household_average"]) == (None, [], None)
     assert (d["status"], d["tmdb_id"], d["genres"]) == (
         "Ended",
         2316,

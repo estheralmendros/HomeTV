@@ -93,6 +93,12 @@ describe('SearchPage', () => {
     expect(currentUrl(router)).toBe('/search');
   });
 
+  it.each([800, 959])('%s px (Buscar icon in the bar): the page brings its own input', (px) => {
+    setViewportWidth(px);
+    renderSearch('/search?q=dune');
+    expect(screen.getByRole('searchbox', { name: 'Buscar películas y series' })).toHaveValue('dune');
+  });
+
   it('desktop: no page input (the NavBar search is the only one)', () => {
     renderSearch('/search?q=dune');
     expect(screen.queryByRole('searchbox', { name: 'Buscar películas y series' })).not.toBeInTheDocument();

@@ -11,6 +11,8 @@
   --color-focus: #4a90e2;
   --color-success: #3ec97a;
   --color-warning: #f5a623;
+  /* Rating stars (filled); empty stars are a 1.5px --color-text-muted outline. ≥ 3:1 on bg/surface/surface-2 (tokens.test.ts). */
+  --color-rating: #f5b301;
   --color-danger: #ff5c5c;
   --color-overlay: rgb(0 0 0 / 0.7);
   --gradient-placeholder: linear-gradient(160deg, #283048 0%, #1a1f2b 100%);

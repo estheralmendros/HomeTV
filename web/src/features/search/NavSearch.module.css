@@ -1,5 +1,7 @@
 .form {
   flex: 0 1 280px;
+  /* Shown from 960 px only (SEARCH_ICON_QUERY); it never collapses. */
+  min-width: 160px;
 }
 
 .input {

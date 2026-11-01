@@ -11,8 +11,10 @@ import com.hometv.tv.core.playback.F
 import com.hometv.tv.core.util.EpisodeCode
 import com.hometv.tv.core.util.EpisodeTitle
 import com.hometv.tv.core.util.LanguageName
+import com.hometv.tv.core.util.RelativeTime
 import com.hometv.tv.core.util.Runtime
 import com.hometv.tv.core.util.SeasonTitle
+import com.hometv.tv.core.util.Stars
 import com.hometv.tv.core.util.UsLocale
 import com.hometv.tv.testing.CatalogStrings
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -128,5 +130,29 @@ class UiFormatTest {
         assertEquals(null, line(null, null))
         val dune = com.hometv.tv.core.api.FilmSummary(12, "Dune")
         assertEquals("como Paul Atreides", com.hometv.tv.ui.person.PersonViewModel.subtitle(com.hometv.tv.core.api.PersonAppearance("film", dune, "Paul Atreides"))?.let(fmt::text))
+    }
+
+    // ---- Ratings (ratings prd3 FR-T17) ----------------------------------------------------
+
+    @Test
+    fun `stars print es-ES and as an accessible text`() {
+        assertEquals("4,5", fmt.arg(Stars(9)))
+        assertEquals("4", fmt.arg(Stars(8)))
+        assertEquals("4,5 estrellas", fmt.text(starsText(Stars(9))))
+        assertEquals("1 estrella", fmt.text(starsText(Stars(2))))
+        assertEquals("0,5 estrellas", fmt.text(starsText(Stars(1))))
+        assertEquals("Sin puntuación", fmt.text(starsText(null)))
+    }
+
+    @Test
+    fun `relative times use the catalog`() {
+        assertEquals("ahora mismo", fmt.arg(RelativeTime.JustNow))
+        assertEquals("hace 1 minuto", fmt.arg(RelativeTime.Minutes(1)))
+        assertEquals("hace 5 minutos", fmt.arg(RelativeTime.Minutes(5)))
+        assertEquals("hace 1 hora", fmt.arg(RelativeTime.Hours(1)))
+        assertEquals("hace 3 horas", fmt.arg(RelativeTime.Hours(3)))
+        assertEquals("ayer", fmt.arg(RelativeTime.Yesterday))
+        assertEquals("12 oct", fmt.arg(RelativeTime.Day(java.time.LocalDate.of(2026, 10, 12), withYear = false)))
+        assertEquals("12 oct 2025", fmt.arg(RelativeTime.Day(java.time.LocalDate.of(2025, 10, 12), withYear = true)))
     }
 }

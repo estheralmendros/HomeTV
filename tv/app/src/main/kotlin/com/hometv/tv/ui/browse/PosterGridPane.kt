@@ -79,6 +79,7 @@ fun PosterGridPane(
                 progress = item.progress,
                 watched = item.watched,
                 badge = item.badge,
+                myRating = item.myRating,
                 onClick = { onClick(item) },
                 modifier = Modifier
                     .focusRequester(cards[index])

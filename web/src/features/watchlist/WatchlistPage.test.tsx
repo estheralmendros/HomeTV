@@ -174,6 +174,87 @@ describe('WatchlistPage', () => {
     expect(currentUrl(router)).toBe('/watchlist?sort=title');
   });
 
+  it('the "Estado" select sits between the type buttons and the sort; it writes ?watched= (replace) and the request', async () => {
+    const rec = recordRequests();
+    const { user, router } = renderApp({ route: '/watchlist?type=films' });
+    await screen.findByRole('heading', { level: 1, name: 'Mi lista · 0' });
+    const toolbar = screen.getByRole('group', { name: 'Opciones de Mi lista' });
+    const watched = within(toolbar).getByLabelText('Estado');
+    expect(watched).toHaveValue('');
+    expect(within(watched).getAllByRole('option').map((o) => o.textContent)).toEqual(['Todos', 'Vistos', 'No vistos']);
+    const type = within(toolbar).getByRole('group', { name: 'Tipo' });
+    const sort = within(toolbar).getByLabelText('Orden');
+    expect(type.compareDocumentPosition(watched) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(watched.compareDocumentPosition(sort) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    await user.selectOptions(watched, 'No vistos');
+    await waitFor(() => expect(currentUrl(router)).toBe('/watchlist?type=films&watched=false'));
+    expect(router.state.historyAction).toBe('REPLACE');
+    await user.selectOptions(watched, 'Vistos');
+    await waitFor(() => expect(currentUrl(router)).toBe('/watchlist?type=films&watched=true'));
+    await user.selectOptions(watched, 'Todos');
+    await waitFor(() => expect(currentUrl(router)).toBe('/watchlist?type=films'));
+
+    await waitFor(() => expect(params(rec)).toHaveLength(3));
+    expect(params(rec)).toEqual([
+      { page: '1', page_size: '50', type: 'films' },
+      { page: '1', page_size: '50', type: 'films', watched: 'false' },
+      { page: '1', page_size: '50', type: 'films', watched: 'true' },
+    ]);
+    rec.dispose();
+  });
+
+  it('restores "Estado" from the URL; an invalid ?watched= is "Todos" and not sent', async () => {
+    const rec = recordRequests();
+    const { unmount } = renderApp({ route: '/watchlist?watched=true' });
+    await screen.findByRole('heading', { level: 1, name: 'Mi lista · 0' });
+    expect(screen.getByLabelText('Estado')).toHaveValue('true');
+    unmount();
+    renderApp({ route: '/watchlist?watched=yes' });
+    await screen.findByRole('heading', { level: 1, name: 'Mi lista · 0' });
+    expect(screen.getByLabelText('Estado')).toHaveValue('');
+    await waitFor(() => expect(params(rec)).toHaveLength(2));
+    expect(params(rec)).toEqual([
+      { page: '1', page_size: '50', watched: 'true' },
+      { page: '1', page_size: '50' },
+    ]);
+    rec.dispose();
+  });
+
+  it('the heading counts the filtered total', async () => {
+    server.use(
+      http.get(`${API}/watchlist`, ({ request }) =>
+        HttpResponse.json(
+          f.page([f.watchlistFilmEntry()], { page_size: 50, total: new URL(request.url).searchParams.has('watched') ? 1 : 7 }),
+        ),
+      ),
+    );
+    const { user } = renderApp({ route: '/watchlist' });
+    await screen.findByRole('heading', { level: 1, name: 'Mi lista · 7' });
+    await user.selectOptions(screen.getByLabelText('Estado'), 'Vistos');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Mi lista · 1' })).toBeInTheDocument();
+  });
+
+  it.each(['/watchlist?watched=true&sort=year', '/watchlist?type=shows&watched=false&sort=year'])(
+    '%s with no results: the generic filters text + "Ver todo" clears type and watched, keeps sort',
+    async (route) => {
+      server.use(
+        http.get(`${API}/watchlist`, ({ request }) => {
+          const search = new URL(request.url).searchParams;
+          const filtered = search.has('type') || search.has('watched');
+          return HttpResponse.json(f.page(filtered ? [] : [f.watchlistFilmEntry()], { page_size: 50 }));
+        }),
+      );
+      const { user, router } = renderApp({ route });
+      expect(await screen.findByText('Ningún título de tu lista coincide con los filtros.')).toBeInTheDocument();
+      expect(screen.queryByText('No hay series en tu lista.')).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Ver todo' }));
+      expect(await screen.findByRole('link', { name: 'Dune (2021)' })).toBeInTheDocument();
+      expect(currentUrl(router)).toBe('/watchlist?sort=year');
+      expect(screen.getByLabelText('Estado')).toHaveValue('');
+    },
+  );
+
   it('a first-page error shows ErrorState with Reintentar under the "Mi lista" heading', async () => {
     let calls = 0;
     server.use(

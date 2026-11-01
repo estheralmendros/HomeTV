@@ -15,13 +15,26 @@ describe('queryKeys', () => {
     expect(queryKeys.search('dune')).toEqual(['search', 'dune']);
     expect(queryKeys.film(12)).toEqual(['film', 12]);
     expect(queryKeys.show(7)).toEqual(['show', 7]);
+    expect(queryKeys.title('film', 12)).toEqual(queryKeys.film(12));
+    expect(queryKeys.title('show', 7)).toEqual(queryKeys.show(7));
     expect(queryKeys.season(7, 2)).toEqual(['season', 7, 2]);
     expect(queryKeys.seasonsOf(7)).toEqual(['season', 7]);
     expect(queryKeys.episode(345)).toEqual(['episode', 345]);
     expect(queryKeys.person(3)).toEqual(['person', 3]);
     expect(queryKeys.personAll()).toEqual(['person']);
-    expect(queryKeys.watchlist({ type: 'all', sort: 'added' })).toEqual(['watchlist', 'list', { type: 'all', sort: 'added' }]);
+    expect(queryKeys.watchlist({ type: 'all', sort: 'added', watched: null })).toEqual([
+      'watchlist',
+      'list',
+      { type: 'all', sort: 'added', watched: null },
+    ]);
+    expect(queryKeys.watchlist({ type: 'films', sort: 'title', watched: false })).toEqual([
+      'watchlist',
+      'list',
+      { type: 'films', sort: 'title', watched: false },
+    ]);
     expect(queryKeys.watchlistAll()).toEqual(['watchlist']);
+    expect(queryKeys.activity()).toEqual(['activity', 'list']);
+    expect(queryKeys.activityAll()).toEqual(['activity']);
     expect(queryKeys.admin.scan()).toEqual(['admin', 'scan']);
     expect(queryKeys.admin.unmatched({ library: 'films', page: 2 })).toEqual(['admin', 'unmatched', { library: 'films', page: 2 }]);
     expect(queryKeys.admin.unmatchedAll()).toEqual(['admin', 'unmatched']);
@@ -36,12 +49,14 @@ describe('queryKeys', () => {
   it('builds the mutation keys', () => {
     expect(mutationKeys.watchlistWrite('film', 12)).toEqual(['watchlistWrite', 'film', 12]);
     expect(mutationKeys.watchlistWrite('show', 7)).toEqual(['watchlistWrite', 'show', 7]);
+    expect(mutationKeys.ratingWrite('film', 12)).toEqual(['ratingWrite', 'film', 12]);
+    expect(mutationKeys.ratingWrite('show', 7)).toEqual(['ratingWrite', 'show', 7]);
   });
 
   it('has the PRD stale times', () => {
     expect(staleTimes).toEqual({
       info: Infinity, profiles: 30_000, me: 300_000, home: 0, library: 30_000, genres: 300_000, search: 30_000,
-      film: 30_000, show: 30_000, season: 30_000, episode: 30_000, person: 30_000, watchlist: 30_000, adminScan: 0, adminUnmatched: 0, adminTmdb: 300_000,
+      film: 30_000, show: 30_000, season: 30_000, episode: 30_000, person: 30_000, watchlist: 30_000, activity: 0, adminScan: 0, adminUnmatched: 0, adminTmdb: 300_000,
       adminLibraries: 0, adminBrowse: 0,
     });
   });
@@ -77,7 +92,7 @@ describe('invalidateAfter', () => {
   it('match / resolve success and scan finished', () => {
     const keys = [
       ['home'], ['films'], ['shows'], ['genres'], ['search'], ['film'], ['show'], ['season'], ['episode'],
-      ['admin', 'unmatched'], ['admin', 'scan'], ['admin', 'libraries'], ['person'], ['watchlist'],
+      ['admin', 'unmatched'], ['admin', 'scan'], ['admin', 'libraries'], ['person'], ['watchlist'], ['activity'],
     ];
     expect(invalidateAfter({ type: 'catalogChanged' })).toEqual(keys);
   });
@@ -85,6 +100,15 @@ describe('invalidateAfter', () => {
   it('watchlist toggled: the detail and every watchlist list', () => {
     expect(invalidateAfter({ type: 'watchlistChanged', kind: 'film', id: 12 })).toEqual([['film', 12], ['watchlist']]);
     expect(invalidateAfter({ type: 'watchlistChanged', kind: 'show', id: 7 })).toEqual([['show', 7], ['watchlist']]);
+  });
+
+  it('rating changed: the detail, activity and every list whose cards show my_rating', () => {
+    expect(invalidateAfter({ type: 'ratingChanged', kind: 'film', id: 12 })).toEqual([
+      ['film', 12], ['activity'], ['films', 'list'], ['home'], ['search'], ['person'], ['watchlist'],
+    ]);
+    expect(invalidateAfter({ type: 'ratingChanged', kind: 'show', id: 7 })).toEqual([
+      ['show', 7], ['activity'], ['shows', 'list'], ['home'], ['search'], ['person'], ['watchlist'],
+    ]);
   });
 
   it('library folders saved: the libraries (and browse, by prefix) and the scan status', () => {

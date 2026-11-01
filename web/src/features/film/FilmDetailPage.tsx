@@ -22,6 +22,8 @@ import { useToast } from '@/components/Toast';
 import { WatchedToggle } from '@/components/WatchedToggle';
 import { WatchlistToggle } from '@/components/WatchlistToggle';
 import { FixMatchButton } from '@/features/admin/FixMatchButton';
+import { useRatingPrompt } from '@/features/ratings/ratingPrompt';
+import { RatingsBlock } from '@/features/ratings/RatingsBlock';
 import { useWatchlistToggle } from '@/features/watchlist/useWatchlistToggle';
 import { formatDuration, formatRating, formatRuntime } from '@/lib/format';
 import { parseRouteId } from '@/lib/routeId';
@@ -43,7 +45,9 @@ export function FilmDetailPage() {
     return <NotAvailable message={S.film.notFound} backTo="/films" backLabel={S.film.backToFilms} />;
   }
   if (film.isPending) return <div className="page"><SkeletonDetail /></div>;
-  if (film.isError) {
+  // Only a failed first load replaces the page: a failed background refetch (e.g. the one after a
+  // rating write with the server down) keeps the cached detail and any open dialog on screen.
+  if (film.data === undefined) {
     return (
       <div className="page">
         <ErrorState message={errorMessage(film.error)} onRetry={() => void film.refetch()} />
@@ -74,6 +78,7 @@ function FilmDetailView({ film }: { film: FilmDetail }) {
         poster={film.poster}
         backdrop={film.backdrop}
         meta={filmMeta(film)}
+        extra={<FilmRatings film={film} />}
         tagline={film.tagline}
         overview={film.overview}
       >
@@ -89,6 +94,20 @@ function FilmDetailView({ film }: { film: FilmDetail }) {
       </DetailHero>
       <CastRow cast={film.cast} />
     </div>
+  );
+}
+
+function FilmRatings({ film }: { film: FilmDetail }) {
+  return (
+    <RatingsBlock
+      kind="film"
+      id={film.id}
+      title={film.title}
+      poster={film.poster}
+      myRating={film.my_rating}
+      ratings={film.ratings}
+      average={film.household_average}
+    />
   );
 }
 
@@ -160,10 +179,14 @@ function FilmWatchlistToggle({ film }: { film: FilmDetail }) {
   return <WatchlistToggle inList={watchlist.inList} disabled={watchlist.pending} onToggle={watchlist.toggle} />;
 }
 
-/** Optimistic: patch progress.watched in ['film', id], roll back + toast on error, invalidate on settle. */
+/**
+ * Optimistic: patch progress.watched in ['film', id], roll back + toast on error, invalidate on
+ * settle. A `rating_prompt` in the answer is offered to the prompt host (ratings prd2 FR-W9.3).
+ */
 function FilmWatchedToggle({ film }: { film: FilmDetail }) {
   const queryClient = useQueryClient();
   const toast = useToast();
+  const { offer } = useRatingPrompt();
   const key = queryKeys.film(film.id);
   const mutation = useMutation({
     mutationFn: (watched: boolean) => setWatched({ target: 'film', id: film.id, watched }),
@@ -172,6 +195,9 @@ function FilmWatchedToggle({ film }: { film: FilmDetail }) {
       const previous = queryClient.getQueryData<FilmDetail>(key);
       queryClient.setQueryData<FilmDetail>(key, (old) => old && { ...old, progress: withWatched(old.progress, watched) });
       return { previous };
+    },
+    onSuccess: (response) => {
+      if (response.rating_prompt) offer(response.rating_prompt);
     },
     onError: (err, _watched, context) => {
       if (context?.previous) queryClient.setQueryData(key, context.previous);

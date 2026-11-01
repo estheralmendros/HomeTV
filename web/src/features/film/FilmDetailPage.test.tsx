@@ -7,7 +7,7 @@ import * as f from '../../../tests/fixtures';
 import { tick } from '../../../tests/flush';
 import { API, apiError } from '../../../tests/msw/handlers';
 import { recordRequests, server } from '../../../tests/msw/server';
-import { currentUrl, findProbedLocation, renderWithProviders } from '../../../tests/renderWithProviders';
+import { currentUrl, findProbedLocation, renderApp, renderWithProviders } from '../../../tests/renderWithProviders';
 import { FilmDetailPage } from './FilmDetailPage';
 
 const HEVC = f.video({ codec: 'hevc', width: 3840, height: 2160, hdr: 'hdr10' });
@@ -188,6 +188,71 @@ describe('FilmDetailPage', () => {
       expect(screen.getByRole('button', { name: 'Marcar como no visto' })).toBeInTheDocument();
       expect(await screen.findByText('Se ha producido un error inesperado (internal_error).')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Marcar como visto' })).toHaveAttribute('aria-pressed', 'false');
+    });
+  });
+
+  describe('rating prompt (ratings prd2 FR-W9.3, W-AC-9, W-AC-3a)', () => {
+    const prompt = f.ratingPrompt();
+
+    function answerWatched() {
+      server.use(
+        http.post(`${API}/watched`, async ({ request }) => {
+          const body = (await request.json()) as { watched: boolean };
+          return HttpResponse.json({ updated: 1, rating_prompt: body.watched ? prompt : null });
+        }),
+      );
+    }
+
+    it('"Marcar como visto" answered with rating_prompt opens the prompt over the detail, once per tab', async () => {
+      answerWatched();
+      const rec = recordRequests();
+      const { user } = renderFilm();
+      await user.click(await screen.findByRole('button', { name: 'Marcar como visto' }));
+      const dialog = await screen.findByRole('dialog', { name: 'Dune' });
+      expect(dialog).toHaveTextContent('¿Qué te ha parecido?');
+      await user.click(within(dialog).getByRole('button', { name: 'Ahora no' }));
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      await user.click(await screen.findByRole('button', { name: 'Marcar como visto' }));
+      await waitFor(() => expect(rec.find('POST', '/api/watched')).toHaveLength(2));
+      await tick();
+      await tick();
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('unmarking never prompts', async () => {
+      answerWatched();
+      serveFilm({ progress: f.progress({ watched: true }) });
+      const rec = recordRequests();
+      const { user } = renderFilm();
+      await user.click(await screen.findByRole('button', { name: 'Marcar como no visto' }));
+      await waitFor(() => expect(rec.find('POST', '/api/watched')).toHaveLength(1));
+      await tick();
+      await tick();
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('W-AC-3a (renderApp): navigation back while the prompt is open = Ahora no (one dismissal); no later offer reopens it', async () => {
+      server.use(http.post(`${API}/watched`, () => HttpResponse.json({ updated: 1, rating_prompt: prompt })));
+      const rec = recordRequests();
+      const { user, router } = renderApp({ route: '/films/12', history: ['/films'] });
+      await user.click(await screen.findByRole('button', { name: 'Marcar como visto' }));
+      await screen.findByRole('dialog', { name: 'Dune' });
+      // RouterProvider renders navigations as React transitions: wait for each page to render, else
+      // the stale detail DOM answers the next queries and /films commits under them.
+      await act(() => router.navigate(-1));
+      await screen.findByRole('heading', { level: 1, name: 'Películas' });
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Dune' })).not.toBeInTheDocument());
+      await waitFor(() => expect(rec.find('POST', '/api/ratings/films/12/dismiss-prompt')).toHaveLength(1));
+      expect(currentUrl(router)).toBe('/films');
+      await act(() => router.navigate('/films/12'));
+      await screen.findByRole('heading', { level: 1, name: 'Dune' });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Marcar como visto' })).toBeEnabled());
+      await user.click(screen.getByRole('button', { name: 'Marcar como visto' }));
+      await waitFor(() => expect(rec.find('POST', '/api/watched')).toHaveLength(2));
+      await tick();
+      expect(screen.queryByRole('dialog', { name: 'Dune' })).not.toBeInTheDocument();
+      await rec.settled();
+      expect(rec.find('POST', '/api/ratings/films/12/dismiss-prompt')).toHaveLength(1);
     });
   });
 

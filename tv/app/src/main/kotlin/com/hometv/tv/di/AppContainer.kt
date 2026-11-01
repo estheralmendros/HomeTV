@@ -8,6 +8,7 @@ import coil.memory.MemoryCache
 import com.hometv.tv.BuildConfig
 import com.hometv.tv.core.api.ApiClientFactory
 import com.hometv.tv.core.api.ApiClients
+import com.hometv.tv.core.api.Avatar
 import com.hometv.tv.core.api.ClientCaps
 import com.hometv.tv.core.api.HomeTvApi
 import com.hometv.tv.core.api.apiCall
@@ -19,6 +20,7 @@ import com.hometv.tv.core.data.OkHttpSubtitleSource
 import com.hometv.tv.core.data.Origin
 import com.hometv.tv.core.data.PlaybackRepository
 import com.hometv.tv.core.data.ProfileRepository
+import com.hometv.tv.core.data.RatingsRepository
 import com.hometv.tv.core.data.ServerRepository
 import com.hometv.tv.core.data.Session
 import com.hometv.tv.core.data.SessionGuard
@@ -35,6 +37,7 @@ import com.hometv.tv.data.HomeCache
 import com.hometv.tv.data.DetailRefresh
 import com.hometv.tv.data.HomeRefresh
 import com.hometv.tv.data.PlayerLaunches
+import com.hometv.tv.data.RatingPrompts
 import com.hometv.tv.playback.AndroidCodecInventory
 import com.hometv.tv.playback.CodecSource
 import com.hometv.tv.playback.ExoPlayerController
@@ -44,6 +47,7 @@ import com.hometv.tv.playback.SubtitleStore
 import com.hometv.tv.core.playback.PlayerController
 import com.hometv.tv.ui.player.PlayerDeps
 import com.hometv.tv.ui.player.PlayerViewModel
+import com.hometv.tv.ui.activity.ActivityViewModel
 import com.hometv.tv.ui.browse.BrowseSortMemory
 import com.hometv.tv.ui.browse.BrowseViewModel
 import com.hometv.tv.ui.detail.FilmDetailViewModel
@@ -88,9 +92,9 @@ data class AppConfig(
  * Exposes: [store] (loaded before the API client is built: `AuthInterceptor` reads the token
  * synchronously), [clients] (API + stream OkHttp clients and Retrofit, rebuilt when the server URL
  * changes), [api], [guard], the repositories, [events] (global `AppEvent` bus), [appScope]
- * (`SupervisorJob() + Dispatchers.IO`, process lifetime: final progress PUT, HLS DELETE, [watchlist] writes),
+ * (`SupervisorJob() + Dispatchers.IO`, process lifetime: final progress PUT, HLS DELETE, [watchlist] and [ratings] writes),
  * [codecs] + [capsForFile] (capability hook), [playerLaunches], [homeRefresh], [detailRefresh],
- * [watchlistMemory], [account],
+ * [watchlistMemory], [account], [ratings] + [ratingPrompts] (ratings prd3; every rating change marks Home stale),
  * [imageLoader] and one factory function per ViewModel.
  */
 class AppContainer(
@@ -102,6 +106,8 @@ class AppContainer(
     validationClient: OkHttpClient,
     val codecs: CodecSource,
     private val clock: Clock = Clock.systemUTC(),
+    /** The calendar's time zone (Actividad's relative times, ages on the Person screen): the device's, read each time; tests pin it. */
+    private val zone: () -> ZoneId = ZoneId::systemDefault,
     /** One player per Player screen, on the stream client of the current server (an ExoPlayer in the app, a fake in tests). */
     private val playerControllers: (streamClient: OkHttpClient) -> PlayerController = { error("No player in this container") },
     /** `cacheDir/subtitles` (side-loaded WebVTT files). */
@@ -130,6 +136,10 @@ class AppContainer(
     val profiles = ProfileRepository(api, store, guard)
     val watch = WatchRepository(api, guard)
     val watchlist = WatchlistRepository(api, guard, appScope)
+    val ratings = RatingsRepository(api, guard, appScope, log = { e -> runCatching { android.util.Log.w("HomeTvRatings", "dismiss-prompt failed", e) } })
+
+    /** Rating prompts waiting for the root `RatingPromptHost` (ratings prd3 FR-T5). */
+    val ratingPrompts = RatingPrompts(store.session, appScope)
     val playback = PlaybackRepository(api, guard, appScope, SubtitleSource { url -> OkHttpSubtitleSource(clients().streamClient).fetch(url) })
     val nextEpisodes = NextEpisodeResolver(fetch = { id -> catalog.episode(id, Origin.Background) })
     val serverRepository = ServerRepository(validationClient)
@@ -163,6 +173,10 @@ class AppContainer(
                     is AppEvent.ServerUnreachable -> Unit
                 }
             }
+        }
+        // A rating saved anywhere changes the card badges: Home reloads on its next visit (ratings prd3 FR-T11).
+        appScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            ratings.changes.collect { homeRefresh.markStale() }
         }
     }
 
@@ -242,12 +256,19 @@ class AppContainer(
 
     fun watchlistViewModel() = WatchlistViewModel(watchlist, store, watchlistMemory)
 
-    fun filmDetailViewModel(id: Long) = FilmDetailViewModel(id, catalog, watch, watchlist, store, ::capsForFile, events, homeRefresh, detailRefresh)
+    /** `/api/info` avatars: the other profiles' colours (ratings block, Actividad). */
+    private val avatars: () -> List<Avatar> = { account.info.value?.avatars.orEmpty() }
 
-    fun showDetailViewModel(id: Long) = ShowDetailViewModel(id, catalog, watch, watchlist, store, events, homeRefresh, detailRefresh)
+    fun filmDetailViewModel(id: Long) =
+        FilmDetailViewModel(id, catalog, watch, watchlist, ratings, ratingPrompts, store, ::capsForFile, events, homeRefresh, detailRefresh, avatars)
 
-    /** The actor screen; "today" (ages) is the [clock]'s date in the device's time zone. */
-    fun personViewModel(id: Long) = PersonViewModel(id, catalog, store, detailRefresh, today = { LocalDate.now(clock.withZone(ZoneId.systemDefault())) })
+    fun showDetailViewModel(id: Long) = ShowDetailViewModel(id, catalog, watch, watchlist, ratings, ratingPrompts, store, events, homeRefresh, detailRefresh, avatars)
+
+    /** Actividad; relative times use the [clock] in the [zone]. */
+    fun activityViewModel() = ActivityViewModel(ratings, store, clock.withZone(zone()), avatars)
+
+    /** The actor screen; "today" (ages) is the [clock]'s date in the [zone]. */
+    fun personViewModel(id: Long) = PersonViewModel(id, catalog, store, detailRefresh, today = { LocalDate.now(clock.withZone(zone())) })
 
     fun settingsViewModel() = SettingsViewModel(store, account, profiles, ::deviceCaps, config.versionName)
 
@@ -266,6 +287,7 @@ class AppContainer(
             serverUrl = { store.session.value.serverUrl },
             controller = playerControllers(clients().streamClient),
             subtitles = subtitleCache,
+            ratingPrompts = ratingPrompts,
         ),
     )
 

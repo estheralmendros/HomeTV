@@ -1,13 +1,14 @@
 // es-ES formatting helpers (prd2 UI language, Technical Requirements). Intl objects are
 // created once and reused.
 import { S } from '@/strings.es';
-import { countFormat, LOCALE, plural } from './intl';
+import { countFormat, LOCALE, oneDecimalFormat, plural } from './intl';
 
 const dateFormat = new Intl.DateTimeFormat(LOCALE, { day: 'numeric', month: 'short', year: 'numeric' });
 const dateOnlyFormat = new Intl.DateTimeFormat(LOCALE, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 const relativeFormat = new Intl.RelativeTimeFormat(LOCALE, { numeric: 'auto' });
-const ratingFormat = new Intl.NumberFormat(LOCALE, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const decimalFormat = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 1, useGrouping: 'always' });
+
+const dayMonthFormat = new Intl.DateTimeFormat(LOCALE, { day: 'numeric', month: 'short' });
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
 
@@ -78,6 +79,29 @@ export function formatRelative(iso: string, now: number = Date.now()): string {
   return relativeFormat.format(0, 'second');
 }
 
+const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+
+/**
+ * /activity row time (ratings prd2 FR-W14), local time zone: "ahora mismo", "hace 5 minutos",
+ * "hace 2 horas" (same calendar day), "ayer" (previous calendar day), "12 oct", "12 oct 2025";
+ * "" for an unparseable timestamp (the row still renders).
+ */
+export function formatActivityTime(iso: string, now: Date = new Date()): string {
+  const then = new Date(iso);
+  if (Number.isNaN(then.getTime())) return '';
+  const seconds = (now.getTime() - then.getTime()) / 1000;
+  if (seconds < 60) return S.activity.time.now;
+  const today = startOfDay(now);
+  if (then.getTime() >= today) {
+    const minutes = Math.floor(seconds / 60);
+    return minutes < 60 ? S.activity.time.minutes(minutes) : S.activity.time.hours(Math.floor(minutes / 60));
+  }
+  const yesterday = startOfDay(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1));
+  if (then.getTime() >= yesterday) return S.activity.time.yesterday;
+  const format = then.getFullYear() === now.getFullYear() ? dayMonthFormat : dateFormat;
+  return format.format(then).replace(/\./g, '');
+}
+
 /** "1.234" (grouping always on, also for 4-digit numbers). */
 export function formatCount(n: number): string {
   return countFormat.format(n);
@@ -85,7 +109,7 @@ export function formatCount(n: number): string {
 
 /** "7,8" */
 export function formatRating(value: number): string {
-  return ratingFormat.format(value);
+  return oneDecimalFormat.format(value);
 }
 
 const BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB'] as const;

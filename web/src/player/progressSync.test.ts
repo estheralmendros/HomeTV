@@ -1,7 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { queryKeys } from '@/api/queryKeys';
-import type { EpisodeDetail, FilmDetail, HomeResponse, Progress } from '@/api/types';
+import type { EpisodeDetail, FilmDetail, HomeResponse, Progress, ProgressReport } from '@/api/types';
 import * as f from '../../tests/fixtures';
 import {
   awaitFinalBarrier,
@@ -15,6 +15,8 @@ import {
 const film = { type: 'film', id: 12 } as const;
 const episode = { type: 'episode', id: 345, showId: 7, seasonNumber: 2 } as const;
 const fresh = f.progress({ position_seconds: 400, media_file_id: 91, updated_at: '2026-10-22T10:00:00Z' });
+/** The final PUT's answer for `fresh` (no prompt). */
+const freshReport = f.progressReport(fresh);
 
 function client() {
   return new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -82,12 +84,33 @@ describe('registerFinalReport', () => {
       seen.push(qc.getQueryData<FilmDetail>(queryKeys.film(12))?.progress);
     });
 
-    await registerFinalReport(qc, film, Promise.resolve(fresh));
+    await registerFinalReport(qc, film, Promise.resolve(freshReport));
 
     expect(invalidate).toHaveBeenCalled();
-    expect(seen.every((p) => p === fresh)).toBe(true);
+    expect(seen.length).toBeGreaterThan(0);
+    for (const p of seen) expect(p).toEqual(fresh);
     const keys = invalidate.mock.calls.map(([filters]) => filters?.queryKey);
     expect(keys).toEqual(expect.arrayContaining([queryKeys.home(), queryKeys.film(12), ['films', 'list'], ['search']]));
+  });
+
+  it('writes only the Progress keys and hands a rating_prompt to onPrompt after the write', async () => {
+    const qc = client();
+    qc.setQueryData(queryKeys.film(12), f.filmDetail());
+    const prompt = f.ratingPrompt();
+    const onPrompt = vi.fn(() => {
+      expect(qc.getQueryData<FilmDetail>(queryKeys.film(12))?.progress).toEqual(fresh);
+    });
+    await registerFinalReport(qc, film, Promise.resolve(f.progressReport({ ...fresh, rating_prompt: prompt })), onPrompt);
+    expect(onPrompt).toHaveBeenCalledWith(prompt);
+    expect(qc.getQueryData<FilmDetail>(queryKeys.film(12))?.progress).toEqual(fresh);
+    expect(qc.getQueryData<FilmDetail>(queryKeys.film(12))?.progress).not.toHaveProperty('rating_prompt');
+  });
+
+  it('no onPrompt call without a prompt or when the PUT fails', async () => {
+    const onPrompt = vi.fn();
+    await registerFinalReport(client(), film, Promise.resolve(f.progressReport(fresh)), onPrompt);
+    await registerFinalReport(client(), film, Promise.reject(new Error('offline')), onPrompt);
+    expect(onPrompt).not.toHaveBeenCalled();
   });
 
   it('a failed PUT only invalidates', async () => {
@@ -103,7 +126,7 @@ describe('registerFinalReport', () => {
   it('invalidates the episode, its show and season', async () => {
     const qc = client();
     const invalidate = vi.spyOn(qc, 'invalidateQueries');
-    await registerFinalReport(qc, episode, Promise.resolve(fresh));
+    await registerFinalReport(qc, episode, Promise.resolve(freshReport));
     const keys = invalidate.mock.calls.map(([filters]) => filters?.queryKey);
     expect(keys).toEqual(
       expect.arrayContaining([queryKeys.episode(345), queryKeys.show(7), queryKeys.season(7, 2), ['shows', 'list']]),
@@ -112,10 +135,10 @@ describe('registerFinalReport', () => {
 
   it('is pending until the PUT settles', async () => {
     const qc = client();
-    const put = deferred<Progress>();
+    const put = deferred<ProgressReport>();
     const done = registerFinalReport(qc, film, put.promise);
     expect(hasPendingFinal(film)).toBe(true);
-    put.resolve(fresh);
+    put.resolve(freshReport);
     await done;
     expect(hasPendingFinal(film)).toBe(false);
   });
@@ -130,14 +153,14 @@ describe('awaitFinalBarrier', () => {
     vi.useFakeTimers();
     const qc = client();
     qc.setQueryData(queryKeys.film(12), f.filmDetail());
-    const put = deferred<Progress>();
+    const put = deferred<ProgressReport>();
     void registerFinalReport(qc, film, put.promise);
     const barrier = awaitFinalBarrier(film);
     let outcome: string | null = null;
     void barrier.then((r) => (outcome = r));
     await vi.advanceTimersByTimeAsync(1_000);
     expect(outcome).toBeNull();
-    put.resolve(fresh);
+    put.resolve(freshReport);
     await vi.advanceTimersByTimeAsync(0);
     expect(outcome).toBe('settled');
     expect(qc.getQueryData<FilmDetail>(queryKeys.film(12))?.progress).toEqual(fresh);
@@ -145,7 +168,7 @@ describe('awaitFinalBarrier', () => {
 
   it('gives up after 3 s', async () => {
     vi.useFakeTimers();
-    void registerFinalReport(client(), film, new Promise<Progress>(() => undefined));
+    void registerFinalReport(client(), film, new Promise<ProgressReport>(() => undefined));
     let outcome: string | null = null;
     void awaitFinalBarrier(film).then((r) => (outcome = r));
     await vi.advanceTimersByTimeAsync(2_999);
@@ -155,7 +178,7 @@ describe('awaitFinalBarrier', () => {
   });
 
   it('is keyed per item', async () => {
-    void registerFinalReport(client(), film, new Promise<Progress>(() => undefined));
+    void registerFinalReport(client(), film, new Promise<ProgressReport>(() => undefined));
     await expect(awaitFinalBarrier({ type: 'episode', id: 12 })).resolves.toBe('none');
   });
 });

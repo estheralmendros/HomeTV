@@ -9,6 +9,7 @@ import { setTokenGetter } from './client';
 import * as people from './people';
 import * as playback from './playback';
 import * as profiles from './profiles';
+import * as ratings from './ratings';
 import * as system from './system';
 import * as watch from './watch';
 import * as watchlist from './watchlist';
@@ -68,6 +69,15 @@ describe('endpoint modules', () => {
     ['addToWatchlist show', () => watchlist.addToWatchlist('show', 7), { method: 'PUT', path: '/api/watchlist/shows/7', body: null }],
     ['removeFromWatchlist film', () => watchlist.removeFromWatchlist('film', 12), { method: 'DELETE', path: '/api/watchlist/films/12' }],
     ['removeFromWatchlist show', () => watchlist.removeFromWatchlist('show', 7), { method: 'DELETE', path: '/api/watchlist/shows/7' }],
+    ['setRating film', () => ratings.setRating('film', 12, 4.5), { method: 'PUT', path: '/api/ratings/films/12', body: { stars: 4.5 }, bearer: 'Bearer tok' }],
+    ['setRating show', () => ratings.setRating('show', 7, 1), { method: 'PUT', path: '/api/ratings/shows/7', body: { stars: 1 } }],
+    ['removeRating film', () => ratings.removeRating('film', 12), { method: 'DELETE', path: '/api/ratings/films/12', body: null }],
+    ['removeRating show', () => ratings.removeRating('show', 7), { method: 'DELETE', path: '/api/ratings/shows/7' }],
+    ['dismissRatingPrompt film', () => ratings.dismissRatingPrompt('film', 12),
+      { method: 'POST', path: '/api/ratings/films/12/dismiss-prompt', body: null }],
+    ['dismissRatingPrompt show', () => ratings.dismissRatingPrompt('show', 7), { method: 'POST', path: '/api/ratings/shows/7/dismiss-prompt' }],
+    ['getActivity', () => ratings.getActivity({ page: 2, page_size: 50 }),
+      { method: 'GET', path: '/api/activity', query: { page: '2', page_size: '50' }, bearer: 'Bearer tok' }],
     ['getMediaFile', () => playback.getMediaFile(91), { path: '/api/media-files/91' }],
     ['requestPlayback', () => playback.requestPlayback(91, { client_caps: caps, audio_stream_index: null, start_position_seconds: 0, previous_session_id: null }),
       { method: 'POST', path: '/api/media-files/91/playback', body: { client_caps: caps, audio_stream_index: null, start_position_seconds: 0, previous_session_id: null } }],
@@ -99,6 +109,20 @@ describe('endpoint modules', () => {
   it('watchlist writes resolve undefined on 204', async () => {
     await expect(watchlist.addToWatchlist('film', 12)).resolves.toBeUndefined();
     await expect(watchlist.removeFromWatchlist('show', 7)).resolves.toBeUndefined();
+  });
+
+  it('rating writes resolve undefined on 204; the activity page size is 50', async () => {
+    await expect(ratings.setRating('film', 12, 3)).resolves.toBeUndefined();
+    await expect(ratings.removeRating('show', 7)).resolves.toBeUndefined();
+    await expect(ratings.dismissRatingPrompt('film', 12)).resolves.toBeUndefined();
+    expect(ratings.ACTIVITY_PAGE_SIZE).toBe(50);
+  });
+
+  it('PUT /progress and POST /watched carry rating_prompt (null by default)', async () => {
+    await expect(watch.putProgress({ item_type: 'film', item_id: 12, media_file_id: 91, position_seconds: 10 })).resolves.toMatchObject({
+      rating_prompt: null,
+    });
+    await expect(watch.setWatched({ target: 'film', id: 12, watched: true })).resolves.toEqual({ updated: 1, rating_prompt: null });
   });
 
   it('pages the watchlist by 50', () => {

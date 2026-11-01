@@ -87,18 +87,22 @@ interface HomeTvApi {
     suspend fun search(@Query("q") query: String, @Query("limit") limit: Int): SearchResponse
 
     @PUT("api/progress")
-    suspend fun putProgress(@Body body: ProgressRequest): Progress
+    suspend fun putProgress(@Body body: ProgressRequest): ProgressReport
 
     @POST("api/watched")
     suspend fun setWatched(@Body body: WatchedRequest): WatchedResponse
 
-    /** "Mi lista" (watchlist prd.md FR-8): `type` = `all` | `films` | `shows`, `sort` = `added` | `title` | `year`. */
+    /**
+     * "Mi lista" (watchlist prd.md FR-8): `type` = `all` | `films` | `shows`, `sort` = `added` | `title` | `year`;
+     * [watched] = the library `watched` filter ("Estado"), omitted when null.
+     */
     @GET("api/watchlist")
     suspend fun watchlist(
         @Query("type") type: String,
         @Query("sort") sort: String,
         @Query("page") page: Int,
         @Query("page_size") pageSize: Int,
+        @Query("watched") watched: Boolean? = null,
     ): Page<WatchlistEntry>
 
     /** [segment] = `films` | `shows`; 204 with no body. */
@@ -107,6 +111,20 @@ interface HomeTvApi {
 
     @DELETE("api/watchlist/{segment}/{id}")
     suspend fun removeFromWatchlist(@Path("segment") segment: String, @Path("id") id: Long)
+
+    /** Ratings (ratings prd.md): [segment] = `films` | `shows`; 204 with no body. */
+    @PUT("api/ratings/{segment}/{id}")
+    suspend fun setRating(@Path("segment") segment: String, @Path("id") id: Long, @Body body: RatingRequest)
+
+    @DELETE("api/ratings/{segment}/{id}")
+    suspend fun removeRating(@Path("segment") segment: String, @Path("id") id: Long)
+
+    @POST("api/ratings/{segment}/{id}/dismiss-prompt")
+    suspend fun dismissRatingPrompt(@Path("segment") segment: String, @Path("id") id: Long)
+
+    /** The household's ratings, newest first. */
+    @GET("api/activity")
+    suspend fun activity(@Query("page") page: Int, @Query("page_size") pageSize: Int): Page<ActivityEntry>
 
     @POST("api/media-files/{id}/playback")
     suspend fun playback(@Path("id") mediaFileId: Long, @Body body: PlaybackRequest): PlaybackResponse

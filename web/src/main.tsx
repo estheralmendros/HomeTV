@@ -4,6 +4,7 @@ import { RouterProvider } from 'react-router-dom';
 import { createQueryClient } from '@/api/queryClient';
 import { AppProviders } from '@/AppProviders';
 import { pendingNavigationHref, registerChunkReload } from '@/lib/chunkReload';
+import { locationSubscriber } from '@/lib/routerLocation';
 import { ROUTER_PROVIDER_FUTURE, createAppRouter } from '@/router';
 import '@/styles/global.css';
 
@@ -15,7 +16,11 @@ if (!root) throw new Error('#root missing in index.html');
 
 createRoot(root).render(
   <StrictMode>
-    <AppProviders queryClient={queryClient} navigate={(to) => void router.navigate(to)}>
+    <AppProviders
+      queryClient={queryClient}
+      navigate={(to) => void router.navigate(to)}
+      subscribeLocation={locationSubscriber(router)}
+    >
       <RouterProvider router={router} future={ROUTER_PROVIDER_FUTURE} />
     </AppProviders>
   </StrictMode>,

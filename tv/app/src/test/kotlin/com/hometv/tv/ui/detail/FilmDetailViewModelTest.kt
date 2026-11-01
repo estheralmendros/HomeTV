@@ -49,7 +49,7 @@ class FilmDetailViewModelTest {
         repos.api.onFilm = { film }
     }
 
-    private fun vm() = FilmDetailViewModel(12, repos.catalog, repos.watch, repos.watchlist, repos.store, { caps }, repos.events, refresh, detailRefresh)
+    private fun vm() = FilmDetailViewModel(12, repos.catalog, repos.watch, repos.watchlist, repos.ratings, repos.ratingPrompts, repos.store, { caps }, repos.events, refresh, detailRefresh)
 
     private fun FilmDetailViewModel.content() = state.value as FilmDetailUiState.Content
 

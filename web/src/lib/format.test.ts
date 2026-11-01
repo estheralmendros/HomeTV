@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   episodeCode,
+  formatActivityTime,
   episodeShort,
   formatBytes,
   formatCount,
@@ -90,5 +91,53 @@ describe('format (es-ES)', () => {
     expect(() => parseEpisodeList('a')).toThrow();
     expect(() => parseEpisodeList('5-3')).toThrow();
     expect(() => parseEpisodeList('0')).toThrow();
+  });
+});
+
+describe('formatActivityTime (local time zone)', () => {
+  /** A local wall-clock time as the ISO string the server sends. */
+  const at = (y: number, m: number, d: number, h = 0, min = 0, s = 0) => new Date(y, m - 1, d, h, min, s).toISOString();
+  const now = new Date(2026, 9, 31, 15, 30, 0);
+
+  it.each<[string, string, Date]>([
+    ['30 s ago', at(2026, 10, 31, 15, 29, 30), now],
+    ['in the future', at(2026, 10, 31, 15, 45), now],
+  ])('%s → "ahora mismo"', (_case, iso, when) => {
+    expect(formatActivityTime(iso, when)).toBe('ahora mismo');
+  });
+
+  it.each<[string, string]>([
+    [at(2026, 10, 31, 15, 29, 0), 'hace 1 minuto'],
+    [at(2026, 10, 31, 15, 25), 'hace 5 minutos'],
+    [at(2026, 10, 31, 14, 30, 1), 'hace 59 minutos'],
+    [at(2026, 10, 31, 14, 30), 'hace 1 hora'],
+    [at(2026, 10, 31, 13, 0), 'hace 2 horas'],
+    [at(2026, 10, 31, 0, 1), 'hace 15 horas'],
+    [at(2026, 10, 30, 23, 59), 'ayer'],
+    [at(2026, 10, 30, 0, 0), 'ayer'],
+    [at(2026, 10, 29, 23, 59), '29 oct'],
+    [at(2026, 10, 12, 9, 0), '12 oct'],
+    [at(2026, 1, 3, 9, 0), '3 ene'],
+    [at(2025, 10, 12, 9, 0), '12 oct 2025'],
+  ])('%s → %s', (iso, expected) => {
+    expect(formatActivityTime(iso, now)).toBe(expected);
+  });
+
+  it('00:05 vs 23:50 the day before → "ayer" (calendar days, not 24 h)', () => {
+    expect(formatActivityTime(at(2026, 10, 30, 23, 50), new Date(2026, 9, 31, 0, 5))).toBe('ayer');
+  });
+
+  it('Dec 31 seen on Jan 1 → "ayer"; Dec 30 seen on Jan 1 → with the year', () => {
+    const newYear = new Date(2027, 0, 1, 10, 0);
+    expect(formatActivityTime(at(2026, 12, 31, 22, 0), newYear)).toBe('ayer');
+    expect(formatActivityTime(at(2026, 12, 30, 22, 0), newYear)).toBe('30 dic 2026');
+  });
+
+  it.each(['', 'not a date', '2026-13-45T99:00:00Z'])('an unparseable timestamp %j → "" (never throws)', (iso) => {
+    expect(formatActivityTime(iso, now)).toBe('');
+  });
+
+  it('defaults now to the current time', () => {
+    expect(formatActivityTime(new Date().toISOString())).toBe('ahora mismo');
   });
 });

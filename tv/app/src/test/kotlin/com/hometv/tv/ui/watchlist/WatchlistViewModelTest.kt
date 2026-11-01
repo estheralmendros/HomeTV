@@ -43,19 +43,24 @@ class WatchlistViewModelTest {
     private var gate: CompletableDeferred<Unit>? = null
     private var failNext = false
 
+    /** The titles the profile has watched (server side), by `PosterItem` key ("film:2"). */
+    private var seen: Set<String> = emptySet()
+
     private fun list(n: Int, mixed: Boolean = true, from: Long = 1): List<WatchlistEntry> = (from until from + n).map { id ->
         if (mixed && id % 2 == 1L) WatchlistEntry("show", ShowSummary(id, "Show $id", 2000), "2026-10-27T10:00:00Z")
         else WatchlistEntry("film", FilmSummary(id, "Film $id", 2000), "2026-10-27T10:00:00Z")
     }
 
     init {
-        repos.api.onWatchlist = { type, _, page, size ->
+        repos.api.onWatchlist = { type, _, page, size, watched ->
             gate?.await()
             if (failNext) {
                 failNext = false
                 throw java.net.ConnectException("refused")
             }
-            val filtered = entries.filter { type == "all" || (type == "films" && it.kind == "film") || (type == "shows" && it.kind == "show") }
+            val filtered = entries
+                .filter { type == "all" || (type == "films" && it.kind == "film") || (type == "shows" && it.kind == "show") }
+                .filter { watched == null || (it.item.key in seen) == watched }
             Page(filtered.drop((page - 1) * size).take(size), page, size, filtered.size)
         }
     }
@@ -163,6 +168,122 @@ class WatchlistViewModelTest {
         assertEquals(WatchlistType.SHOWS, vm.state.value.type)
         assertTrue(vm.keys().all { it.startsWith("show:") })
         assertEquals(UiText.Res(R.string.watchlist_type, listOf(UiText.Res(R.string.watchlist_type_shows))), vm.state.value.typeLabel)
+    }
+
+    /** A new screen with [watched] picked in the "Estado" dialog. */
+    private fun TestScope.vmWatched(watched: Boolean?) = vm().also {
+        advanceUntilIdle()
+        it.openWatchedDialog()
+        it.onDialogSelect(listOf(null, true, false).indexOf(watched))
+        advanceUntilIdle()
+    }
+
+    @Test
+    fun `the Estado dialog offers Todos, Vistos and No vistos and a pick sends watched with the type`() = runTest(main.dispatcher) {
+        entries = list(6)
+        seen = setOf("show:1", "film:2")
+        val vm = vm()
+        advanceUntilIdle()
+        assertNull(vm.state.value.watched)
+        assertEquals(UiText.Res(R.string.watchlist_watched, listOf(UiText.Res(R.string.watchlist_watched_all))), vm.state.value.watchedLabel)
+        vm.openWatchedDialog()
+        val dialog = vm.state.value.dialog!!
+        assertEquals(WatchlistDialogKind.WATCHED, dialog.kind)
+        assertEquals(UiText.Res(R.string.dialog_watched), dialog.title)
+        assertEquals(
+            listOf(R.string.watchlist_watched_all, R.string.watchlist_watched_yes, R.string.watchlist_watched_no).map { UiText.Res(it) },
+            dialog.items,
+        )
+        assertEquals(0, dialog.selected)
+        vm.onDialogSelect(0)
+        advanceUntilIdle()
+        assertEquals(1, calls().size, "the current entry only closes the dialog")
+
+        vm.openWatchedDialog()
+        vm.onDialogSelect(2)
+        advanceUntilIdle()
+        assertEquals("GET /api/watchlist?type=all&sort=added&page=1&page_size=50&watched=false", calls().last())
+        assertEquals(false, vm.state.value.watched)
+        assertEquals(listOf("film:4", "film:6", "show:3", "show:5").sorted(), vm.keys().sorted())
+        assertEquals(4, vm.state.value.total)
+        assertEquals(0, vm.state.value.focus!!.index)
+        assertEquals(UiText.Res(R.string.watchlist_watched, listOf(UiText.Res(R.string.watchlist_watched_no))), vm.state.value.watchedLabel)
+
+        vm.openWatchedDialog()
+        assertEquals(2, vm.state.value.dialog!!.selected)
+        vm.onDialogSelect(1)
+        vm.openTypeDialog()
+        vm.onDialogSelect(1)
+        advanceUntilIdle()
+        assertEquals("GET /api/watchlist?type=films&sort=added&page=1&page_size=50&watched=true", calls().last())
+        assertEquals(listOf("film:2"), vm.keys())
+    }
+
+    @Test
+    fun `a new screen starts at Estado Todos, like the type`() = runTest(main.dispatcher) {
+        val first = vmWatched(true)
+        assertEquals(true, first.state.value.watched)
+        val again = vm()
+        advanceUntilIdle()
+        assertNull(again.state.value.watched)
+        assertEquals("GET /api/watchlist?type=all&sort=added&page=1&page_size=50", calls().last())
+    }
+
+    @Test
+    fun `an Estado filter with no results is noMatches with the generic filters text`() = runTest(main.dispatcher) {
+        entries = list(3)
+        seen = emptySet()
+        val watched = vmWatched(true)
+        assertFalse(watched.state.value.empty)
+        assertTrue(watched.state.value.noMatches)
+        assertEquals(UiText.Res(R.string.watchlist_no_matches_filters), watched.state.value.noMatchesText)
+
+        // Type and Estado together: still the generic text; the type alone keeps its own text.
+        watched.openTypeDialog()
+        watched.onDialogSelect(1)
+        advanceUntilIdle()
+        assertTrue(watched.state.value.noMatches)
+        assertEquals(UiText.Res(R.string.watchlist_no_matches_filters), watched.state.value.noMatchesText)
+        entries = list(3, mixed = false)
+        val shows = vm(WatchlistType.SHOWS)
+        assertEquals(UiText.Res(R.string.watchlist_no_shows), shows.state.value.noMatchesText)
+    }
+
+    @Test
+    fun `Ver todo clears the type and Estado and keeps the sort`() = runTest(main.dispatcher) {
+        entries = list(4)
+        seen = emptySet()
+        memory.sort = WatchlistSort.YEAR
+        val vm = vm(WatchlistType.SHOWS)
+        vm.openWatchedDialog()
+        vm.onDialogSelect(1)
+        advanceUntilIdle()
+        assertTrue(vm.state.value.noMatches)
+        vm.showAll()
+        advanceUntilIdle()
+        assertEquals("GET /api/watchlist?type=all&sort=year&page=1&page_size=50", calls().last())
+        assertEquals(WatchlistType.ALL, vm.state.value.type)
+        assertNull(vm.state.value.watched)
+        assertEquals(WatchlistSort.YEAR, vm.state.value.sort)
+        assertEquals(4, vm.state.value.items.size)
+    }
+
+    @Test
+    fun `next pages and the resume reload carry the Estado filter`() = runTest(main.dispatcher) {
+        entries = list(240)
+        seen = emptySet()
+        val vm = vmWatched(false)
+        vm.onFocused(42)
+        advanceUntilIdle()
+        assertEquals("GET /api/watchlist?type=all&sort=added&page=2&page_size=50&watched=false", calls().last())
+        // Watched on the detail screen (or elsewhere): it leaves the "No vistos" list on resume.
+        seen = setOf(vm.state.value.items[0].key)
+        vm.resume()
+        advanceUntilIdle()
+        assertEquals("GET /api/watchlist?type=all&sort=added&page=1&page_size=100&watched=false", calls().last())
+        assertEquals(239, vm.state.value.total)
+        assertFalse(vm.state.value.items.any { it.key in seen })
+        assertEquals(false, vm.state.value.watched)
     }
 
     @Test
@@ -471,7 +592,7 @@ class WatchlistViewModelTest {
         entries = list(120)
         val firstPage = entries.take(50)
         var shifted = true
-        repos.api.onWatchlist = { _, _, page, size ->
+        repos.api.onWatchlist = { _, _, page, size, _ ->
             // The list shifted between pages: page 2 brings only titles already shown.
             if (shifted && page == 2) Page(firstPage, 2, size, 120) else Page(entries.drop((page - 1) * size).take(size), page, size, 120)
         }

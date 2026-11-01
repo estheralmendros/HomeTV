@@ -206,6 +206,35 @@ describe('UI string catalog (Rev 9)', () => {
     expect(html).toMatch(/<title>HomeTV<\/title>/);
   });
 
+  it('has the ratings glossary texts (ratings prd.md § Glossary, prd2 FR-W16)', () => {
+    expect(S.titles.activity).toBe('Actividad');
+    expect(S.nav.activity).toBe('Actividad');
+    expect(S.nav.search).toBe('Buscar');
+    const R = S.ratings;
+    expect([R.rate, R.change, R.mine, R.averageHeading, R.question, R.notNow, R.remove, R.saved]).toEqual([
+      'Puntuar', 'Cambiar', 'Tu puntuación', 'Media de la familia', '¿Qué te ha parecido?', 'Ahora no', 'Quitar puntuación',
+      'Puntuación guardada',
+    ]);
+    expect(R.saveError).toBe('No se ha podido guardar la puntuación.');
+    expect(R.updateError).toBe('No se ha podido actualizar tu puntuación.');
+    expect([R.none, R.inputLabel, R.less]).toEqual(['Sin puntuación', 'Puntuación', 'Ver menos']);
+    expect(R.average(4, 3)).toBe('4,0 (3)');
+    expect(R.average(3.5, 12)).toBe('3,5 (12)');
+    expect(R.averageLabel(4, 3)).toBe('Media de la familia: 4,0 estrellas, 3 puntuaciones');
+    expect([R.stars(4.5), R.stars(4), R.stars(1), R.stars(0.5)]).toEqual(['4,5 estrellas', '4 estrellas', '1 estrella', '0,5 estrellas']);
+    expect(R.more(2)).toBe('y 2 más');
+    const A = S.activity;
+    expect(A.heading).toBe('Actividad');
+    expect(A.row('Ana', 'Dune', R.stars(4.5), 'ayer')).toBe('Ana ha puntuado Dune con 4,5 estrellas, ayer');
+    expect(A.ownRow('Dune', R.stars(4.5), 'ayer')).toBe('Has puntuado Dune con 4,5 estrellas, ayer');
+    expect([A.ratedPrefix, A.ownPrefix, A.with]).toEqual(['ha puntuado', 'Has puntuado', 'con']);
+    expect(A.empty).toBe('Todavía nadie ha puntuado nada. Cuando alguien puntúe una película o serie, aparecerá aquí.');
+    expect([A.time.now, A.time.minutes(1), A.time.minutes(5), A.time.hours(1), A.time.hours(3), A.time.yesterday]).toEqual([
+      'ahora mismo', 'hace 1 minuto', 'hace 5 minutos', 'hace 1 hora', 'hace 3 horas', 'ayer',
+    ]);
+    expect(S.cards.withRating('Dune (2021)', R.stars(4.5))).toBe('Dune (2021), tu puntuación: 4,5 estrellas');
+  });
+
   it('builds titles and plurals in es-ES', () => {
     expect(S.titles.page('Películas')).toBe('Películas · HomeTV');
     expect(S.common.episodes(1)).toBe('1 episodio');

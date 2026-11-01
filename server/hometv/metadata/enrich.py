@@ -21,6 +21,7 @@ from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.orm import Session
 
 from hometv.api.errors import ApiError
+from hometv.api.schemas import ItemKind
 from hometv.config import Settings
 from hometv.db import models as m
 from hometv.db.engine import Database
@@ -40,7 +41,6 @@ from hometv.text import normalize_title, search_text, sort_title, str_or_none
 logger = logging.getLogger("hometv.enrich")
 
 CIRCUIT_THRESHOLD = 5
-ItemKind = Literal["film", "show"]
 T = TypeVar("T")
 
 _MODELS: dict[ItemKind, type[m.Film] | type[m.Show]] = {"film": m.Film, "show": m.Show}
@@ -256,21 +256,53 @@ def _merge_progress(session: Session, column: Any, loser_id: int, survivor_id: i
     session.flush()
 
 
-def _merge_watchlist(session: Session, column: Any, loser_id: int, survivor_id: int) -> None:
-    """Move "Mi lista" entries from loser to survivor; when a profile has both keep one, with
-    the earlier ``added_at``."""
-    we = m.WatchlistEntry
-    for row in list(session.scalars(select(we).where(column == loser_id))):
+def _merge_per_profile[Row: (m.WatchlistEntry, m.Rating, m.RatingDismissal)](
+    session: Session,
+    model: type[Row],
+    column: Any,
+    loser_id: int,
+    survivor_id: int,
+    resolve: Callable[[Row, Row], None],
+) -> None:
+    """Move ``model`` rows (one per profile and title) from loser to survivor. When a profile
+    has both, ``resolve(loser_row, survivor_row)`` folds the loser's values into the survivor
+    row, which stays, and the loser row is deleted, so the unique index is never hit."""
+    for row in list(session.scalars(select(model).where(column == loser_id))):
         other = session.scalar(
-            select(we).where(we.profile_id == row.profile_id, column == survivor_id)
+            select(model).where(model.profile_id == row.profile_id, column == survivor_id)
         )
         if other is not None:
-            other.added_at = min(other.added_at, row.added_at)
+            resolve(row, other)
             session.delete(row)
             session.flush()
             continue
-        session.execute(update(we).where(we.id == row.id).values({column.key: survivor_id}))
+        session.execute(update(model).where(model.id == row.id).values({column.key: survivor_id}))
     session.flush()
+
+
+def _keep_earlier_added(row: m.WatchlistEntry, survivor: m.WatchlistEntry) -> None:
+    """Watchlist ("Mi lista"): one entry, with the earlier ``added_at``."""
+    survivor.added_at = min(survivor.added_at, row.added_at)
+
+
+def _keep_later_rating(row: m.Rating, survivor: m.Rating) -> None:
+    """Ratings: the later rating (``stars_x2`` + ``rated_at``; the survivor's on a tie)."""
+    if row.rated_at > survivor.rated_at:
+        survivor.stars_x2, survivor.rated_at = row.stars_x2, row.rated_at
+
+
+def _keep_earlier_dismissal(row: m.RatingDismissal, survivor: m.RatingDismissal) -> None:
+    """Rating-prompt dismissals: the earlier ``dismissed_at``."""
+    survivor.dismissed_at = min(survivor.dismissed_at, row.dismissed_at)
+
+
+def _merge_profile_rows(session: Session, kind: ItemKind, loser_id: int, survivor_id: int) -> None:
+    """Move the loser's "Mi lista" entries, ratings and rating-prompt dismissals."""
+    key = f"{kind}_id"
+    we, r, d = m.WatchlistEntry, m.Rating, m.RatingDismissal
+    _merge_per_profile(session, we, getattr(we, key), loser_id, survivor_id, _keep_earlier_added)
+    _merge_per_profile(session, r, getattr(r, key), loser_id, survivor_id, _keep_later_rating)
+    _merge_per_profile(session, d, getattr(d, key), loser_id, survivor_id, _keep_earlier_dismissal)
 
 
 def _write_alias(
@@ -307,7 +339,7 @@ def merge_items(
             update(m.MediaFile).where(m.MediaFile.film_id == loser.id).values(film_id=survivor.id)
         )
         _merge_progress(session, m.PlaybackProgress.film_id, loser.id, survivor.id)
-        _merge_watchlist(session, m.WatchlistEntry.film_id, loser.id, survivor.id)
+        _merge_profile_rows(session, "film", loser.id, survivor.id)
         session.execute(delete(m.UnmatchedEntry).where(m.UnmatchedEntry.film_id == loser.id))
         session.delete(loser)
         session.flush()
@@ -364,7 +396,7 @@ def merge_items(
         session.delete(season)
     session.flush()
     survivor.content_updated_at = max(survivor.content_updated_at, loser.content_updated_at)
-    _merge_watchlist(session, m.WatchlistEntry.show_id, loser.id, survivor.id)
+    _merge_profile_rows(session, "show", loser.id, survivor.id)
     session.execute(delete(m.UnmatchedEntry).where(m.UnmatchedEntry.show_id == loser.id))
     session.delete(loser)
     session.flush()

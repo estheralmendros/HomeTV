@@ -1,6 +1,7 @@
 """ "Mi lista" latency (G4 / AC-S12) on the G3 seed (``test_browse_perf._seed``) plus 500 list
-entries per profile (400 films, 100 shows, random ``added_at``): list and detail p95 < 100 ms,
-PUT/DELETE p95 < 50 ms, over 200 requests per case (in-process, warm SQLite).
+entries per profile (400 films, 100 shows, random ``added_at``): list (also with the ``watched``
+filter) and detail p95 < 100 ms, PUT/DELETE p95 < 50 ms, over 200 requests per case
+(in-process, warm SQLite).
 
 Not part of the default run: ``cd server && uv run pytest -m perf -s``.
 """
@@ -90,6 +91,13 @@ async def test_watchlist_p95(client, app, db, capsys):
             f"/api/watchlist?sort=title&page={rng.randint(1, 10)}"
         ),
         "GET /api/watchlist?type=shows&sort=year": lambda i: "/api/watchlist?type=shows&sort=year",
+        "GET /api/watchlist?watched=false": lambda i: "/api/watchlist?watched=false",
+        "GET /api/watchlist?watched=true&sort=title": lambda i: (
+            "/api/watchlist?watched=true&sort=title"
+        ),
+        "GET /api/watchlist?type=shows&watched=true": lambda i: (
+            "/api/watchlist?type=shows&watched=true"
+        ),
         "GET /api/films/{listed id}": lambda i: f"/api/films/{rng.choice(listed[pid_of(i)][0])}",
         "GET /api/shows/{listed id}": lambda i: f"/api/shows/{rng.choice(listed[pid_of(i)][1])}",
     }

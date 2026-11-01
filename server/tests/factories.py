@@ -12,6 +12,8 @@
   ``add_person_credit(s, person, media_type, tmdb_id, character=)`` (TMDB credit).
 - ``add_profile(s, name, avatar_id=, is_admin=, pin_hash=)`` -> ``m.Profile`` (non-admin, no PIN).
 - ``add_watchlist_entry(s, profile_id, film=/show=, added_at=)`` ("Mi lista", default ``T0``).
+- ``add_rating(s, profile_id, film=/show=, stars_x2=8, rated_at=)`` and
+  ``add_rating_dismissal(s, profile_id, film=/show=, dismissed_at=)`` (default ``T0``).
 """
 
 from datetime import UTC, date, datetime, timedelta
@@ -385,6 +387,46 @@ def add_watchlist_entry(
         film_id=film.id if film is not None else None,
         show_id=show.id if show is not None else None,
         added_at=added_at or T0,
+    )
+    s.add(row)
+    s.flush()
+    return row
+
+
+def add_rating(
+    s: Session,
+    profile_id: int,
+    *,
+    film: m.Film | None = None,
+    show: m.Show | None = None,
+    stars_x2: int = 8,
+    rated_at: datetime | None = None,
+) -> m.Rating:
+    row = m.Rating(
+        profile_id=profile_id,
+        film_id=film.id if film is not None else None,
+        show_id=show.id if show is not None else None,
+        stars_x2=stars_x2,
+        rated_at=rated_at or T0,
+    )
+    s.add(row)
+    s.flush()
+    return row
+
+
+def add_rating_dismissal(
+    s: Session,
+    profile_id: int,
+    *,
+    film: m.Film | None = None,
+    show: m.Show | None = None,
+    dismissed_at: datetime | None = None,
+) -> m.RatingDismissal:
+    row = m.RatingDismissal(
+        profile_id=profile_id,
+        film_id=film.id if film is not None else None,
+        show_id=show.id if show is not None else None,
+        dismissed_at=dismissed_at or T0,
     )
     s.add(row)
     s.flush()

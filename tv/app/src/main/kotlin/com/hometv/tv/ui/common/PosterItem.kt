@@ -4,6 +4,7 @@ import com.hometv.tv.core.api.FilmSummary
 import com.hometv.tv.core.api.ShowSummary
 import com.hometv.tv.core.api.Summary
 import com.hometv.tv.core.util.Format
+import com.hometv.tv.core.util.Stars
 import com.hometv.tv.ui.home.HomeViewModel
 
 /** A poster card of a grid or a search row: poster, title, year, watched check / progress (films) or unwatched badge (shows). */
@@ -16,11 +17,17 @@ data class PosterItem(
     val progress: Float?,
     val watched: Boolean,
     val badge: String?,
+    /** This profile's rating: the card's star badge (ratings prd3 FR-T13). */
+    val myRating: Stars? = null,
 ) {
     companion object {
         fun of(s: Summary): PosterItem? = when (s) {
-            is FilmSummary -> PosterItem(s.key, s, s.title, s.year?.toString(), s.poster?.small, HomeViewModel.progressOf(s.progress), s.progress?.watched == true, null)
-            is ShowSummary -> PosterItem(s.key, s, s.title, s.year?.toString(), s.poster?.small, null, false, s.unwatched_episode_count.takeIf { it > 0 }?.let(Format::count))
+            is FilmSummary -> PosterItem(
+                s.key, s, s.title, s.year?.toString(), s.poster?.small, HomeViewModel.progressOf(s.progress), s.progress?.watched == true, null, Stars.of(s.my_rating),
+            )
+            is ShowSummary -> PosterItem(
+                s.key, s, s.title, s.year?.toString(), s.poster?.small, null, false, s.unwatched_episode_count.takeIf { it > 0 }?.let(Format::count), Stars.of(s.my_rating),
+            )
             else -> null
         }
     }

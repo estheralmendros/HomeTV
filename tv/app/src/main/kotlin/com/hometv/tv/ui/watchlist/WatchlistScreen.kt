@@ -45,7 +45,7 @@ import com.hometv.tv.ui.theme.HomeTvColors
 import com.hometv.tv.ui.theme.HomeTvDimens
 
 /**
- * (11) Mi lista (watchlist prd3 FR-T10): Browse's layout with "Ordenar" / "Tipo" list dialogs, the
+ * (11) Mi lista (watchlist prd3 FR-T10): Browse's layout with "Ordenar" / "Tipo" / "Estado" list dialogs, the
  * shared [PosterGridPane], the empty and filtered-empty states, and a reload in place on every resume.
  */
 @Composable
@@ -58,7 +58,7 @@ fun WatchlistScreen(vm: WatchlistViewModel, navigator: AppNavigator, avatar: Ava
     LaunchedEffect(vm) { vm.navigation.collect(navigator::handle) }
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { vm.onHidden() }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.onVisible() }
-    // No card to focus (FR-T10.7): "Ver todo" with a type filter, else "Ordenar"; after the new body is composed.
+    // No card to focus (FR-T10.7): "Ver todo" with a type or Estado filter, else "Ordenar"; after the new body is composed.
     LaunchedEffect(state.headerFocusVersion) {
         if (state.headerFocusVersion == 0 || state.items.isNotEmpty()) return@LaunchedEffect
         (if (state.noMatches) showAllButton else sortButton).requestFocusWhenReady()
@@ -90,6 +90,7 @@ fun WatchlistScreen(vm: WatchlistViewModel, navigator: AppNavigator, avatar: Ava
         ) {
             ActionButton(state.sortLabel.resolve(), vm::openSortDialog, Modifier.focusRequester(sortButton).testTag("watchlist_sort"))
             ActionButton(state.typeLabel.resolve(), vm::openTypeDialog, Modifier.testTag("watchlist_type"))
+            ActionButton(state.watchedLabel.resolve(), vm::openWatchedDialog, Modifier.testTag("watchlist_watched"))
         }
         when {
             error != null && state.items.isEmpty() -> ScreenErrorView(error, vm::retry, onBack = { navigator.backToHome(NavTab.WATCHLIST) })

@@ -99,6 +99,7 @@ function ContinueFilm({ film }: { film: FilmSummary }) {
         year={film.year}
         poster={film.poster}
         progress={p ? { position: p.position_seconds, duration: p.duration_seconds } : null}
+        myRating={film.my_rating}
       />
       <DetailsLink to={`/films/${film.id}`} title={film.title} />
     </div>

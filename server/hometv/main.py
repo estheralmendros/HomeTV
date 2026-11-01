@@ -19,6 +19,7 @@ from hometv.api import (
     routes_media,
     routes_people,
     routes_profiles,
+    routes_ratings,
     routes_shows,
     routes_system,
     routes_watch,
@@ -170,6 +171,7 @@ def create_app(
     app.include_router(routes_people.router)
     app.include_router(routes_watch.router)
     app.include_router(routes_watchlist.router)
+    app.include_router(routes_ratings.router)
     app.include_router(routes_artwork.router)
     app.include_router(routes_media.router)
     app.include_router(routes_admin.unlock_router)

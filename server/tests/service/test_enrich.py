@@ -17,7 +17,14 @@ from hometv.metadata.enrich import Enricher, match_item, merge_items, resolve_un
 from hometv.metadata.tmdb import TMDB_BASE_URL, TMDB_IMAGE_BASE_URL, TmdbClient
 from hometv.scan_report import ScanReport
 from hometv.scanner import Scanner
-from tests.factories import add_film, add_profile, add_show, add_watchlist_entry
+from tests.factories import (
+    add_film,
+    add_profile,
+    add_rating,
+    add_rating_dismissal,
+    add_show,
+    add_watchlist_entry,
+)
 
 from .conftest import MediaTree
 
@@ -590,6 +597,89 @@ def test_merge_moves_watchlist_entries_keeping_the_earlier_added_at(mdb, kind):
     assert entries[d].id == ids[(d, survivor)]
 
 
+def _seed_merge_ratings(mdb, kind: str):
+    """Loser + survivor of ``kind``; four profiles with ratings and dismissals: loser only (A),
+    both with the loser newer/earlier (B), both with the survivor newer/earlier (C), survivor
+    only (D). Rating ``stars_x2`` encodes the row (loser odd, survivor even)."""
+    t0 = m.utcnow() - timedelta(days=10)
+    with mdb.write_session() as s:
+        if kind == "film":
+            survivor, loser = add_film(s, "Dune"), add_film(s, "Dune Part One")
+        else:
+            survivor, loser = add_show(s, "The Office")[0], add_show(s, "The Office US")[0]
+        a, b, c, d = (add_profile(s, n).id for n in ("A", "B", "C", "D"))
+        for pid, item, days, x2 in [
+            (a, loser, 1, 1),
+            (b, loser, 3, 3),  # B: the loser's rating is newer, its dismissal later
+            (b, survivor, 2, 2),
+            (c, loser, 4, 5),  # C: the survivor's rating is newer, its dismissal later
+            (c, survivor, 5, 4),
+            (d, survivor, 6, 6),
+        ]:
+            when = t0 + timedelta(days=days)
+            add_rating(s, pid, **{kind: item}, stars_x2=x2, rated_at=when)
+            add_rating_dismissal(s, pid, **{kind: item}, dismissed_at=when)
+        ratings = {
+            (r.profile_id, r.film_id or r.show_id): r.id for r in s.scalars(select(m.Rating))
+        }
+        return loser.id, survivor.id, (a, b, c, d), t0, ratings
+
+
+@pytest.mark.parametrize("kind", ["film", "show"])
+def test_merge_moves_ratings_keeping_the_later_one_and_the_survivor_row(mdb, kind):
+    loser, survivor, (a, b, c, d), t0, ids = _seed_merge_ratings(mdb, kind)
+    model = m.Film if kind == "film" else m.Show
+    with mdb.write_session() as s:
+        merge_items(s, kind, s.get(model, loser), s.get(model, survivor))
+
+    rows = {r.profile_id: r for r in _all(mdb, m.Rating)}
+    assert len(_all(mdb, m.Rating)) == 4  # one per profile
+    column = "film_id" if kind == "film" else "show_id"
+    assert {getattr(r, column) for r in rows.values()} == {survivor}
+    assert {pid: (r.stars_x2, r.rated_at) for pid, r in rows.items()} == {
+        a: (1, t0 + timedelta(days=1)),  # moved
+        b: (3, t0 + timedelta(days=3)),  # loser newer: copied onto the survivor row
+        c: (4, t0 + timedelta(days=5)),  # survivor newer: kept
+        d: (6, t0 + timedelta(days=6)),  # unchanged
+    }
+    assert rows[a].id == ids[(a, loser)]  # re-pointed
+    assert rows[b].id == ids[(b, survivor)]  # the survivor row always stays
+    assert rows[c].id == ids[(c, survivor)]
+
+
+def test_merge_rating_tie_keeps_the_survivors(mdb):
+    t0 = m.utcnow() - timedelta(days=1)
+    with mdb.write_session() as s:
+        survivor, loser = add_film(s, "Dune"), add_film(s, "Dune Part One")
+        a = add_profile(s, "A").id
+        add_rating(s, a, film=loser, stars_x2=3, rated_at=t0)
+        kept = add_rating(s, a, film=survivor, stars_x2=8, rated_at=t0).id
+        loser_id, survivor_id = loser.id, survivor.id
+    with mdb.write_session() as s:
+        merge_items(s, "film", s.get(m.Film, loser_id), s.get(m.Film, survivor_id))
+    [row] = _all(mdb, m.Rating)
+    assert (row.id, row.film_id, row.stars_x2) == (kept, survivor_id, 8)
+
+
+@pytest.mark.parametrize("kind", ["film", "show"])
+def test_merge_moves_dismissals_keeping_the_earlier(mdb, kind):
+    loser, survivor, (a, b, c, d), t0, _ = _seed_merge_ratings(mdb, kind)
+    model = m.Film if kind == "film" else m.Show
+    with mdb.write_session() as s:
+        merge_items(s, kind, s.get(model, loser), s.get(model, survivor))
+
+    rows = {r.profile_id: r for r in _all(mdb, m.RatingDismissal)}
+    assert len(_all(mdb, m.RatingDismissal)) == 4
+    column = "film_id" if kind == "film" else "show_id"
+    assert {getattr(r, column) for r in rows.values()} == {survivor}
+    assert {pid: r.dismissed_at for pid, r in rows.items()} == {
+        a: t0 + timedelta(days=1),
+        b: t0 + timedelta(days=2),  # survivor's earlier date
+        c: t0 + timedelta(days=4),  # loser's earlier date
+        d: t0 + timedelta(days=6),
+    }
+
+
 async def test_admin_match_during_fetch_wins_over_stale_enrichment(
     mdb, media: MediaTree, settings, stub_probe, tmdb, client, artwork
 ):
@@ -627,12 +717,19 @@ async def test_match_item_refetches_and_merges(
         a, b = add_profile(s, "A").id, add_profile(s, "B").id
         kept = add_watchlist_entry(s, a, film=s.get(m.Film, dune.id)).id
         add_watchlist_entry(s, b, film=s.get(m.Film, duna.id))
+        kept_rating = add_rating(s, a, film=s.get(m.Film, dune.id), stars_x2=7).id
+        add_rating(s, b, film=s.get(m.Film, duna.id), stars_x2=2)
+        kept_dismissal = add_rating_dismissal(s, a, film=s.get(m.Film, dune.id)).id
 
     assert await match_item(mdb, settings, client, artwork, "film", dune.id, 438631) == dune.id
     # a re-match without a duplicate keeps the entry
     assert [
         (e.id, e.film_id) for e in _all(mdb, m.WatchlistEntry, m.WatchlistEntry.profile_id == a)
     ] == [(kept, dune.id)]
+    assert [
+        (r.id, r.film_id, r.stars_x2) for r in _all(mdb, m.Rating, m.Rating.profile_id == a)
+    ] == [(kept_rating, dune.id, 7)]
+    assert [r.id for r in _all(mdb, m.RatingDismissal)] == [kept_dismissal]
     assert _all(mdb, m.Film)[0].match_status == "matched"
     assert len(_all(mdb, m.CastCredit)) == 15
     # matching again refreshes (cast cleared first, no duplicates)
@@ -645,6 +742,10 @@ async def test_match_item_refetches_and_merges(
     entries = _all(mdb, m.WatchlistEntry)
     assert sorted((e.profile_id, e.film_id) for e in entries) == [(a, dune.id), (b, dune.id)]
     assert kept in {e.id for e in entries}
+    assert sorted((r.profile_id, r.film_id, r.stars_x2) for r in _all(mdb, m.Rating)) == [
+        (a, dune.id, 7),
+        (b, dune.id, 2),
+    ]
 
 
 async def test_match_item_errors(

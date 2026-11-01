@@ -49,13 +49,14 @@ class AppNavigator(
         if (isThisPlayer) nav.popBackStack()
     }
 
-    /** Top-nav tabs: Browse/Search/Mi lista/Settings sit directly above Home, so Back always returns to Home. */
+    /** Top-nav tabs: Browse/Search/Mi lista/Actividad/Settings sit directly above Home, so Back always returns to Home. */
     fun openTab(tab: NavTab) {
         val route: Route = when (tab) {
             NavTab.HOME -> return backToHome(null)
             NavTab.FILMS -> Route.Browse(Library.FILMS.wire)
             NavTab.SHOWS -> Route.Browse(Library.SHOWS.wire)
             NavTab.WATCHLIST -> Route.Watchlist
+            NavTab.ACTIVITY -> Route.Activity
             NavTab.SEARCH -> Route.Search
             NavTab.SETTINGS -> Route.Settings
         }
@@ -97,8 +98,14 @@ class AppNavigator(
 
     fun signedIn() = nav.navigate(Route.Home) { popUpTo(nav.graph.id) { inclusive = true } }
 
-    /** `AppEvent.AuthExpired`: the only path to the Picker, with the "Tu sesión ha caducado…" banner. */
-    fun authExpired() = nav.navigate(Route.Profiles(expired = true)) { popUpTo(nav.graph.id) { inclusive = true } }
+    /**
+     * `AppEvent.AuthExpired`: the only path to the Picker, with the "Tu sesión ha caducado…" banner.
+     * The profile is gone, so its rating prompts go too (ratings prd3 FR-T5).
+     */
+    fun authExpired() {
+        container.ratingPrompts.clear()
+        nav.navigate(Route.Profiles(expired = true)) { popUpTo(nav.graph.id) { inclusive = true } }
+    }
 
     companion object {
         const val FOCUS_TAB = "focus_tab"

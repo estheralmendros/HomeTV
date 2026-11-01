@@ -15,7 +15,9 @@ import com.hometv.tv.core.api.MediaFile
 import com.hometv.tv.core.api.PlaybackRequest
 import com.hometv.tv.core.api.PlaybackResponse
 import com.hometv.tv.core.api.Progress
+import com.hometv.tv.core.api.ProgressReport
 import com.hometv.tv.core.api.ProgressRequest
+import com.hometv.tv.core.api.RatingPrompt
 import com.hometv.tv.core.data.AppEvent
 import com.hometv.tv.core.data.AppEventSink
 import com.hometv.tv.core.data.CatalogRepository
@@ -59,6 +61,7 @@ import com.hometv.tv.core.playback.VersionSelector
 import com.hometv.tv.core.util.Format
 import com.hometv.tv.core.util.ServerUrl
 import com.hometv.tv.data.PlayerLaunches
+import com.hometv.tv.data.RatingPrompts
 import com.hometv.tv.playback.CodecSource
 import com.hometv.tv.playback.SubtitleStore
 import com.hometv.tv.ui.common.ScreenError
@@ -66,6 +69,8 @@ import com.hometv.tv.ui.navigation.Route
 import com.hometv.tv.ui.text.PreparingText
 import com.hometv.tv.ui.text.UiFormat
 import com.hometv.tv.ui.text.UiText
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -96,6 +101,8 @@ class PlayerDeps(
     val serverUrl: () -> String?,
     val controller: PlayerController,
     val subtitles: SubtitleStore,
+    /** The app's prompt store: the session's last `rating_prompt` is handed to it on exit (ratings prd3 FR-T6). No default. */
+    val ratingPrompts: RatingPrompts,
     val nowMs: () -> Long = { SystemClock.uptimeMillis() },
     val io: CoroutineDispatcher = Dispatchers.IO,
     val log: (String, Throwable?) -> Unit = { msg, e -> runCatching { Log.w("HomeTvPlayer", msg, e) } },
@@ -258,6 +265,13 @@ class PlayerViewModel(
     private var noticePending = false
     private var focusPlayPause = 0
     private var exitSent = false
+
+    /** The session's latest `rating_prompt` (kept across attachments: audio switches, recoveries). */
+    private val sessionPrompt = AtomicReference<RatingPrompt?>(null)
+    private val promptHandedOff = AtomicBoolean(false)
+
+    /** The profile that is watching (a late answer is offered for it; the host drops it under another one). */
+    private val profileId: Long? = deps.guard.currentProfileId()
     private var releasedController = false
     private var cleared = false
     private var otherVersions: List<MediaFile> = emptyList()
@@ -590,7 +604,7 @@ class PlayerViewModel(
         plan.audioStreamIndex?.let(unavailableAudio::remove)
         file = spec.file
         val a = Attachment(nextKey++, spec.file, plan, caps, startMs)
-        a.reporter = ProgressReporter(viewModelScope, send = { deps.watch.putProgress(it) }, snapshot = { snapshot(a) }, log = { deps.log("progress", it) })
+        a.reporter = ProgressReporter(viewModelScope, send = { putAndRemember(it) }, snapshot = { snapshot(a) }, log = { deps.log("progress", it) })
         att = a
         pending = null
         preparing = null
@@ -1557,7 +1571,7 @@ class PlayerViewModel(
         val report = ProgressRequest(item.type, item.id, a.file.id, (savedPositionMs / 1000.0).coerceIn(0.0, duration), duration)
         scope.launch {
             try {
-                withTimeoutOrNull(FINAL_TIMEOUT_MS) { deps.watch.putProgress(report) }
+                withTimeoutOrNull(FINAL_TIMEOUT_MS) { putAndRemember(report) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -1637,6 +1651,7 @@ class PlayerViewModel(
     private fun exit() {
         session = SessionState.Exited
         render()
+        handOffPrompt()
         if (exitSent) return
         exitSent = true
         _effects.trySend(PlayerEffect.Exit)
@@ -1738,7 +1753,7 @@ class PlayerViewModel(
     /** Direct recovery (row 5): new attachment key, `prepare()` + `seekTo(saved)`, paused, no request. */
     private fun recoverDirectPaused(old: Attachment) {
         val a = Attachment(nextKey++, old.file, old.plan, old.caps, savedPositionMs)
-        a.reporter = ProgressReporter(viewModelScope, send = { deps.watch.putProgress(it) }, snapshot = { snapshot(a) }, log = { deps.log("progress", it) })
+        a.reporter = ProgressReporter(viewModelScope, send = { putAndRemember(it) }, snapshot = { snapshot(a) }, log = { deps.log("progress", it) })
         att = a
         session = SessionState.Paused
         loadMedia(a, savedPositionMs)
@@ -1774,7 +1789,25 @@ class PlayerViewModel(
         }
         stopHeldTimers()
         releaseController()
+        handOffPrompt()
         super.onCleared()
+    }
+
+    // ---- Rating prompt (ratings prd3 FR-T6) ------------------------------------------------
+
+    /** Every progress PUT of the session (all reporters, the released PUT): keeps the answer's prompt. */
+    private suspend fun putAndRemember(req: ProgressRequest): ProgressReport =
+        deps.watch.putProgress(req).also { r -> r.rating_prompt?.let(::rememberPrompt) }
+
+    /** The latest prompt wins; one answering after the hand-off (a late final PUT) is offered at once. */
+    private fun rememberPrompt(prompt: RatingPrompt) {
+        sessionPrompt.set(prompt)
+        if (promptHandedOff.get()) deps.ratingPrompts.offer(profileId, prompt)
+    }
+
+    /** Once per session (exit or clear, whichever comes first): the root host shows it after the player is gone. */
+    private fun handOffPrompt() {
+        if (promptHandedOff.compareAndSet(false, true)) sessionPrompt.get()?.let { deps.ratingPrompts.offer(profileId, it) }
     }
 
     // ---- Ticker, toasts, render -------------------------------------------------------------

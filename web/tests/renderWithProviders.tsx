@@ -1,6 +1,6 @@
 // Test harness: QueryClient (retry: false), data router (createMemoryRouter + RouterProvider,
-// so errorElement and lazy work), AppProviders (Toast, AuthProvider, AdminPinProvider) with a
-// seeded session.
+// so errorElement and lazy work), AppProviders (Toast, AuthProvider, RatingPromptHost with the
+// router's location changes, AdminPinProvider) with a seeded session.
 //
 //   renderWithProviders(<FilmDetailPage />, { path: '/films/:id', route: '/films/12' })
 //   renderApp({ route: '/admin' })   // the real app route table
@@ -15,6 +15,7 @@ import type { Info, Profile, UnlockResponse } from '@/api/types';
 import { AppProviders } from '@/AppProviders';
 import { adminUnlock } from '@/auth/adminUnlock';
 import { historyIndex } from '@/lib/historyIndex';
+import { locationSubscriber } from '@/lib/routerLocation';
 import { SESSION_KEY, type StoredSession } from '@/auth/session';
 import { FullScreenSpinner } from '@/components/Spinner';
 import { RouteErrorBoundary } from '@/lib/RouteErrorBoundary';
@@ -125,7 +126,7 @@ function mount(routes: RouteObject[], options: ProviderOptions): RenderWithProvi
   trackMemoryIndex(router, initialEntries.length);
   const user = userEvent.setup(options.userOptions);
   const result = render(
-    <AppProviders queryClient={queryClient} navigate={(to) => void router.navigate(to)}>
+    <AppProviders queryClient={queryClient} navigate={(to) => void router.navigate(to)} subscribeLocation={locationSubscriber(router)}>
       <RouterProvider router={router} future={ROUTER_PROVIDER_FUTURE} />
     </AppProviders>,
   );

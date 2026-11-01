@@ -3,7 +3,14 @@
 from sqlalchemy import delete, select
 
 from hometv.db import models as m
-from tests.factories import add_file, add_film, add_progress, add_show
+from tests.factories import (
+    add_file,
+    add_film,
+    add_progress,
+    add_rating,
+    add_rating_dismissal,
+    add_show,
+)
 
 PROGRESS_KEYS = {
     "position_seconds",
@@ -13,6 +20,8 @@ PROGRESS_KEYS = {
     "media_file_id",
     "updated_at",
 }
+PROGRESS_REPORT_KEYS = PROGRESS_KEYS | {"rating_prompt"}
+IMAGE_KEYS = {"small", "large"}
 
 
 def _film(db, **kw):
@@ -39,7 +48,8 @@ async def test_progress_roundtrip_and_watched_rule(client, db, user):
     )
     assert r.status_code == 200
     data = r.json()
-    assert set(data) == PROGRESS_KEYS
+    assert set(data) == PROGRESS_REPORT_KEYS
+    assert data["rating_prompt"] is None
     # The probed duration wins over the request's.
     assert data["duration_seconds"] == 10000.0
     assert (data["position_seconds"], data["watched"], data["watched_at"]) == (1234.5, False, None)
@@ -69,6 +79,8 @@ async def test_progress_roundtrip_and_watched_rule(client, db, user):
     data = r.json()
     assert (data["position_seconds"], data["watched"]) == (0.0, True)
     assert data["watched_at"].endswith("Z")
+    assert set(data) == PROGRESS_REPORT_KEYS
+    assert data["rating_prompt"] == {"kind": "film", "id": film_id, "title": "Dune", "poster": None}
 
     # A rewatch does not unset watched.
     r = await _put(
@@ -364,3 +376,52 @@ async def test_mark_watched_many_episode_show_keeps_one_row_per_episode(client, 
         assert other is not None and not other.watched and other.position_seconds == 100.0
     assert await mark(False) == 180
     assert await mark(False) == 0
+
+
+# --- Rating prompt (ratings FR-8) ------------------------------------------------------------
+
+
+async def test_progress_prompt_has_the_film_poster_and_respects_rating_and_dismissal(
+    client, db, user, admin
+):
+    with db.write_session() as s:
+        film = add_film(s, "Dune", files=0, poster="/dune.jpg")
+        file_id = add_file(s, film_id=film.id, duration=1000.0).id
+        film_id = film.id
+    body = {"item_type": "film", "item_id": film_id, "media_file_id": file_id}
+    r = await _put(client, user, **body, position_seconds=960.0)
+    prompt = r.json()["rating_prompt"]
+    assert set(prompt) == {"kind", "id", "title", "poster"}
+    assert (prompt["kind"], prompt["id"], prompt["title"]) == ("film", film_id, "Dune")
+    assert set(prompt["poster"]) == IMAGE_KEYS
+    assert prompt["poster"]["small"].endswith("/dune.jpg")
+    with db.write_session() as s:
+        add_rating(s, user.id, film=s.get(m.Film, film_id))
+        add_rating_dismissal(s, admin.id, film=s.get(m.Film, film_id))
+    for who in (user, admin):
+        r = await _put(client, who, **body, position_seconds=960.0)
+        assert r.status_code == 200 and r.json()["rating_prompt"] is None
+
+
+async def test_watched_returns_updated_and_one_show_prompt(client, db, user):
+    with db.write_session() as s:
+        show, eps = add_show(s, "The Office", episodes={1: 2, 2: 2})
+        show_id, s1, s2 = show.id, eps[(1, 1)].season_id, eps[(2, 1)].season_id
+
+    async def mark(target, item_id, watched):
+        r = await client.post(
+            "/api/watched",
+            json={"target": target, "id": item_id, "watched": watched},
+            headers=user.headers,
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert set(data) == {"updated", "rating_prompt"}
+        return data
+
+    assert await mark("season", s1, True) == {"updated": 2, "rating_prompt": None}
+    assert await mark("season", s2, True) == {
+        "updated": 2,
+        "rating_prompt": {"kind": "show", "id": show_id, "title": "The Office", "poster": None},
+    }
+    assert await mark("show", show_id, False) == {"updated": 4, "rating_prompt": None}

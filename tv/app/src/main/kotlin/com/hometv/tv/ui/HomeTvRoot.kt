@@ -17,6 +17,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.hometv.tv.di.AppContainer
+import com.hometv.tv.ui.activity.ActivityScreen
 import com.hometv.tv.ui.browse.BrowseScreen
 import com.hometv.tv.ui.components.AvatarUi
 import com.hometv.tv.ui.components.LocalAppImageLoader
@@ -31,6 +32,7 @@ import com.hometv.tv.ui.navigation.Route
 import com.hometv.tv.ui.person.PersonScreen
 import com.hometv.tv.ui.player.PlayerScreen
 import com.hometv.tv.ui.profiles.ProfilePickerScreen
+import com.hometv.tv.ui.ratings.RatingPromptHost
 import com.hometv.tv.ui.search.SearchScreen
 import com.hometv.tv.ui.settings.SettingsScreen
 import com.hometv.tv.ui.setup.SetupScreen
@@ -48,7 +50,8 @@ val LocalAppContainer = staticCompositionLocalOf<AppContainer> { error("AppConta
  * `profile_not_found`) clears the back stack to the Profile Picker with the expired banner.
  * `AppEvent.ServerUnreachable` needs no handling here: the foreground call that triggered it also
  * throws, and that screen shows the Connection Error (shown once). `AppEvent.ItemGone` is handled by
- * `HomeViewModel` (rows) and the container (Home cache).
+ * `HomeViewModel` (rows) and the container (Home cache). [RatingPromptHost] (after the NavHost) shows
+ * the rating prompts (ratings prd3 FR-T7).
  */
 @Composable
 fun HomeTvRoot(container: AppContainer, onExit: () -> Unit, keyDispatch: KeyDispatch = remember { KeyDispatch() }) {
@@ -76,7 +79,7 @@ private fun AppNavHost(container: AppContainer, onExit: () -> Unit) {
     val start = remember { container.startDestination() }
     val profile by container.account.profile.collectAsStateWithLifecycle()
     val info by container.account.info.collectAsStateWithLifecycle()
-    val avatar = profile?.let { p -> AvatarUi(p.name.trim().take(1).uppercase(), info?.avatars?.firstOrNull { it.id == p.avatar_id }?.color) }
+    val avatar = profile?.let { p -> AvatarUi.of(p.name, p.avatar_id, info?.avatars) }
     // "Ajustes" is an admin-only tab (prd3 §3 step 1); hidden while the profile is still unknown.
     val showSettings = profile?.is_admin == true
 
@@ -130,6 +133,9 @@ private fun AppNavHost(container: AppContainer, onExit: () -> Unit) {
         composable<Route.Watchlist> {
             WatchlistScreen(viewModel { container.watchlistViewModel() }, navigator, avatar, showSettings)
         }
+        composable<Route.Activity> {
+            ActivityScreen(viewModel { container.activityViewModel() }, navigator, avatar, showSettings)
+        }
         composable<Route.Settings> {
             SettingsScreen(viewModel { container.settingsViewModel() }, navigator, avatar, showSettings)
         }
@@ -150,4 +156,6 @@ private fun AppNavHost(container: AppContainer, onExit: () -> Unit) {
             PlayerScreen(viewModel { container.playerViewModel(route) }, onExit = { navigator.exitPlayer(route.launchId) })
         }
     }
+    // The rating prompt opens over whatever screen is current (never the Player, Setup or the Picker).
+    RatingPromptHost(container, nav)
 }

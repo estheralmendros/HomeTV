@@ -28,6 +28,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
@@ -54,6 +56,7 @@ import com.hometv.tv.ui.components.ActionButton
 import com.hometv.tv.ui.components.Artwork
 import com.hometv.tv.ui.components.ErrorAction
 import com.hometv.tv.ui.components.ErrorScreen
+import com.hometv.tv.ui.components.ListDialog
 import com.hometv.tv.ui.components.FocusRequesters
 import com.hometv.tv.ui.components.LoadingScreen
 import com.hometv.tv.ui.components.ProgressStrip
@@ -62,6 +65,7 @@ import com.hometv.tv.ui.components.rememberFocusRequesters
 import com.hometv.tv.ui.components.requestFocusWhenReady
 import com.hometv.tv.ui.components.tryRequestFocus
 import com.hometv.tv.ui.navigation.AppNavigator
+import com.hometv.tv.ui.ratings.RatingDialog
 import com.hometv.tv.ui.text.resolve
 import com.hometv.tv.ui.theme.HomeTvColors
 import com.hometv.tv.ui.theme.HomeTvDimens
@@ -95,6 +99,7 @@ private fun ShowContent(state: ShowDetailUiState.Content, vm: ShowDetailViewMode
     val seasons = rememberFocusRequesters<Int>()
     val episodes = rememberFocusRequesters<Long>()
     val episodeList = rememberLazyListState()
+    val seasonList = rememberLazyListState()
     val scope = rememberCoroutineScope()
     var opener by remember { mutableStateOf<Long?>(null) }
 
@@ -103,7 +108,15 @@ private fun ShowContent(state: ShowDetailUiState.Content, vm: ShowDetailViewMode
     var contentHasFocus by remember { mutableStateOf(false) }
     val firstButton = state.buttons.first().id
     LaunchedEffect(firstButton) { if (!contentHasFocus) buttons[firstButton].requestFocusWhenReady() }
+    val ratingMine = remember { FocusRequester() }
+    val ratingMore = remember { FocusRequester() }
     LaunchedEffect(state.focusVersion) {
+        // A rating dialog or the "Puntuaciones" list just closed: its opener chip (ratings prd3 FR-T11).
+        when (state.focusButton) {
+            ButtonId.RATING_MINE -> return@LaunchedEffect run { ratingMine.requestFocusWhenReady() }
+            ButtonId.RATING_MORE -> return@LaunchedEffect run { ratingMore.requestFocusWhenReady() }
+            else -> Unit
+        }
         val index = state.focusEpisodeIndex ?: return@LaunchedEffect
         val row = state.season?.episodes?.getOrNull(index) ?: return@LaunchedEffect
         episodeList.scrollToItem(index)
@@ -118,10 +131,11 @@ private fun ShowContent(state: ShowDetailUiState.Content, vm: ShowDetailViewMode
         Modifier.fillMaxSize().onFocusChanged { contentHasFocus = it.hasFocus }
             .padding(horizontal = HomeTvDimens.SafeHorizontal, vertical = HomeTvDimens.SafeVertical),
     ) {
-        Spacer(Modifier.height(96.dp))
+        // 24 dp (was 96): room for the ratings block, the panes keep one full episode row (ratings prd3 FR-T12).
+        Spacer(Modifier.height(TOP_SPACER))
         Text(show.title, style = MaterialTheme.typography.displaySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(state.meta.resolve(), style = MaterialTheme.typography.titleMedium, color = DetailText.secondary, modifier = Modifier.padding(top = 6.dp))
-        show.overview?.let { Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp).fillMaxWidth(0.7f)) }
+        show.overview?.let { Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = OVERVIEW_LINES, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp).fillMaxWidth(0.7f)) }
         val error = state.watchlistError
         // With the failed-write line, it takes the buttons' bottom padding (watchlist prd3 FR-T7).
         Row(Modifier.padding(top = 16.dp, bottom = if (error == null) 16.dp else 0.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -129,7 +143,7 @@ private fun ShowContent(state: ShowDetailUiState.Content, vm: ShowDetailViewMode
                 ActionButton(
                     button.text.resolve(),
                     { vm.onButton(button.id) },
-                    Modifier.focusRequester(buttons[button.id]).testTag("button_${button.id.name}"),
+                    Modifier.focusRequester(buttons[button.id]).focusProperties { down = ratingMine }.testTag("button_${button.id.name}"),
                     icon = when (button.id) {
                         ButtonId.PLAY, ButtonId.RESUME -> R.drawable.ic_play
                         ButtonId.WATCHLIST -> watchlistIcon(show.in_watchlist)
@@ -143,15 +157,50 @@ private fun ShowContent(state: ShowDetailUiState.Content, vm: ShowDetailViewMode
             WatchlistErrorLine(error.resolve())
             Spacer(Modifier.height(8.dp))
         }
+        val hasMore = state.ratingsRow.moreCount > 0
+        // Down from the block: the selected season (else the first one), scrolled in first. The list
+        // composes only its first rows, so a plain focus target may not be attached (ratings prd3 FR-T12).
+        val seasonIndex = state.seasons.indexOfFirst { it.number == state.selectedSeason }.coerceAtLeast(0)
+        val downToSeason: () -> Boolean = {
+            state.seasons.getOrNull(seasonIndex)?.let { target ->
+                scope.launch {
+                    seasonList.scrollToItem(seasonIndex)
+                    seasons[target.number].requestFocusWhenReady()
+                }
+            }
+            true
+        }
+        RatingsBlock(
+            state.ratingsRow,
+            ratingMine,
+            ratingMore,
+            onMine = vm::onRatingMine,
+            onMore = vm::onRatingMore,
+            modifier = Modifier.padding(bottom = RATINGS_BOTTOM_GAP),
+            mineFocus = {
+                up = buttons[firstButton]
+                if (hasMore) down = ratingMore
+                left = FocusRequester.Cancel
+                right = FocusRequester.Cancel
+            },
+            moreFocus = {
+                up = ratingMine
+                left = FocusRequester.Cancel
+                right = FocusRequester.Cancel
+            },
+            onMineDown = if (hasMore) null else downToSeason,
+            onMoreDown = downToSeason,
+        )
         Row(Modifier.fillMaxWidth().weight(1f)) {
-            LazyColumn(Modifier.width(260.dp).fillMaxSize(), contentPadding = PaddingValues(vertical = 4.dp)) {
-                itemsIndexed(state.seasons, key = { _, s -> s.number }) { _, season ->
+            LazyColumn(Modifier.width(260.dp).fillMaxSize(), state = seasonList, contentPadding = PaddingValues(vertical = 4.dp)) {
+                itemsIndexed(state.seasons, key = { _, s -> s.number }) { index, season ->
                     ListItem(
                         selected = season.number == state.selectedSeason,
                         onClick = { vm.onSeasonFocused(season.number) },
                         headlineContent = { Text(season.title.resolve(), maxLines = 1) },
                         modifier = Modifier
                             .focusRequester(seasons[season.number])
+                            .focusProperties { if (index == 0) up = ratingMine }
                             .testTag("season_${season.number}")
                             .onFocusChanged { if (it.isFocused) vm.onSeasonFocused(season.number) }
                             .onPreviewKeyEvent { event ->
@@ -193,7 +242,19 @@ private fun ShowContent(state: ShowDetailUiState.Content, vm: ShowDetailViewMode
     state.episodeActions?.let { actions ->
         EpisodeActionsDialog(actions, vm::onEpisodePlayFromStart, vm::onEpisodeToggleWatched, vm::onEpisodeActionsDismiss)
     }
+    state.othersDialog?.let { dialog ->
+        ListDialog(dialog.title.resolve(), dialog.items.map { it.resolve() }, dialog.selected, { vm.onOthersDialogClose() }, vm::onOthersDialogClose)
+    }
+    state.ratingDialog?.let { ui ->
+        RatingDialog(ui, vm::onRatingStep, vm::onRatingSave, vm::onRatingSecondary, vm::onRatingRemove, vm::onRatingDismiss)
+    }
 }
+
+private val TOP_SPACER = 24.dp
+private const val OVERVIEW_LINES = 2
+
+/** Between the ratings block and the panes. */
+private val RATINGS_BOTTOM_GAP = 12.dp
 
 @Composable
 private fun EpisodeRow(row: EpisodeRowUi, requesters: FocusRequesters<Long>, onClick: () -> Unit, onLongClick: () -> Unit, onLeft: () -> Boolean) {
