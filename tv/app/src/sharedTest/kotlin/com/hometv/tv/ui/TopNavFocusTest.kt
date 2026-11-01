@@ -31,7 +31,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class TopNavFocusTest : UiTestBase() {
     /** The text tabs (Search is a lens icon without a label, see `SearchTabTest`). */
-    private val labels = mapOf(NavTab.HOME to "Inicio", NavTab.FILMS to "Películas", NavTab.SHOWS to "Series", NavTab.WATCHLIST to "Mi lista", NavTab.SETTINGS to "Ajustes")
+    private val labels = mapOf(NavTab.HOME to "Inicio", NavTab.FILMS to "Películas", NavTab.SHOWS to "Series", NavTab.WATCHLIST to "Mi lista", NavTab.ACTIVITY to "Actividad", NavTab.SETTINGS to "Ajustes")
 
     /** "Ajustes" is an admin-only tab (prd3 §3 step 1): sign in as an admin so every label is on the bar. */
     private fun signInAsAdmin() {
@@ -151,8 +151,8 @@ class TopNavFocusTest : UiTestBase() {
     }
 
     @Test
-    fun theAdminBarShowsSixTabsInsideTheSafeAreaWithMiListaAfterSeries() {
-        // watchlist prd3 FR-T4 / AC-T1: [🔍] [Inicio] [Películas] [Series] [Mi lista] [Ajustes].
+    fun theAdminBarShowsSevenTabsInsideTheSafeAreaWithActividadAfterMiLista() {
+        // ratings prd3 FR-T14 / T-AC-14: [🔍] [Inicio] [Películas] [Series] [Mi lista] [Actividad] [Ajustes].
         useLibrary()
         signInAsAdmin()
         launch()
@@ -166,14 +166,17 @@ class TopNavFocusTest : UiTestBase() {
         assertFocused("tab_WATCHLIST")
         assertReadable(NavTab.WATCHLIST, on = HomeTvColors.OnBackground, where = "focused, on the pill")
         press(Key.DirectionRight)
+        assertFocused("tab_ACTIVITY")
+        assertReadable(NavTab.ACTIVITY, on = HomeTvColors.OnBackground, where = "focused, on the pill")
+        press(Key.DirectionRight)
         assertFocused("tab_SETTINGS")
     }
 
     @Test
-    fun viewersSeeMiListaAsTheLastTab() {
+    fun viewersSeeActividadAsTheLastTab() {
         useLibrary()
         launch()
         assertTrue(rule.onAllNodes(hasTestTag("tab_SETTINGS"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
-        assertTabFits(NavTab.WATCHLIST)
+        assertTabFits(NavTab.ACTIVITY)
     }
 }

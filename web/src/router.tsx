@@ -8,6 +8,7 @@ import { AppShell } from '@/components/AppShell';
 import { NotFound } from '@/components/NotFound';
 import { FullScreenSpinner } from '@/components/Spinner';
 import { AboutPage } from '@/features/about/AboutPage';
+import { ActivityPage } from '@/features/activity/ActivityPage';
 import { FilmDetailPage } from '@/features/film/FilmDetailPage';
 import { HomePage } from '@/features/home/HomePage';
 import { LibraryPage } from '@/features/library/LibraryPage';
@@ -56,6 +57,7 @@ export const appRoutes: RouteObject[] = [
               { path: 'films', element: <LibraryPage type="films" /> },
               { path: 'shows', element: <LibraryPage type="shows" /> },
               { path: 'watchlist', element: <WatchlistPage /> },
+              { path: 'activity', element: <ActivityPage /> },
               { path: 'search', element: <SearchPage /> },
               { path: 'films/:id', element: <FilmDetailPage /> },
               { path: 'shows/:id', element: <ShowDetailPage /> },

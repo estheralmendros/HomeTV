@@ -218,7 +218,7 @@ def _seed_appearances(db: Database, films: int, shows: int) -> int:
 
 @pytest.mark.parametrize(
     ("films", "shows", "expected"),
-    [(0, 0, 5), (1, 0, 6), (0, 1, 6), (1, 1, 7), (15, 15, 7)],
+    [(0, 0, 5), (1, 0, 7), (0, 1, 7), (1, 1, 9), (15, 15, 9)],
 )
 def test_query_count_is_bounded(mdb, profiles, films, shows, expected):
     pid = _seed_appearances(mdb, films, shows)

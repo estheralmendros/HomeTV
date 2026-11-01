@@ -26,6 +26,9 @@ class WatchlistFocusTest : UiTestBase() {
     /** The server's list, newest first; writes from the detail screens change it. */
     private val server: MutableList<WatchlistEntry> = Collections.synchronizedList(mutableListOf())
 
+    /** The titles the profile has watched (server side), by summary key ("film:12"). */
+    private val seen: MutableSet<String> = Collections.synchronizedSet(mutableSetOf())
+
     private fun film(id: Long) = WatchlistEntry("film", FilmSummary(id, "Film $id", 2000), "2026-10-27T10:00:00Z")
 
     private fun show(id: Long) = WatchlistEntry("show", ShowSummary(id, "Show $id", 2005, unwatched_episode_count = 3), "2026-10-27T10:00:00Z")
@@ -33,8 +36,10 @@ class WatchlistFocusTest : UiTestBase() {
     private fun useWatchlist(vararg entries: WatchlistEntry) {
         useLibrary()
         server += entries
-        api.onWatchlist = { type, _, page, size ->
-            val filtered = server.toList().filter { type == "all" || (type == "films" && it.kind == "film") || (type == "shows" && it.kind == "show") }
+        api.onWatchlist = { type, _, page, size, watched ->
+            val filtered = server.toList()
+                .filter { type == "all" || (type == "films" && it.kind == "film") || (type == "shows" && it.kind == "show") }
+                .filter { watched == null || (it.item.key in seen) == watched }
             Page(filtered.drop((page - 1) * size).take(size), page, size, filtered.size)
         }
         api.onWatchlistWrite = { segment, id, inList ->
@@ -134,7 +139,10 @@ class WatchlistFocusTest : UiTestBase() {
         // Down from the bar is geometric (as from any tab): it lands on a header button.
         press(Key.DirectionDown)
         val focused = focusedTags()
-        assertTrue("Down from the tab focuses a header button, not $focused", focused.any { it.startsWith("watchlist_sort") || it.startsWith("watchlist_type") })
+        assertTrue(
+            "Down from the tab focuses a header button, not $focused",
+            focused.any { it.startsWith("watchlist_sort") || it.startsWith("watchlist_type") || it.startsWith("watchlist_watched") },
+        )
         press(Key.DirectionDown)
         assertTrue("Down from the header reaches the first row, not ${focusedTags()}", focusedTags().any { it.startsWith("grid_0") || it.startsWith("grid_1") })
     }
@@ -160,6 +168,86 @@ class WatchlistFocusTest : UiTestBase() {
         press(Key.DirectionCenter)
         assertFocused("grid_0")
         rule.onNodeWithText("Tipo: Todo", useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun estadoFollowsTipoInTheHeaderAndAPickFiltersTheListThenUpFromTheFirstRowReachesOrdenar() {
+        useWatchlist(film(12), show(7), film(13))
+        seen += "film:12"
+        openWatchlist()
+        press(Key.DirectionUp)
+        assertFocused("watchlist_sort")
+        press(Key.DirectionRight, times = 2)
+        assertFocused("watchlist_watched")
+        rule.onNodeWithText("Estado: Todos", useUnmergedTree = true).assertIsDisplayed()
+        press(Key.DirectionLeft)
+        assertFocused("watchlist_type")
+        press(Key.DirectionRight)
+        press(Key.DirectionCenter)
+        assertFocused("dialog_item_0")
+        rule.onNodeWithText("Estado", useUnmergedTree = true).assertIsDisplayed()
+        listOf("Todos", "Vistos", "No vistos").forEach { rule.onNodeWithText(it, useUnmergedTree = true).assertIsDisplayed() }
+        press(Key.DirectionDown, times = 2)
+        press(Key.DirectionCenter)
+        assertEquals(1, api.count("GET /api/watchlist?type=all&sort=added&page=1&page_size=50&watched=false"))
+        assertFocused("grid_0")
+        assertCardTitle("grid_0", "Show 7")
+        assertCardTitle("grid_1", "Film 13")
+        assertTrue(gone("grid_2"))
+        rule.onNodeWithText("Mi lista · 2", useUnmergedTree = true).assertIsDisplayed()
+        rule.onNodeWithText("Estado: No vistos", useUnmergedTree = true).assertIsDisplayed()
+        press(Key.DirectionUp)
+        assertFocused("watchlist_sort")
+    }
+
+    @Test
+    fun theThreeHeaderButtonsFitTheScreenWithTheirLongestValues() {
+        useWatchlist(film(12))
+        seen += "film:12"
+        openWatchlist()
+        press(Key.DirectionUp)
+        press(Key.DirectionRight)
+        press(Key.DirectionCenter)
+        press(Key.DirectionDown)
+        press(Key.DirectionCenter) // Tipo: Películas
+        press(Key.DirectionUp)
+        press(Key.DirectionRight, times = 2)
+        assertFocused("watchlist_watched")
+        press(Key.DirectionCenter)
+        press(Key.DirectionDown, times = 2)
+        press(Key.DirectionCenter) // Estado: No vistos (no results)
+        rule.onNodeWithText("Tipo: Películas", useUnmergedTree = true).assertIsDisplayed()
+        rule.onNodeWithText("Estado: No vistos", useUnmergedTree = true).assertIsDisplayed()
+        listOf("watchlist_sort", "watchlist_type", "watchlist_watched", "watchlist_no_matches", "watchlist_show_all").forEach(::assertInsideSafeArea)
+    }
+
+    @Test
+    fun anEstadoWithoutResultsShowsTheFiltersTextAndVerTodoClearsTipoAndEstado() {
+        useWatchlist(film(12), show(7))
+        openWatchlist()
+        press(Key.DirectionUp)
+        press(Key.DirectionRight)
+        press(Key.DirectionCenter)
+        press(Key.DirectionDown)
+        press(Key.DirectionCenter) // Tipo: Películas
+        press(Key.DirectionUp)
+        press(Key.DirectionRight, times = 2)
+        press(Key.DirectionCenter)
+        press(Key.DirectionDown)
+        press(Key.DirectionCenter) // Estado: Vistos
+        assertTrue(api.calls.contains("GET /api/watchlist?type=films&sort=added&page=1&page_size=50&watched=true"))
+        rule.onNode(
+            hasTestTag("watchlist_no_matches") and hasText("Ningún título de tu lista coincide con los filtros."),
+            useUnmergedTree = true,
+        ).assertIsDisplayed()
+        assertFocused("watchlist_watched")
+        press(Key.DirectionDown)
+        assertFocused("watchlist_show_all")
+        press(Key.DirectionCenter)
+        assertFocused("grid_0")
+        assertEquals("GET /api/watchlist?type=all&sort=added&page=1&page_size=50", api.calls.last { it.startsWith("GET /api/watchlist") })
+        rule.onNodeWithText("Tipo: Todo", useUnmergedTree = true).assertIsDisplayed()
+        rule.onNodeWithText("Estado: Todos", useUnmergedTree = true).assertIsDisplayed()
     }
 
     @Test

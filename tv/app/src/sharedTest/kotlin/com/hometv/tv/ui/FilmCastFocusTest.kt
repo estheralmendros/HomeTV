@@ -1,22 +1,21 @@
 package com.hometv.tv.ui
 
-import android.content.Context
-import android.content.pm.PackageManager
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.onNodeWithText
-import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.hometv.tv.core.api.CastMember
 import com.hometv.tv.core.api.FilmDetail
+import com.hometv.tv.core.api.OtherRating
+import com.hometv.tv.core.api.ProfileRef
 import com.hometv.tv.core.api.Progress
 import com.hometv.tv.core.playback.F
 import com.hometv.tv.testing.UiTestBase
+import com.hometv.tv.testing.UiTestPlatform
 import com.hometv.tv.ui.theme.HomeTvDimens
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.Shadows.shadowOf
 
 /** prd3 §6 step 1 (cast navigation): the cast row is reachable with the D-pad and scrolls through every member. */
 @RunWith(AndroidJUnit4::class)
@@ -38,6 +37,9 @@ class FilmCastFocusTest : UiTestBase() {
     @Test
     fun downReachesTheCastAndRightScrollsThroughEveryMember() {
         openFilmDetail()
+        // ratings prd3 FR-T12: the ratings block sits between the buttons and the cast.
+        press(Key.DirectionDown)
+        assertFocused("rating_mine")
         press(Key.DirectionDown)
         assertFocused("cast_1:0")
         assertFullyVisible("cast_1:0")
@@ -45,7 +47,7 @@ class FilmCastFocusTest : UiTestBase() {
         assertFocused("cast_12:11")
         assertFullyVisible("cast_12:11")
         press(Key.DirectionUp)
-        assertFocused("button_PLAY")
+        assertFocused("rating_mine")
     }
 
     /** How far the film detail page is scrolled, in px (0 = the header at the top). */
@@ -66,7 +68,7 @@ class FilmCastFocusTest : UiTestBase() {
         // The Dune case: tagline + a long overview + four buttons on two rows
         // (Reanudar / Ver desde el principio / Marcar como visto, then Mi lista).
         // A TV (FEATURE_LEANBACK): Compose then scrolls focus into view with its pivot spec, as on the device.
-        shadowOf(ApplicationProvider.getApplicationContext<Context>().packageManager).setSystemFeature(PackageManager.FEATURE_LEANBACK, true)
+        UiTestPlatform.declareTelevision()
         useLibrary()
         api.onFilm = { id ->
             FilmDetail(
@@ -75,6 +77,10 @@ class FilmCastFocusTest : UiTestBase() {
                 media_files = listOf(F.file(1)), cast = cast,
                 progress = Progress(position_seconds = 38.0, duration_seconds = 9300.0, media_file_id = 1),
                 in_watchlist = false,
+                ratings = listOf(
+                    OtherRating(ProfileRef(1, "Ana", "avatar-01"), 4.5, "2026-10-31T10:00:00Z"),
+                    OtherRating(ProfileRef(2, "Luis", "avatar-02"), 2.0, "2026-10-30T10:00:00Z"),
+                ),
             )
         }
         launch()
@@ -86,8 +92,8 @@ class FilmCastFocusTest : UiTestBase() {
         // prd3 §6 step 1: while a header button has focus the page is at the top (title, poster and
         // buttons all on screen), not scrolled to show the cast row.
         assertEquals("page scroll with the focus on Reanudar", 0f, pageScroll(), 0.5f)
-        // watchlist prd3 FR-T8: with 4 or more buttons the overview is clamped to 3 lines.
-        assertTrue("the overview takes ${overviewLines()} lines", overviewLines() <= 3)
+        // watchlist prd3 FR-T8 + ratings prd3 FR-T12: with 4 or more buttons the overview is clamped to 1 line.
+        assertTrue("the overview takes ${overviewLines()} lines", overviewLines() <= 1)
         // prd3 §6 step 2 (amended): "Reanudar desde 0:38", "Ver desde el principio" and "Marcar como visto"
         // share the first row; "Mi lista" wraps onto the next one.
         rule.onNodeWithText("Ver desde el principio", useUnmergedTree = true).assertExists()
@@ -96,29 +102,33 @@ class FilmCastFocusTest : UiTestBase() {
         val watchlistTop = node("button_WATCHLIST").fetchSemanticsNode().positionInRoot.y
         assertTrue("Mi lista is on the next row ($watchlistTop px vs ${rows.first()} px)", watchlistTop > rows.first())
         assertFullyVisible("button_WATCHLIST")
-        // prd3 §6 step 1: the whole cast row (photos, names, characters) is on screen too, nothing cut off.
-        assertFullyVisible("cast_1:0")
-        assertFullyVisible("cast_7:6")
+        // ratings prd3 FR-T12 (amends §6 step 1): the ratings block, both lines, is on screen at scroll 0.
+        assertFullyVisible("rating_mine")
+        assertFullyVisible("rating_other_0")
+        assertFullyVisible("rating_other_1")
 
-        // Down goes row by row: "Mi lista" (below Reanudar), then the cast.
+        // Down goes row by row: "Mi lista" (below Reanudar), the ratings block, then the cast.
         press(Key.DirectionDown)
         assertFocused("button_WATCHLIST")
         assertEquals("page scroll with the focus on Mi lista", 0f, pageScroll(), 0.5f)
         press(Key.DirectionDown)
+        assertFocused("rating_mine")
+        settle()
+        assertEquals("page scroll with the focus on rating_mine", 0f, pageScroll(), 0.5f)
+        press(Key.DirectionDown)
         assertFocused("cast_1:0")
         settle()
-        // The whole page fits: entering the cast row does not scroll it (the title would leave the screen).
-        assertEquals("page scroll with the focus on the first cast card", 0f, pageScroll(), 0.5f)
+        // Entering the cast may scroll the page just enough for the whole card and its ring.
         assertFullyVisible("cast_1:0")
         assertFocusRingInsidePage("cast_1:0")
         press(Key.DirectionUp)
-        assertFocused("button_RESUME")
+        assertFocused("rating_mine")
         settle()
-        assertEquals("page scroll back on Reanudar", 0f, pageScroll(), 0.5f)
+        assertEquals("page scroll back on rating_mine", 0f, pageScroll(), 0.5f)
     }
 
     @Test
-    fun aFilmWithThreeButtonsKeepsTheFiveLineOverview() {
+    fun aFilmWithThreeButtonsKeepsTheThreeLineOverview() {
         useLibrary()
         api.onFilm = { id ->
             FilmDetail(
@@ -132,7 +142,7 @@ class FilmCastFocusTest : UiTestBase() {
         press(Key.DirectionCenter)
         assertFocused("button_PLAY")
         listOf("button_PLAY", "button_WATCHED", "button_WATCHLIST").forEach { node(it).assertExists() }
-        assertEquals(5, overviewLines())
+        assertEquals(3, overviewLines())
     }
 
     /**
@@ -152,7 +162,7 @@ class FilmCastFocusTest : UiTestBase() {
     @Test
     fun aTallHeaderScrollsThePageJustEnoughForTheWholeFocusRing() {
         // A two-line title and a long overview: the cast row starts below the viewport, so the page has to scroll.
-        shadowOf(ApplicationProvider.getApplicationContext<Context>().packageManager).setSystemFeature(PackageManager.FEATURE_LEANBACK, true)
+        UiTestPlatform.declareTelevision()
         useLibrary()
         val overview = List(12) { "En un lejano futuro, la galaxia conocida es gobernada por casas nobles." }.joinToString(" ")
         api.onFilm = { id ->
@@ -168,9 +178,12 @@ class FilmCastFocusTest : UiTestBase() {
         press(Key.DirectionRight)
         press(Key.DirectionCenter)
         assertFocused("button_RESUME")
-        // "Mi lista" wraps below Reanudar (watchlist prd3 FR-T8): Down reaches it first, then the cast.
+        // "Mi lista" wraps below Reanudar (watchlist prd3 FR-T8): Down reaches it first, then the ratings block
+        // (no other ratings: no line 2), then the cast.
         press(Key.DirectionDown)
         assertFocused("button_WATCHLIST")
+        press(Key.DirectionDown)
+        assertFocused("rating_mine")
         press(Key.DirectionDown)
         assertFocused("cast_1:0")
         settle()
@@ -201,6 +214,8 @@ class FilmCastFocusTest : UiTestBase() {
     fun aPersonCreditedTwiceOpensTheFilmAndBothCardsAreReachable() {
         // TMDB can credit one person twice (two characters): the server keeps both credits.
         openFilmDetail(listOf(CastMember(7, "Actor 7", "Personaje A"), CastMember(8, "Actor 8", "B"), CastMember(7, "Actor 7", "Personaje C")))
+        press(Key.DirectionDown)
+        assertFocused("rating_mine")
         press(Key.DirectionDown)
         assertFocused("cast_7:0")
         press(Key.DirectionRight, times = 2)

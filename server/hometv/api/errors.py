@@ -6,12 +6,14 @@ routes/services; ``message`` stays a generic English sentence, machine-readable 
 """
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 logger = logging.getLogger("hometv.api")
@@ -53,6 +55,20 @@ class ApiError(Exception):
 
 def unauthorized() -> ApiError:
     return ApiError(401, "unauthorized", "Authentication required")
+
+
+@contextmanager
+def fk_to_unauthorized() -> Iterator[None]:
+    """Wrap a profile-token write (around its ``db.write_session()`` block, so commit-time
+    errors are caught too): a FOREIGN KEY ``IntegrityError`` means the profile was deleted after
+    auth -> 401 ``unauthorized`` (the transaction is rolled back), the same answer as the
+    profile's next request. Any other integrity failure is a bug and is re-raised."""
+    try:
+        yield
+    except IntegrityError as e:
+        if "FOREIGN KEY" not in str(e.orig):
+            raise
+        raise unauthorized() from None
 
 
 def error_response(

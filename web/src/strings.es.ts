@@ -2,12 +2,14 @@
 // text, aria-label, alt, placeholder, title, toast and document.title comes from here. Texts
 // with values are functions; plurals are chosen here (Intl.PluralRules es-ES). Later phases add
 // their screens' groups (home, library, film, show, player, admin…).
-import { countFormat, plural, pluralRules } from '@/lib/intl';
+import { countFormat, oneDecimalFormat, plural, pluralRules, starsFormat } from '@/lib/intl';
 
 const APP_NAME = 'HomeTV';
 
 const titleCount = (n: number) => plural(n, 'título', 'títulos');
 const showCount = (n: number) => plural(n, 'serie', 'series');
+/** "4,5 estrellas", "1 estrella", "0,5 estrellas": singular only for exactly 1 (ratings glossary). */
+const starsText = (n: number) => `${starsFormat.format(n)} ${n === 1 ? 'estrella' : 'estrellas'}`;
 
 type ErrorText = string | ((retryAfterSeconds: number | null) => string);
 
@@ -74,6 +76,7 @@ export const S = {
     admin: 'Administración',
     about: 'Acerca de',
     watchlist: 'Mi lista',
+    activity: 'Actividad',
     player: 'Reproductor',
     notFound: 'Página no encontrada',
     error: 'Error',
@@ -110,6 +113,8 @@ export const S = {
     films: 'Películas',
     shows: 'Series',
     watchlist: 'Mi lista',
+    activity: 'Actividad',
+    /** Also the name of the magnifier icon link (compact bar, 720–959 px). */
     search: 'Buscar',
     searchPlaceholder: 'Buscar títulos…',
     searchLabel: 'Buscar títulos',
@@ -655,9 +660,58 @@ export const S = {
     sortAdded: 'Añadidos recientemente',
     sortTitle: 'Título',
     sortYear: 'Año',
+    /** Masculine: Mi lista mixes films and shows (the library selects say Todas/Vistas/No vistas). */
+    watched: 'Estado',
+    watchedAll: 'Todos',
+    watchedOnly: 'Vistos',
+    unwatchedOnly: 'No vistos',
     empty: 'Tu lista está vacía. Añade películas y series desde su ficha con «Mi lista».',
     noMatch: { films: 'No hay películas en tu lista.', shows: 'No hay series en tu lista.' },
+    noMatchFilters: 'Ningún título de tu lista coincide con los filtros.',
     showAll: 'Ver todo',
+  },
+
+  /** Ratings (ratings-per-user glossary): stars, dialog, detail block. */
+  ratings: {
+    rate: 'Puntuar',
+    change: 'Cambiar',
+    mine: 'Tu puntuación',
+    /** "4,0 (3)" */
+    average: (stars: number, n: number) => `${oneDecimalFormat.format(stars)} (${countFormat.format(n)})`,
+    averageHeading: 'Media de la familia',
+    averageLabel: (stars: number, n: number) =>
+      `Media de la familia: ${oneDecimalFormat.format(stars)} estrellas, ${plural(n, 'puntuación', 'puntuaciones')}`,
+    question: '¿Qué te ha parecido?',
+    notNow: 'Ahora no',
+    remove: 'Quitar puntuación',
+    saved: 'Puntuación guardada',
+    saveError: 'No se ha podido guardar la puntuación.',
+    updateError: 'No se ha podido actualizar tu puntuación.',
+    stars: starsText,
+    none: 'Sin puntuación',
+    inputLabel: 'Puntuación',
+    /** Accessible name of the other profiles' list on detail. */
+    others: 'Puntuaciones de la familia',
+    more: (n: number) => `y ${countFormat.format(n)} más`,
+    less: 'Ver menos',
+  },
+
+  /** /activity: the household's ratings, newest first. */
+  activity: {
+    heading: 'Actividad',
+    /** Link name of another profile's row: "Ana ha puntuado Dune con 4,5 estrellas, ayer". */
+    row: (name: string, title: string, stars: string, time: string) => `${name} ha puntuado ${title} con ${stars}, ${time}`,
+    ownRow: (title: string, stars: string, time: string) => `Has puntuado ${title} con ${stars}, ${time}`,
+    ratedPrefix: 'ha puntuado',
+    ownPrefix: 'Has puntuado',
+    with: 'con',
+    empty: 'Todavía nadie ha puntuado nada. Cuando alguien puntúe una película o serie, aparecerá aquí.',
+    time: {
+      now: 'ahora mismo',
+      minutes: (n: number) => `hace ${plural(n, 'minuto', 'minutos')}`,
+      hours: (n: number) => `hace ${plural(n, 'hora', 'horas')}`,
+      yesterday: 'ayer',
+    },
   },
 
   /** Actor screen (/people/:id). Dates are long es-ES; "–" is U+2013 with spaces. */
@@ -685,6 +739,8 @@ export const S = {
     unmatchedTag: 'Sin identificar',
     /** Card link name with its subtitle: "Dune (2021), como Paul Atreides". */
     withSubtitle: (label: string, subtitle: string) => `${label}, ${subtitle}`,
+    /** Card link name with the viewer's rating: "Dune (2021), tu puntuación: 4,5 estrellas". */
+    withRating: (label: string, stars: string) => `${label}, tu puntuación: ${stars}`,
   },
 
   notFound: {

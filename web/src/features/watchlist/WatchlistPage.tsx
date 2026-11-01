@@ -1,4 +1,4 @@
-// "Mi lista" /watchlist (watchlist prd2 FR-W8–W10): URL-driven type filter and sort, infinite list
+// "Mi lista" /watchlist (watchlist prd2 FR-W8–W10): URL-driven type and "Estado" filters and sort, infinite list
 // of 50-item pages (sentinel + "Cargar más" fallback), the library's cards and badges, a single
 // <h1> with the count once page 1 has loaded, empty/filtered/error states.
 import { useInfiniteQuery } from '@tanstack/react-query';
@@ -24,10 +24,10 @@ import { useWatchlistParams } from './useWatchlistParams';
 export function WatchlistPage() {
   useDocumentTitle(S.titles.watchlist);
   const watchlist = useWatchlistParams();
-  const { type, sort } = watchlist.params;
+  const { type, sort, watched } = watchlist.params;
   const isAdmin = useIsAdmin();
   const list = useInfiniteQuery({
-    queryKey: queryKeys.watchlist({ type, sort }),
+    queryKey: queryKeys.watchlist({ type, sort, watched }),
     queryFn: ({ pageParam, signal }) =>
       getWatchlist({ ...watchlist.query, page: pageParam, page_size: WATCHLIST_PAGE_SIZE }, signal),
     initialPageParam: 1,
@@ -45,10 +45,10 @@ export function WatchlistPage() {
   else if (list.isError && !list.data) body = <ErrorState message={errorMessage(list.error)} onRetry={() => void list.refetch()} />;
   else if (items.length === 0)
     body =
-      type === 'all' ? (
+      type === 'all' && watched === null ? (
         <EmptyState message={S.watchlist.empty} />
       ) : (
-        <EmptyState message={S.watchlist.noMatch[type]}>
+        <EmptyState message={watched === null && type !== 'all' ? S.watchlist.noMatch[type] : S.watchlist.noMatchFilters}>
           <button type="button" className="button" onClick={watchlist.showAll}>
             {S.watchlist.showAll}
           </button>

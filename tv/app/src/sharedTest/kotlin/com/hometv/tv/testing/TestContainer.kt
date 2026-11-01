@@ -34,6 +34,8 @@ fun testContainer(
     scope: CoroutineScope,
     session: Session = Session(serverUrl = TEST_SERVER, profileId = 5, token = "tok", expiresAt = java.time.Instant.parse("2026-12-20T00:00:00Z")),
     clock: java.time.Clock = java.time.Clock.systemUTC(),
+    /** The calendar's zone: the [clock]'s by default, so dates never depend on the host's time zone. */
+    zone: java.time.ZoneId = clock.zone,
     cacheIo: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.IO,
     player: () -> com.hometv.tv.core.playback.PlayerController = { FakePlayerController() },
 ): AppContainer = AppContainer(
@@ -45,6 +47,7 @@ fun testContainer(
     validationClient = OkHttpClient(),
     codecs = FakeCodecs(),
     clock = clock,
+    zone = { zone },
     playerControllers = { player() },
     subtitleCache = com.hometv.tv.playback.SubtitleFileCache(Files.createTempDirectory("subtitles").toFile()),
 )

@@ -2,9 +2,10 @@
 // Router keeps it mounted across next-episode / next-part navigations, so the fullscreen container
 // and the single <video playsinline preload="metadata"> survive them. PlayerPage (all per-playback
 // state) is keyed by pathname + `file` only, never by `t`.
-import { createContext, useContext, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { NotFound } from '@/components/NotFound';
+import { useRatingPrompt } from '@/features/ratings/ratingPrompt';
 import { parseRouteId } from '@/lib/routeId';
 import styles from './Player.module.css';
 import { PlayerPage } from './PlayerPage';
@@ -42,6 +43,9 @@ export function PlayerRoute() {
   const [rootEl, setRootEl] = useState<HTMLDivElement | null>(null);
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
   const shell = useMemo<PlayerShell | null>(() => (rootEl && videoEl ? { rootEl, videoEl } : null), [rootEl, videoEl]);
+  // No rating prompt dialog during playback (ratings prd2 FR-W9.1): the host waits for the release.
+  const { suppress } = useRatingPrompt();
+  useEffect(() => suppress(), [suppress]);
   const type = parsePlayerType(params.type);
   const id = parseRouteId(params.id);
   if (type === null || id === null) return <NotFound />;

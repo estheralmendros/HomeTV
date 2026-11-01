@@ -295,6 +295,54 @@ def test_type_filter_paging_and_total(mdb, profiles):
     assert listing(mdb, b).total == 1
 
 
+def test_watched_filter_follows_the_library_rule_per_kind(mdb, profiles):
+    """Films: the profile's progress is watched. Shows: watched = a watched non-special episode
+    and no unwatched one; unwatched = an unwatched non-special episode (specials-only = neither).
+    Same rule as GET /api/films|shows ``watched``; combines with ``type``; ``total`` follows."""
+    a, b = profiles
+    with mdb.write_session() as s:
+        seen = add_film(s, "Seen film")
+        started = add_film(s, "Started film")
+        fresh = add_film(s, "Fresh film")
+        done, done_eps = add_show(s, "Done show", episodes={0: 1, 1: 2})
+        partial, partial_eps = add_show(s, "Partial show", episodes={1: 2})
+        untouched = add_show(s, "Untouched show", episodes={1: 1})[0]
+        specials, specials_eps = add_show(s, "Specials show", episodes={0: 1})
+        add_progress(s, a, film_id=seen.id, watched=True)
+        add_progress(s, a, film_id=started.id, position=600)
+        add_progress(s, b, film_id=fresh.id, watched=True)  # another profile's mark
+        for key in ((1, 1), (1, 2)):
+            add_progress(s, a, episode_id=done_eps[key].id, watched=True)
+        add_progress(s, a, episode_id=partial_eps[(1, 1)].id, watched=True)
+        add_progress(s, a, episode_id=specials_eps[(0, 1)].id, watched=True)
+        items = [seen, started, fresh, done, partial, untouched, specials]
+        for i, item in enumerate(items):
+            kind = "film" if isinstance(item, m.Film) else "show"
+            add_watchlist_entry(s, a, **{kind: item}, added_at=at(len(items) - i))
+    assert titles(listing(mdb, a)) == [
+        "Seen film",
+        "Started film",
+        "Fresh film",
+        "Done show",
+        "Partial show",
+        "Untouched show",
+        "Specials show",
+    ]
+    watched = listing(mdb, a, watched=True)
+    assert (titles(watched), watched.total) == (["Seen film", "Done show"], 2)
+    unwatched = listing(mdb, a, watched=False)
+    assert (titles(unwatched), unwatched.total) == (
+        ["Started film", "Fresh film", "Partial show", "Untouched show"],
+        4,
+    )
+    films = listing(mdb, a, type="films", watched=False)
+    assert (titles(films), films.total) == (["Started film", "Fresh film"], 2)
+    shows = listing(mdb, a, type="shows", watched=True, sort="title")
+    assert (titles(shows), shows.total) == (["Done show"], 1)
+    page2 = listing(mdb, a, watched=False, page=2, page_size=3)
+    assert (titles(page2), page2.total) == (["Untouched show"], 4)
+
+
 def test_hidden_entry_reappears_unchanged(mdb, profiles):
     a, _ = profiles
     with mdb.write_session() as s:
@@ -359,13 +407,32 @@ def _count_list_queries(db: Database, profile_id: int, **kw) -> int:
 
 
 @pytest.mark.parametrize(
-    ("films", "shows", "limit"), [(0, 0, 2), (1, 0, 4), (0, 1, 4), (1, 1, 6), (30, 30, 6)]
+    ("films", "shows", "limit"), [(0, 0, 2), (1, 0, 5), (0, 1, 5), (1, 1, 8), (30, 30, 8)]
 )
 def test_query_count_is_bounded(mdb, profiles, films, shows, limit):
     a, _ = profiles
     _seed_list(mdb, a, films, shows)
     for sort in ("added", "title", "year"):
         assert _count_list_queries(mdb, a, sort=sort, page_size=200) <= limit
+
+
+@pytest.mark.parametrize("watched", [True, False])
+def test_watched_filter_adds_no_query(mdb, profiles, watched):
+    a, _ = profiles
+    _seed_list(mdb, a, 3, 3)
+    with mdb.write_session() as s:  # one watched film and show: both filtered pages are mixed
+        film = s.scalar(select(m.Film.id).where(m.Film.title == "F0"))
+        episode = s.scalar(
+            select(m.Episode.id)
+            .join(m.Show, m.Show.id == m.Episode.show_id)
+            .where(m.Show.title == "S0")
+        )
+        add_progress(s, a, film_id=film, watched=True)
+        add_progress(s, a, episode_id=episode, watched=True)
+    plain = _count_list_queries(mdb, a, page_size=200)
+    page = listing(mdb, a, watched=watched, page_size=200)
+    assert {e.kind for e in page.items} == {"film", "show"}
+    assert _count_list_queries(mdb, a, watched=watched, page_size=200) == plain
 
 
 def test_query_count_does_not_depend_on_list_or_page_size(mdb, profiles):

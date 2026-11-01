@@ -38,7 +38,8 @@ button {
   cursor: pointer;
 }
 
-button:disabled {
+button:disabled,
+button[aria-disabled='true'] {
   cursor: not-allowed;
   opacity: 0.55;
 }
@@ -87,7 +88,7 @@ h3 {
   transition: background var(--transition-fast);
 }
 
-.button:hover:not(:disabled) {
+.button:hover:not(:disabled, [aria-disabled='true']) {
   background: var(--color-border);
 }
 
@@ -97,7 +98,7 @@ h3 {
   color: #fff;
 }
 
-.button-primary:hover:not(:disabled) {
+.button-primary:hover:not(:disabled, [aria-disabled='true']) {
   background: var(--color-accent-strong);
 }
 

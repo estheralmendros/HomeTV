@@ -5,8 +5,9 @@
   ``added_at`` (``ON CONFLICT DO NOTHING`` on the partial unique indexes); a profile deleted
   between auth and the INSERT answers 401 ``unauthorized`` (FK failure), never a 500.
 - ``list_entries``: visible entries only (hidden ones are kept, never returned or counted),
-  filtered by type and ordered in SQL over ``watchlist_entry`` LEFT JOIN ``film``/``show``;
-  summaries built in batch. At most 6 queries, independent of the page size.
+  filtered by type and by the library ``watched`` rule (``catalog.watched_condition`` per
+  kind, in the same SQL) and ordered in SQL over ``watchlist_entry`` LEFT JOIN ``film``/``show``;
+  summaries built in batch. At most 8 queries, independent of the page size.
 """
 
 from dataclasses import dataclass
@@ -14,11 +15,10 @@ from typing import Any, Literal
 
 from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.dialects import sqlite
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from hometv import catalog
-from hometv.api.errors import unauthorized
+from hometv.api.errors import fk_to_unauthorized
 from hometv.api.schemas import FilmSummary, Page, ShowSummary, WatchlistEntry
 from hometv.catalog import WatchlistKind
 from hometv.db import models as m
@@ -33,6 +33,7 @@ WatchlistSort = Literal["added", "title", "year"]
 class WatchlistParams:
     type: WatchlistType = "all"
     sort: WatchlistSort = "added"
+    watched: bool | None = None
     page: int = 1
     page_size: int = 50
 
@@ -41,37 +42,24 @@ def _visible_target(
     session: Session, kind: WatchlistKind, item_id: int
 ) -> InstrumentedAttribute[int | None]:
     """The entry column of ``kind``; 404 ``not_found`` unless the title is visible."""
-    if kind == "film":
-        column, label = m.WatchlistEntry.film_id, "Film"
-        query = select(m.Film.id).where(m.Film.id == item_id, film_has_present_file())
-    else:
-        column, label = m.WatchlistEntry.show_id, "Show"
-        query = select(m.Show.id).where(m.Show.id == item_id, catalog.show_visible())
-    if session.scalar(query) is None:
-        raise catalog.not_found(label, item_id)
-    return column
+    catalog.require_visible(session, kind, item_id)
+    return m.WatchlistEntry.film_id if kind == "film" else m.WatchlistEntry.show_id
 
 
 def add(db: Database, profile_id: int, kind: WatchlistKind, item_id: int) -> None:
-    try:
-        with db.write_session() as session:
-            column = _visible_target(session, kind, item_id)
-            session.execute(
-                sqlite.insert(m.WatchlistEntry)
-                .values({"profile_id": profile_id, column.key: item_id})
-                .on_conflict_do_nothing()
-            )
-    except IntegrityError as e:
-        # ON CONFLICT does not cover FKs: the profile was deleted after auth (the target was
-        # checked in this transaction). Same answer as the profile's next request. Any other
-        # integrity failure is a bug, never hidden behind a 401.
-        if "FOREIGN KEY" not in str(e.orig):
-            raise
-        raise unauthorized() from None
+    # ON CONFLICT does not cover FKs: a profile deleted after auth is a 401 (the target was
+    # checked in this transaction).
+    with fk_to_unauthorized(), db.write_session() as session:
+        column = _visible_target(session, kind, item_id)
+        session.execute(
+            sqlite.insert(m.WatchlistEntry)
+            .values({"profile_id": profile_id, column.key: item_id})
+            .on_conflict_do_nothing()
+        )
 
 
 def remove(db: Database, profile_id: int, kind: WatchlistKind, item_id: int) -> None:
-    with db.write_session() as session:
+    with fk_to_unauthorized(), db.write_session() as session:
         column = _visible_target(session, kind, item_id)
         session.execute(
             delete(m.WatchlistEntry).where(
@@ -93,6 +81,19 @@ def list_entries(
         conds.append(we.film_id.is_not(None))
     elif params.type == "shows":
         conds.append(we.show_id.is_not(None))
+    if params.watched is not None:
+        conds.append(
+            or_(
+                and_(
+                    we.film_id.is_not(None),
+                    catalog.watched_condition(f, profile_id, params.watched),
+                ),
+                and_(
+                    we.show_id.is_not(None),
+                    catalog.watched_condition(s, profile_id, params.watched),
+                ),
+            )
+        )
     sort_title = func.coalesce(f.sort_title, s.sort_title)
     year = func.coalesce(f.year, s.year)
     order: dict[WatchlistSort, list[Any]] = {

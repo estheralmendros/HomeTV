@@ -127,4 +127,29 @@ class FormatTest {
         assertEquals(null, Format.lifeSpan("1995-12-27T00:00:00", "27/12/1995", today))
         assertEquals(null, Format.lifeSpan("+11995-12-27", null, today))
     }
+
+    /** ratings prd3 FR-T3: one profile's value, at most one decimal. */
+    @Test
+    fun `stars are es-ES with at most one decimal`() {
+        assertEquals("4,5", Format.stars(Stars(9)))
+        assertEquals("4", Format.stars(Stars(8)))
+        assertEquals("0,5", Format.stars(Stars(1)))
+        assertEquals("5", Format.stars(Stars(10)))
+    }
+
+    /** ratings prd3 FR-T11: the household average keeps one decimal ("4,0 (3)"), half up like the server. */
+    @Test
+    fun `household averages use the rating format`() {
+        assertEquals("4,0", Format.rating(4.0))
+        assertEquals("4,3", Format.rating(4.333333))
+        assertEquals("3,5", Format.rating(3.5))
+    }
+
+    /** ratings prd3 FR-T17: the activity row's older dates, "12 oct" / "12 oct 2025" (no trailing dot). */
+    @Test
+    fun `short days drop the month dot and add the year only when asked`() {
+        assertEquals("12 oct", Format.shortDay(LocalDate.of(2026, 10, 12), withYear = false))
+        assertEquals("12 oct 2025", Format.shortDay(LocalDate.of(2025, 10, 12), withYear = true))
+        assertEquals("1 ene", Format.shortDay(LocalDate.of(2026, 1, 1), withYear = false))
+    }
 }

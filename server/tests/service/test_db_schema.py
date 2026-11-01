@@ -33,6 +33,8 @@ EXPECTED_TABLES = {
     "library_folder",
     "person_credit",
     "watchlist_entry",
+    "rating",
+    "rating_dismissal",
 }
 
 
@@ -53,7 +55,7 @@ def test_migration_creates_every_table(db):
 def test_migration_is_at_head_and_idempotent(db):
     run_migrations(db)
     with db.read_engine.connect() as conn:
-        assert MigrationContext.configure(conn).get_current_revision() == HEAD_REVISION == "0005"
+        assert MigrationContext.configure(conn).get_current_revision() == HEAD_REVISION == "0006"
 
 
 @pytest.mark.filterwarnings("ignore:.*expression-based index:UserWarning")
@@ -228,6 +230,17 @@ def test_all_data_model_columns_exist(db):
         "uq_watchlist_entry_profile_id_show_id",
         "ix_watchlist_entry_profile_id_added_at",
     } <= {i["name"] for i in insp.get_indexes("watchlist_entry")}
+    assert {"id", "profile_id", "film_id", "show_id", "stars_x2", "rated_at"} <= cols["rating"]
+    assert {
+        "uq_rating_film_id_profile_id",
+        "uq_rating_show_id_profile_id",
+        "ix_rating_rated_at_id",
+    } <= {i["name"] for i in insp.get_indexes("rating")}
+    assert {"id", "profile_id", "film_id", "show_id", "dismissed_at"} <= cols["rating_dismissal"]
+    assert {
+        "uq_rating_dismissal_film_id_profile_id",
+        "uq_rating_dismissal_show_id_profile_id",
+    } <= {i["name"] for i in insp.get_indexes("rating_dismissal")}
 
 
 def test_wal_mode_after_migration(db):
@@ -470,6 +483,85 @@ def test_watchlist_entry_cascades(db):
     def count(where: str) -> int:
         with db.read_session() as s:
             return int(s.scalar(text(f"SELECT count(*) FROM watchlist_entry WHERE {where}")) or 0)
+
+    assert count("1") == 4
+    with db.write_session() as s:
+        s.execute(text("DELETE FROM profile WHERE name = 'A'"))
+    assert count("1") == 2
+    with db.write_session() as s:
+        s.execute(text("DELETE FROM film"))
+    assert count("film_id IS NOT NULL") == 0
+    assert count("1") == 1
+    with db.write_session() as s:
+        s.execute(text("DELETE FROM show"))
+    assert count("1") == 0
+
+
+def _rating_row(model: type, **kw):
+    if model is m.Rating:
+        kw.setdefault("stars_x2", 8)
+    return model(**kw)
+
+
+@pytest.mark.parametrize("model", [m.Rating, m.RatingDismissal])
+def test_rating_tables_exactly_one_target_and_unique_per_profile_and_title(db, model):
+    with db.write_session() as s:
+        film = _film(s, _library(s))
+        show = _show(s, _library(s, "shows"))
+        a, b = add_profile(s, "A"), add_profile(s, "B")
+        assert film.id == show.id == 1
+        s.add(_rating_row(model, profile_id=a.id, film_id=film.id))
+        s.add(_rating_row(model, profile_id=b.id, film_id=film.id))  # two profiles, same film
+        s.add(_rating_row(model, profile_id=a.id, show_id=show.id))  # film 1 and show 1: fine
+        s.flush()
+        row = s.scalars(select(model)).first()
+        stamp = row.rated_at if model is m.Rating else row.dismissed_at
+        assert stamp.tzinfo is not None
+    for kw in (
+        {"film_id": 1, "show_id": 1},  # both targets
+        {},  # neither
+        {"film_id": 1},  # second row for (A, film 1)
+        {"show_id": 1},  # second row for (A, show 1)
+    ):
+        with pytest.raises(IntegrityError), db.write_session() as s:
+            s.add(_rating_row(model, profile_id=1, **kw))
+            s.flush()
+    with db.read_session() as s:
+        assert s.scalar(text(f"SELECT count(*) FROM {model.__tablename__}")) == 3
+
+
+@pytest.mark.parametrize("stars_x2", [0, 11, -1])
+def test_rating_stars_x2_range_rejected(db, stars_x2):
+    with db.write_session() as s:
+        _film(s, _library(s))
+        add_profile(s, "A")
+    with pytest.raises(IntegrityError), db.write_session() as s:
+        s.add(m.Rating(profile_id=1, film_id=1, stars_x2=stars_x2))
+        s.flush()
+
+
+@pytest.mark.parametrize("stars_x2", [1, 10])
+def test_rating_stars_x2_bounds_accepted(db, stars_x2):
+    with db.write_session() as s:
+        _film(s, _library(s))
+        add_profile(s, "A")
+        s.add(m.Rating(profile_id=1, film_id=1, stars_x2=stars_x2))
+
+
+@pytest.mark.parametrize("table", ["rating", "rating_dismissal"])
+def test_rating_tables_cascade(db, table):
+    model = m.Rating if table == "rating" else m.RatingDismissal
+    with db.write_session() as s:
+        film = _film(s, _library(s))
+        show = _show(s, _library(s, "shows"))
+        a, b = add_profile(s, "A"), add_profile(s, "B")
+        for p in (a, b):
+            s.add(_rating_row(model, profile_id=p.id, film_id=film.id))
+            s.add(_rating_row(model, profile_id=p.id, show_id=show.id))
+
+    def count(where: str) -> int:
+        with db.read_session() as s:
+            return int(s.scalar(text(f"SELECT count(*) FROM {table} WHERE {where}")) or 0)
 
     assert count("1") == 4
     with db.write_session() as s:
@@ -788,5 +880,42 @@ def test_upgrade_from_0004_adds_watchlist_and_downgrade_drops_it(tmp_path):
         with database.read_session() as s:
             assert s.scalar(text("SELECT count(*) FROM profile")) == 1
             assert s.scalar(text("SELECT count(*) FROM film")) == 1
+    finally:
+        database.dispose()
+
+
+def test_upgrade_from_0005_adds_ratings_and_downgrade_drops_them(tmp_path):
+    from alembic import command
+
+    from hometv.db.engine import alembic_config
+
+    database = Database(tmp_path / "old.db")
+    try:
+        cfg = alembic_config(database)
+        with database.write_engine.connect() as conn:
+            cfg.attributes["connection"] = conn
+            command.upgrade(cfg, "0005")
+            conn.exec_driver_sql(
+                "INSERT INTO profile (id, name, avatar_id, is_admin) VALUES (1, 'A', 'a', 0)"
+            )
+            conn.commit()
+        tables = set(inspect(database.read_engine).get_table_names())
+        assert not {"rating", "rating_dismissal"} & tables
+        run_migrations(database)
+        with database.write_session() as s:
+            film = _film(s, _library(s))
+            s.add(m.WatchlistEntry(profile_id=1, film_id=film.id))
+            s.add(m.Rating(profile_id=1, film_id=film.id, stars_x2=9))
+            s.add(m.RatingDismissal(profile_id=1, film_id=film.id))
+        with database.write_engine.connect() as conn:
+            cfg.attributes["connection"] = conn
+            command.downgrade(cfg, "0005")
+            conn.commit()
+        tables = set(inspect(database.read_engine).get_table_names())
+        assert not {"rating", "rating_dismissal"} & tables
+        assert {"profile", "film", "watchlist_entry"} <= tables
+        with database.read_session() as s:
+            assert s.scalar(text("SELECT count(*) FROM profile")) == 1
+            assert s.scalar(text("SELECT count(*) FROM watchlist_entry")) == 1
     finally:
         database.dispose()

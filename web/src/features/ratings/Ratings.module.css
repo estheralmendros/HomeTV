@@ -1,0 +1,136 @@
+.dialog {
+  width: min(440px, 100%);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.target {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.poster {
+  flex: none;
+  width: 56px;
+}
+
+.targetText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.targetTitle {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.question {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.stars {
+  display: flex;
+}
+
+.error {
+  margin: 0;
+  color: var(--color-danger);
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.spacer {
+  flex: 1;
+}
+
+/* Quitar puntuación: a text button, left, separated from Guardar / Cancelar. */
+.remove {
+  min-height: 40px;
+  padding: 0 var(--space-2);
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  text-decoration: underline;
+}
+
+.remove:hover:not(:disabled, [aria-disabled='true']) {
+  color: var(--color-text);
+}
+
+/* RatingsBlock (detail, under the meta line). */
+.block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.label {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.averageText {
+  font-variant-numeric: tabular-nums;
+}
+
+/* [Puntuar] / [Cambiar] / "y N más": compact buttons that keep a 40px target. */
+.action {
+  min-height: 40px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+  font-weight: 600;
+}
+
+.action:hover:not(:disabled, [aria-disabled='true']) {
+  background: var(--color-border);
+}
+
+.others {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+}
+
+.otherList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.other {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.otherName {
+  font-weight: 600;
+}

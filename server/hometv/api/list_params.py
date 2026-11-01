@@ -1,6 +1,7 @@
 """Query parameters shared by GET /api/films and GET /api/shows (PRD REST "Catalog").
 
-``PageNumber`` (``MAX_PAGE``) is also used by GET /api/watchlist.
+``PageNumber`` (``MAX_PAGE``) and ``WatchedParam`` / ``watched_flag`` are also used by
+GET /api/watchlist.
 """
 
 from typing import Annotated, Literal
@@ -16,6 +17,13 @@ Year = Annotated[int | None, Query(ge=1900, le=2100)]
 MAX_PAGE = 1_000_000
 PageNumber = Annotated[int, Query(ge=1, le=MAX_PAGE)]
 
+# Strict: only "true" / "false" (FastAPI's lenient bool would also take 1/yes/on).
+WatchedParam = Literal["true", "false"] | None
+
+
+def watched_flag(watched: WatchedParam) -> bool | None:
+    return None if watched is None else watched == "true"
+
 
 def list_params(
     page: PageNumber = 1,
@@ -26,7 +34,7 @@ def list_params(
     year_from: Year = None,
     year_to: Year = None,
     genre: int | None = None,
-    watched: Literal["true", "false"] | None = None,  # strict: not FastAPI's lenient bool
+    watched: WatchedParam = None,
 ) -> ListParams:
     if year_from is not None and year_to is not None and year_from > year_to:
         raise ApiError(
@@ -42,7 +50,7 @@ def list_params(
         year_from=year_from,
         year_to=year_to,
         genre=genre,
-        watched=None if watched is None else watched == "true",
+        watched=watched_flag(watched),
         page=page,
         page_size=page_size,
     )

@@ -305,6 +305,44 @@ describe('ShowDetailPage', () => {
     });
   });
 
+  describe('rating prompt (ratings prd2 FR-W9.3, W-AC-9)', () => {
+    const prompt = f.ratingPrompt({ kind: 'show', id: 7, title: 'The Office', poster: null });
+
+    function answerWatched() {
+      server.use(
+        http.post(`${API}/watched`, async ({ request }) => {
+          const body = (await request.json()) as { watched: boolean };
+          return HttpResponse.json({ updated: 3, rating_prompt: body.watched ? prompt : null });
+        }),
+      );
+    }
+
+    it.each(['Marcar temporada como vista', 'Marcar serie como vista'])('"%s" opens the prompt over the detail', async (name) => {
+      answerWatched();
+      const { user } = renderShow();
+      await user.click(await screen.findByRole('button', { name }));
+      expect(await screen.findByRole('dialog', { name: 'The Office' })).toHaveTextContent('¿Qué te ha parecido?');
+    });
+
+    it('the episode toggle opens it too', async () => {
+      answerWatched();
+      serveSeason(() => f.seasonDetail({ episodes: [f.episodeSummary()] }));
+      const { user } = renderShow();
+      await screen.findByText('E3 · Office Olympics');
+      await user.click(within(screen.getAllByRole('listitem')[0]!).getByRole('button', { name: 'Marcar como visto' }));
+      expect(await screen.findByRole('dialog', { name: 'The Office' })).toBeInTheDocument();
+    });
+
+    it('unmarking never prompts', async () => {
+      answerWatched();
+      serveShow({ unwatched_episode_count: 0 });
+      const { user } = renderShow();
+      await user.click(await screen.findByRole('button', { name: 'Marcar serie como no vista' }));
+      expect(await screen.findByText('3 episodios marcados como no vistos')).toBeInTheDocument();
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+  });
+
   describe('Mi lista toggle', () => {
     const NOT_AVAILABLE =
       'Esta serie no está disponible. Puede que se haya eliminado o que sus archivos estén en un disco desconectado.';

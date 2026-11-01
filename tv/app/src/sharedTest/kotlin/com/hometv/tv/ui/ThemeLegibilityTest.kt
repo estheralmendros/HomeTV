@@ -101,7 +101,8 @@ class ThemeLegibilityTest : UiTestBase() {
         press(androidx.compose.ui.input.key.Key.DirectionDown)
         press(androidx.compose.ui.input.key.Key.DirectionRight)
         press(androidx.compose.ui.input.key.Key.DirectionCenter)
-        press(androidx.compose.ui.input.key.Key.DirectionDown)
+        // Down ×2: the buttons, then `rating_mine` (ratings prd3 FR-T12), then the cast card.
+        press(androidx.compose.ui.input.key.Key.DirectionDown, times = 2)
         press(androidx.compose.ui.input.key.Key.DirectionCenter)
         press(androidx.compose.ui.input.key.Key.DirectionUp)
         assertFocused("person_bio")
@@ -109,5 +110,31 @@ class ThemeLegibilityTest : UiTestBase() {
         val color = textColor(biography)
         assertTrue("the focused biography is drawn in $color", color == HomeTvColors.OnBackground)
         assertLegible(biography, on = HomeTvColors.SurfaceVariant)
+    }
+
+    /** The focused `rating_mine` chip draws on its own dark container: its text stays light (the stars are amber/light). */
+    @Test
+    fun theFocusedRatingChipKeepsItsLightContent() {
+        useLibrary()
+        val base = api.onFilm
+        api.onFilm = { id -> base(id).copy(my_rating = 4.0) }
+        launch()
+        press(androidx.compose.ui.input.key.Key.DirectionDown)
+        press(androidx.compose.ui.input.key.Key.DirectionRight)
+        press(androidx.compose.ui.input.key.Key.DirectionCenter)
+        press(androidx.compose.ui.input.key.Key.DirectionDown)
+        assertFocused("rating_mine")
+        val color = textColor("Cambiar")
+        assertTrue("the focused chip text is drawn in $color", color == com.hometv.tv.ui.detail.RatingChipColors.focusedContent)
+        assertLegible("Cambiar", "Tu puntuación", on = com.hometv.tv.ui.detail.RatingChipColors.focusedContainer)
+    }
+
+    /** ratings prd3 FR-T8 / T-AC-9: the amber stars are graphics, ≥ 3:1 on the background and on dialog surfaces. */
+    @Test
+    fun theRatingColourStandsOutOnTheBackgroundAndSurfaces() {
+        listOf(HomeTvColors.Background, HomeTvColors.Surface, HomeTvColors.SurfaceVariant).forEach { on ->
+            val ratio = contrast(HomeTvColors.Rating, on)
+            assertTrue("Rating on $on: $ratio:1 (needs ≥ 3)", ratio >= 3.0)
+        }
     }
 }

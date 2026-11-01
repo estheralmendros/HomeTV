@@ -1,0 +1,65 @@
+.star {
+  display: block;
+  flex: none;
+  width: 1em;
+  height: 1em;
+  overflow: visible;
+}
+
+/* Empty: a 1.5px outline in the muted text colour; filled: --color-rating (≥ 3:1 on every surface). */
+.outline {
+  fill: none;
+  stroke: var(--color-text-muted);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.filled {
+  fill: var(--color-rating);
+  stroke: var(--color-rating);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.display {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  vertical-align: middle;
+}
+
+.sm {
+  font-size: 16px;
+}
+
+.md {
+  font-size: 20px;
+}
+
+.input {
+  display: inline-flex;
+  align-items: center;
+  height: var(--touch-target);
+  border-radius: var(--radius-md);
+  font-size: 32px;
+  touch-action: manipulation;
+  cursor: pointer;
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* Each star's hit area is 40px wide and as tall as the row (48px), also on phones. */
+.hit {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 100%;
+}
+
+.disabled {
+  cursor: default;
+  opacity: 0.7;
+}

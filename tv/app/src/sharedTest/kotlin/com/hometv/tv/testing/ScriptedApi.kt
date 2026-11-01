@@ -1,5 +1,6 @@
 package com.hometv.tv.testing
 
+import com.hometv.tv.core.api.ActivityEntry
 import com.hometv.tv.core.api.EpisodeDetail
 import com.hometv.tv.core.api.FilmDetail
 import com.hometv.tv.core.api.FilmSummary
@@ -8,9 +9,12 @@ import com.hometv.tv.core.api.Page
 import com.hometv.tv.core.api.PlaybackRequest
 import com.hometv.tv.core.api.PlaybackResponse
 import com.hometv.tv.core.api.Progress
+import com.hometv.tv.core.api.ProgressReport
 import com.hometv.tv.core.api.ProgressRequest
 import com.hometv.tv.core.api.Profile
 import com.hometv.tv.core.api.ProfileList
+import com.hometv.tv.core.api.RatingPrompt
+import com.hometv.tv.core.api.RatingRequest
 import com.hometv.tv.core.api.SearchResponse
 import com.hometv.tv.core.api.SeasonDetail
 import com.hometv.tv.core.api.ServerInfo
@@ -54,17 +58,32 @@ open class ScriptedApi : FakeHomeTvApi() {
     var onWatched: suspend (WatchedRequest) -> WatchedResponse = { WatchedResponse(1) }
     val watchedBodies: MutableList<WatchedRequest> = Collections.synchronizedList(mutableListOf())
 
-    /** `GET /api/watchlist` ("Mi lista", watchlist prd3); an empty list by default. */
-    var onWatchlist: suspend (type: String, sort: String, page: Int, pageSize: Int) -> Page<WatchlistEntry> = { _, _, p, s -> Page(emptyList(), p, s, 0) }
+    /** `GET /api/watchlist` ("Mi lista", watchlist prd3; [watched] = the "Estado" filter, null = all); an empty list by default. */
+    var onWatchlist: suspend (type: String, sort: String, page: Int, pageSize: Int, watched: Boolean?) -> Page<WatchlistEntry> = { _, _, p, s, _ -> Page(emptyList(), p, s, 0) }
 
     /** `PUT` ([inList] true) / `DELETE` ([inList] false) `/api/watchlist/{segment}/{id}`: return to answer 204, throw to fail, suspend to gate. */
     var onWatchlistWrite: suspend (segment: String, id: Long, inList: Boolean) -> Unit = { _, _, _ -> }
+
+    /**
+     * `PUT` ([stars] non-null) / `DELETE` ([stars] null) `/api/ratings/{segment}/{id}`: return to answer
+     * 204, throw to fail, suspend to gate (ratings prd3).
+     */
+    var onRatingWrite: suspend (segment: String, id: Long, stars: Double?) -> Unit = { _, _, _ -> }
+
+    /** `POST /api/ratings/{segment}/{id}/dismiss-prompt`. */
+    var onRatingDismiss: suspend (segment: String, id: Long) -> Unit = { _, _ -> }
+
+    /** `GET /api/activity`; an empty page by default. */
+    var onActivity: suspend (page: Int, pageSize: Int) -> Page<ActivityEntry> = { p, s -> Page(emptyList(), p, s, 0) }
 
     // Playback: `POST .../playback`, `PUT /api/progress`, HLS keep-alive and DELETE.
     var onPlayback: suspend (Long, PlaybackRequest) -> PlaybackResponse = { _, _ -> throw httpError(404, "not_found") }
     val playbackBodies: MutableList<Pair<Long, PlaybackRequest>> = Collections.synchronizedList(mutableListOf())
     var onProgress: suspend (ProgressRequest) -> Progress = { Progress(it.position_seconds, it.duration_seconds, media_file_id = it.media_file_id) }
     val progressBodies: MutableList<ProgressRequest> = Collections.synchronizedList(mutableListOf())
+
+    /** The `rating_prompt` of a `PUT /api/progress` answer (built from [onProgress] plus this); none by default. */
+    var onProgressPrompt: suspend (ProgressRequest) -> RatingPrompt? = { null }
     var onKeepAlive: suspend (String) -> Response<Unit> = { empty(200) }
     var onDeleteHls: suspend (String) -> Response<Unit> = { empty(204) }
 
@@ -91,8 +110,10 @@ open class ScriptedApi : FakeHomeTvApi() {
     override suspend fun season(showId: Long, seasonNumber: Int): SeasonDetail = log("GET /api/shows/$showId/seasons/$seasonNumber") { onSeason(showId, seasonNumber) }
     override suspend fun episode(id: Long): EpisodeDetail = log("GET /api/episodes/$id") { onEpisode(id) }
     override suspend fun search(query: String, limit: Int): SearchResponse = log("GET /api/search?q=$query&limit=$limit") { onSearch(query, limit) }
-    override suspend fun watchlist(type: String, sort: String, page: Int, pageSize: Int): Page<WatchlistEntry> =
-        log("GET /api/watchlist?type=$type&sort=$sort&page=$page&page_size=$pageSize") { onWatchlist(type, sort, page, pageSize) }
+    override suspend fun watchlist(type: String, sort: String, page: Int, pageSize: Int, watched: Boolean?): Page<WatchlistEntry> =
+        log("GET /api/watchlist?type=$type&sort=$sort&page=$page&page_size=$pageSize" + (watched?.let { "&watched=$it" } ?: "")) {
+            onWatchlist(type, sort, page, pageSize, watched)
+        }
     override suspend fun addToWatchlist(segment: String, id: Long) = log("PUT /api/watchlist/$segment/$id") { onWatchlistWrite(segment, id, true) }
     override suspend fun removeFromWatchlist(segment: String, id: Long) = log("DELETE /api/watchlist/$segment/$id") { onWatchlistWrite(segment, id, false) }
     override suspend fun setWatched(body: WatchedRequest): WatchedResponse = log("POST /api/watched") {
@@ -104,10 +125,15 @@ open class ScriptedApi : FakeHomeTvApi() {
         playbackBodies += mediaFileId to body
         onPlayback(mediaFileId, body)
     }
-    override suspend fun putProgress(body: ProgressRequest): Progress = log("PUT /api/progress") {
+    override suspend fun putProgress(body: ProgressRequest): ProgressReport = log("PUT /api/progress") {
         progressBodies += body
-        onProgress(body)
+        val p = onProgress(body)
+        ProgressReport(p.position_seconds, p.duration_seconds, p.watched, p.watched_at, p.media_file_id, p.updated_at, rating_prompt = onProgressPrompt(body))
     }
+    override suspend fun setRating(segment: String, id: Long, body: RatingRequest) = log("PUT /api/ratings/$segment/$id") { onRatingWrite(segment, id, body.stars) }
+    override suspend fun removeRating(segment: String, id: Long) = log("DELETE /api/ratings/$segment/$id") { onRatingWrite(segment, id, null) }
+    override suspend fun dismissRatingPrompt(segment: String, id: Long) = log("POST /api/ratings/$segment/$id/dismiss-prompt") { onRatingDismiss(segment, id) }
+    override suspend fun activity(page: Int, pageSize: Int): Page<ActivityEntry> = log("GET /api/activity?page=$page&page_size=$pageSize") { onActivity(page, pageSize) }
     override suspend fun keepAlive(sessionId: String): Response<Unit> = log("POST /api/hls/$sessionId/keepalive") { onKeepAlive(sessionId) }
     override suspend fun deleteHlsSession(sessionId: String): Response<Unit> = log("DELETE /api/hls/$sessionId") { onDeleteHls(sessionId) }
 

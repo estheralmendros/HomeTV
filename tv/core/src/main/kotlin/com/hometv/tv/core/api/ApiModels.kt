@@ -148,6 +148,8 @@ data class FilmSummary(
     val match_status: String? = null,
     val added_at: String? = null,
     val progress: Progress? = null,
+    /** This profile's rating (ratings prd.md FR-6), null when unrated or from an older server. */
+    val my_rating: Double? = null,
     override val type: String = "film",
 ) : Summary
 
@@ -164,6 +166,8 @@ data class ShowSummary(
     val season_count: Int = 0,
     val episode_count: Int = 0,
     val unwatched_episode_count: Int = 0,
+    /** This profile's rating (ratings prd.md FR-6), null when unrated or from an older server. */
+    val my_rating: Double? = null,
     override val type: String = "show",
 ) : Summary
 
@@ -250,6 +254,10 @@ data class FilmDetail(
     val added_at: String? = null,
     /** In this profile's "Mi lista" (watchlist prd.md FR-4); false when an older server omits it. */
     val in_watchlist: Boolean = false,
+    /** Ratings (ratings prd.md FR-6): this profile's value, the others newest first, the average from 2 ratings. */
+    val my_rating: Double? = null,
+    val ratings: List<OtherRating> = emptyList(),
+    val household_average: HouseholdAverage? = null,
     val type: String = "film",
 )
 
@@ -286,6 +294,10 @@ data class ShowDetail(
     val added_at: String? = null,
     /** In this profile's "Mi lista" (watchlist prd.md FR-4); false when an older server omits it. */
     val in_watchlist: Boolean = false,
+    /** Ratings (ratings prd.md FR-6): this profile's value, the others newest first, the average from 2 ratings. */
+    val my_rating: Double? = null,
+    val ratings: List<OtherRating> = emptyList(),
+    val household_average: HouseholdAverage? = null,
     val type: String = "show",
 )
 
@@ -377,7 +389,54 @@ data class ProgressRequest(
 data class WatchedRequest(val target: String, val id: Long, val watched: Boolean)
 
 @Serializable
-data class WatchedResponse(val updated: Int = 0)
+data class WatchedResponse(val updated: Int = 0, val rating_prompt: RatingPrompt? = null)
+
+/** `PUT /api/progress` answer: the stored [Progress] plus the rating prompt (ratings prd.md FR-8). */
+@Serializable
+data class ProgressReport(
+    val position_seconds: Double = 0.0,
+    val duration_seconds: Double? = null,
+    val watched: Boolean = false,
+    val watched_at: String? = null,
+    val media_file_id: Long? = null,
+    val updated_at: String? = null,
+    val rating_prompt: RatingPrompt? = null,
+) {
+    fun toProgress(): Progress = Progress(position_seconds, duration_seconds, watched, watched_at, media_file_id, updated_at)
+}
+
+// ---- Ratings (ratings prd.md) --------------------------------------------------------------
+
+/** Another profile, as shown next to its rating. */
+@Serializable
+data class ProfileRef(val id: Long, val name: String, val avatar_id: String)
+
+/** "¿Qué te ha parecido?": the film or show (`kind` = `film` | `show`) a request just finished. */
+@Serializable
+data class RatingPrompt(val kind: String, val id: Long, val title: String, val poster: Image? = null)
+
+/** `PUT /api/ratings/{segment}/{id}`: ½..5 in ½ steps. */
+@Serializable
+data class RatingRequest(val stars: Double)
+
+/** Another profile's rating on a detail (`ratings`, newest first). */
+@Serializable
+data class OtherRating(val profile: ProfileRef, val stars: Double, val rated_at: String? = null)
+
+/** Every profile's average (one decimal, half up), sent from two ratings. */
+@Serializable
+data class HouseholdAverage(val stars: Double, val count: Int)
+
+/** One rating of the household (`GET /api/activity`, newest first): `kind` = `film` | `show`. */
+@Serializable
+data class ActivityEntry(
+    val profile: ProfileRef,
+    val kind: String,
+    /** Polymorphic on `type` ([SummarySerializer]), the requester's summary; `RatingsRepository.activity` drops other types. */
+    val item: Summary,
+    val stars: Double,
+    val rated_at: String? = null,
+)
 
 // ---- Playback ------------------------------------------------------------------------------
 

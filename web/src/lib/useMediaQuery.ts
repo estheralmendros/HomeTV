@@ -10,6 +10,13 @@ export const PHONE_QUERY = '(max-width: 599px)';
  */
 export const COMPACT_NAV_QUERY = '(max-width: 719px)';
 
+/**
+ * Search icon breakpoint (ratings prd2 FR-W15): below 960 px the bar shows a "Buscar" magnifier link
+ * instead of the NavSearch field (five section links leave no room for it from 720 to 959 px), and
+ * /search shows its own input. Keep in sync with the `max-width: 959px` CSS rules.
+ */
+export const SEARCH_ICON_QUERY = '(max-width: 959px)';
+
 /** Whether `query` matches now; re-renders when it starts or stops matching. False without matchMedia. */
 export function useMediaQuery(query: string): boolean {
   const subscribe = useCallback(

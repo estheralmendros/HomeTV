@@ -48,14 +48,20 @@ export const handlers = [
   http.put(`${API}/progress`, async ({ request }) => {
     const body = (await request.json()) as { media_file_id: number; position_seconds: number; duration_seconds?: number };
     return HttpResponse.json(
-      f.progress({
+      f.progressReport({
         media_file_id: body.media_file_id,
         position_seconds: body.position_seconds,
         duration_seconds: body.duration_seconds ?? 9360,
       }),
     );
   }),
-  http.post(`${API}/watched`, () => HttpResponse.json({ updated: 1 })),
+  http.post(`${API}/watched`, () => HttpResponse.json({ updated: 1, rating_prompt: null })),
+
+  // Ratings
+  http.put(`${API}/ratings/:segment/:id`, () => new HttpResponse(null, { status: 204 })),
+  http.delete(`${API}/ratings/:segment/:id`, () => new HttpResponse(null, { status: 204 })),
+  http.post(`${API}/ratings/:segment/:id/dismiss-prompt`, () => new HttpResponse(null, { status: 204 })),
+  http.get(`${API}/activity`, () => HttpResponse.json(f.page([], { page_size: 50 }))),
 
   // Mi lista
   http.get(`${API}/watchlist`, () => HttpResponse.json(f.page([], { page_size: 50 }))),

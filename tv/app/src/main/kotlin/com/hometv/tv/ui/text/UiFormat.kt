@@ -14,8 +14,10 @@ import com.hometv.tv.core.util.EpisodeCode
 import com.hometv.tv.core.util.EpisodeTitle
 import com.hometv.tv.core.util.Format
 import com.hometv.tv.core.util.LanguageName
+import com.hometv.tv.core.util.RelativeTime
 import com.hometv.tv.core.util.Runtime
 import com.hometv.tv.core.util.SeasonTitle
+import com.hometv.tv.core.util.Stars
 
 /**
  * Turns core structured values and [UiText] into catalog text (prd3 §UI Language rules 5–6, §9.2).
@@ -44,6 +46,8 @@ class UiFormat(private val res: StringResolver) {
         is TrackLabel -> trackLabel(value)
         is PreparingEstimate -> preparing(value)
         is PreparingText -> preparing(value.estimate, value.base)
+        is Stars -> Format.stars(value)
+        is RelativeTime -> relativeTime(value)
         is Number -> throw IllegalArgumentException("Pre-format numbers with core Format (es-ES): $value")
         else -> throw IllegalArgumentException("Unsupported UiText argument: ${value::class.simpleName}")
     }
@@ -52,6 +56,15 @@ class UiFormat(private val res: StringResolver) {
         runtime.hours > 0 && runtime.minutes > 0 -> res.string(R.string.runtime_h_min, Format.count(runtime.hours), Format.count(runtime.minutes))
         runtime.hours > 0 -> res.string(R.string.runtime_h, Format.count(runtime.hours))
         else -> res.string(R.string.runtime_min, Format.count(runtime.minutes))
+    }
+
+    /** "ahora mismo", "hace 5 minutos", "hace 1 hora", "ayer", "12 oct", "12 oct 2025" (ratings prd2 FR-W14). */
+    fun relativeTime(time: RelativeTime): String = when (time) {
+        RelativeTime.JustNow -> res.string(R.string.time_just_now)
+        is RelativeTime.Minutes -> res.plural(R.plurals.time_minutes_ago, time.n, Format.count(time.n))
+        is RelativeTime.Hours -> res.plural(R.plurals.time_hours_ago, time.n, Format.count(time.n))
+        RelativeTime.Yesterday -> res.string(R.string.time_yesterday)
+        is RelativeTime.Day -> Format.shortDay(time.date, time.withYear)
     }
 
     fun episodeCode(code: EpisodeCode): String = res.string(R.string.episode_code, code.season.toString(), code.episode.toString())
@@ -158,6 +171,13 @@ class UiFormat(private val res: StringResolver) {
         }
     }
 }
+
+/**
+ * "4,5 estrellas" / "1 estrella" (the one form only for exactly 1 star, so "0,5 estrellas" stays
+ * plural), or "Sin puntuación" for null.
+ */
+fun starsText(stars: Stars?): UiText =
+    if (stars == null) UiText.Res(R.string.rating_none) else UiText.Plural(R.plurals.rating_stars, if (stars.halves == 2) 1 else 2, listOf(stars))
 
 /** "Preparando el vídeo…" / "Preparando el audio…" ([base]) followed by the estimate, as a [UiText] argument. */
 data class PreparingText(val estimate: PreparingEstimate, @param:StringRes val base: Int = R.string.player_preparing)

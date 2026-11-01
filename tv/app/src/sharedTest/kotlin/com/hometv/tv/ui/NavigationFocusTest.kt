@@ -162,8 +162,9 @@ class NavigationFocusTest : UiTestBase() {
         assertFocused("card_recent:show:7")
         press(Key.DirectionCenter)
         assertFocused("button_RESUME")
+        // ratings prd3 FR-T12: Down goes through `rating_mine` to the selected season (next_episode's, 2).
         press(Key.DirectionDown)
-        assertFocused("season_1")
+        assertFocused("rating_mine")
         press(Key.DirectionDown)
         assertFocused("season_2")
         UiTestPlatform.advance(300)
@@ -201,7 +202,7 @@ class NavigationFocusTest : UiTestBase() {
         api.onMe = { Profile(5, "Esther", "avatar-05", is_admin = true) }
         launch()
         press(Key.DirectionUp)
-        press(Key.DirectionRight, times = 4)
+        press(Key.DirectionRight, times = 5)
         assertFocused("tab_SETTINGS")
         press(Key.DirectionCenter)
         // An admin's Settings starts on [Cambiar servidor] (prd3 §11 step 3).
@@ -228,7 +229,7 @@ class NavigationFocusTest : UiTestBase() {
     }
 
     @Test
-    fun aViewerHasNoSettingsTabAndRightFromMiListaGoesToTheAvatar() {
+    fun aViewerHasNoSettingsTabAndRightFromActividadGoesToTheAvatar() {
         useLibrary() // the default test profile is a viewer
         launch()
         press(Key.DirectionUp)
@@ -238,6 +239,8 @@ class NavigationFocusTest : UiTestBase() {
         rule.onAllNodesWithText("Ajustes", useUnmergedTree = true).assertCountEquals(0)
         press(Key.DirectionRight)
         assertFocused("tab_WATCHLIST")
+        press(Key.DirectionRight)
+        assertFocused("tab_ACTIVITY")
         press(Key.DirectionRight)
         assertFocused("nav_avatar")
     }

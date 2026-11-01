@@ -13,6 +13,9 @@ object UiTestPlatform {
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
     }
 
+    /** A TV emulator already has `FEATURE_LEANBACK`: nothing to set. */
+    fun declareTelevision() = Unit
+
     /** Whether the on-screen keyboard is shown, from the resumed activity's window insets. */
     fun isSoftKeyboardVisible(): Boolean {
         var visible = false

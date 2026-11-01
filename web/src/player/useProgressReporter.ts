@@ -10,7 +10,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isApiError, logApiError } from '@/api/errors';
 import type { PlayedItem } from '@/api/queryKeys';
-import type { ProgressRequest } from '@/api/types';
+import type { ProgressRequest, RatingPrompt } from '@/api/types';
 import { putProgress } from '@/api/watch';
 import type { TrackedMediaEvent } from './attachSource';
 import { canReport, type PlayerStateName } from './playerMachine';
@@ -103,11 +103,15 @@ export interface ProgressReporterOptions {
   /** The machine's `hasPlayed`: no pause/final report before the first frame. */
   hasPlayed: boolean;
   tracker: PositionTracker;
+  /** The final report's `rating_prompt` (ratings prd2 FR-W9.1); read at send time. */
+  onFinalPrompt?: (prompt: RatingPrompt) => void;
 }
 
 export interface ProgressReporter {
   /** A report answered `watched=true` (the UI shows ✓). */
   markedWatched: boolean;
+  /** The latest non-null `rating_prompt` of a non-final report (a later null never clears it). */
+  ratingPrompt: RatingPrompt | null;
   /** The explicit final report before a next-episode/next-part navigation (once per mount). */
   sendFinal: () => void;
 }
@@ -115,6 +119,7 @@ export interface ProgressReporter {
 export function useProgressReporter(options: ProgressReporterOptions): ProgressReporter {
   const queryClient = useQueryClient();
   const [markedWatched, setMarkedWatched] = useState(false);
+  const [ratingPrompt, setRatingPrompt] = useState<RatingPrompt | null>(null);
   const latest = useRef(options);
   latest.current = options;
   const lastReported = useRef<number | null>(null);
@@ -143,12 +148,13 @@ export function useProgressReporter(options: ProgressReporterOptions): ProgressR
       lastReported.current = position;
       const request = putProgress(body, exit ? { keepalive: true } : {});
       if (kind === 'final') {
-        void registerFinalReport(queryClient, item, request);
+        void registerFinalReport(queryClient, item, request, latest.current.onFinalPrompt);
         return true;
       }
       request.then(
         (progress) => {
           if (progress?.watched) setMarkedWatched(true);
+          if (progress?.rating_prompt) setRatingPrompt(progress.rating_prompt);
         },
         (err: unknown) => {
           if (lastReported.current === position) lastReported.current = null;
@@ -216,5 +222,5 @@ export function useProgressReporter(options: ProgressReporterOptions): ProgressR
   // the element is released).
   useEffect(() => () => sendFinal(), [sendFinal]);
 
-  return { markedWatched, sendFinal };
+  return { markedWatched, ratingPrompt, sendFinal };
 }

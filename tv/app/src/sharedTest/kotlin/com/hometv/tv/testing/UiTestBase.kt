@@ -61,7 +61,7 @@ abstract class UiTestBase {
 
     protected val signedIn = Session(serverUrl = TEST_SERVER, profileId = 5, token = "tok", expiresAt = Instant.parse("2030-01-01T00:00:00Z"))
 
-    /** The container's clock (session renewal, ages on the Person screen); tests may fix it. */
+    /** The container's clock (session renewal, ages on the Person screen, Actividad times); its zone is the calendar's. Tests may fix it. */
     protected open val clock: Clock = Clock.systemUTC()
 
     protected fun launch(session: Session = signedIn) {

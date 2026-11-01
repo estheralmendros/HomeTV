@@ -60,6 +60,9 @@ object Format {
     private val symbols = DecimalFormatSymbols.getInstance(LOCALE)
     private val countFormat = ThreadLocal.withInitial { DecimalFormat("#,##0", symbols).apply { isGroupingUsed = true } }
     private val ratingFormat = ThreadLocal.withInitial { DecimalFormat("0.0", symbols).apply { roundingMode = RoundingMode.HALF_UP } }
+    private val starsFormat = ThreadLocal.withInitial { DecimalFormat("0.#", symbols) }
+    private val shortDayFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM", LOCALE)
+    private val shortDayYearFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM yyyy", LOCALE)
     private val dateOnly = Regex("""^\d{4}-\d{2}-\d{2}$""")
 
     /** Player clock: "1:02:03" with hours, else "12:31"; negative / NaN → "0:00". */
@@ -84,6 +87,13 @@ object Format {
 
     /** "7,8" (one decimal, decimal comma). */
     fun rating(value: Double): String = ratingFormat.get().format(value)
+
+    /** One profile's rating: "4,5", "4", "0,5" (at most one decimal). Averages use [rating] ("4,0"). */
+    fun stars(stars: Stars): String = starsFormat.get().format(stars.value)
+
+    /** "12 oct" / "12 oct 2025" (the month's trailing "." removed), the activity row's older dates. */
+    fun shortDay(date: LocalDate, withYear: Boolean): String =
+        (if (withYear) shortDayYearFormatter else shortDayFormatter).format(date).replace(".", "")
 
     /** 155 → Runtime(2, 35); negative → Runtime(0, 0). */
     fun runtime(minutes: Int): Runtime {

@@ -2,6 +2,7 @@
 // fresh object, so tests can mutate results freely. Defaults are a coherent small library:
 // film 12 "Dune" (2021, file 91), show 7 "The Office" (season 2, episode 345, file 501).
 import type {
+  ActivityEntry,
   AudioTrack,
   Avatar,
   BrowseResponse,
@@ -20,6 +21,7 @@ import type {
   LibrariesResponse,
   LibraryFolder,
   MediaFile,
+  OtherRating,
   Page,
   PersonDetail,
   PersonFilmAppearance,
@@ -29,6 +31,8 @@ import type {
   PlaybackUnsupported,
   Profile,
   Progress,
+  ProgressReport,
+  RatingPrompt,
   ScanCounts,
   ScanScope,
   ScanStatus,
@@ -114,6 +118,33 @@ export function progress(overrides: Partial<Progress> = {}): Progress {
   };
 }
 
+/** PUT /api/progress response (no prompt by default). */
+export function progressReport(overrides: Partial<ProgressReport> = {}): ProgressReport {
+  return { ...progress(), rating_prompt: null, ...overrides };
+}
+
+/** "¿Qué te ha parecido?" for Dune (film 12). */
+export function ratingPrompt(overrides: Partial<RatingPrompt> = {}): RatingPrompt {
+  return { kind: 'film', id: 12, title: 'Dune', poster: image('dune-poster'), ...overrides };
+}
+
+/** Luis rated 2 stars. */
+export function otherRating(overrides: Partial<OtherRating> = {}): OtherRating {
+  return { profile: { id: 3, name: 'Luis', avatar_id: 'avatar-07' }, stars: 2, rated_at: '2026-10-30T20:00:00Z', ...overrides };
+}
+
+/** Luis rated Dune (film 12) with 2 stars. */
+export function activityEntry(overrides: Partial<ActivityEntry> = {}): ActivityEntry {
+  return {
+    profile: { id: 3, name: 'Luis', avatar_id: 'avatar-07' },
+    kind: 'film',
+    item: filmSummary(),
+    stars: 2,
+    rated_at: '2026-10-30T20:00:00Z',
+    ...overrides,
+  } as ActivityEntry;
+}
+
 export function video(overrides: Partial<VideoInfo> = {}): VideoInfo {
   return { codec: 'h264', width: 1920, height: 1080, hdr: null, frame_rate: 23.976, ...overrides };
 }
@@ -180,6 +211,7 @@ export function filmSummary(overrides: Partial<FilmSummary> = {}): FilmSummary {
     match_status: 'matched',
     added_at: T0,
     progress: null,
+    my_rating: null,
     ...overrides,
   };
 }
@@ -198,6 +230,7 @@ export function showSummary(overrides: Partial<ShowSummary> = {}): ShowSummary {
     season_count: 9,
     episode_count: 201,
     unwatched_episode_count: 150,
+    my_rating: null,
     ...overrides,
   };
 }
@@ -310,6 +343,9 @@ export function filmDetail(overrides: Partial<FilmDetail> = {}): FilmDetail {
     progress: null,
     added_at: T0,
     in_watchlist: false,
+    my_rating: null,
+    ratings: [],
+    household_average: null,
     ...overrides,
   };
 }
@@ -350,6 +386,9 @@ export function showDetail(overrides: Partial<ShowDetail> = {}): ShowDetail {
     unwatched_episode_count: 150,
     added_at: T0,
     in_watchlist: false,
+    my_rating: null,
+    ratings: [],
+    household_average: null,
     ...overrides,
   };
 }

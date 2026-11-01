@@ -3,7 +3,7 @@ import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/auth/AuthProvider';
 import { useCurrentProfile } from '@/auth/useCurrentProfile';
 import { NavSearch } from '@/features/search/NavSearch';
-import { COMPACT_NAV_QUERY, useMediaQuery } from '@/lib/useMediaQuery';
+import { COMPACT_NAV_QUERY, SEARCH_ICON_QUERY, useMediaQuery } from '@/lib/useMediaQuery';
 import { S } from '@/strings.es';
 import { ProfileAvatar } from './Avatar';
 import { PLAY_GLYPH } from './glyphs';
@@ -14,11 +14,17 @@ const SECTIONS = [
   { to: '/films', label: S.nav.films, end: false },
   { to: '/shows', label: S.nav.shows, end: false },
   { to: '/watchlist', label: S.nav.watchlist, end: false },
+  { to: '/activity', label: S.nav.activity, end: false },
 ] as const;
 
-/** Top bar: logo, section links, search and the avatar menu. Below 720 px: logo + avatar (see MobileTabBar). */
+/**
+ * Top bar: logo, section links, search and the avatar menu. Below 960 px the search field becomes a
+ * "Buscar" magnifier link; below 720 px the section links move to the MobileTabBar (logo, the
+ * magnifier and the avatar stay).
+ */
 export function NavBar() {
   const compact = useMediaQuery(COMPACT_NAV_QUERY);
+  const searchIcon = useMediaQuery(SEARCH_ICON_QUERY);
   return (
     <header className={styles.bar}>
       <Link to="/" className={styles.logo} aria-label={S.nav.logo}>
@@ -41,9 +47,21 @@ export function NavBar() {
         </nav>
       )}
       <span className={styles.spacer} />
-      {!compact && <NavSearch />}
+      {searchIcon ? <SearchIconLink /> : <NavSearch />}
       <AvatarMenu />
     </header>
+  );
+}
+
+/** Inline SVG magnifier linking to /search (48 × 48 hit area), named "Buscar". */
+function SearchIconLink() {
+  return (
+    <NavLink to="/search" className={styles.searchIcon} aria-label={S.nav.search}>
+      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false">
+        <circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" strokeWidth="2" />
+        <path d="M15.5 15.5L21 21" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    </NavLink>
   );
 }
 
@@ -129,15 +147,16 @@ function AvatarMenu() {
 }
 
 /**
- * Below 720 px (COMPACT_NAV_QUERY): bottom tab bar with five equal tabs "Inicio", "Películas",
- * "Series", "Mi lista", "Buscar" (72 px each at 360 px; labels never truncate).
+ * Below 720 px (COMPACT_NAV_QUERY): bottom tab bar with the five sections as equal tabs "Inicio",
+ * "Películas", "Series", "Mi lista", "Actividad" (72 px each at 360 px; labels never truncate).
+ * "Buscar" is the magnifier in the top bar.
  */
 export function MobileTabBar() {
   const compact = useMediaQuery(COMPACT_NAV_QUERY);
   if (!compact) return null;
   return (
     <nav aria-label={S.nav.tabsLabel} className={styles.tabBar}>
-      {[...SECTIONS, { to: '/search', label: S.nav.search, end: false }].map((tab) => (
+      {SECTIONS.map((tab) => (
         <NavLink key={tab.to} to={tab.to} end={tab.end} className={styles.tab}>
           {tab.label}
         </NavLink>

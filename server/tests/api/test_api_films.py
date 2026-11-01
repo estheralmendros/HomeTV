@@ -18,6 +18,7 @@ FILM_SUMMARY_KEYS = {
     "match_status",
     "added_at",
     "progress",
+    "my_rating",
 }
 MEDIA_FILE_KEYS = {
     "id",
@@ -76,6 +77,7 @@ async def test_summary_shape_images_and_progress(client, db, user):
             "media_file_id": file_id,
             "updated_at": "2026-01-01T00:00:00Z",
         },
+        "my_rating": None,
     }
     bare = by_id[bare_id]
     assert (bare["poster"], bare["backdrop"], bare["overview"], bare["progress"]) == (
@@ -353,9 +355,13 @@ async def test_film_detail_shape(client, db, user):
         "media_files",
         "progress",
         "in_watchlist",
+        "my_rating",
+        "ratings",
+        "household_average",
         "added_at",
     }
     assert d["in_watchlist"] is False
+    assert (d["my_rating"], d["ratings"], d["household_average"]) == (None, [], None)
     assert (d["release_date"], d["tagline"], d["runtime_minutes"], d["vote_average"]) == (
         "2021-09-15",
         "Más allá del miedo",

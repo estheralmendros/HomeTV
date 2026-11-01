@@ -239,6 +239,7 @@ private fun HomeRowView(
                         onClick = { vm.onCardClick(card) },
                         modifier = modifier,
                         onFocused = { vm.onCardFocused(card) },
+                        myRating = card.myRating,
                     )
                 }
             }

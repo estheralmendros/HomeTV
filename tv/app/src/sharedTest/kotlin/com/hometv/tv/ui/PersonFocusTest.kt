@@ -91,9 +91,11 @@ class PersonFocusTest : UiTestBase() {
         assertFocused("button_PLAY")
     }
 
-    /** Film 13 → Down, Right ×3, OK on `cast_4:3` → Person 4. */
+    /** Film 13 → Down ×2 (via `rating_mine`), Right ×3, OK on `cast_4:3` → Person 4. */
     private fun openPerson(person: (Long) -> PersonDetail = { chalamet(it) }) {
         openFilmDetail(person)
+        press(Key.DirectionDown)
+        assertFocused("rating_mine")
         press(Key.DirectionDown)
         press(Key.DirectionRight, times = 3)
         assertFocused("cast_4:3")
@@ -152,7 +154,7 @@ class PersonFocusTest : UiTestBase() {
     @Test
     fun aFarRightCastCardIsRestoredToo() {
         openFilmDetail()
-        press(Key.DirectionDown)
+        press(Key.DirectionDown, times = 2) // via `rating_mine`
         press(Key.DirectionRight, times = 11)
         press(Key.DirectionCenter)
         assertTrue(api.calls.contains("GET /api/people/12"))
@@ -235,7 +237,7 @@ class PersonFocusTest : UiTestBase() {
         openPerson()
         press(Key.DirectionCenter) // Dune (film 12)
         assertFocused("button_PLAY")
-        press(Key.DirectionDown)
+        press(Key.DirectionDown, times = 2) // via `rating_mine`
         press(Key.DirectionRight, times = 3)
         press(Key.DirectionCenter) // the same actor again
         assertEquals(2, api.count("GET /api/people/4"))
@@ -287,6 +289,8 @@ class PersonFocusTest : UiTestBase() {
         back()
         assertFocused("cast_4:3")
         press(Key.DirectionUp)
+        assertFocused("rating_mine")
+        press(Key.DirectionUp)
         assertFocused("button_PLAY")
         press(Key.DirectionCenter)
         onPlayer { ready() }
@@ -300,7 +304,7 @@ class PersonFocusTest : UiTestBase() {
     fun noTransientCastFocusWhileTheRefetchAfterPlayIsHeld() {
         openPerson()
         back()
-        press(Key.DirectionUp)
+        press(Key.DirectionUp, times = 2) // via `rating_mine`
         assertFocused("button_PLAY")
         settle()
         val before = scroll("film_detail_page")
@@ -326,7 +330,7 @@ class PersonFocusTest : UiTestBase() {
     fun afterACastRoundTripTheWatchedToggleKeepsFocusOnIt() {
         openPerson()
         back()
-        press(Key.DirectionUp)
+        press(Key.DirectionUp, times = 2) // via `rating_mine`
         press(Key.DirectionRight)
         assertFocused("button_WATCHED")
         filmProgress = Progress(watched = true)

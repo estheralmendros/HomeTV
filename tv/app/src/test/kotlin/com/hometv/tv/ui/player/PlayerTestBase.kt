@@ -112,6 +112,7 @@ abstract class PlayerTestBase {
             serverUrl = { repos.store.session.value.serverUrl },
             controller = controller,
             subtitles = subtitles,
+            ratingPrompts = repos.ratingPrompts,
             nowMs = { testScheduler.currentTime },
             io = main.dispatcher,
             log = { _, _ -> },

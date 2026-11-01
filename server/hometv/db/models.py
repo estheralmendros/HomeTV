@@ -525,6 +525,70 @@ class WatchlistEntry(Base):
     added_at: Mapped[datetime] = _now_col()
 
 
+class Rating(Base):
+    """A profile's ½-5 star rating of a film or a whole show; ``stars_x2`` = stars x 2 (1-10).
+    The unique indexes lead with the title column: they serve the upsert, the detail read (every
+    rating of one title), the summary batch (one profile, many titles) and the title FK cascade."""
+
+    __tablename__ = "rating"
+    __table_args__ = (
+        CheckConstraint(_EXACTLY_ONE_FILM_SHOW, name="exactly_one_target"),
+        CheckConstraint("stars_x2 BETWEEN 1 AND 10", name="stars_x2_range"),
+        Index(
+            "uq_rating_film_id_profile_id",
+            "film_id",
+            "profile_id",
+            unique=True,
+            sqlite_where=text("film_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_rating_show_id_profile_id",
+            "show_id",
+            "profile_id",
+            unique=True,
+            sqlite_where=text("show_id IS NOT NULL"),
+        ),
+        Index("ix_rating_rated_at_id", "rated_at", "id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_id: Mapped[int] = _fk("profile.id")
+    film_id: Mapped[int | None] = _fk("film.id", nullable=True)
+    show_id: Mapped[int | None] = _fk("show.id", nullable=True)
+    stars_x2: Mapped[int] = mapped_column(Integer, nullable=False)
+    rated_at: Mapped[datetime] = _now_col()
+
+
+class RatingDismissal(Base):
+    """ "Ahora no" on the rating prompt (or a removed rating): silences the prompt for this
+    profile and title; never shown. The first ``dismissed_at`` is kept."""
+
+    __tablename__ = "rating_dismissal"
+    __table_args__ = (
+        CheckConstraint(_EXACTLY_ONE_FILM_SHOW, name="exactly_one_target"),
+        Index(
+            "uq_rating_dismissal_film_id_profile_id",
+            "film_id",
+            "profile_id",
+            unique=True,
+            sqlite_where=text("film_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_rating_dismissal_show_id_profile_id",
+            "show_id",
+            "profile_id",
+            unique=True,
+            sqlite_where=text("show_id IS NOT NULL"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_id: Mapped[int] = _fk("profile.id")
+    film_id: Mapped[int | None] = _fk("film.id", nullable=True)
+    show_id: Mapped[int | None] = _fk("show.id", nullable=True)
+    dismissed_at: Mapped[datetime] = _now_col()
+
+
 UNMATCHED_REASONS = (
     "no_title",
     "no_season",

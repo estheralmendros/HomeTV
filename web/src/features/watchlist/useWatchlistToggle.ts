@@ -22,7 +22,7 @@ export interface WatchlistToggleState {
 export function useWatchlistToggle(kind: WatchlistKind, id: number, inList: boolean): WatchlistToggleState {
   const queryClient = useQueryClient();
   const toast = useToast();
-  const key = kind === 'film' ? queryKeys.film(id) : queryKeys.show(id);
+  const key = queryKeys.title(kind, id);
   const mutationKey = mutationKeys.watchlistWrite(kind, id);
   const pending = useIsMutating({ mutationKey }) > 0;
   const mutation = useMutation({

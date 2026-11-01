@@ -1,6 +1,7 @@
 package com.hometv.tv.core.api
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -74,5 +75,74 @@ class ApiModelsTest {
         assertTrue(ApiJson.decodeFromString(ShowDetail.serializer(), """{"id": 7, "title": "The Office", "in_watchlist": true}""").in_watchlist)
         assertEquals(false, ApiJson.decodeFromString(FilmDetail.serializer(), """{"id": 12, "title": "Dune"}""").in_watchlist)
         assertEquals(false, ApiJson.decodeFromString(ShowDetail.serializer(), """{"id": 7, "title": "The Office"}""").in_watchlist)
+    }
+
+    // ---- Ratings (ratings prd3 FR-T1) ------------------------------------------------------
+
+    @Test
+    fun `detail rating fields decode and default for older servers`() {
+        val json = """
+            {"id": 12, "title": "Dune", "my_rating": 4.5,
+             "ratings": [{"profile": {"id": 2, "name": "Luis", "avatar_id": "avatar-02"}, "stars": 2.0, "rated_at": "2026-10-31T10:00:00Z"}],
+             "household_average": {"stars": 3.3, "count": 2}}
+        """.trimIndent()
+        val film = ApiJson.decodeFromString(FilmDetail.serializer(), json)
+        assertEquals(4.5, film.my_rating)
+        assertEquals(listOf(OtherRating(ProfileRef(2, "Luis", "avatar-02"), 2.0, "2026-10-31T10:00:00Z")), film.ratings)
+        assertEquals(HouseholdAverage(3.3, 2), film.household_average)
+        val show = ApiJson.decodeFromString(ShowDetail.serializer(), json.replace("Dune", "The Office"))
+        assertEquals(4.5, show.my_rating)
+        assertEquals(1, show.ratings.size)
+
+        val old = ApiJson.decodeFromString(FilmDetail.serializer(), """{"id": 12, "title": "Dune"}""")
+        assertNull(old.my_rating)
+        assertEquals(emptyList<OtherRating>(), old.ratings)
+        assertNull(old.household_average)
+        val nulls = ApiJson.decodeFromString(ShowDetail.serializer(), """{"id": 7, "title": "X", "my_rating": null, "household_average": null}""")
+        assertNull(nulls.my_rating)
+        assertNull(nulls.household_average)
+    }
+
+    @Test
+    fun `summaries carry my_rating`() {
+        assertEquals(3.5, ApiJson.decodeFromString(FilmSummary.serializer(), """{"id": 12, "title": "Dune", "my_rating": 3.5}""").my_rating)
+        assertEquals(5.0, ApiJson.decodeFromString(ShowSummary.serializer(), """{"id": 7, "title": "O", "my_rating": 5}""").my_rating)
+        assertNull(ApiJson.decodeFromString(FilmSummary.serializer(), """{"id": 12, "title": "Dune"}""").my_rating)
+    }
+
+    @Test
+    fun `progress report and watched response carry the rating prompt`() {
+        val prompt = """{"kind": "film", "id": 12, "title": "Dune", "poster": {"small": "/s.jpg", "large": "/l.jpg"}}"""
+        val report = ApiJson.decodeFromString(ProgressReport.serializer(), """{"position_seconds": 9000.0, "duration_seconds": 9360.0, "watched": true, "media_file_id": 91, "rating_prompt": $prompt}""")
+        assertEquals(RatingPrompt("film", 12, "Dune", Image("/s.jpg", "/l.jpg")), report.rating_prompt)
+        assertEquals(Progress(9000.0, 9360.0, true, null, 91, null), report.toProgress())
+        assertNull(ApiJson.decodeFromString(ProgressReport.serializer(), Fixtures.progressJson).rating_prompt)
+
+        val watched = ApiJson.decodeFromString(WatchedResponse.serializer(), """{"updated": 3, "rating_prompt": $prompt}""")
+        assertEquals(3, watched.updated)
+        assertEquals(12L, watched.rating_prompt?.id)
+        assertNull(ApiJson.decodeFromString(WatchedResponse.serializer(), """{"updated": 3}""").rating_prompt)
+    }
+
+    @Test
+    fun `an activity page decodes its film and show entries`() {
+        val json = """
+            {"items": [
+               {"profile": {"id": 2, "name": "Luis", "avatar_id": "avatar-02"}, "kind": "film",
+                "item": {"type": "film", "id": 12, "title": "Dune", "my_rating": 4.0}, "stars": 2.0, "rated_at": "2026-10-31T10:00:00Z"},
+               {"profile": {"id": 1, "name": "Ana", "avatar_id": "avatar-01"}, "kind": "show",
+                "item": {"type": "show", "id": 7, "title": "The Office"}, "stars": 4.5, "rated_at": "2026-10-30T10:00:00Z", "extra": 1}
+             ], "page": 1, "page_size": 50, "total": 2}
+        """.trimIndent()
+        val page = ApiJson.decodeFromString(Page.serializer(ActivityEntry.serializer()), json)
+        assertEquals(listOf("film:12", "show:7"), page.items.map { it.item.key })
+        assertEquals(listOf(2.0, 4.5), page.items.map { it.stars })
+        assertEquals("Luis", page.items[0].profile.name)
+        assertEquals(4.0, (page.items[0].item as FilmSummary).my_rating)
+    }
+
+    @Test
+    fun `a rating request encodes its stars`() {
+        assertEquals("""{"stars":4.5}""", ApiJson.encodeToString(RatingRequest.serializer(), RatingRequest(4.5)))
     }
 }

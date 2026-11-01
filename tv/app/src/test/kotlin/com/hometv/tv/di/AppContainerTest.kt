@@ -118,4 +118,15 @@ class AppContainerTest {
         container.playerLaunches.finish(id)
         assertTrue(!container.playerLaunches.isActive(id))
     }
+
+    /** ratings prd3 FR-T11: a rating saved anywhere makes Home reload its card badges on the next visit. */
+    @Test
+    fun `a rating change marks Home stale`() = runTest(dispatcher) {
+        val container = testContainer(api, scope)
+        advanceUntilIdle()
+        container.homeRefresh.consumeStale()
+        container.ratings.set(com.hometv.tv.core.data.RatingKind.FILM, 12, com.hometv.tv.core.util.Stars(8))
+        advanceUntilIdle()
+        assertTrue(container.homeRefresh.consumeStale())
+    }
 }

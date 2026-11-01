@@ -1,5 +1,6 @@
-// "Mi lista" toolbar (watchlist prd2 FR-W10.2): type filter as a three-button group (aria-pressed)
-// and the sort as a labelled <select>. Fixed directions, so no order toggle. Same controls on phones.
+// "Mi lista" toolbar (watchlist prd2 FR-W10.2): type filter as a three-button group (aria-pressed),
+// the "Estado" (watched) filter and the sort as labelled <select>s. Fixed directions, so no order
+// toggle. Same controls on phones (the shared toolbar wraps).
 import { useId } from 'react';
 import type { WatchlistSort, WatchlistType } from '@/api/types';
 import toolbarStyles from '@/components/Toolbar.module.css';
@@ -15,6 +16,12 @@ const TYPE_OPTIONS: ReadonlyArray<{ value: WatchlistType; label: string }> = [
   { value: 'shows', label: S.watchlist.typeShows },
 ];
 
+const WATCHED_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
+  { value: '', label: S.watchlist.watchedAll },
+  { value: 'true', label: S.watchlist.watchedOnly },
+  { value: 'false', label: S.watchlist.unwatchedOnly },
+];
+
 const SORT_OPTIONS: ReadonlyArray<{ value: WatchlistSort; label: string }> = [
   { value: 'added', label: S.watchlist.sortAdded },
   { value: 'title', label: S.watchlist.sortTitle },
@@ -22,8 +29,9 @@ const SORT_OPTIONS: ReadonlyArray<{ value: WatchlistSort; label: string }> = [
 ];
 
 export function WatchlistToolbar({ watchlist }: { watchlist: Watchlist }) {
-  const { params, setType, setSort } = watchlist;
+  const { params, setType, setSort, setWatched } = watchlist;
   const typeLabelId = useId();
+  const watchedId = useId();
   const sortId = useId();
   return (
     <div className={toolbarStyles.toolbar} role="group" aria-label={S.watchlist.toolbar}>
@@ -43,6 +51,21 @@ export function WatchlistToolbar({ watchlist }: { watchlist: Watchlist }) {
           ))}
         </div>
       </div>
+      <label className={toolbarStyles.field} htmlFor={watchedId}>
+        {S.watchlist.watched}
+        <select
+          id={watchedId}
+          className={toolbarStyles.select}
+          value={params.watched === null ? '' : String(params.watched)}
+          onChange={(event) => setWatched(event.target.value === '' ? null : event.target.value === 'true')}
+        >
+          {WATCHED_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
       <label className={toolbarStyles.field} htmlFor={sortId}>
         {S.watchlist.sort}
         <select

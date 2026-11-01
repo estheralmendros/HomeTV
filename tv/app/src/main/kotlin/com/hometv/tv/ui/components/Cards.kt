@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -20,6 +21,8 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -30,6 +33,10 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.hometv.tv.R
+import com.hometv.tv.core.util.Format
+import com.hometv.tv.core.util.Stars
+import com.hometv.tv.ui.text.resolve
+import com.hometv.tv.ui.text.starsText
 import com.hometv.tv.ui.theme.HomeTvColors
 import com.hometv.tv.ui.theme.HomeTvDimens
 import com.hometv.tv.ui.theme.HomeTvFocus
@@ -78,6 +85,7 @@ fun PosterCard(
     onFocused: () -> Unit = {},
     subtitle: String? = null,
     subtitleTestTag: String? = null,
+    myRating: Stars? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
     Column(Modifier.width(PosterWidth)) {
@@ -85,6 +93,7 @@ fun PosterCard(
             Box(Modifier.fillMaxSize()) {
                 Artwork(image, title, Modifier.fillMaxSize())
                 CardBadges(progress, watched, badge)
+                if (myRating != null) RatingBadge(myRating, raised = progress != null)
             }
         }
         Text(
@@ -141,6 +150,29 @@ fun SeeAllCard(onClick: () -> Unit, modifier: Modifier = Modifier, onFocused: ()
                 Text(stringResource(R.string.home_see_all), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
             }
         }
+    }
+}
+
+/**
+ * This profile's rating at the poster's bottom-left (ratings prd3 FR-T13): one amber star + "4,5" on a
+ * scrim, above the progress strip when there is one ([raised]); the watched check stays top-right.
+ * Its accessible text is "tu puntuación: 4,5 estrellas".
+ */
+@Composable
+private fun androidx.compose.foundation.layout.BoxScope.RatingBadge(stars: Stars, raised: Boolean) {
+    val description = stringResource(R.string.card_my_rating, starsText(stars).resolve())
+    Row(
+        Modifier
+            .align(Alignment.BottomStart)
+            .padding(start = 6.dp, bottom = if (raised) 10.dp else 6.dp)
+            .background(HomeTvColors.Surface.copy(alpha = 0.85f), RoundedCornerShape(10.dp))
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+            .testTag("rating_badge")
+            .clearAndSetSemantics { contentDescription = description },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(painterResource(R.drawable.ic_star_full), contentDescription = null, tint = HomeTvColors.Rating, modifier = Modifier.size(14.dp))
+        Text(Format.stars(stars), style = MaterialTheme.typography.bodySmall, color = HomeTvColors.OnBackground, modifier = Modifier.padding(start = 4.dp))
     }
 }
 

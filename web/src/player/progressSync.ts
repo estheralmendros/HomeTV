@@ -6,7 +6,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { queryKeys, type PlayedItem } from '@/api/queryKeys';
 import { runInvalidation } from '@/api/queryClient';
-import type { EpisodeDetail, FilmDetail, HomeEpisode, HomeResponse, ItemType, Progress } from '@/api/types';
+import type { EpisodeDetail, FilmDetail, HomeEpisode, HomeResponse, ItemType, Progress, ProgressReport, RatingPrompt } from '@/api/types';
 
 export interface ItemRef {
   type: ItemType;
@@ -37,13 +37,22 @@ export function writeProgress(queryClient: QueryClient, item: ItemRef, progress:
 
 /**
  * Registers a mount's final `PUT /api/progress` (§9 step 14). Resolves once the write-through
- * and the invalidation have run; never rejects.
+ * and the invalidation have run; never rejects. The cache gets the `Progress` keys only; a
+ * `rating_prompt` goes to `onPrompt` after the write (ratings prd2 FR-W9.1).
  */
-export function registerFinalReport(queryClient: QueryClient, item: PlayedItem, put: Promise<Progress>): Promise<void> {
+export function registerFinalReport(
+  queryClient: QueryClient,
+  item: PlayedItem,
+  put: Promise<ProgressReport>,
+  onPrompt?: (prompt: RatingPrompt) => void,
+): Promise<void> {
   const key = itemKey(item);
   const settled = put
     .then(
-      (progress) => writeProgress(queryClient, item, progress),
+      ({ rating_prompt: prompt, ...progress }) => {
+        writeProgress(queryClient, item, progress);
+        if (prompt) onPrompt?.(prompt);
+      },
       () => undefined,
     )
     .then(() => runInvalidation(queryClient, { type: 'playerExit', item }))

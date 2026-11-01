@@ -7,21 +7,33 @@ episode lists.
 
 DB operations (one short write transaction each): ``report_progress`` (``PUT /api/progress``)
 and ``mark_watched`` (``POST /api/watched``). "Library episodes" are episodes with at least one
-present media file (``missing_since IS NULL``), the same visibility rule as the catalog.
+present media file (``missing_since IS NULL``), the same visibility rule as the catalog. Both
+answer ``rating_prompt`` (ratings FR-8): the film or show whose finishing item (the film, or the
+show's last present episode) the request just watched, while the profile has neither rated nor
+dismissed it; computed in the same transaction for at most 3 extra indexed statements, none
+below the rule. A profile deleted between auth and the write answers 401 (``fk_to_unauthorized``).
 """
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import and_, exists, select
+from sqlalchemy import and_, exists, not_, select
 from sqlalchemy.orm import Session
 
-from hometv.api.errors import ApiError
-from hometv.api.schemas import Progress, ProgressRequest
+from hometv.api.errors import ApiError, fk_to_unauthorized
+from hometv.api.schemas import (
+    ItemKind,
+    Progress,
+    ProgressReport,
+    ProgressRequest,
+    RatingPrompt,
+    WatchedResponse,
+)
 from hometv.db import models as m
 from hometv.db.engine import Database
+from hometv.metadata.artwork import image
 
 FILM_WATCHED_RATIO = 0.95
 EPISODE_WATCHED_RATIO = 0.9
@@ -110,6 +122,35 @@ def first_unwatched(
     return None
 
 
+def last_episode(episodes: Iterable[EpisodeKey]) -> int | None:
+    """The show's "last episode in the catalog": highest (season, episode) among the given
+    (present) episodes with season > 0; when there is none, the highest special (season 0).
+
+    Season 0 sorts below every regular season, so both cases are the maximum
+    ``(season_number, episode_number)``: ``_show_last_episode_id`` is the SQL twin. This is the
+    executable spec of that rule, kept as the oracle the twin is tested against (production
+    answers with the one ``LIMIT 1`` query instead of loading every episode)."""
+    keys = list(episodes)
+    pool = [e for e in keys if e.season_number > 0] or [e for e in keys if e.season_number == 0]
+    if not pool:
+        return None
+    return max(pool, key=lambda e: (e.season_number, e.episode_number, e.id)).id
+
+
+def is_title_finished(
+    kind: ItemKind,
+    *,
+    film_watched: bool = False,
+    last_episode_id: int | None = None,
+    watched_episode_ids: Collection[int] = (),
+) -> bool:
+    """ "Finished" (ratings FR-7): a film is finished when watched for the profile (playback past
+    the rule on its last part, or marked); a show when its last present episode is watched."""
+    if kind == "film":
+        return film_watched
+    return last_episode_id is not None and last_episode_id in watched_episode_ids
+
+
 # --- Shared query helpers ------------------------------------------------------------------------
 
 
@@ -127,17 +168,22 @@ def film_has_present_file() -> Any:
     return exists().where(m.MediaFile.film_id == m.Film.id, m.MediaFile.missing_since.is_(None))
 
 
+def _progress_fields(row: m.PlaybackProgress) -> dict[str, Any]:
+    """The ``Progress`` fields of a row (shared by ``Progress`` and ``ProgressReport``)."""
+    return {
+        "position_seconds": row.position_seconds,
+        "duration_seconds": row.duration_seconds,
+        "watched": row.watched,
+        "watched_at": row.watched_at,
+        "media_file_id": row.media_file_id,
+        "updated_at": row.updated_at,
+    }
+
+
 def progress_out(row: m.PlaybackProgress | None) -> Progress | None:
     if row is None:
         return None
-    return Progress(
-        position_seconds=row.position_seconds,
-        duration_seconds=row.duration_seconds,
-        watched=row.watched,
-        watched_at=row.watched_at,
-        media_file_id=row.media_file_id,
-        updated_at=row.updated_at,
-    )
+    return Progress(**_progress_fields(row))
 
 
 def _get_row(
@@ -172,15 +218,19 @@ def _set_watched(row: m.PlaybackProgress, now: datetime) -> None:
 # --- PUT /api/progress ---------------------------------------------------------------------------
 
 
-def report_progress(db: Database, profile_id: int, req: ProgressRequest) -> Progress:
-    with db.write_session() as session:
+def report_progress(db: Database, profile_id: int, req: ProgressRequest) -> ProgressReport:
+    with fk_to_unauthorized(), db.write_session() as session:
         media_file = session.get(m.MediaFile, req.media_file_id)
+        film: m.Film | None = None
+        episode: m.Episode | None = None
         if req.item_type == "film":
-            if session.get(m.Film, req.item_id) is None:
+            film = session.get(m.Film, req.item_id)
+            if film is None:
                 raise ApiError(404, "not_found", f"Film {req.item_id} not found")
             linked = media_file is not None and media_file.film_id == req.item_id
         else:
-            if session.get(m.Episode, req.item_id) is None:
+            episode = session.get(m.Episode, req.item_id)
+            if episode is None:
                 raise ApiError(404, "not_found", f"Episode {req.item_id} not found")
             linked = (
                 media_file is not None
@@ -224,22 +274,28 @@ def report_progress(db: Database, profile_id: int, req: ProgressRequest) -> Prog
         row.media_file_id = media_file.id
         row.duration_seconds = float(duration)
         row.updated_at = now
+        prompt = None
         if outcome.reaches_watched:
             _set_watched(row, now)
-            if req.item_type == "episode":
-                _mark_siblings_watched(session, profile_id, media_file.id, req.item_id, now)
+            if film is not None:
+                prompt = _rating_prompt(session, profile_id, "film", req.item_id, film)
+            elif episode is not None:
+                marked = [
+                    req.item_id,
+                    *_mark_siblings_watched(session, profile_id, media_file.id, req.item_id, now),
+                ]
+                prompt = _show_prompt_if_finished(session, profile_id, episode.show_id, marked)
         else:
             row.position_seconds = outcome.position_seconds
         session.flush()
-        result = progress_out(row)
-        assert result is not None
-        return result
+        return ProgressReport(**_progress_fields(row), rating_prompt=prompt)
 
 
 def _mark_siblings_watched(
     session: Session, profile_id: int, media_file_id: int, episode_id: int, now: datetime
-) -> None:
-    """Multi-episode file reaching watched: every episode linked to the file is watched."""
+) -> list[int]:
+    """Multi-episode file reaching watched: every episode linked to the file is watched.
+    Returns the sibling episode ids it marked."""
     siblings = session.scalars(
         select(m.MediaFileEpisode.episode_id).where(
             m.MediaFileEpisode.media_file_id == media_file_id,
@@ -251,41 +307,136 @@ def _mark_siblings_watched(
         if row.media_file_id is None:
             row.media_file_id = media_file_id
         _set_watched(row, now)
+    return list(siblings)
+
+
+# --- Rating prompt (ratings FR-8) ----------------------------------------------------------------
+
+
+def _show_last_episode_id(session: Session, show_id: int) -> int | None:
+    """SQL twin of ``last_episode`` over the show's present episodes: one ``LIMIT 1`` on
+    ``ix_episode_show_id_season_number_episode_number`` (specials sort below regular seasons)."""
+    return session.scalar(
+        select(m.Episode.id)
+        .where(m.Episode.show_id == show_id, present_file_exists())
+        .order_by(m.Episode.season_number.desc(), m.Episode.episode_number.desc())
+        .limit(1)
+    )
+
+
+def _not_rated_nor_dismissed(profile_id: int, kind: ItemKind, item_id: int) -> Any:
+    conds = []
+    for model in (m.Rating, m.RatingDismissal):
+        column = model.film_id if kind == "film" else model.show_id
+        conds.append(not_(exists().where(column == item_id, model.profile_id == profile_id)))
+    return and_(*conds)
+
+
+def _rating_prompt(
+    session: Session,
+    profile_id: int,
+    kind: ItemKind,
+    item_id: int,
+    item: m.Film | m.Show | None = None,
+) -> RatingPrompt | None:
+    """Steps 2-4 of FR-8: the prompt of the film/show unless hidden (films; a show with a last
+    present episode is visible), rated or dismissed by the profile. One combined SELECT; the row
+    is the caller's already-loaded ``item`` (the identity map only holds weak references), else
+    one load by id."""
+    open_prompt = _not_rated_nor_dismissed(profile_id, kind, item_id)
+    if kind == "film":
+        # Not ``film_has_present_file()``: that EXISTS correlates to ``m.Film`` and would pull a
+        # ``film`` FROM into this row-less SELECT; the id is known, so compare it directly.
+        open_prompt = and_(
+            exists().where(m.MediaFile.film_id == item_id, m.MediaFile.missing_since.is_(None)),
+            open_prompt,
+        )
+    if not session.scalar(select(open_prompt)):
+        return None
+    if item is None:
+        item = session.get(m.Film, item_id) if kind == "film" else session.get(m.Show, item_id)
+    if item is None:
+        return None
+    return RatingPrompt(
+        kind=kind,
+        id=item.id,
+        title=item.title,
+        poster=image("poster", item.poster_path),
+    )
+
+
+def _show_prompt_if_finished(
+    session: Session,
+    profile_id: int,
+    show_id: int,
+    marked_ids: Iterable[int],
+    show: m.Show | None = None,
+) -> RatingPrompt | None:
+    """The show's prompt when the request watched its last present episode: the FR-7
+    "finished" rule over the episodes this request marked (an earlier watch never prompts)."""
+    last = _show_last_episode_id(session, show_id)
+    if not is_title_finished("show", last_episode_id=last, watched_episode_ids=set(marked_ids)):
+        return None
+    return _rating_prompt(session, profile_id, "show", show_id, show)
 
 
 # --- POST /api/watched ---------------------------------------------------------------------------
 
 
-def _target_episode_ids(session: Session, target: str, item_id: int) -> Sequence[int]:
+@dataclass(frozen=True)
+class _MarkTarget:
+    show_id: int
+    episode_ids: Sequence[int]
+    show: m.Show | None = None  # loaded by the 404 check of a show target
+
+
+def _target_episode_ids(session: Session, target: str, item_id: int) -> _MarkTarget:
+    """The show and episode ids of an episode/season/show mark (404 for an unknown target)."""
     if target == "episode":
-        if session.get(m.Episode, item_id) is None:
+        episode = session.get(m.Episode, item_id)
+        if episode is None:
             raise ApiError(404, "not_found", f"Episode {item_id} not found")
-        return [item_id]
-    column = m.Episode.season_id if target == "season" else m.Episode.show_id
-    model = m.Season if target == "season" else m.Show
-    if session.get(model, item_id) is None:
-        raise ApiError(404, "not_found", f"{target.capitalize()} {item_id} not found")
-    return session.scalars(
+        return _MarkTarget(episode.show_id, [item_id])
+    show = None
+    if target == "season":
+        season = session.get(m.Season, item_id)
+        if season is None:
+            raise ApiError(404, "not_found", f"Season {item_id} not found")
+        show_id, column = season.show_id, m.Episode.season_id
+    else:
+        show = session.get(m.Show, item_id)
+        if show is None:
+            raise ApiError(404, "not_found", f"Show {item_id} not found")
+        show_id, column = item_id, m.Episode.show_id
+    ids = session.scalars(
         select(m.Episode.id).where(and_(column == item_id, present_file_exists()))
-    ).all()
+    )
+    return _MarkTarget(show_id, ids.all(), show)
 
 
 _IN_CHUNK = 500  # stays under SQLite's bound-parameter limit
 
 
-def mark_watched(db: Database, profile_id: int, target: str, item_id: int, watched: bool) -> int:
-    """Manual mark; returns the number of film/episode rows changed. ``media_file_id`` is left
-    unchanged. Unwatching an item without a progress row changes nothing."""
-    with db.write_session() as session:
+def mark_watched(
+    db: Database, profile_id: int, target: str, item_id: int, watched: bool
+) -> WatchedResponse:
+    """Manual mark; ``updated`` = the number of film/episode rows changed. ``media_file_id`` is
+    left unchanged. Unwatching an item without a progress row changes nothing. A mark with
+    ``watched: true`` that includes the finishing item may carry the (single) rating prompt."""
+    with fk_to_unauthorized(), db.write_session() as session:
         now = m.utcnow()
+        film: m.Film | None = None
+        mark: _MarkTarget | None = None
         if target == "film":
-            if session.get(m.Film, item_id) is None:
+            film = session.get(m.Film, item_id)
+            if film is None:
                 raise ApiError(404, "not_found", f"Film {item_id} not found")
             column = m.PlaybackProgress.film_id
             ids: Sequence[int] = [item_id]
         else:
             column = m.PlaybackProgress.episode_id
-            ids = _target_episode_ids(session, target, item_id)
+            mark = _target_episode_ids(session, target, item_id)
+            ids = mark.episode_ids
         existing: dict[int, m.PlaybackProgress] = {}
         for chunk_start in range(0, len(ids), _IN_CHUNK):
             chunk = ids[chunk_start : chunk_start + _IN_CHUNK]
@@ -317,4 +468,9 @@ def mark_watched(db: Database, profile_id: int, target: str, item_id: int, watch
             row.position_seconds = 0.0
             row.updated_at = now
             updated += 1
-        return updated
+        prompt = None
+        if watched and film is not None:
+            prompt = _rating_prompt(session, profile_id, "film", item_id, film)
+        elif watched and mark is not None and ids:
+            prompt = _show_prompt_if_finished(session, profile_id, mark.show_id, ids, mark.show)
+        return WatchedResponse(updated=updated, rating_prompt=prompt)

@@ -4,6 +4,46 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.5.0] - Released on 2026-11-01 by Esther Almendros Pérez
+
+### Added
+
+#### Server
+- "Mi lista": each profile has its own watchlist of films and shows. `PUT` / `DELETE /api/watchlist/{films|shows}/{id}` add and remove a title (adding it twice keeps the first date), and `GET /api/watchlist` lists it with a type filter (`type=all|films|shows`), a watched filter (`watched=true|false`) and a sort (`sort=added|title|year`). Film and show details report `in_watchlist`. Titles that are no longer available are hidden from the list but kept, so they come back if their files return.
+- Ratings per profile: each profile can rate a film or a whole show from ½ to 5 stars in steps of ½ (`PUT /api/ratings/{films|shows}/{id}`) and remove its rating (`DELETE`). Film and show details return the viewer's rating, the other profiles' ratings (newest first) and the household average (one decimal, from two ratings), and every poster card in lists, Home, search, Mi lista and the actor screen carries the viewer's own rating (`my_rating`).
+- Rating prompt: when a profile finishes a title, by playback or by marking it watched, `PUT /api/progress` and `POST /api/watched` return a `rating_prompt` with that title. A film is finished when it is watched; a show when its last episode in the catalog is watched (specials only count for shows that have nothing else). The prompt is offered only to a profile that has neither rated the title nor declined to: `POST /api/ratings/{films|shows}/{id}/dismiss-prompt` records "Ahora no", and removing a rating also stops the prompt for that title.
+- Household activity: `GET /api/activity` lists every rating of the household, newest first, with the profile, the title and the stars.
+- When a title is matched again onto one already in the catalog, Mi lista entries, ratings and declined prompts move with it (the earlier "added" date, the later rating and the first decline are kept).
+- Database migrations `0005` (watchlist) and `0006` (ratings and declined prompts); run automatically at startup.
+
+#### Web app
+- "Mi lista" in the navigation (NavBar and the phone tab bar) and a "Mi lista" button on film and show pages to add or remove the title. The "Mi lista" page shows the profile's titles with the count ("Mi lista · 4"), filters by type (Todo / Películas / Series) and by status ("Estado": Todos / Vistos / No vistos), sorts by date added, title or year, keeps the filters in the address, loads more titles while scrolling, and offers "Ver todo" when nothing matches the filters.
+- Star ratings: film and show pages have a ratings block with "Tu puntuación" ([Puntuar] / [Cambiar], with [Quitar puntuación] in the dialog), "Media de la familia" ("4,0 (3)") and the other profiles' ratings (three, then "y N más"). Stars are set with the mouse or the arrow keys, in halves.
+- After finishing a title, or marking it watched, the app asks for a rating once ("¿Qué te ha parecido?"), with [Guardar] and [Ahora no]. At the end of a film or a show's last episode in the player, the question replaces "Fin de la reproducción"; leaving without answering counts as "Ahora no".
+- Poster cards show the viewer's own rating as a "★ 4,5" badge.
+- "Actividad" in the navigation: a page with the household's latest ratings ("Ana ha puntuado Dune con ★★★★½", "hace 5 minutos", "ayer", "12 oct"), each row linking to the title.
+
+#### TV app
+- "Mi lista" tab in the top nav and a "Mi lista" button on film and show details, ready the moment it is pressed (it rolls back with a message if the server refuses). The "Mi lista" screen has the poster grid with "Ordenar", "Tipo" and "Estado" buttons; the sort is remembered while the app is open, the filters reset when the screen is left, and "Ver todo" clears them when nothing matches.
+- Star ratings on film and show details: a "Tu puntuación" chip that opens the rating dialog (Left/Right in halves, OK saves, [Quitar puntuación]), the household average and the other profiles' ratings ("y N más" opens the full list). Poster cards show the profile's own rating as a star badge.
+- The rating prompt opens over the screen you return to after finishing a title or marking it watched, never during playback; Back or [Ahora no] declines it. A prompt for one profile is never shown to another.
+- "Actividad" tab: the household's latest ratings with avatars, stars, relative times and posters; OK opens the title, and the list updates when someone rates.
+
+### Changed
+
+#### Web app
+- On the actor page the biography sits in the text column next to the photo (below the header on phones).
+
+### Fixed
+
+#### Web app
+- The active link in the NavBar no longer grows 2 px taller than the others.
+- Adding or removing a title from Mi lista while offline now rolls back with a message.
+- Changing the sort quickly on Mi lista no longer brings back the previous type filter.
+
+#### TV app
+- The Actividad row that is focused is fully visible and centred.
+
 ## [0.4.0] - Released on 2026-10-28 by Esther Almendros Pérez
 
 ### Added

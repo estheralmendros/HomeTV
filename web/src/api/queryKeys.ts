@@ -1,7 +1,8 @@
 // Query key factory, stale times and the invalidation table (prd2 § State & data fetching).
 // Keys never include the profile id: switching profile clears the whole cache.
 import type { QueryKey } from '@tanstack/react-query';
-import type { LibraryQuery, LibraryType, TmdbType, UnmatchedQuery, WatchlistKind, WatchlistSort, WatchlistType } from './types';
+import { kindSegment } from './kind';
+import type { LibraryQuery, LibraryType, RatingKind, TmdbType, UnmatchedQuery, WatchlistKind, WatchlistSort, WatchlistType } from './types';
 
 export const queryKeys = {
   info: () => ['info'] as const,
@@ -16,14 +17,19 @@ export const queryKeys = {
   searchAll: () => ['search'] as const,
   film: (id: number) => ['film', id] as const,
   show: (id: number) => ['show', id] as const,
+  /** The film or show detail key for a title of either kind. */
+  title: (kind: RatingKind | WatchlistKind, id: number) => (kind === 'film' ? queryKeys.film(id) : queryKeys.show(id)),
   season: (showId: number, seasonNumber: number) => ['season', showId, seasonNumber] as const,
   seasonsOf: (showId: number) => ['season', showId] as const,
   episode: (id: number) => ['episode', id] as const,
   person: (id: number) => ['person', id] as const,
   personAll: () => ['person'] as const,
   /** "Mi lista" infinite list; `params` excludes `page`/`page_size`. */
-  watchlist: (params: { type: WatchlistType; sort: WatchlistSort }) => ['watchlist', 'list', params] as const,
+  watchlist: (params: { type: WatchlistType; sort: WatchlistSort; watched: boolean | null }) => ['watchlist', 'list', params] as const,
   watchlistAll: () => ['watchlist'] as const,
+  /** /activity infinite list (always refetched on mount). */
+  activity: () => ['activity', 'list'] as const,
+  activityAll: () => ['activity'] as const,
   admin: {
     all: () => ['admin'] as const,
     scan: () => ['admin', 'scan'] as const,
@@ -42,6 +48,8 @@ export const queryKeys = {
 export const mutationKeys = {
   /** PUT/DELETE /api/watchlist/{films|shows}/{id}. */
   watchlistWrite: (kind: WatchlistKind, id: number) => ['watchlistWrite', kind, id] as const,
+  /** PUT/DELETE /api/ratings/{films|shows}/{id}. */
+  ratingWrite: (kind: RatingKind, id: number) => ['ratingWrite', kind, id] as const,
 };
 
 const SECOND = 1000;
@@ -61,6 +69,7 @@ export const staleTimes = {
   episode: 30 * SECOND,
   person: 30 * SECOND,
   watchlist: 30 * SECOND,
+  activity: 0,
   adminScan: 0,
   adminUnmatched: 0,
   adminTmdb: 5 * MINUTE,
@@ -81,6 +90,8 @@ export type InvalidationEvent =
   | { type: 'watchedEpisodes'; showId: number }
   /** Match / resolve success, scan finished. */
   | { type: 'catalogChanged' }
+  /** PUT/DELETE /api/ratings/... settled (success or failure). Dismissing a prompt invalidates nothing. */
+  | { type: 'ratingChanged'; kind: RatingKind; id: number }
   /** PUT/DELETE /api/watchlist/... settled (success or failure). */
   | { type: 'watchlistChanged'; kind: WatchlistKind; id: number }
   /** PUT /api/admin/libraries success (folders saved, a `libraries` scan may have started). */
@@ -132,9 +143,23 @@ export function invalidateAfter(event: InvalidationEvent): QueryKey[] {
         queryKeys.admin.libraries(),
         queryKeys.personAll(),
         queryKeys.watchlistAll(),
+        // A scan can hide or show rated titles.
+        queryKeys.activityAll(),
+      ];
+    case 'ratingChanged':
+      // Watch events never add ['activity']: watching does not change a rating, and /activity
+      // refetches on every mount anyway.
+      return [
+        queryKeys.title(event.kind, event.id),
+        queryKeys.activityAll(),
+        queryKeys.libraryAll(kindSegment(event.kind)),
+        queryKeys.home(),
+        queryKeys.searchAll(),
+        queryKeys.personAll(),
+        queryKeys.watchlistAll(),
       ];
     case 'watchlistChanged':
-      return [event.kind === 'film' ? queryKeys.film(event.id) : queryKeys.show(event.id), queryKeys.watchlistAll()];
+      return [queryKeys.title(event.kind, event.id), queryKeys.watchlistAll()];
     case 'librariesChanged':
       return [queryKeys.admin.libraries(), queryKeys.admin.scan()];
     case 'profilesChanged':

@@ -29,6 +29,10 @@ sealed interface Route {
     @Serializable
     data object Watchlist : Route
 
+    /** (12) Actividad: the household's ratings (ratings prd3), a top-nav tab after "Mi lista". */
+    @Serializable
+    data object Activity : Route
+
     @Serializable
     data class FilmDetail(val id: Long) : Route
 

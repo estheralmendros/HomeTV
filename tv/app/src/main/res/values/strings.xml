@@ -28,6 +28,7 @@
     <string name="nav_search">Buscar</string>
     <string name="nav_settings">Ajustes</string>
     <string name="nav_watchlist">Mi lista</string>
+    <string name="nav_activity">Actividad</string>
 
     <!-- (1) Server setup -->
     <string name="setup_subtitle">Conéctate a tu servidor doméstico</string>
@@ -100,6 +101,12 @@
     <string name="watchlist_no_films">No hay películas en tu lista.</string>
     <string name="watchlist_no_shows">No hay series en tu lista.</string>
     <string name="watchlist_show_all">Ver todo</string>
+    <!-- Mi lista "Estado" filter: masculine (films and shows); the dialog title reuses dialog_watched -->
+    <string name="watchlist_watched">Estado: %1$s</string>
+    <string name="watchlist_watched_all">Todos</string>
+    <string name="watchlist_watched_yes">Vistos</string>
+    <string name="watchlist_watched_no">No vistos</string>
+    <string name="watchlist_no_matches_filters">Ningún título de tu lista coincide con los filtros.</string>
 
     <!-- (6) Search -->
     <string name="search_placeholder">Buscar películas y series</string>
@@ -142,6 +149,52 @@
     <plurals name="person_age">
         <item quantity="one">%1$s año</item>
         <item quantity="other">%1$s años</item>
+    </plurals>
+
+    <!-- Ratings (ratings prd3): detail block, dialog, card badge. Retry / cancel / "A · B" reuse
+         action_retry, action_cancel and pair_dot. -->
+    <string name="rating_rate">Puntuar</string>
+    <string name="rating_change">Cambiar</string>
+    <string name="rating_mine">Tu puntuación</string>
+    <string name="rating_mine_description">Tu puntuación: %1$s. %2$s</string>
+    <string name="rating_average">Media de la familia</string>
+    <string name="rating_average_value">%1$s (%2$s)</string>
+    <string name="rating_question">¿Qué te ha parecido?</string>
+    <string name="rating_save">Guardar</string>
+    <string name="rating_not_now">Ahora no</string>
+    <string name="rating_remove">Quitar puntuación</string>
+    <string name="rating_saved">Puntuación guardada</string>
+    <string name="rating_save_failed">No se ha podido guardar la puntuación.</string>
+    <string name="rating_update_failed">No se ha podido actualizar tu puntuación.</string>
+    <string name="rating_none">Sin puntuación</string>
+    <string name="rating_empty_value">—</string>
+    <string name="rating_more">y %1$s más</string>
+    <string name="rating_others_title">Puntuaciones</string>
+    <!-- One form is only used for exactly 1 star: "0,5 estrellas" stays plural (the caller picks the count). -->
+    <plurals name="rating_stars">
+        <item quantity="one">%1$s estrella</item>
+        <item quantity="other">%1$s estrellas</item>
+    </plurals>
+    <string name="card_my_rating">tu puntuación: %1$s</string>
+
+    <!-- (12) Actividad (ratings prd3 FR-T14..T16) -->
+    <string name="activity_title">Actividad</string>
+    <string name="activity_row">%1$s ha puntuado %2$s con</string>
+    <string name="activity_row_own">Has puntuado %1$s con</string>
+    <string name="activity_row_description">%1$s ha puntuado %2$s con %3$s, %4$s</string>
+    <string name="activity_row_own_description">Has puntuado %1$s con %2$s, %3$s</string>
+    <string name="activity_row_description_untimed">%1$s ha puntuado %2$s con %3$s</string>
+    <string name="activity_row_own_description_untimed">Has puntuado %1$s con %2$s</string>
+    <string name="activity_empty">Todavía nadie ha puntuado nada. Cuando alguien puntúe una película o serie, aparecerá aquí.</string>
+    <string name="time_just_now">ahora mismo</string>
+    <string name="time_yesterday">ayer</string>
+    <plurals name="time_minutes_ago">
+        <item quantity="one">hace %1$s minuto</item>
+        <item quantity="other">hace %1$s minutos</item>
+    </plurals>
+    <plurals name="time_hours_ago">
+        <item quantity="one">hace %1$s hora</item>
+        <item quantity="other">hace %1$s horas</item>
     </plurals>
 
     <!-- Structured values (core Format / LanguageNames / TrackRules → ui/text/UiFormat.kt) -->

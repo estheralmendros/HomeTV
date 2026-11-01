@@ -129,6 +129,7 @@ private fun ResultRow(title: String, items: List<PosterItem>, vm: SearchViewMode
                 onClick = { vm.onCardClick(item) },
                 modifier = Modifier.focusRequester(focus[item.key]).testTag("result_${item.key}"),
                 onFocused = { vm.lastFocusedKey = item.key },
+                myRating = item.myRating,
             )
         }
     }

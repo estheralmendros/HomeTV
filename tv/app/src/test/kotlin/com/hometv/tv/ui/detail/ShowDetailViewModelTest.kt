@@ -70,7 +70,7 @@ class ShowDetailViewModelTest {
         repos.api.onSeason = { _, n -> seasons[n] ?: throw httpError(404, "not_found") }
     }
 
-    private fun vm() = ShowDetailViewModel(7, repos.catalog, repos.watch, repos.watchlist, repos.store, repos.events, refresh, detailRefresh)
+    private fun vm() = ShowDetailViewModel(7, repos.catalog, repos.watch, repos.watchlist, repos.ratings, repos.ratingPrompts, repos.store, repos.events, refresh, detailRefresh)
 
     private fun ShowDetailViewModel.content() = state.value as ShowDetailUiState.Content
 

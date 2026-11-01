@@ -1,5 +1,6 @@
-// "Mi lista" state lives in the URL (watchlist prd2 FR-W8): ?type=films|shows&sort=title|year.
-// Defaults ('all', 'added') and invalid values are never written; setters replace the history entry.
+// "Mi lista" state lives in the URL (watchlist prd2 FR-W8): ?type=films|shows&watched=true|false&
+// sort=title|year. Defaults ('all', null, 'added') and invalid values are never written; setters
+// replace the history entry.
 import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { WatchlistQuery, WatchlistSort, WatchlistType } from '@/api/types';
@@ -7,6 +8,8 @@ import type { WatchlistQuery, WatchlistSort, WatchlistType } from '@/api/types';
 export interface WatchlistParams {
   type: WatchlistType;
   sort: WatchlistSort;
+  /** true: only watched, false: only not watched, null: all (the library rule). */
+  watched: boolean | null;
 }
 
 const TYPES: readonly WatchlistType[] = ['films', 'shows'];
@@ -18,19 +21,31 @@ export function parseWatchlistParams(search: URLSearchParams): WatchlistParams {
   return {
     type: TYPES.find((t) => t === rawType) ?? 'all',
     sort: SORTS.find((s) => s === rawSort) ?? 'added',
+    watched: parseWatched(search.get('watched')),
   };
+}
+
+function parseWatched(raw: string | null): boolean | null {
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  return null;
 }
 
 export function watchlistParamsToSearch(p: WatchlistParams): URLSearchParams {
   const search = new URLSearchParams();
   if (p.type !== 'all') search.set('type', p.type);
+  if (p.watched !== null) search.set('watched', String(p.watched));
   if (p.sort !== 'added') search.set('sort', p.sort);
   return search;
 }
 
 /** GET /api/watchlist params without paging; defaults are `undefined` so they are not sent. */
-export function toWatchlistQuery(p: WatchlistParams): Pick<WatchlistQuery, 'type' | 'sort'> {
-  return { type: p.type === 'all' ? undefined : p.type, sort: p.sort === 'added' ? undefined : p.sort };
+export function toWatchlistQuery(p: WatchlistParams): Pick<WatchlistQuery, 'type' | 'sort' | 'watched'> {
+  return {
+    type: p.type === 'all' ? undefined : p.type,
+    sort: p.sort === 'added' ? undefined : p.sort,
+    watched: p.watched ?? undefined,
+  };
 }
 
 export function useWatchlistParams() {
@@ -59,7 +74,8 @@ export function useWatchlistParams() {
   );
   const setType = useCallback((type: WatchlistType) => update({ type }), [update]);
   const setSort = useCallback((sort: WatchlistSort) => update({ sort }), [update]);
-  const showAll = useCallback(() => update({ type: 'all' }), [update]);
+  const setWatched = useCallback((watched: boolean | null) => update({ watched }), [update]);
+  const showAll = useCallback(() => update({ type: 'all', watched: null }), [update]);
 
-  return { params, setType, setSort, showAll, query: useMemo(() => toWatchlistQuery(params), [params]) };
+  return { params, setType, setSort, setWatched, showAll, query: useMemo(() => toWatchlistQuery(params), [params]) };
 }

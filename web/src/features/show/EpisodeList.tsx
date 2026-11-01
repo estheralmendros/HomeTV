@@ -14,6 +14,7 @@ import { PLAY_GLYPH } from '@/components/glyphs';
 import { ProgressBar } from '@/components/ProgressBar';
 import { useToast } from '@/components/Toast';
 import { WatchedToggle } from '@/components/WatchedToggle';
+import { useRatingPrompt } from '@/features/ratings/ratingPrompt';
 import { cx } from '@/lib/cx';
 import { episodeTitle } from '@/lib/episodes';
 import { episodeShort, formatDate, formatRuntime } from '@/lib/format';
@@ -25,6 +26,7 @@ import styles from './ShowDetailPage.module.css';
 export function EpisodeList({ showId, seasonNumber, episodes }: { showId: number; seasonNumber: number; episodes: EpisodeSummary[] }) {
   const queryClient = useQueryClient();
   const toast = useToast();
+  const { offer } = useRatingPrompt();
   const key = queryKeys.season(showId, seasonNumber);
   const patch = (episodeId: number, watched: boolean) =>
     queryClient.setQueryData<SeasonDetail>(key, (old) =>
@@ -40,6 +42,10 @@ export function EpisodeList({ showId, seasonNumber, episodes }: { showId: number
       const previous = queryClient.getQueryData<SeasonDetail>(key);
       patch(id, watched);
       return { previous };
+    },
+    // Marking the show's last present episode can finish it (ratings prd2 FR-W9.3).
+    onSuccess: (response) => {
+      if (response.rating_prompt) offer(response.rating_prompt);
     },
     onError: (err, _vars, context) => {
       if (context?.previous) queryClient.setQueryData(key, context.previous);

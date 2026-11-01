@@ -5,7 +5,7 @@ import { StrictMode, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setTokenGetter } from '@/api/client';
 import { queryKeys, type PlayedItem } from '@/api/queryKeys';
-import type { FilmDetail } from '@/api/types';
+import type { FilmDetail, RatingPrompt } from '@/api/types';
 import * as f from '../../tests/fixtures';
 import { tick, until } from '../../tests/flush';
 import { mediaState } from '../../tests/media';
@@ -268,6 +268,44 @@ describe('useProgressReporter', () => {
     expect(view.result.current.markedWatched).toBe(false);
     at(tracker, gen, 9000, 'pause');
     await until(() => expect(view.result.current.markedWatched).toBe(true));
+  });
+
+  it('ratingPrompt: the latest non-null prompt of a non-final report wins; a later null never clears it', async () => {
+    const dune = f.ratingPrompt();
+    const answers = [dune, null, f.ratingPrompt({ title: 'Dune (bis)' })];
+    server.use(
+      http.put('/api/progress', () => HttpResponse.json(f.progressReport({ rating_prompt: answers.shift() ?? null }))),
+    );
+    const { tracker, gen } = liveTracker(100);
+    const view = setup(tracker);
+    expect(view.result.current.ratingPrompt).toBeNull();
+    at(tracker, gen, 200, 'pause');
+    await until(() => expect(view.result.current.ratingPrompt).toEqual(dune));
+    at(tracker, gen, 300, 'pause');
+    await until(() => expect(puts()).toHaveLength(2));
+    await tick();
+    await tick();
+    expect(view.result.current.ratingPrompt).toEqual(dune);
+    at(tracker, gen, 400, 'pause');
+    await until(() => expect(view.result.current.ratingPrompt?.title).toBe('Dune (bis)'));
+  });
+
+  it('the final report hands its rating_prompt to onFinalPrompt (read at send time)', async () => {
+    const prompt = f.ratingPrompt();
+    server.use(http.put('/api/progress', () => HttpResponse.json(f.progressReport({ rating_prompt: prompt }))));
+    const { tracker } = liveTracker(100);
+    const first = vi.fn();
+    const latest = vi.fn();
+    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+    const view = renderHook(
+      (p: { onFinalPrompt: (prompt: RatingPrompt) => void }) =>
+        useProgressReporter({ item: FILM, fileId: 91, tracker, stateName: 'playing', hasPlayed: true, onFinalPrompt: p.onFinalPrompt }),
+      { initialProps: { onFinalPrompt: first }, wrapper },
+    );
+    view.rerender({ onFinalPrompt: latest });
+    view.unmount();
+    await until(() => expect(latest).toHaveBeenCalledWith(prompt));
+    expect(first).not.toHaveBeenCalled();
   });
 
   it('unmount sends one final report from the tracked values, registered in progressSync', async () => {

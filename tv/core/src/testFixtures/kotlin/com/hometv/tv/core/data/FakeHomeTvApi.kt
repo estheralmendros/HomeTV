@@ -13,7 +13,6 @@ import com.hometv.tv.core.api.PlaybackRequest
 import com.hometv.tv.core.api.PlaybackResponse
 import com.hometv.tv.core.api.Profile
 import com.hometv.tv.core.api.ProfileList
-import com.hometv.tv.core.api.Progress
 import com.hometv.tv.core.api.ProgressRequest
 import com.hometv.tv.core.api.SearchResponse
 import com.hometv.tv.core.api.SeasonDetail
@@ -50,11 +49,15 @@ open class FakeHomeTvApi : HomeTvApi {
     override suspend fun season(showId: Long, seasonNumber: Int): SeasonDetail = unused()
     override suspend fun episode(id: Long): EpisodeDetail = unused()
     override suspend fun search(query: String, limit: Int): SearchResponse = unused()
-    override suspend fun putProgress(body: ProgressRequest): Progress = unused()
+    override suspend fun putProgress(body: ProgressRequest): com.hometv.tv.core.api.ProgressReport = unused()
     override suspend fun setWatched(body: WatchedRequest): WatchedResponse = unused()
-    override suspend fun watchlist(type: String, sort: String, page: Int, pageSize: Int): Page<WatchlistEntry> = unused()
+    override suspend fun watchlist(type: String, sort: String, page: Int, pageSize: Int, watched: Boolean?): Page<WatchlistEntry> = unused()
     override suspend fun addToWatchlist(segment: String, id: Long): Unit = unused()
     override suspend fun removeFromWatchlist(segment: String, id: Long): Unit = unused()
+    override suspend fun setRating(segment: String, id: Long, body: com.hometv.tv.core.api.RatingRequest): Unit = unused()
+    override suspend fun removeRating(segment: String, id: Long): Unit = unused()
+    override suspend fun dismissRatingPrompt(segment: String, id: Long): Unit = unused()
+    override suspend fun activity(page: Int, pageSize: Int): Page<com.hometv.tv.core.api.ActivityEntry> = unused()
     override suspend fun playback(mediaFileId: Long, body: PlaybackRequest): PlaybackResponse = unused()
     override suspend fun keepAlive(sessionId: String): Response<Unit> = unused()
     override suspend fun deleteHlsSession(sessionId: String): Response<Unit> = unused()
