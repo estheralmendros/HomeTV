@@ -41,7 +41,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.RegisterExtension
 
-/** ratings prd3 FR-T10..FR-T12 (view-model side): the detail ratings row, its dialogs and focus targets. */
+/** View-model side of the detail ratings row, its dialogs and focus targets. */
 class DetailRatingsTest {
     @JvmField @RegisterExtension val main = MainDispatcherExtension()
 
@@ -386,7 +386,7 @@ class DetailRatingsTest {
         assertEquals(Stars(9), vm.content().ratingsRow.mine)
     }
 
-    // ---- Mark watched offers the prompt (FR-T10) --------------------------------------------
+    // ---- Mark watched offers the prompt -----------------------------------------------------
 
     @Test
     fun `marking a film watched offers its prompt, unmarking never does`() = runTest(main.dispatcher) {
@@ -425,7 +425,7 @@ class DetailRatingsTest {
         assertEquals(PendingPrompt(5, prompt), repos.ratingPrompts.pending.value)
     }
 
-    // ---- Show focus (FR-T11) -----------------------------------------------------------------
+    // ---- Show focus --------------------------------------------------------------------------
 
     @Test
     fun `Show focusButton is one-shot after a rating dialog closes`() = runTest(main.dispatcher) {

@@ -1,4 +1,4 @@
-"""Settings (pydantic-settings) + YAML loader + startup preparation (PRD §1).
+"""Settings (pydantic-settings) + YAML loader + startup preparation.
 
 Precedence (highest first): ``HOMETV_*`` environment variables -> YAML file
 (``HOMETV_CONFIG_FILE``, else ``{data_dir}/config.yaml`` if present) -> defaults.
@@ -334,7 +334,7 @@ def _is_within(child: Path, parent: Path) -> bool:
 
 
 def check_paths(settings: Settings) -> None:
-    """PRD §1 rule 6 against the env/YAML roots (pre-write guard, before anything is written):
+    """Path guards against the env/YAML roots (pre-write guard, before anything is written):
     never write under a media root; hls_dir must not hold the data dir."""
     data_dir = _resolve(settings.data_dir)
     hls_dir = _resolve(settings.hls_dir)
@@ -414,7 +414,7 @@ def prepare_hls_dir(settings: Settings) -> None:
 
 
 def prepare_runtime(settings: Settings) -> Settings:
-    """Startup side effects before the database opens (PRD §1 rules 3-4, 6): env-root guards,
+    """Startup side effects before the database opens: env-root guards,
     data dirs, secret key. The HLS dir is prepared later (``prepare_hls_dir``). Returns
     settings with the secret key set."""
     check_paths(settings)  # before any directory creation

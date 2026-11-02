@@ -1,9 +1,9 @@
 """Title normalization helpers (pure).
 
 - ``normalize_title``: NFKD, strip diacritics, casefold, ``&`` -> ``and``, remove punctuation,
-  collapse spaces (PRD §5 Matching).
-- ``sort_title``: leading article removed, then ``normalize_title`` (PRD §10).
-- ``search_text``: ``normalize_title(title) + " " + normalize_title(original_title)`` (PRD §10).
+  collapse spaces (TMDB matching).
+- ``sort_title``: leading article removed, then ``normalize_title``.
+- ``search_text``: ``normalize_title(title) + " " + normalize_title(original_title)``.
 - ``str_or_none`` / ``is_blank``: TMDB string fields (blank or non-string -> missing).
 - ``empty_to_none``: config values where ``""`` (e.g. an empty env var) means unset.
 - ``undecodable``: a file name that is not valid UTF-8 (``os.fsdecode`` surrogate escapes); the

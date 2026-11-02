@@ -1,4 +1,4 @@
-// The Bibliotecas draft (prd2 folder-selection-admin §3): pure, table-tested. Nothing reaches the
+// The Bibliotecas draft: pure, table-tested. Nothing reaches the
 // server until "Guardar cambios"; the consequences of a save come from the server's plan
 // (POST /api/admin/libraries/plan), never from here.
 import type { LibrariesPlan, LibrariesPlanRequest, LibrariesResponse, LibraryType } from '@/api/types';

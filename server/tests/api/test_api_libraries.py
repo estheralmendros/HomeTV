@@ -1,4 +1,4 @@
-"""/api/admin/libraries*: GET, POST plan, PUT, GET browse (HOMETV-1)."""
+"""/api/admin/libraries*: GET, POST plan, PUT, GET browse."""
 
 import asyncio
 from pathlib import Path

@@ -1,4 +1,4 @@
-// Library grid state lives in the URL (prd2 §5 step 1): q, sort, order, genre, year_from,
+// Library grid state lives in the URL: q, sort, order, genre, year_from,
 // year_to, watched. Defaults (sort=title, the sort's default order, no filters) are left out of the URL.
 import { useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -11,7 +11,7 @@ export interface LibraryParams {
   genre: number | null;
   yearFrom: number | null;
   yearTo: number | null;
-  /** true: only watched, false: only not watched, null: all (prd.md §10 `watched`). */
+  /** true: only watched, false: only not watched, null: all (the API's `watched` filter). */
   watched: boolean | null;
 }
 

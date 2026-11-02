@@ -80,12 +80,12 @@ import okhttp3.OkHttpClient
 
 data class AppConfig(
     val versionName: String,
-    /** Debug builds also accept `http://10.0.2.2:<port>` and `http://localhost:<port>` (prd3 §1.3). */
+    /** Debug builds also accept `http://10.0.2.2:<port>` and `http://localhost:<port>`. */
     val allowDebugCleartext: Boolean,
 )
 
 /**
- * Manual DI (prd3 Implementation Decisions): one container per process, created by
+ * Manual DI: one container per process, created by
  * [com.hometv.tv.HomeTvApplication]. Everything Android-specific is injected, so the container
  * also runs on the JVM in tests.
  *
@@ -94,7 +94,7 @@ data class AppConfig(
  * changes), [api], [guard], the repositories, [events] (global `AppEvent` bus), [appScope]
  * (`SupervisorJob() + Dispatchers.IO`, process lifetime: final progress PUT, HLS DELETE, [watchlist] and [ratings] writes),
  * [codecs] + [capsForFile] (capability hook), [playerLaunches], [homeRefresh], [detailRefresh],
- * [watchlistMemory], [account], [ratings] + [ratingPrompts] (ratings prd3; every rating change marks Home stale),
+ * [watchlistMemory], [account], [ratings] + [ratingPrompts] (every rating change marks Home stale),
  * [imageLoader] and one factory function per ViewModel.
  */
 class AppContainer(
@@ -138,7 +138,7 @@ class AppContainer(
     val watchlist = WatchlistRepository(api, guard, appScope)
     val ratings = RatingsRepository(api, guard, appScope, log = { e -> runCatching { android.util.Log.w("HomeTvRatings", "dismiss-prompt failed", e) } })
 
-    /** Rating prompts waiting for the root `RatingPromptHost` (ratings prd3 FR-T5). */
+    /** Rating prompts waiting for the root `RatingPromptHost`. */
     val ratingPrompts = RatingPrompts(store.session, appScope)
     val playback = PlaybackRepository(api, guard, appScope, SubtitleSource { url -> OkHttpSubtitleSource(clients().streamClient).fetch(url) })
     val nextEpisodes = NextEpisodeResolver(fetch = { id -> catalog.episode(id, Origin.Background) })
@@ -168,13 +168,13 @@ class AppContainer(
             events.events.collect { event ->
                 when (event) {
                     AppEvent.AuthExpired -> _sessionExpired.value = true
-                    // A removed title must not come back from the Home cache, even when Home is not alive (prd3 §3.7).
+                    // A removed title must not come back from the Home cache, even when Home is not alive.
                     is AppEvent.ItemGone -> homeCache.remove(event.type, event.id)
                     is AppEvent.ServerUnreachable -> Unit
                 }
             }
         }
-        // A rating saved anywhere changes the card badges: Home reloads on its next visit (ratings prd3 FR-T11).
+        // A rating saved anywhere changes the card badges: Home reloads on its next visit.
         appScope.launch(start = CoroutineStart.UNDISPATCHED) {
             ratings.changes.collect { homeRefresh.markStale() }
         }
@@ -189,7 +189,7 @@ class AppContainer(
 
     /**
      * Activity `ON_START` (also at launch): proactive refresh within 24 h of `expiresAt`, which also
-     * silently replaces an expired token for the remembered profile (prd3 §2.5).
+     * silently replaces an expired token for the remembered profile.
      */
     fun onActivityStart(): Job = appScope.launch {
         if (store.session.value.serverUrl != null) guard.ensureFresh()
@@ -301,7 +301,7 @@ class AppContainer(
             val userAgent = "HomeTV-Android/${BuildConfig.VERSION_NAME} (Android ${Build.VERSION.SDK_INT}; ${Build.MODEL})"
             val base = OkHttpClient()
             val subtitles = SubtitleFileCache(File(app.cacheDir, "subtitles"))
-            appScope.launch { subtitles.clear() } // nothing survives a process (Playback Flow rule 3)
+            appScope.launch { subtitles.clear() } // nothing survives a process
             return AppContainer(
                 store = store,
                 homeCache = HomeCache(File(app.filesDir, "home_cache")),

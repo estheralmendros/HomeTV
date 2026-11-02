@@ -1,4 +1,4 @@
-"""plan_segments / check_plan / run.csv verification / split_fmp4 (PRD §7 Segment plan, HLS 4)."""
+"""plan_segments / check_plan / run.csv verification / split_fmp4."""
 
 from pathlib import Path
 

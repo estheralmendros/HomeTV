@@ -1,4 +1,4 @@
-"""HLS remux end-to-end with real ffmpeg/ffprobe (PRD §7 HLS; Playback integration ACs)."""
+"""HLS remux end-to-end with real ffmpeg/ffprobe."""
 
 import asyncio
 import json
@@ -120,7 +120,7 @@ async def test_hls_session_end_to_end(make_media_app, tmp_path, caplog, name, ca
         assert session.state != "failed"
         assert "plan_mismatch" not in caplog.text
         assert "tfdt_mismatch" not in caplog.text
-        print(f"G4 first HLS segment {name}: {first_latency * 1000:.0f}ms")
+        print(f"first HLS segment {name}: {first_latency * 1000:.0f}ms")
         assert first_latency < 6.0
         if name == "h264_aac_audiotail.mp4":
             await asyncio.sleep(0.5)
@@ -275,9 +275,9 @@ async def test_cross_run_tfdt(make_media_app, caplog, name, action):
         sid = session.session_id
         frame = 1 / probe.video.frame_rate
         reorder = reorder_delay(path, probe.video.index)
-        # Audio window lower bound below ``start - reorder`` (PRD §7 HLS step 3 (a)): one AAC
-        # frame for copy, two for an AAC re-encode (Rev 10: ffmpeg 5.1 starts a restarted
-        # run's re-encoded audio up to ~35 ms early), 1 s for MPEG-TS sources (Rev 6).
+        # Audio window lower bound below ``start - reorder``: one AAC frame for copy,
+        # two for an AAC re-encode (ffmpeg 5.1 starts a restarted run's re-encoded audio up to
+        # ~35 ms early), 1 s for MPEG-TS sources.
         audio_frame = 1024 / 44_100  # the fixtures' lavfi sine rate
         frames = 1 if action == "copy" else 2
         audio_low = 1.0 if name.endswith(".ts") else frames * audio_frame + 0.007

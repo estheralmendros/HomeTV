@@ -4,7 +4,7 @@ import { S } from '@/strings.es';
 import styles from './Player.module.css';
 import { versionLabel } from './versions';
 
-/** "Otras versiones": one button per playable alternative (§9.1); nothing when there is none. */
+/** "Otras versiones": one button per playable alternative; nothing when there is none. */
 export function OtherVersions({ files, onTry }: { files: readonly MediaFile[]; onTry: (file: MediaFile) => void }) {
   const headingId = useId();
   if (files.length === 0) return null;

@@ -1,4 +1,4 @@
-"""Actor screen: TMDB person details and filmography (HOMETV-1).
+"""Actor screen: TMDB person details and filmography.
 
 Revision ID: 0004
 Revises: 0003

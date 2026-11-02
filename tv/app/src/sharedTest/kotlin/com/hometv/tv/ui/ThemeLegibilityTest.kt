@@ -15,7 +15,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * prd3 Theme & legibility: a `Text` without an explicit color must be light on the dark theme
+ * Theme legibility: a `Text` without an explicit color must be light on the dark theme
  * (contrast ≥ 4.5:1 against the background), never Compose's default black.
  */
 @RunWith(AndroidJUnit4::class)
@@ -101,7 +101,7 @@ class ThemeLegibilityTest : UiTestBase() {
         press(androidx.compose.ui.input.key.Key.DirectionDown)
         press(androidx.compose.ui.input.key.Key.DirectionRight)
         press(androidx.compose.ui.input.key.Key.DirectionCenter)
-        // Down ×2: the buttons, then `rating_mine` (ratings prd3 FR-T12), then the cast card.
+        // Down ×2: the buttons, then `rating_mine`, then the cast card.
         press(androidx.compose.ui.input.key.Key.DirectionDown, times = 2)
         press(androidx.compose.ui.input.key.Key.DirectionCenter)
         press(androidx.compose.ui.input.key.Key.DirectionUp)
@@ -129,7 +129,7 @@ class ThemeLegibilityTest : UiTestBase() {
         assertLegible("Cambiar", "Tu puntuación", on = com.hometv.tv.ui.detail.RatingChipColors.focusedContainer)
     }
 
-    /** ratings prd3 FR-T8 / T-AC-9: the amber stars are graphics, ≥ 3:1 on the background and on dialog surfaces. */
+    /** The amber stars are graphics, ≥ 3:1 on the background and on dialog surfaces. */
     @Test
     fun theRatingColourStandsOutOnTheBackgroundAndSurfaces() {
         listOf(HomeTvColors.Background, HomeTvColors.Surface, HomeTvColors.SurfaceVariant).forEach { on ->

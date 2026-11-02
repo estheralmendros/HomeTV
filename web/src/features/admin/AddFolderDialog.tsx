@@ -1,4 +1,4 @@
-// "Añadir carpeta a Películas/Series" (folder-selection-admin prd2 §3): a typed path, plus the
+// "Añadir carpeta a Películas/Series": a typed path, plus the
 // folder browser when the server's browse root exists. Only `not_absolute` and `duplicate` are
 // checked here; the server validates the rest on save.
 import { useId, useState, type FormEvent } from 'react';

@@ -1,4 +1,4 @@
-"""§12 Web SPA serving: static web/dist, SPA fallback, stale-asset 404, missing-dist placeholder."""
+"""Web SPA serving: static web/dist, SPA fallback, stale-asset 404, missing-dist placeholder."""
 
 from pathlib import Path
 

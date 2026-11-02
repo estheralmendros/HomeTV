@@ -247,7 +247,7 @@ async def test_scan_trigger_status_and_conflict(client, app, admin, monkeypatch)
     assert done["phase"] == "done"
 
 
-# --- Scan: change-triggered runs (HOMETV-1 prd2 FR-23) ------------------------------------------
+# --- Scan: change-triggered runs ----------------------------------------------------------------
 
 
 async def test_idle_scan_status_has_null_scope_and_a_watcher(client, admin):
@@ -644,7 +644,7 @@ async def test_profile_limit_via_api(client, admin):
 
 
 async def test_admin_token_is_never_accepted_as_a_query_param(client, admin):
-    """AC: X-Admin-Token is header-only (never read from the query string)."""
+    """X-Admin-Token is header-only (never read from the query string)."""
     token = admin.admin_token
     for params in ({"X-Admin-Token": token}, {"x-admin-token": token}, {"admin_token": token}):
         r = await client.get("/api/admin/scan", params=params, headers=admin.headers)

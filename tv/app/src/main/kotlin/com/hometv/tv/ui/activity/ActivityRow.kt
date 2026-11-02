@@ -42,7 +42,7 @@ import com.hometv.tv.ui.theme.HomeTvDimens
 import com.hometv.tv.ui.theme.HomeTvFocus
 
 /**
- * One Actividad row (ratings prd3 FR-T16), 72 dp, focusable: avatar, "**Luis** ha puntuado **Dune**
+ * One Actividad row, 72 dp, focusable: avatar, "**Luis** ha puntuado **Dune**
  * con" (or "Has puntuado **Dune** con") + 20 dp stars, the relative time (muted, right-aligned) and the
  * poster. Only the title shrinks (ellipsized); one accessible name with the stars and the time. The
  * content fills the row height, so its items centre in the focused fill and ring (a wrapped Row sits at

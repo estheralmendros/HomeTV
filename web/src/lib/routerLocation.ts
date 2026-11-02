@@ -1,5 +1,5 @@
 // Committed location changes of a data router, for providers outside RouterProvider (the rating
-// prompt host, ratings prd2 FR-W8). Only a new `location.key` fires the listener, never the
+// prompt host). Only a new `location.key` fires the listener, never the
 // `loading` states of a navigation. The change says how it happened (`action`) and where it came
 // from (`previousPathname`), so a listener can tell a same-page REPLACE (search params only).
 export type HistoryAction = 'POP' | 'PUSH' | 'REPLACE';

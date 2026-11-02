@@ -1,4 +1,4 @@
-// The rating prompt host's API (ratings prd2 FR-W8), apart from the host so the form can read it
+// The rating prompt host's API, apart from the host so the form can read it
 // without an import cycle. Without a host (isolated component tests) every call is a no-op.
 import { createContext, useContext } from 'react';
 import type { RatingKind, RatingPrompt } from '@/api/types';

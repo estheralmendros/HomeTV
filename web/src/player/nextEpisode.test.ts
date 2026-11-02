@@ -35,7 +35,7 @@ beforeEach(() => {
 });
 afterEach(() => rec.dispose());
 
-describe('resolveNextEpisode (D12)', () => {
+describe('resolveNextEpisode', () => {
   it('skips an episode that contains the file that just played', async () => {
     serve([e02, e03]);
     const next = await resolveNextEpisode(client(), e01, 501);

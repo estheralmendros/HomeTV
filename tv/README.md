@@ -1,6 +1,6 @@
 # HomeTV for Android TV
 
-Viewer-only Android TV / Google TV client of HomeTV (spec: `specs/HOMETV-1/hometv-app/prd3.md`).
+Viewer-only Android TV / Google TV client of HomeTV.
 
 - `core/`: pure Kotlin/JVM module (API client, session renewal, repositories, version/track/caps
   rules, error mapping, progress reporting). Tested with JUnit 5, MockWebServer and coroutines-test.

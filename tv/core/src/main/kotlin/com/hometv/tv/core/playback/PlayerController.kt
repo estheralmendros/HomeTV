@@ -33,7 +33,7 @@ object PlaybackErrorCodes {
     fun isParsing(code: Int): Boolean = code in 3000..3999
 }
 
-/** Which load failed (prd3 §10 `urlKind`, from the most recent `AnalyticsListener.onLoadError`). */
+/** Which load failed (`urlKind`, from the most recent `AnalyticsListener.onLoadError`). */
 enum class UrlKind {
     /** The direct `…/stream` URL. */
     STREAM,
@@ -127,7 +127,7 @@ interface PlayerController {
     fun selectSubtitle(trackId: String?)
 
     interface Listener {
-        /** Once per media item with non-empty tracks, after the overrides are applied (Playback Flow rule 10). */
+        /** Once per media item with non-empty tracks, after the overrides are applied. */
         fun onTracksChanged(check: TrackCheckInput)
 
         fun onStateChanged(state: PlayerState)
@@ -139,8 +139,8 @@ interface PlayerController {
         fun onFailure(failure: PlayerFailure)
 
         /**
-         * A play command from outside the app's key handling (prd3 §8 "Headset and Bluetooth
-         * play/pause": the Player's media session, i.e. Bluetooth AVRCP, the headset button or any
+         * A play command from outside the app's key handling (headset and Bluetooth
+         * play/pause: the Player's media session, i.e. Bluetooth AVRCP, the headset button or any
          * media controller). The controller never plays by itself: the listener decides.
          */
         fun onRemotePlay() {}

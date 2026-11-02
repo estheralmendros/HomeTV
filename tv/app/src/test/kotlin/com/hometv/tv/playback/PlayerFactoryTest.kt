@@ -4,7 +4,7 @@ import androidx.media3.common.C
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
-/** prd3 Playback Flow rule 8: byte target `memoryClass × 1 MiB × 0.5`, clamped 48–128 MiB; buffers > one 30 s segment. */
+/** Load control: byte target `memoryClass × 1 MiB × 0.5`, clamped 48–128 MiB; buffers > one 30 s segment. */
 class PlayerFactoryTest {
     private val mib = 1024 * 1024
 

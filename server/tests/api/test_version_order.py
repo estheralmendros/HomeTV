@@ -1,6 +1,6 @@
-"""AC (Rev 8): version order is total and identical on every endpoint.
+"""Version order is total and identical on every endpoint.
 
-An episode with three versions, 1080p 4 GB (PRD id 9), 2160p 12 GB (id 7) and 1080p 4 GB
+An episode with three versions, 1080p 4 GB (id 9), 2160p 12 GB (id 7) and 1080p 4 GB
 (id 5, same size as id 9), returns them as 7, 5, 9 from GET /api/episodes/{id} and from its
 /api/home entry, on repeated calls; a version without a video stream sorts last. A film without
 parts with the same files returns the same order. Ids are allocated in insertion order here, so
@@ -19,7 +19,7 @@ def _no_video_probe() -> dict:
 
 
 def _versions(s, **link) -> list[int]:
-    """Insert the PRD's versions; returns their ids in the expected order (7, 5, 9, no-video)."""
+    """Insert the three versions; returns their ids in the expected order (7, 5, 9, no-video)."""
     no_video = add_file(s, **link, size=20 * GB, probe=_no_video_probe())
     id5 = add_file(s, **link, height=1080, size=4 * GB)
     id7 = add_file(s, **link, height=2160, size=12 * GB)
@@ -55,7 +55,7 @@ async def test_film_without_parts_same_order(client, db, user):
 
 
 async def test_film_standalone_then_parts_with_two_part1_encodes(client, db, user):
-    """AC: standalone, Part 1 (higher resolution first), Part 1 (lower), Part 2."""
+    """Standalone, Part 1 (higher resolution first), Part 1 (lower), Part 2."""
     with db.write_session() as s:
         film = add_film(s, "Kill Bill", files=0)
         part2 = add_file(s, film_id=film.id, part_number=2, height=2160)

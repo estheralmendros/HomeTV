@@ -29,7 +29,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.RegisterExtension
 
-/** watchlist prd3 FR-T9: paging as Browse, sort/type dialogs, empty states, and the reload in place on resume. */
+/** Mi lista: paging as Browse, sort/type dialogs, empty states, and the reload in place on resume. */
 class WatchlistViewModelTest {
     @JvmField @RegisterExtension val main = MainDispatcherExtension()
 

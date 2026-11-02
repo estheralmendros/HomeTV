@@ -1,4 +1,4 @@
-"""GET /api/people/{person_id} (actor screen FR-11..13)."""
+"""GET /api/people/{person_id} (actor screen)."""
 
 from datetime import UTC, date, datetime, timedelta
 from typing import Any

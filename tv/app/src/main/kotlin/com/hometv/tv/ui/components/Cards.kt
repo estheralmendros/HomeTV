@@ -154,7 +154,7 @@ fun SeeAllCard(onClick: () -> Unit, modifier: Modifier = Modifier, onFocused: ()
 }
 
 /**
- * This profile's rating at the poster's bottom-left (ratings prd3 FR-T13): one amber star + "4,5" on a
+ * This profile's rating at the poster's bottom-left: one amber star + "4,5" on a
  * scrim, above the progress strip when there is one ([raised]); the watched check stays top-right.
  * Its accessible text is "tu puntuación: 4,5 estrellas".
  */

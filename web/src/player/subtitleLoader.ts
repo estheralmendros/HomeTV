@@ -1,4 +1,4 @@
-// WebVTT loader (prd2 §9 step 6): fetch with the Bearer header (no ?token=), retry
+// WebVTT loader: fetch with the Bearer header (no ?token=), retry
 // `503 subtitle_pending` after Retry-After (fallback 10 s) for up to 5 min, then attach as a
 // blob: URL. Blob URLs are cached per page keyed by `${media_file_id}:${track.id}` (track ids
 // such as `emb-3` repeat across files) and revoked when the file changes or on dispose.

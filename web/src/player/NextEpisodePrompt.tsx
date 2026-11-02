@@ -7,7 +7,7 @@ import { S } from '@/strings.es';
 import styles from './Player.module.css';
 
 export interface NextEpisodePromptProps {
-  /** The resolved next episode (D12). */
+  /** The resolved next episode. */
   episode: EpisodeDetail;
   /** Countdown seconds after `ended`; null before the end. */
   secondsLeft: number | null;
@@ -15,7 +15,7 @@ export interface NextEpisodePromptProps {
   onCancel: () => void;
 }
 
-/** Bottom-right card in the last 30 s / on end (§9 step 10). */
+/** Bottom-right card in the last 30 s / on end. */
 export function NextEpisodePrompt({ episode, secondsLeft, onPlayNow, onCancel }: NextEpisodePromptProps) {
   const playRef = useRef<HTMLButtonElement>(null);
   const counting = secondsLeft != null;

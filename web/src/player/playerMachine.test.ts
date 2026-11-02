@@ -63,7 +63,7 @@ const versionFailed = () =>
 
 // --- Error classification -----------------------------------------------------------------
 
-describe('playerErrorFrom (§9 step 15)', () => {
+describe('playerErrorFrom', () => {
   it.each([
     [503, 'too_many_sessions', {}, 'busy'],
     [503, 'hls_disk_full', {}, 'busy'],

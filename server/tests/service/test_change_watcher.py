@@ -1,4 +1,4 @@
-"""``ChangeWatcher`` (prd.md FR-11): availability, arming, settling, health facts, recovery.
+"""``ChangeWatcher``: availability, arming, settling, health facts, recovery.
 
 Every test uses ``FakeWatchBackend`` (``tests/stubs.py``), a fake clock, injected mountinfo
 text and platform, and ``auto_poll=False`` (``poll_once`` is called explicitly).

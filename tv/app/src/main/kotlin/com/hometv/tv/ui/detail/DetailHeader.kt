@@ -17,7 +17,7 @@ import androidx.tv.material3.Text
 import com.hometv.tv.ui.components.Artwork
 import com.hometv.tv.ui.theme.HomeTvColors
 
-/** Text drawn over the detail backdrop (prd3 Theme & legibility): the secondary lines (metadata). */
+/** Text drawn over the detail backdrop: the secondary lines (metadata). */
 object DetailText {
     /** Lighter than [HomeTvColors.Muted]: ≥ 4.5:1 over the scrim even where the artwork is white. */
     val secondary: Color = HomeTvColors.SecondaryOnArt
@@ -44,7 +44,7 @@ fun Backdrop(path: String?, height: Dp) {
 }
 
 /**
- * "No se ha podido actualizar Mi lista." right under the action buttons (watchlist prd3 FR-T7): muted,
+ * "No se ha podido actualizar Mi lista." right under the action buttons: muted,
  * one line, not the error color. [HomeTvColors.Muted] would be about 2.8:1 over a white backdrop, so it
  * takes [DetailText.secondary], the muted tone made for the art.
  */

@@ -1,4 +1,4 @@
-// Actor page (cast-appearances prd2 FR-W8): photo, name, life span, place of birth, biography
+// Actor page: photo, name, life span, place of birth, biography
 // and the person's titles in this catalog ("En tu catálogo"). Reached from "Reparto" links; no
 // back button (browser Back, like detail pages).
 import { useQuery } from '@tanstack/react-query';

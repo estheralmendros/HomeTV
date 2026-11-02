@@ -72,7 +72,7 @@ import com.hometv.tv.ui.theme.HomeTvDimens
 import com.hometv.tv.ui.theme.HomeTvFocus
 import kotlinx.coroutines.launch
 
-/** (8) Show detail (prd3 §7): header, buttons, seasons (left) and episodes (right); Right/Left move between panes. */
+/** (8) Show detail: header, buttons, seasons (left) and episodes (right); Right/Left move between panes. */
 @Composable
 fun ShowDetailScreen(vm: ShowDetailViewModel, navigator: AppNavigator) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -111,7 +111,7 @@ private fun ShowContent(state: ShowDetailUiState.Content, vm: ShowDetailViewMode
     val ratingMine = remember { FocusRequester() }
     val ratingMore = remember { FocusRequester() }
     LaunchedEffect(state.focusVersion) {
-        // A rating dialog or the "Puntuaciones" list just closed: its opener chip (ratings prd3 FR-T11).
+        // A rating dialog or the "Puntuaciones" list just closed: its opener chip.
         when (state.focusButton) {
             ButtonId.RATING_MINE -> return@LaunchedEffect run { ratingMine.requestFocusWhenReady() }
             ButtonId.RATING_MORE -> return@LaunchedEffect run { ratingMore.requestFocusWhenReady() }
@@ -131,13 +131,13 @@ private fun ShowContent(state: ShowDetailUiState.Content, vm: ShowDetailViewMode
         Modifier.fillMaxSize().onFocusChanged { contentHasFocus = it.hasFocus }
             .padding(horizontal = HomeTvDimens.SafeHorizontal, vertical = HomeTvDimens.SafeVertical),
     ) {
-        // 24 dp (was 96): room for the ratings block, the panes keep one full episode row (ratings prd3 FR-T12).
+        // 24 dp (was 96): room for the ratings block, the panes keep one full episode row.
         Spacer(Modifier.height(TOP_SPACER))
         Text(show.title, style = MaterialTheme.typography.displaySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(state.meta.resolve(), style = MaterialTheme.typography.titleMedium, color = DetailText.secondary, modifier = Modifier.padding(top = 6.dp))
         show.overview?.let { Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = OVERVIEW_LINES, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp).fillMaxWidth(0.7f)) }
         val error = state.watchlistError
-        // With the failed-write line, it takes the buttons' bottom padding (watchlist prd3 FR-T7).
+        // With the failed-write line, it takes the buttons' bottom padding.
         Row(Modifier.padding(top = 16.dp, bottom = if (error == null) 16.dp else 0.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             state.buttons.forEach { button ->
                 ActionButton(
@@ -159,7 +159,7 @@ private fun ShowContent(state: ShowDetailUiState.Content, vm: ShowDetailViewMode
         }
         val hasMore = state.ratingsRow.moreCount > 0
         // Down from the block: the selected season (else the first one), scrolled in first. The list
-        // composes only its first rows, so a plain focus target may not be attached (ratings prd3 FR-T12).
+        // composes only its first rows, so a plain focus target may not be attached.
         val seasonIndex = state.seasons.indexOfFirst { it.number == state.selectedSeason }.coerceAtLeast(0)
         val downToSeason: () -> Boolean = {
             state.seasons.getOrNull(seasonIndex)?.let { target ->

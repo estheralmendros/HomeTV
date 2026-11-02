@@ -54,7 +54,7 @@ export const episodeQuery = (id: number) =>
   });
 
 // networkMode 'always' (the only query that overrides the app-wide 'online', see createQueryClient):
-// offline, the fetch fails and the page shows the connection error with "Reintentar" (prd2 States)
+// offline, the fetch fails and the page shows the connection error with "Reintentar"
 // instead of a query paused on its skeleton forever. A failed refetch of a cached person keeps it
 // on screen (PersonPage shows the error only without data).
 export const personQuery = (id: number) =>

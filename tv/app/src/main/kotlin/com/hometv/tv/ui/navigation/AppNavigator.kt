@@ -100,7 +100,7 @@ class AppNavigator(
 
     /**
      * `AppEvent.AuthExpired`: the only path to the Picker, with the "Tu sesión ha caducado…" banner.
-     * The profile is gone, so its rating prompts go too (ratings prd3 FR-T5).
+     * The profile is gone, so its rating prompts go too.
      */
     fun authExpired() {
         container.ratingPrompts.clear()

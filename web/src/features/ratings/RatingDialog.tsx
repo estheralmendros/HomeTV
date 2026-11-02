@@ -1,4 +1,4 @@
-// "¿Qué te ha parecido?" / manual rating (ratings prd2 FR-W7). RatingForm is the content (the
+// "¿Qué te ha parecido?" / manual rating. RatingForm is the content (the
 // player renders it inline: `Modal` portals to <body>, invisible in element fullscreen);
 // RatingDialog wraps it in a Modal. One secondary answer for Escape, the Modal's close and
 // [Ahora no] / [Cancelar]; nothing reacts while a save is pending (the buttons are `aria-disabled`,

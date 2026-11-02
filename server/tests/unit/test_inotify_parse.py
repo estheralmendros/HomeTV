@@ -1,4 +1,4 @@
-"""``changes.inotify`` pure parts (prd.md FR-3): ``parse_events`` and ``map_batch``."""
+"""``changes.inotify`` pure parts: ``parse_events`` and ``map_batch``."""
 
 import struct
 

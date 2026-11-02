@@ -4,7 +4,7 @@
   whose binary is missing (``ionice`` does not exist on macOS), so argv built by the modules
   (and asserted by tests) always carries the full prefix.
 - ``read_rchar(pid)``: ``/proc/{pid}/io`` ``rchar`` or ``None`` when unreadable.
-- ``kill_sequence(proc)``: SIGCONT, SIGTERM, SIGKILL after a grace period (§7 HLS step 7).
+- ``kill_sequence(proc)``: SIGCONT, SIGTERM, SIGKILL after a grace period.
 """
 
 import asyncio

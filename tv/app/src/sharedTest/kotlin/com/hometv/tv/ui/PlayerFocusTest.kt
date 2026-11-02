@@ -20,7 +20,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * prd3 Testing Decisions "Compose UI tests" for the Player (with a fake `PlayerController`): keys
+ * Compose UI tests for the Player (with a fake `PlayerController`): keys
  * while the overlay is hidden, the overlay focus order, the track dialog returning focus to its
  * opener, the Back table rows of the Player, the countdown and the error screens.
  */

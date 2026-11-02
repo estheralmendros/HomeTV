@@ -51,7 +51,7 @@ fun BrowseScreen(vm: BrowseViewModel, library: Library, navigator: AppNavigator,
         TopNav(tab, navigator::openTab, avatar, navigator::switchProfile, tabs, showSettings)
         val error = state.error
         Text(state.header.resolve(), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(horizontal = HomeTvDimens.SafeHorizontal, vertical = 4.dp))
-        // The four buttons get their own row (prd3 §4 step 2): beside the title, the longest labels
+        // The four buttons get their own row: beside the title, the longest labels
         // wrapped. It scrolls sideways (margin inside, so the focus ring is never clipped) if ever too wide.
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = HomeTvDimens.SafeHorizontal, vertical = 6.dp),

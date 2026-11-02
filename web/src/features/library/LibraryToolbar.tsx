@@ -1,4 +1,4 @@
-// Library toolbar (prd2 §5 step 2, step 6): title filter (debounced 300 ms), sort + order toggle,
+// Library toolbar: title filter (debounced 300 ms), sort + order toggle,
 // genre, year range and watched state. Below 600 px (PHONE_QUERY) only the title filter and a "Filtros" button
 // render; the button opens a bottom sheet with the other controls and "Borrar" / "Aplicar".
 import { useQuery } from '@tanstack/react-query';

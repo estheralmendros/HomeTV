@@ -1,4 +1,4 @@
-// Pure helpers of the Unmatched page and the fix-match dialog (prd2 §11): row → dialog mode,
+// Pure helpers of the Unmatched page and the fix-match dialog: row → dialog mode,
 // the parsed summary, the search prefill and the apply request chosen by mode.
 import type { ResolveRequest, TmdbType, UnmatchedEntry, UnmatchedParsed } from '@/api/types';
 import { episodeCode } from '@/lib/format';
@@ -77,7 +77,7 @@ export type FixMatchRequest =
   | { kind: 'matchShow'; path: string; id: number; body: { tmdb_id: number } }
   | { kind: 'resolve'; path: string; entryId: number; body: ResolveRequest };
 
-/** The one request "Aplicar" sends (prd2 §11 step 4 table). */
+/** The one request "Aplicar" sends. */
 export function fixMatchRequest(mode: FixMatchMode, selection: FixMatchSelection): FixMatchRequest {
   const tmdbId = selection.tmdbId;
   if (mode.kind !== 'file') {

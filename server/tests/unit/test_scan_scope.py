@@ -1,4 +1,4 @@
-"""``changes.scope`` (prd.md FR-4): ``ScanScope``, ``root_of``, ``scope_for``, ``merge_scopes``."""
+"""``changes.scope``: ``ScanScope``, ``root_of``, ``scope_for``, ``merge_scopes``."""
 
 import os
 

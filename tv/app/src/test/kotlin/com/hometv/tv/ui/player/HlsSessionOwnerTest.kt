@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-/** prd3 §8 Lifecycle row 33 (orphaned POST) and the HLS DELETEs, in `appScope` with a timeout. */
+/** Orphaned `POST .../playback` requests and the HLS DELETEs, in `appScope` with a timeout. */
 class HlsSessionOwnerTest {
     private val deleted = mutableListOf<String>()
 

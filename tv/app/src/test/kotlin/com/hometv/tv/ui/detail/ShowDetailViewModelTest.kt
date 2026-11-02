@@ -258,7 +258,7 @@ class ShowDetailViewModelTest {
         assertEquals(AppEvent.ItemGone("show", 7), repos.received.last())
     }
 
-    // ---- Mi lista (watchlist prd3 FR-T5/FR-T6) --------------------------------------------
+    // ---- Mi lista ---------------------------------------------------------------------------
 
     private fun ShowDetailViewModel.watchlistButton() = content().buttons.first { it.id == ButtonId.WATCHLIST }
 

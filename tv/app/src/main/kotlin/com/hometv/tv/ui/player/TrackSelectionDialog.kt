@@ -30,7 +30,7 @@ import com.hometv.tv.ui.text.resolve
 import com.hometv.tv.ui.theme.HomeTvColors
 
 /**
- * "Audio y subtítulos" (prd3 §9): two columns, "Audio" (initial focus on the current track) and
+ * "Audio y subtítulos": two columns, "Audio" (initial focus on the current track) and
  * "Subtítulos" ("Desactivados" first; a pending track shows "Preparando los subtítulos…"). Selecting
  * applies at once and closes the dialog; Back closes it without change.
  */

@@ -54,7 +54,7 @@ import com.hometv.tv.ui.theme.HomeTvColors
 import com.hometv.tv.ui.theme.HomeTvFocus
 
 /**
- * The custom Compose overlay (prd3 §8): title/subtitle at the top left; progress bar (elapsed, total,
+ * The custom Compose overlay: title/subtitle at the top left; progress bar (elapsed, total,
  * remaining, buffered, pending seek target) and the button row [⏪10] [⏯] [10⏩] [Audio y subtítulos]
  * [Siguiente episodio | Siguiente parte] at the bottom; the status chip and the audio-switch chip
  * with [Cancelar] at the top right. [OverlayMode.PROGRESS] shows the progress bar only.

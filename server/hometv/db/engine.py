@@ -1,4 +1,4 @@
-"""SQLite engines, sessions and the process-wide write lock (PRD §6 Concurrency model).
+"""SQLite engines, sessions and the process-wide write lock (concurrency model).
 
 Two engines on the same file (SQLAlchemy's documented pysqlite recipe):
 

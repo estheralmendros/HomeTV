@@ -16,7 +16,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** prd3 §11 step 3: [Cambiar servidor] for admin profiles only, behind the admin PIN (asked every time). */
+/** [Cambiar servidor] for admin profiles only, behind the admin PIN (asked every time). */
 @RunWith(AndroidJUnit4::class)
 class ServerChangePinTest : UiTestBase() {
     private companion object {
@@ -40,7 +40,7 @@ class ServerChangePinTest : UiTestBase() {
     fun aViewerCannotReachTheServerChange() {
         useLibrary()
         launch()
-        // A viewer has no "Ajustes" tab (prd3 §3 step 1): the step that reaches it for an admin lands on
+        // A viewer has no "Ajustes" tab: the step that reaches it for an admin lands on
         // the avatar, so there is no way to [Cambiar servidor].
         press(Key.DirectionUp)
         press(Key.DirectionRight, times = 5)
@@ -54,7 +54,7 @@ class ServerChangePinTest : UiTestBase() {
         useLibrary()
         signInAsAdmin()
         launch()
-        // Demoted on the server: the `/api/me` refresh of Settings answers a viewer (prd3 §11 intro).
+        // Demoted on the server: the `/api/me` refresh of Settings answers a viewer.
         api.onMe = { Profile(5, "Esther", "avatar-05") }
         openSettings()
         assertTrue("a viewer has no Settings screen", absent("settings_switch_profile"))
@@ -155,7 +155,7 @@ class ServerChangePinTest : UiTestBase() {
         press(Key.DirectionCenter)
         node("pin_key_1").assertIsEnabled()
         press(Key.Zero, times = 4)
-        // prd3 §11 step 3: "keypad disabled" during the lockout, and visibly so; focus stays in the dialog.
+        // "Keypad disabled" during the lockout, and visibly so; focus stays in the dialog.
         listOf("pin_key_1", "pin_key_0", "pin_key_delete").forEach { node(it).assertIsNotEnabled() }
         assertFocused("pin_key_1")
         UiTestPlatform.advance(3_000)

@@ -67,7 +67,7 @@ import com.hometv.tv.ui.text.resolve
 import com.hometv.tv.ui.theme.HomeTvColors
 import com.hometv.tv.ui.theme.HomeTvDimens
 
-/** (4) Home: top nav, hero, rows (prd3 §3); Back returns to the first card before exiting. */
+/** (4) Home: top nav, hero, rows; Back returns to the first card before exiting. */
 @Composable
 fun HomeScreen(vm: HomeViewModel, navigator: AppNavigator, avatar: AvatarUi?, showSettings: Boolean, focusTab: NavTab?, onFocusTabConsumed: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -101,7 +101,7 @@ fun HomeScreen(vm: HomeViewModel, navigator: AppNavigator, avatar: AvatarUi?, sh
     val error = state.error
     val showsRows = error == null && !state.loading && !(state.libraryEmpty && state.rows.isEmpty())
     Box(Modifier.fillMaxSize().background(HomeTvColors.Background)) {
-        // The hero art is a screen-level layer behind the top nav, the hero text and the first rows (prd3 §3 step 4).
+        // The hero art is a screen-level layer behind the top nav, the hero text and the first rows.
         if (showsRows) HeroBackdrop(hero?.backdrop)
         Column(Modifier.fillMaxSize()) {
             TopNav(NavTab.HOME, navigator::openTab, avatar, navigator::switchProfile, tabs, showSettings, onFocused = vm::onNavFocused)
@@ -151,7 +151,7 @@ private fun Hero(hero: HeroUi?) {
     Box(Modifier.fillMaxWidth().height(HERO_HEIGHT)) {
         if (hero != null) {
             Column(Modifier.align(Alignment.BottomStart).padding(horizontal = HomeTvDimens.SafeHorizontal).fillMaxWidth(0.55f).testTag("hero")) {
-                // Title alone; the year is a smaller, light-grey sublabel below it (prd3 §3 step 4).
+                // Title alone; the year is a smaller, light-grey sublabel below it.
                 Text(hero.title, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 // Muted is fine here: a 4-digit year at the left margin never reaches the backdrop (it starts at 32 %).
                 hero.year?.let { Text(it, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Normal), color = HomeTvColors.Muted, maxLines = 1) }
@@ -163,7 +163,7 @@ private fun Hero(hero: HeroUi?) {
 }
 
 /**
- * The rows under the hero (prd3 §3 step 10): the focused row is pinned to the top of this area, so no
+ * The rows under the hero: the focused row is pinned to the top of this area, so no
  * part of an earlier row stays visible, the space after the last row lets it be pinned too, and the
  * area stops at the bottom safe area.
  * Only the vertical container pins; the rows' own horizontal scrolling keeps the inherited behavior.
@@ -247,7 +247,7 @@ private fun HomeRowView(
     }
 }
 
-/** Minimum opacity of the left fade wherever the hero text can be (prd3 §3 step 4): ≥ 4.5:1 over any art. */
+/** Minimum opacity of the left fade wherever the hero text can be: ≥ 4.5:1 over any art. */
 const val HERO_TEXT_SCRIM_ALPHA = 0.8f
 
 /**
@@ -260,7 +260,7 @@ private const val HERO_TEXT_EDGE = 0.4f
 private const val HERO_BACKDROP_WIDTH = 0.68f
 private val HERO_BACKDROP_HEIGHT = 340.dp
 
-/** Leaves room under the top nav for the tallest row (posters) above the bottom safe area (prd3 §3 step 10). */
+/** Leaves room under the top nav for the tallest row (posters) above the bottom safe area. */
 private val HERO_HEIGHT = 144.dp
 
 /** Room above and below the cards of a row, for the focus scale. */

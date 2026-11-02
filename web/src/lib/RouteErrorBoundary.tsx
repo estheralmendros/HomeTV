@@ -1,4 +1,4 @@
-// Root errorElement (prd2 §13): a stale lazy chunk reloads once; when that already happened,
+// Root errorElement: a stale lazy chunk reloads once; when that already happened,
 // the "app was updated" message; any other error "Algo ha ido mal.". Never a blank screen.
 import { useState } from 'react';
 import { useRouteError } from 'react-router-dom';

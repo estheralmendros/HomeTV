@@ -1,4 +1,4 @@
-"""``hometv.watchlist`` ("Mi lista", FR-2/FR-3): idempotent add/remove on visible titles, the
+"""``hometv.watchlist`` ("Mi lista"): idempotent add/remove on visible titles, the
 batched list query (visibility, type filter, three fixed sorts, paging, per-profile summaries)
 and its bounded query count."""
 
@@ -457,7 +457,7 @@ def test_list_entries_never_touches_the_write_engine(mdb, profiles):
         assert s.scalar(select(func.count()).select_from(m.WatchlistEntry)) == 4
 
 
-# --- in_watchlist on detail (FR-4) -----------------------------------------------------------
+# --- in_watchlist on detail ------------------------------------------------------------------
 
 
 def test_detail_in_watchlist_is_per_profile(mdb, profiles):

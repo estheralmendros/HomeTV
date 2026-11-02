@@ -120,7 +120,7 @@ describe('LibraryPage (films)', () => {
     expect(currentUrl(router)).toBe('/films?q=dune&sort=year&order=asc&genre=18&year_from=1990&year_to=2009');
     expect(rec.find('GET', '/api/genres')[0]?.url.searchParams.get('type')).toBe('films');
 
-    // prd2 §5 step 2: "Estado" (Todas / Vistas / No vistas) → watched omitted / true / false.
+    // "Estado" (Todas / Vistas / No vistas) → watched omitted / true / false.
     const state = screen.getByLabelText('Estado');
     expect(within(state).getAllByRole('option').map((o) => o.textContent)).toEqual(['Todas', 'Vistas', 'No vistas']);
     await user.selectOptions(state, 'No vistas');

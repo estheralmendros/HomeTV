@@ -1,4 +1,4 @@
-// Media Session wiring (prd2 §9 step 12, /t-fix headset / Bluetooth play-pause): a headset's
+// Media Session wiring: a headset's
 // multifunction button, OS media keys and the Now Playing widget reach the player through
 // explicit action handlers instead of each browser's default (unreliable with MSE/hls.js and on
 // iPadOS). Feature-detected; a no-op without `navigator.mediaSession`. Effects only: the handlers

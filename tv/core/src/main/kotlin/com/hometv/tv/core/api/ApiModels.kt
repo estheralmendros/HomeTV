@@ -1,4 +1,4 @@
-@file:Suppress("PropertyName") // DTO properties mirror the prd.md JSON field names (snake_case).
+@file:Suppress("PropertyName") // DTO properties mirror the API JSON field names (snake_case).
 
 package com.hometv.tv.core.api
 
@@ -9,7 +9,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
-// DTOs mirroring prd.md "REST API Reference" shared shapes (Rev 9). Decoding is lenient
+// DTOs mirroring the REST API shared shapes. Decoding is lenient
 // (`ApiJson`: unknown keys ignored, missing nullable fields → null), so additive server changes
 // never break the app. Ids are Long, positions/durations Double (seconds).
 
@@ -38,14 +38,14 @@ data class Profile(
 @Serializable
 data class ProfileList(val items: List<Profile>)
 
-/** `POST /api/admin/unlock` (prd.md §8): the TV only uses it to check an admin PIN (prd3 §11 step 3). */
+/** `POST /api/admin/unlock`: the TV only uses it to check an admin PIN (before a server change). */
 @Serializable
 data class UnlockRequest(val pin: String)
 
 @Serializable
 data class UnlockResponse(val admin_token: String, val expires_at: String)
 
-/** `GET /api/genres` (prd.md): the library's genres, each with its item `count`. */
+/** `GET /api/genres`: the library's genres, each with its item `count`. */
 @Serializable
 data class GenreList(val items: List<Genre> = emptyList())
 
@@ -133,7 +133,7 @@ sealed interface Summary {
     val type: String
     val id: Long
 
-    /** "type:id", the focus/refresh key (prd3 §3.6). */
+    /** "type:id", the focus/refresh key. */
     val key: String get() = "$type:$id"
 }
 
@@ -148,7 +148,7 @@ data class FilmSummary(
     val match_status: String? = null,
     val added_at: String? = null,
     val progress: Progress? = null,
-    /** This profile's rating (ratings prd.md FR-6), null when unrated or from an older server. */
+    /** This profile's rating, null when unrated or from an older server. */
     val my_rating: Double? = null,
     override val type: String = "film",
 ) : Summary
@@ -166,7 +166,7 @@ data class ShowSummary(
     val season_count: Int = 0,
     val episode_count: Int = 0,
     val unwatched_episode_count: Int = 0,
-    /** This profile's rating (ratings prd.md FR-6), null when unrated or from an older server. */
+    /** This profile's rating, null when unrated or from an older server. */
     val my_rating: Double? = null,
     override val type: String = "show",
 ) : Summary
@@ -252,9 +252,9 @@ data class FilmDetail(
     val media_files: List<MediaFile> = emptyList(),
     val progress: Progress? = null,
     val added_at: String? = null,
-    /** In this profile's "Mi lista" (watchlist prd.md FR-4); false when an older server omits it. */
+    /** In this profile's "Mi lista"; false when an older server omits it. */
     val in_watchlist: Boolean = false,
-    /** Ratings (ratings prd.md FR-6): this profile's value, the others newest first, the average from 2 ratings. */
+    /** Ratings: this profile's value, the others newest first, the average from 2 ratings. */
     val my_rating: Double? = null,
     val ratings: List<OtherRating> = emptyList(),
     val household_average: HouseholdAverage? = null,
@@ -292,9 +292,9 @@ data class ShowDetail(
     val next_episode: EpisodeSummary? = null,
     val unwatched_episode_count: Int = 0,
     val added_at: String? = null,
-    /** In this profile's "Mi lista" (watchlist prd.md FR-4); false when an older server omits it. */
+    /** In this profile's "Mi lista"; false when an older server omits it. */
     val in_watchlist: Boolean = false,
-    /** Ratings (ratings prd.md FR-6): this profile's value, the others newest first, the average from 2 ratings. */
+    /** Ratings: this profile's value, the others newest first, the average from 2 ratings. */
     val my_rating: Double? = null,
     val ratings: List<OtherRating> = emptyList(),
     val household_average: HouseholdAverage? = null,
@@ -346,7 +346,7 @@ data class PersonAppearance(
     val character: String? = null,
 )
 
-/** `GET /api/people/{id}` (cast-appearances prd.md): dates are `YYYY-MM-DD`; `credits_complete` false = TMDB not consulted. */
+/** `GET /api/people/{id}`: dates are `YYYY-MM-DD`; `credits_complete` false = TMDB not consulted. */
 @Serializable
 data class PersonDetail(
     val person_id: Long,
@@ -361,7 +361,7 @@ data class PersonDetail(
     val appearances: List<PersonAppearance> = emptyList(),
 )
 
-/** One title of "Mi lista" (`GET /api/watchlist`, watchlist prd.md FR-7): `kind` = `film` | `show`. */
+/** One title of "Mi lista" (`GET /api/watchlist`): `kind` = `film` | `show`. */
 @Serializable
 data class WatchlistEntry(
     val kind: String,
@@ -391,7 +391,7 @@ data class WatchedRequest(val target: String, val id: Long, val watched: Boolean
 @Serializable
 data class WatchedResponse(val updated: Int = 0, val rating_prompt: RatingPrompt? = null)
 
-/** `PUT /api/progress` answer: the stored [Progress] plus the rating prompt (ratings prd.md FR-8). */
+/** `PUT /api/progress` answer: the stored [Progress] plus the rating prompt. */
 @Serializable
 data class ProgressReport(
     val position_seconds: Double = 0.0,
@@ -405,7 +405,7 @@ data class ProgressReport(
     fun toProgress(): Progress = Progress(position_seconds, duration_seconds, watched, watched_at, media_file_id, updated_at)
 }
 
-// ---- Ratings (ratings prd.md) --------------------------------------------------------------
+// ---- Ratings --------------------------------------------------------------------------------
 
 /** Another profile, as shown next to its rating. */
 @Serializable
@@ -440,7 +440,7 @@ data class ActivityEntry(
 
 // ---- Playback ------------------------------------------------------------------------------
 
-/** prd.md §7 Client capabilities (ffprobe codec names, normalized container names). */
+/** Client capabilities (ffprobe codec names, normalized container names). */
 @Serializable
 data class ClientCaps(
     val containers: List<String>,
@@ -474,7 +474,7 @@ data class PlaybackResponse(
     val detail: String? = null,
 )
 
-/** prd.md error envelope `{"error": {"code", "message", "details"}}`. */
+/** The API error envelope `{"error": {"code", "message", "details"}}`. */
 @Serializable
 data class ErrorEnvelope(val error: ErrorBody)
 

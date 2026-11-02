@@ -1,4 +1,4 @@
-"""Mount watchability (prd.md FR-1, pure except ``read_mountinfo``).
+"""Mount watchability (pure except ``read_mountinfo``).
 
 Inotify only reports changes made through the local kernel: network and VM-bridge file systems
 (Docker Desktop drives, NFS/SMB shares, FUSE bridges) never deliver remote changes, so a root

@@ -1,4 +1,4 @@
-"""``hometv.ratings`` (FR-3 to FR-6): idempotent rating writes and dismissals on visible titles,
+"""``hometv.ratings``: idempotent rating writes and dismissals on visible titles,
 the deleted-profile 401, the batched activity list, the detail block (``item_ratings``) and the
 viewer's ``my_rating`` on summaries."""
 
@@ -57,7 +57,7 @@ def activity(db: Database, profile_id: int, page: int = 1, page_size: int = 50):
         return ratings.list_activity(s, profile_id, page, page_size)
 
 
-# --- set / remove / dismiss (FR-4) -----------------------------------------------------------
+# --- set / remove / dismiss ------------------------------------------------------------------
 
 
 def test_set_rating_upserts_replacing_stars_and_bumping_rated_at(mdb, profiles):
@@ -220,7 +220,7 @@ def test_writes_reraise_integrity_errors_other_than_the_profile_fk(mdb, profiles
         call()
 
 
-# --- item_ratings / detail (FR-6) ------------------------------------------------------------
+# --- item_ratings / detail -------------------------------------------------------------------
 
 
 def test_item_ratings_splits_mine_others_newest_first_and_average(mdb, profiles):
@@ -286,7 +286,7 @@ def test_details_spend_one_query_on_ratings(mdb, profiles):
     assert len(rating_reads) == 2
 
 
-# --- my_rating on summaries (FR-6) -----------------------------------------------------------
+# --- my_rating on summaries ------------------------------------------------------------------
 
 
 def test_summaries_carry_the_requesters_rating(mdb, profiles):
@@ -312,7 +312,7 @@ def test_summaries_carry_the_requesters_rating(mdb, profiles):
         assert statements == []
 
 
-# --- list_activity (FR-5) --------------------------------------------------------------------
+# --- list_activity ---------------------------------------------------------------------------
 
 
 def test_activity_is_newest_first_with_ties_by_id_and_includes_own_rows(mdb, profiles):

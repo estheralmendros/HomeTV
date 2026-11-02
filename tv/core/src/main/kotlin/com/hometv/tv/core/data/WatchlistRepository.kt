@@ -36,7 +36,7 @@ enum class WatchlistSort(val wire: String) { ADDED("added"), TITLE("title"), YEA
 class WatchlistWriteException(val acknowledged: Boolean?, override val cause: ApiException) : Exception(cause)
 
 /**
- * "Mi lista" reads and writes (watchlist prd3 FR-T3). Every call renews the session once on a 401,
+ * "Mi lista" reads and writes. Every call renews the session once on a 401,
  * as a foreground action (a write started on a detail screen stays one even if it lands after Back).
  *
  * Writes are coalesced per title, latest wins, by a worker in [appScope] (so leaving the screen never

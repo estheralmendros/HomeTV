@@ -1,4 +1,4 @@
-// Stars (ratings prd2 FR-W6): one inline SVG star (viewBox 0 0 24 24; the half is a clipPath on
+// Stars: one inline SVG star (viewBox 0 0 24 24; the half is a clipPath on
 // the filled shape), never a font glyph or emoji. StarDisplay is an image with the text
 // equivalent; StarInput is a keyboard/pointer slider from ½ to 5 in ½ steps.
 import { useId, useState, type KeyboardEvent, type PointerEvent } from 'react';

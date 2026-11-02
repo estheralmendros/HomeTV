@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 
-/** Request paths, queries and bodies match prd.md for every endpoint the TV uses. */
+/** Request paths, queries and bodies match the REST API for every endpoint the TV uses. */
 class RepositoriesTest {
     private val t = TestServer()
     private val events = mutableListOf<AppEvent>()
@@ -160,7 +160,7 @@ class RepositoriesTest {
     }
 
     @Test
-    fun `browse sort options are listed in the PRD order`() {
+    fun `browse sort options are listed in the order the sort button cycles`() {
         assertEquals(
             listOf("title" to "asc", "title" to "desc", "year" to "desc", "year" to "asc", "added" to "desc"),
             BrowseSort.entries.map { it.sort to it.order },
@@ -304,7 +304,7 @@ class RepositoriesTest {
         assertTrue(events.single() is AppEvent.ServerUnreachable)
     }
 
-    // ---- Mi lista (watchlist prd3 FR-T2/FR-T3) -------------------------------------------
+    // ---- Mi lista -------------------------------------------------------------------------
 
     @Test
     fun `the watchlist list sends type, sort, page and page_size and drops entries of unknown types`() = runTest {

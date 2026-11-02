@@ -301,7 +301,7 @@ async def test_auth_required(client, path):
 
 
 async def test_show_list_watched_filter(client, db, user, admin):
-    """PRD §10 list filters: shows by unwatched_episode_count (specials ignored)."""
+    """List filters: shows by unwatched_episode_count (specials ignored)."""
     with db.write_session() as s:
         _, done = add_show(s, "Dark", episodes={0: 1, 1: 2})
         _, half = add_show(s, "Lost", episodes={1: 2})

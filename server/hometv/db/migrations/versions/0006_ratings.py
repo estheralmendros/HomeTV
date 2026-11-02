@@ -1,4 +1,4 @@
-"""Per-profile ratings and rating-prompt dismissals (HOMETV-1).
+"""Per-profile ratings and rating-prompt dismissals.
 
 Revision ID: 0006
 Revises: 0005

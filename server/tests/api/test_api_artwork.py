@@ -1,4 +1,4 @@
-"""GET /api/artwork/{size}/{file_name} (PRD §5 Artwork cache, Media & playback errors)."""
+"""GET /api/artwork/{size}/{file_name} (artwork cache, media & playback errors)."""
 
 import pytest
 import respx

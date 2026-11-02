@@ -1,4 +1,4 @@
-// Boot sequence, guards, the route table and document.title (prd2 Routes).
+// Boot sequence, guards, the route table and document.title.
 import { screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';

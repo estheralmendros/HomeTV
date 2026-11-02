@@ -14,6 +14,6 @@ export const keepAliveHls = (sessionId: string) =>
 export const deleteHlsSession = (sessionId: string, options: { keepalive?: boolean } = {}) =>
   apiFetch<void>(`/api/hls/${encodeURIComponent(sessionId)}`, { method: 'DELETE', ...options });
 
-/** WebVTT text of a subtitle track URL (Bearer header, no ?token=; prd2 §9 step 6). */
+/** WebVTT text of a subtitle track URL (Bearer header, no ?token=). */
 export const getSubtitleText = (url: string, signal?: AbortSignal) =>
   apiFetch<string>(url, { responseType: 'text', signal });

@@ -32,7 +32,7 @@ object HomeTvColors {
     val SecondaryOnArt = Color(0xFFC9D1DC)
     val Error = Color(0xFFFF8A80)
 
-    /** The focus ring: light, 3 dp (prd3 Focus & navigation AC). */
+    /** The focus ring: light, 3 dp. */
     val FocusRing = Color(0xFFFFFFFF)
     val Progress = Color(0xFFE53935)
 

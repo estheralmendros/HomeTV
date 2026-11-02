@@ -7,7 +7,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * The HLS sessions the Player gives up (prd3 §8 Lifecycle): `DELETE /api/hls/{sid}` runs in
+ * The HLS sessions the Player gives up: `DELETE /api/hls/{sid}` runs in
  * `appScope` (it must outlive the ViewModel) with [PlayerViewModel.FINAL_TIMEOUT_MS], and row 33's
  * orphans: a `POST .../playback` abandoned on the wire is awaited in `appScope`, and the session it
  * answers with is deleted. Orphans are handled in order; the next request first waits for them

@@ -20,7 +20,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** watchlist prd3 FR-T4, FR-T10, FR-T11, Back table: the "Mi lista" tab and screen with the D-pad. */
+/** Back table and D-pad paths of the "Mi lista" tab and screen with the D-pad. */
 @RunWith(AndroidJUnit4::class)
 class WatchlistFocusTest : UiTestBase() {
     /** The server's list, newest first; writes from the detail screens change it. */

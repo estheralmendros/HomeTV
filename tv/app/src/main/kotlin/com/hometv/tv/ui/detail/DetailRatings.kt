@@ -23,7 +23,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
- * The ratings block of Film and Show detail (ratings prd3 FR-T11): the shown and confirmed "Tu
+ * The ratings block of Film and Show detail: the shown and confirmed "Tu
  * puntuación", the manual [RatingEditor], the "Puntuaciones" list and the inline removal failure.
  * Pattern: [DetailWatchlistToggle] (the owner keeps its detail model; this keeps the rating state).
  *

@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-/** prd3 Brand: the banner and the launcher icon use the web app's logo (red ▶ + "HomeTV" on dark). */
+/** Brand: the banner and the launcher icon use the web app's logo (red ▶ + "HomeTV" on dark). */
 class BrandAssetsTest {
     // Lives in :core because its tests run on a plain JVM (javax.imageio); the assets are the app's,
     // located through the `hometv.appRes` system property set by `core/build.gradle.kts`.

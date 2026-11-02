@@ -5,7 +5,7 @@ import com.hometv.tv.core.api.MediaFile
 
 /**
  * Catalog message keys (`app` maps each to a `strings.xml` id). Never server text: `error.message`,
- * `details.detail` and the unsupported `detail` are logged only (prd3 §UI Language rule 7).
+ * `details.detail` and the unsupported `detail` are logged only.
  */
 enum class MessageKey {
     /** "Este vídeo no se puede reproducir en este televisor" (+ a REASON_* line). */
@@ -80,7 +80,7 @@ sealed interface PlaybackDecision {
     data object SubtitleUnavailable : PlaybackDecision
 }
 
-/** Per-playback history the ViewModel keeps for the retry limits of §10. Times in ms. */
+/** Per-playback history the ViewModel keeps for the playback retry limits. Times in ms. */
 data class FailureContext(
     val mode: PlaybackMode,
     val nowMs: Long,
@@ -105,7 +105,7 @@ sealed interface PreparingEstimate {
     data class Minutes(val minutes: Int) : PreparingEstimate
 }
 
-/** A failed direct → HLS audio switch (§8 row 40): a toast, never a full-screen error. */
+/** A failed direct → HLS audio switch: a toast, never a full-screen error. */
 sealed interface SwitchFailure {
     data class Toast(val message: MessageKey) : SwitchFailure
 
@@ -113,7 +113,7 @@ sealed interface SwitchFailure {
 }
 
 /**
- * Pure mapping of every playback failure (prd3 §10, §8 row 40) to a decision with message keys.
+ * Pure mapping of every playback failure (including a failed audio switch) to a decision with message keys.
  * Branches on `error.code`, never on the status alone (503 has three meanings).
  */
 object PlaybackErrorMapper {
@@ -121,7 +121,7 @@ object PlaybackErrorMapper {
     const val RATE_LIMIT_MS = 30_000L
     private const val KEYFRAME_INDEX_FAILED_PREFIX = "keyframe_index_failed"
 
-    /** Codes prd.md defines; any other code shows "Se ha producido un error inesperado (%1$s)." */
+    /** Codes the server defines; any other code shows "Se ha producido un error inesperado (%1$s)." */
     private val KNOWN_CODES = setOf(
         "preparing", "too_many_sessions", "hls_disk_full", "transcoder_failed", "file_missing", "not_found",
         "invalid_audio_stream", "validation_error", "unauthorized", "forbidden", "session_not_found", "segment_timeout",

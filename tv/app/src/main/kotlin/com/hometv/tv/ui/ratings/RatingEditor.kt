@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-/** What `RatingDialog` shows (ratings prd3 FR-T8); [poster] is API-relative. */
+/** What `RatingDialog` shows; [poster] is API-relative. */
 data class RatingDialogUi(
     val mode: Mode,
     val title: String,
@@ -30,7 +30,7 @@ data class RatingDialogUi(
 }
 
 /**
- * The rating dialog's state holder (ratings prd3 FR-T9), shared by the root `RatingPromptHost` and the
+ * The rating dialog's state holder, shared by the root `RatingPromptHost` and the
  * detail screens. The write runs in `appScope` ([RatingsRepository]); [scope] (the owner's: a Main
  * scope of the host, the detail ViewModel's) awaits it and runs the 1.5 s confirmation.
  *

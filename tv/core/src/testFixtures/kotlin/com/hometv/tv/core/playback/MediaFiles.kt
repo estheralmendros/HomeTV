@@ -7,7 +7,7 @@ import com.hometv.tv.core.api.Progress
 import com.hometv.tv.core.api.SubtitleTrack
 import com.hometv.tv.core.api.VideoInfo
 
-/** Test factories in the prd.md shapes. */
+/** Test factories in the REST API shapes. */
 object F {
     val H264 = VideoInfo("h264", 1920, 1080)
     val HEVC = VideoInfo("hevc", 3840, 2160, hdr = "hdr10")

@@ -1,4 +1,4 @@
-// Texts of a finished scan (prd2 §11 Scan step 4).
+// Texts of a finished scan.
 import type { ScanScope, ScanStatus } from '@/api/types';
 import { S } from '@/strings.es';
 
@@ -32,7 +32,7 @@ export function isScanStatus(value: unknown): value is ScanStatus {
 }
 
 /**
- * Label of one folder of a change-triggered run (prd2 FR-26), `name` = the root's last segment:
+ * Label of one folder of a change-triggered run, `name` = the root's last segment:
  * "películas/A" (a folder under the root), "MKV (archivos sueltos)" (the root's loose files),
  * "series (toda la carpeta)" (the whole root).
  */

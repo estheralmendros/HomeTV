@@ -95,13 +95,13 @@ class PlayerDeps(
     val guard: SessionGuard,
     val nextEpisodes: NextEpisodeResolver,
     val events: AppEventSink,
-    /** Process-lifetime scope: final progress PUT, HLS DELETE, orphan-request observers (prd3 §8 Lifecycle). */
+    /** Process-lifetime scope: final progress PUT, HLS DELETE, orphan-request observers. */
     val appScope: CoroutineScope,
     val codecs: CodecSource,
     val serverUrl: () -> String?,
     val controller: PlayerController,
     val subtitles: SubtitleStore,
-    /** The app's prompt store: the session's last `rating_prompt` is handed to it on exit (ratings prd3 FR-T6). No default. */
+    /** The app's prompt store: the session's last `rating_prompt` is handed to it on exit. No default. */
     val ratingPrompts: RatingPrompts,
     val nowMs: () -> Long = { SystemClock.uptimeMillis() },
     val io: CoroutineDispatcher = Dispatchers.IO,
@@ -109,10 +109,10 @@ class PlayerDeps(
 )
 
 /**
- * (9) Player (prd3 §8–§10): the Player session state machine of §8 (rows 1–41), progress reporting,
- * HLS keep-alive and the 30 min paused release (D9), D-pad seeking, audio/subtitle switching
+ * (9) Player: the Player session state machine (rows 1–41 of its transition table), progress reporting,
+ * HLS keep-alive and the 30 min paused release, D-pad seeking, audio/subtitle switching
  * (direct ↔ HLS), recovery after stream failures (401 renewal, HLS 404, decoder/container fallbacks),
- * the next-episode countdown (D11, D12), the multi-part prompt (D10, D13) and the end screens.
+ * the next-episode countdown, the multi-part prompt and the end screens.
  *
  * Session ownership rules: each attached playback response is an [Attachment] (its HLS session,
  * if any, and its [ProgressReporter]); [finishSession] sends its final PUT and DELETE once
@@ -142,7 +142,7 @@ class PlayerViewModel(
         val keepFrame: Boolean = false,
     )
 
-    /** One attached playback response (prd3 §8 Lifecycle `attachmentKey`). */
+    /** One attached playback response (`attachmentKey`). */
     private class Attachment(val key: Long, val file: MediaFile, val plan: PlaybackPlan.Play, val caps: ClientCaps, val startMs: Long) {
         lateinit var reporter: ProgressReporter
         var putDone = false
@@ -167,7 +167,7 @@ class PlayerViewModel(
         var detailLoaded = false
     }
 
-    /** Per-file exclusions and retry flags (kept for the rest of that file's playback, §10). */
+    /** Per-file exclusions and retry flags (kept for the rest of that file's playback). */
     private class FileHistory {
         val video = mutableSetOf<String>()
         val audio = mutableSetOf<String>()
@@ -193,7 +193,7 @@ class PlayerViewModel(
     private val _effects = Channel<PlayerEffect>(Channel.BUFFERED)
     val effects: Flow<PlayerEffect> = _effects.receiveAsFlow()
 
-    /** The PRD session state (exposed for tests and the screen). */
+    /** The session state (exposed for tests and the screen). */
     var session: SessionState = SessionState.Loading
         private set
 
@@ -278,7 +278,7 @@ class PlayerViewModel(
 
     init {
         if (!launches.isActive(route.launchId)) {
-            // Process death: Navigation restored the route; pop with no request (§8 Lifecycle).
+            // Process death: Navigation restored the route; pop with no request.
             exit()
         } else {
             controller.setListener(this)
@@ -326,7 +326,7 @@ class PlayerViewModel(
         val payload = launches.payload(route.launchId)?.takeIf { it.id == route.itemId && it.media_files.isNotEmpty() }
         if (payload != null) {
             val item = Item("episode", payload.id, payload.media_files, payload.progress).also { it.fill(payload) }
-            // §3.5: `GET /api/episodes/{id}` (for `next_episode_id`) runs in parallel and does not delay the start.
+            // `GET /api/episodes/{id}` (for `next_episode_id`) runs in parallel and does not delay the start.
             viewModelScope.launch { loadEpisodeDetail(item) }
             return item
         }
@@ -364,7 +364,7 @@ class PlayerViewModel(
         if (progress == null) progress = detail.progress
     }
 
-    /** The file and start position (§8 Resume, D10/D11); null when no file is readable. */
+    /** The file and start position (resume rules); null when no file is readable. */
     private fun chooseStart(item: Item): Pair<MediaFile, com.hometv.tv.core.playback.Start>? {
         val files = item.files
         val chosen = route.mediaFileId?.let { id -> files.firstOrNull { it.id == id } }
@@ -410,7 +410,7 @@ class PlayerViewModel(
 
     private fun historyOf(f: MediaFile) = history.getOrPut(f.id) { FileHistory() }
 
-    /** Sends a `POST .../playback` (through `Loading`, §8): the `preparing` loop, row 33 orphans, attach. */
+    /** Sends a `POST .../playback` (through `Loading`): the `preparing` loop, row 33 orphans, attach. */
     private fun send(spec: RequestSpec) {
         loadJob?.cancel()
         pending = spec
@@ -489,7 +489,7 @@ class PlayerViewModel(
                 endSwitch()
             }
             Kind.HLS_AUDIO_SWITCH -> {
-                // §9.5: toast, then recover the previous track (selectedAudioIndex unchanged), previous_session_id = null.
+                // Toast, then recover the previous track (selectedAudioIndex unchanged), previous_session_id = null.
                 spec.audioIndex?.let(unavailableAudio::add)
                 showToast(UiText.Res(R.string.audio_track_unplayable))
                 send(spec.copy(audioIndex = selectedAudioIndex, previousSessionId = null, kind = Kind.RESTORE_AUDIO))
@@ -503,7 +503,7 @@ class PlayerViewModel(
             Kind.NEXT_EPISODE, Kind.NEXT_PART -> {
                 val nextFile = spec.fallbacks.firstOrNull()
                 if (nextFile != null) {
-                    // The server stopped the old session at the first request whatever its outcome (Rev 4).
+                    // The server stopped the old session at the first request whatever its outcome.
                     val start = spec.nextEpisode?.let { VersionSelector.startFor(nextFile, it.media_files, it.progress) }
                     noticePending = start?.differentVersionNotice ?: false
                     send(spec.copy(file = nextFile, startSec = start?.positionSeconds ?: 0.0, previousSessionId = null, fallbacks = spec.fallbacks.drop(1)))
@@ -583,7 +583,7 @@ class PlayerViewModel(
             selectedSubtitleId = plan.defaultSubtitleId
         }
         if (selectedSubtitleId != null && plan.subtitles.none { it.track.id == selectedSubtitleId }) selectedSubtitleId = null
-        // The default text subtitle is fetched before prepare() with a 3 s budget (Playback Flow rule 3).
+        // The default text subtitle is fetched before prepare() with a 3 s budget.
         val wanted = plan.subtitles.firstOrNull { it.track.id == selectedSubtitleId && it.track.isText }
         val wantedUrl = wanted?.url
         if (justDefaulted && wanted != null && wantedUrl != null && deps.subtitles.get(spec.file.id, wanted.track.id) == null) {
@@ -697,7 +697,7 @@ class PlayerViewModel(
         return controller.durationMs
     }
 
-    // ---- Keep-alive and the 30 min pause timer (D9) -----------------------------------------
+    // ---- Keep-alive and the 30 min pause timer ----------------------------------------------
 
     private fun startHeldTimers() {
         val a = att ?: return
@@ -792,7 +792,7 @@ class PlayerViewModel(
 
     override fun onDurationChanged(durationMs: Long?) = render()
 
-    // The media session's commands (headset, Bluetooth AVRCP, media controllers; prd3 §8) are the
+    // The media session's commands (headset, Bluetooth AVRCP, media controllers) are the
     // remote's Play / Pause keys and the overlay's 10 s seek buttons.
     override fun onRemotePlay() {
         onPlay()
@@ -891,7 +891,7 @@ class PlayerViewModel(
         showError(error, null, errorPositionSec)
     }
 
-    /** Recovery at [positionMs] with the same file, `selectedAudioIndex` and subtitle selection (§10). */
+    /** Recovery at [positionMs] with the same file, `selectedAudioIndex` and subtitle selection. */
     private fun recover(a: Attachment, positionMs: Long, play: Boolean) {
         if (a.mode == PlaybackMode.DIRECT && !a.putDone) {
             controller.prepare()
@@ -957,7 +957,7 @@ class PlayerViewModel(
         }
     }
 
-    /** Prefetch / resolution with `NextEpisodeResolver` (D12); a failure is retried once (at `STATE_ENDED`). */
+    /** Prefetch / resolution with `NextEpisodeResolver`; a failure is retried once (at `STATE_ENDED`). */
     private fun resolveNext() {
         if (item.type != "episode" || next == NextState.Running) return
         val target = item
@@ -1177,7 +1177,7 @@ class PlayerViewModel(
         send(RequestSpec(chosen, start.positionSeconds, null, null, Kind.OTHER_VERSION, play = true))
     }
 
-    // ---- Audio switch (§9.5, rows 34–41) ----------------------------------------------------
+    // ---- Audio switch (rows 34–41) ----------------------------------------------------------
 
     fun onSelectAudio(index: Int) {
         dialog = null
@@ -1240,7 +1240,7 @@ class PlayerViewModel(
     /** The viewer's play/pause intent for the direct media while a switch runs (row 36). */
     private var basePaused = false
 
-    // ---- Subtitles (§9.6–9.7, Playback Flow rule 3) -----------------------------------------
+    // ---- Subtitles ---------------------------------------------------------------------------
 
     fun onSelectSubtitle(trackId: String?) {
         dialog = null
@@ -1323,7 +1323,7 @@ class PlayerViewModel(
         render()
     }
 
-    /** §10 side-loaded subtitle failure: drop it, rebuild without it at the current position; no playback request. */
+    /** A side-loaded subtitle failure: drop it, rebuild without it at the current position; no playback request. */
     private fun onSubtitleLoadFailure() {
         val a = att ?: return
         val trackId = selectedSubtitleId ?: a.itemSubtitles.firstOrNull() ?: return
@@ -1474,7 +1474,7 @@ class PlayerViewModel(
         }
         stopHeldTimers()
         if (a.mode == PlaybackMode.HLS && a.sessionLost) {
-            // A keep-alive 404: resuming goes straight to the recovery path (§8 HLS keep-alive).
+            // A keep-alive 404: resuming goes straight to the recovery path.
             recover(a, controller.positionMs, play = true)
             return
         }
@@ -1612,7 +1612,7 @@ class PlayerViewModel(
 
     // ---- Back, lifecycle, exit --------------------------------------------------------------
 
-    /** The Back table of prd3 (player rows) and rows 11, 13, 21, 26, 29, 34, 35. */
+    /** Back on the Player: rows 11, 13, 21, 26, 29, 34, 35. */
     fun onBack() {
         when {
             dialog != null -> onDialogDismiss()
@@ -1793,7 +1793,7 @@ class PlayerViewModel(
         super.onCleared()
     }
 
-    // ---- Rating prompt (ratings prd3 FR-T6) ------------------------------------------------
+    // ---- Rating prompt -----------------------------------------------------------------------
 
     /** Every progress PUT of the session (all reporters, the released PUT): keeps the answer's prompt. */
     private suspend fun putAndRemember(req: ProgressRequest): ProgressReport =

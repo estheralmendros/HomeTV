@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 
-/** Playback endpoints on the wire (MockWebServer): paths and bodies match prd.md. */
+/** Playback endpoints on the wire (MockWebServer): paths and bodies match the REST API. */
 class PlaybackWireTest {
     private val t = TestServer()
     private val guard = SessionGuard(t.store, { id -> apiCall { t.clients.api.createSession(id) } }, {})

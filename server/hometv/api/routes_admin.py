@@ -1,4 +1,4 @@
-"""/api/admin/*: unlock (admin-profile) and the ``admin`` endpoints (PRD Admin, §8).
+"""/api/admin/*: unlock (admin-profile) and the ``admin`` endpoints.
 
 Every route of ``router`` requires ``AdminUser`` (router-level dependency): valid profile token
 (401 ``unauthorized``), ``is_admin`` (403 ``forbidden``), valid ``X-Admin-Token`` (401

@@ -1,4 +1,4 @@
-// Next episode resolution (prd2 §9 step 10, D12): follow `next_episode_id`, skipping episodes
+// Next episode resolution: follow `next_episode_id`, skipping episodes
 // whose media_files include the file that just played (multi-episode files), with at most
 // 10 GETs. A null candidate, a 404 (or any failure), the cap or an abort → null.
 import type { QueryClient } from '@tanstack/react-query';

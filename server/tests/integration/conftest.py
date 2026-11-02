@@ -2,10 +2,10 @@
 
 Every test in this package must be marked ``integration``; the root conftest skips them when
 ffmpeg/ffprobe are missing. ``CLIPS`` maps a file name to its ffmpeg arguments (inputs
-included). Inputs: ``testsrc2`` video + ``sine`` audio, 20 s, 1 s GOP unless noted (PRD Testing
-Decisions). Extra files: ``h264_aac.es.srt`` (CP1252 sidecar of ``h264_aac.mp4``),
+included). Inputs: ``testsrc2`` video + ``sine`` audio, 20 s, 1 s GOP unless noted.
+Extra files: ``h264_aac.es.srt`` (CP1252 sidecar of ``h264_aac.mp4``),
 ``h264_pgs.en.sup`` (PGS sidecar of ``h264_pgs.mkv``, which also embeds a PGS track) and
-``h264_ac3_long.mkv`` (300 s, for the read-ahead throttle AC: its AAC 5.1 re-encode is slow
+``h264_ac3_long.mkv`` (300 s, for the read-ahead throttle test: its AAC 5.1 re-encode is slow
 enough to observe a paused ffmpeg).
 """
 

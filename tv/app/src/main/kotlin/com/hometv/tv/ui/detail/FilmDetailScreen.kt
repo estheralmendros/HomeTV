@@ -75,7 +75,7 @@ import com.hometv.tv.ui.theme.HomeTvColors
 import com.hometv.tv.ui.theme.HomeTvDimens
 import com.hometv.tv.ui.theme.HomeTvFocus
 
-/** (7) Film detail (prd3 §6); Back pops to the screen that opened it (which restores its card focus). */
+/** (7) Film detail; Back pops to the screen that opened it (which restores its card focus). */
 @Composable
 fun FilmDetailScreen(vm: FilmDetailViewModel, navigator: AppNavigator) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -117,20 +117,20 @@ private fun FilmContent(state: FilmDetailUiState.Content, vm: FilmDetailViewMode
         if (cast == null) {
             when (state.focus) {
                 // A ratings chip only on a new request (or with nothing focused): a refetch that drops "y N más"
-                // turns RATING_MORE into RATING_MINE without pulling focus out of the cast row (ratings prd3 FR-T11).
+                // turns RATING_MORE into RATING_MINE without pulling focus out of the cast row.
                 ButtonId.RATING_MINE -> if (fresh || !pageHasFocus) ratingMine.requestFocusWhenReady()
                 ButtonId.RATING_MORE -> if (fresh || !pageHasFocus) ratingMore.requestFocusWhenReady()
                 else -> buttons[state.focus].requestFocusWhenReady()
             }
         } else {
-            // Back from Person (cast-appearances prd3 FR-T5): the card that opened it, scrolled into the row first.
+            // Back from Person: the card that opened it, scrolled into the row first.
             castState.focusItem(cast.key, cast.index, focusedCast, castRequesters[cast.key])
         }
     }
     Backdrop(film.backdrop?.large, BACKDROP_HEIGHT)
     val page = rememberScrollState()
     // The header fits at the top (HEADER_TOP_GAP), so the page opens unscrolled. Only the cast row scrolls it;
-    // back Up on a header button the whole header returns (prd3 §6 step 1): bringing only the focused button
+    // back Up on a header button the whole header returns: bringing only the focused button
     // into view would leave the page where the cast row put it, with the title cut off.
     var headerFocused by remember { mutableStateOf(false) }
     LaunchedEffect(headerFocused) { if (headerFocused) page.animateScrollTo(0) }
@@ -155,7 +155,7 @@ private fun FilmContent(state: FilmDetailUiState.Content, vm: FilmDetailViewMode
                         Text(state.meta.resolve(), style = MaterialTheme.typography.titleMedium, color = DetailText.secondary, modifier = Modifier.padding(top = 8.dp))
                         if (state.matched) {
                             film.tagline?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp)) }
-                            // watchlist prd3 FR-T8: 4+ buttons may wrap onto more rows, so the overview gives back two lines.
+                            // 4+ buttons may wrap onto more rows, so the overview gives back two lines.
                             val overviewLines = if (state.buttons.size >= 4) OVERVIEW_LINES_COMPACT else OVERVIEW_LINES
                             film.overview?.let {
                                 Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = overviewLines, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp).testTag("film_overview"))
@@ -164,12 +164,12 @@ private fun FilmContent(state: FilmDetailUiState.Content, vm: FilmDetailViewMode
                             Text(stringResource(R.string.detail_metadata_unavailable), style = MaterialTheme.typography.bodyMedium, color = DetailText.secondary, modifier = Modifier.padding(top = 8.dp))
                         }
                         // The buttons of the last FlowRow row lead Down to the ratings block, and Up from it returns to that
-                        // row's first button (ratings prd3 FR-T12): the rows come from the buttons' measured tops.
+                        // row's first button: the rows come from the buttons' measured tops.
                         val lastRowTop = state.buttons.mapNotNull { buttonTops[it.id] }.maxOrNull()
                         val lastRowFirst = state.buttons.firstOrNull { buttonTops[it.id] == lastRowTop }?.id ?: state.buttons.first().id
                         FlowRow(Modifier.padding(top = 20.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             state.buttons.forEachIndexed { index, button ->
-                                // Left/Right follow the row order across wrapped rows (watchlist prd3 FR-T11: Right from
+                                // Left/Right follow the row order across wrapped rows (Right from
                                 // "Marcar como visto" reaches "Mi lista" even when it starts the next row).
                                 val previous = state.buttons.getOrNull(index - 1)?.id
                                 val next = state.buttons.getOrNull(index + 1)?.id
@@ -218,8 +218,8 @@ private fun FilmContent(state: FilmDetailUiState.Content, vm: FilmDetailViewMode
                 if (film.cast.isNotEmpty()) {
                     // The page already has the 48 dp horizontal safe margin: the title (and, below, the first card) start right on it.
                     SectionTitle(stringResource(R.string.detail_cast), startPadding = 0.dp)
-                    // Focusable cards (prd3 §6 step 1): Down from the ratings block enters the row at the first card
-                    // (later: the last one focused), Left/Right scroll it, Up returns to `rating_mine` (ratings prd3 FR-T12).
+                    // Focusable cards: Down from the ratings block enters the row at the first card
+                    // (later: the last one focused), Left/Right scroll it, Up returns to `rating_mine`.
                     // Shifted left by its content padding: the first card starts on the margin, and the row still
                     // has room for the focus scale (it is not clipped at the margin).
                     // focusRestorer redirects any focus entering the row (a requestFocus included) to its last focused
@@ -285,7 +285,7 @@ private val CAST_ROW_PADDING = 8.dp
 
 private val PLAY_BUTTONS = setOf(ButtonId.RESUME, ButtonId.PLAY, ButtonId.PLAY_PART)
 
-/** The play icon, the "Mi lista" check / "+" (watchlist prd3 FR-T5), else none. */
+/** The play icon, the "Mi lista" check / "+", else none. */
 private fun buttonIcon(id: ButtonId, inList: Boolean): Int? = when (id) {
     in PLAY_BUTTONS -> R.drawable.ic_play
     ButtonId.WATCHLIST -> watchlistIcon(inList)
@@ -293,8 +293,8 @@ private fun buttonIcon(id: ButtonId, inList: Boolean): Int? = when (id) {
 }
 
 /**
- * The overview's lines with up to 3 buttons, and with 4 or more (watchlist prd3 FR-T8); two fewer each
- * since the ratings block sits under the buttons (ratings prd3 FR-T12).
+ * The overview's lines with up to 3 buttons, and with 4 or more; two fewer each
+ * since the ratings block sits under the buttons.
  */
 private const val OVERVIEW_LINES = 3
 private const val OVERVIEW_LINES_COMPACT = 1

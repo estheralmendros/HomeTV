@@ -50,7 +50,7 @@ import com.hometv.tv.ui.theme.HomeTvDimens
 import androidx.compose.ui.focus.focusRequester
 
 /**
- * (9) Player (prd3 §8): a Media3 `PlayerView` (own controller disabled, `SubtitleView` for text and
+ * (9) Player: a Media3 `PlayerView` (own controller disabled, `SubtitleView` for text and
  * bitmap cues, last frame kept across media-item rebuilds) under the Compose overlay, chips, dialogs,
  * the countdown and the error screens. Keys go to the ViewModel through [KeyEventInterceptor] (offered
  * before Compose focus by `MainActivity`) while the video is shown with the overlay hidden; Back goes
@@ -103,7 +103,7 @@ fun PlayerScreen(vm: PlayerViewModel, onExit: () -> Unit) {
     }
 }
 
-/** Keys while the video is shown (prd3 §8 "Inputs while the overlay is hidden"); dialogs and other screens use Compose focus. */
+/** Keys while the video is shown (inputs while the overlay is hidden); dialogs and other screens use Compose focus. */
 internal fun handlePlayerKey(vm: PlayerViewModel, state: PlayerUiState, event: KeyEvent, consumed: MutableSet<Int>): Boolean {
     val code = event.keyCode
     if (event.action == KeyEvent.ACTION_UP) {
@@ -177,7 +177,7 @@ private fun VideoSurface(vm: PlayerViewModel, keepScreenOn: Boolean) {
 
 private const val SUBTITLE_BOTTOM_PADDING = 0.08f
 
-/** Item load / "Preparando el vídeo… quedan unos N min" with [Cancelar] (§10 503 `preparing`). */
+/** Item load / "Preparando el vídeo… quedan unos N min" with [Cancelar] (503 `preparing`). */
 @Composable
 private fun PreparingView(title: UiText?, screen: PlayerScreenUi.Loading, onCancel: () -> Unit) {
     val requesters = rememberFocusRequesters<Int>()
@@ -197,7 +197,7 @@ private fun PreparingView(title: UiText?, screen: PlayerScreenUi.Loading, onCanc
     RequestFocus(screen.preparing != null, enabled = screen.preparing != null) { requesters[0] }
 }
 
-/** "El siguiente episodio no se puede reproducir…" / "No se ha podido cargar el siguiente episodio" (§8 Autoplay 2). */
+/** "El siguiente episodio no se puede reproducir…" / "No se ha podido cargar el siguiente episodio" (autoplay). */
 @Composable
 private fun PlayerEndScreen(screen: PlayerScreenUi.EndScreen, onRetry: () -> Unit, onBack: () -> Unit) {
     val actions = buildList {

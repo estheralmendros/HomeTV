@@ -10,7 +10,7 @@ export interface ApiErrorInit {
   retryAfter?: number | null;
 }
 
-/** A failed API call: non-2xx (prd.md error envelope) or a network failure (status 0). */
+/** A failed API call: non-2xx (error envelope) or a network failure (status 0). */
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;

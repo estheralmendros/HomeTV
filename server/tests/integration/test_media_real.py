@@ -1,5 +1,5 @@
 """Real probe normalization, keyframe readers vs the ffprobe fallback, WebVTT conversion and a
-full scan of the generated tree (PRD Testing Decisions, integration)."""
+full scan of the generated tree."""
 
 import asyncio
 import itertools
@@ -177,7 +177,7 @@ async def test_webvtt_embedded_and_cp1252_sidecar(make_media_app, clips_dir):
 
 
 async def test_image_subtitle_tracks_are_422(make_media_app):
-    """AC: image tracks -> 422 (a real PGS track, embedded and as a .sup sidecar)."""
+    """Image tracks -> 422 (a real PGS track, embedded and as a .sup sidecar)."""
     async with make_media_app() as media:
         client, headers = media.client, media.headers
         fid = media.ids["h264_pgs.mkv"]

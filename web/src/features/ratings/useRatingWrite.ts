@@ -1,4 +1,4 @@
-// Rating writes (ratings prd2 FR-W7). Save and remove patch the cached detail optimistically and
+// Rating writes. Save and remove patch the cached detail optimistically and
 // run `ratingChanged` on settle. Toasts and rollback live in the useMutation options callbacks,
 // which run even after the form unmounted ("form gone" rule): while the caller is mounted a save
 // reports through `notify` (default: the app toast; the player passes its own toasts), once it is

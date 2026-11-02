@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /**
- * prd3 Technical Requirements (no network on the main thread): the hand-rolled OkHttp calls read the
+ * No network on the main thread: the hand-rolled OkHttp calls read the
  * response body on OkHttp's thread, never on the caller's. On a TV the caller resumes on the main thread,
  * where reading the socket throws `NetworkOnMainThreadException` (the subtitle and server-check crashes).
  */

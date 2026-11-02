@@ -15,7 +15,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * ratings prd3 FR-T12 / T-AC-12 (native graphics, real text metrics): the ratings block fits Film and
+ * Native graphics, real text metrics): the ratings block fits Film and
  * Show detail at 960×540 dp in the widest cases; long names are ellipsized, never the stars or
  * "y N más"; Show keeps one full episode row.
  */

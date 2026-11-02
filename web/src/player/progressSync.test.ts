@@ -40,7 +40,7 @@ describe('writeProgress', () => {
     qc.setQueryData(queryKeys.film(12), f.filmDetail({ progress: f.progress({ position_seconds: 100 }) }));
     qc.setQueryData(queryKeys.episode(345), f.episodeDetail());
     const home = f.homeResponse({
-      // 345 is a Next Up episode (no progress) inside Continue Watching (prd.md Rev 13).
+      // 345 is a Next Up episode (no progress) inside Continue Watching.
       continue_watching: [f.filmSummary({ id: 12 }), f.homeEpisode({ id: 345, progress: null }), f.homeEpisode({ id: 999 })],
     });
     qc.setQueryData(queryKeys.home(), home);

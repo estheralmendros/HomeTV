@@ -17,7 +17,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** prd3 §6 step 1 (cast navigation): the cast row is reachable with the D-pad and scrolls through every member. */
+/** Cast navigation: the cast row is reachable with the D-pad and scrolls through every member. */
 @RunWith(AndroidJUnit4::class)
 class FilmCastFocusTest : UiTestBase() {
     private val cast = (1L..12L).map { CastMember(person_id = it, name = "Actor $it", character = "Personaje $it") }
@@ -37,7 +37,7 @@ class FilmCastFocusTest : UiTestBase() {
     @Test
     fun downReachesTheCastAndRightScrollsThroughEveryMember() {
         openFilmDetail()
-        // ratings prd3 FR-T12: the ratings block sits between the buttons and the cast.
+        // The ratings block sits between the buttons and the cast.
         press(Key.DirectionDown)
         assertFocused("rating_mine")
         press(Key.DirectionDown)
@@ -89,12 +89,12 @@ class FilmCastFocusTest : UiTestBase() {
         press(Key.DirectionCenter)
         assertFocused("button_RESUME")
         settle()
-        // prd3 §6 step 1: while a header button has focus the page is at the top (title, poster and
+        // While a header button has focus the page is at the top (title, poster and
         // buttons all on screen), not scrolled to show the cast row.
         assertEquals("page scroll with the focus on Reanudar", 0f, pageScroll(), 0.5f)
-        // watchlist prd3 FR-T8 + ratings prd3 FR-T12: with 4 or more buttons the overview is clamped to 1 line.
+        // With 4 or more buttons the overview is clamped to 1 line.
         assertTrue("the overview takes ${overviewLines()} lines", overviewLines() <= 1)
-        // prd3 §6 step 2 (amended): "Reanudar desde 0:38", "Ver desde el principio" and "Marcar como visto"
+        // "Reanudar desde 0:38", "Ver desde el principio" and "Marcar como visto"
         // share the first row; "Mi lista" wraps onto the next one.
         rule.onNodeWithText("Ver desde el principio", useUnmergedTree = true).assertExists()
         val rows = listOf("button_RESUME", "button_PLAY_FROM_START", "button_WATCHED").map { node(it).fetchSemanticsNode().positionInRoot.y }
@@ -102,7 +102,7 @@ class FilmCastFocusTest : UiTestBase() {
         val watchlistTop = node("button_WATCHLIST").fetchSemanticsNode().positionInRoot.y
         assertTrue("Mi lista is on the next row ($watchlistTop px vs ${rows.first()} px)", watchlistTop > rows.first())
         assertFullyVisible("button_WATCHLIST")
-        // ratings prd3 FR-T12 (amends §6 step 1): the ratings block, both lines, is on screen at scroll 0.
+        // The ratings block, both lines, is on screen at scroll 0.
         assertFullyVisible("rating_mine")
         assertFullyVisible("rating_other_0")
         assertFullyVisible("rating_other_1")
@@ -178,7 +178,7 @@ class FilmCastFocusTest : UiTestBase() {
         press(Key.DirectionRight)
         press(Key.DirectionCenter)
         assertFocused("button_RESUME")
-        // "Mi lista" wraps below Reanudar (watchlist prd3 FR-T8): Down reaches it first, then the ratings block
+        // "Mi lista" wraps below Reanudar: Down reaches it first, then the ratings block
         // (no other ratings: no line 2), then the cast.
         press(Key.DirectionDown)
         assertFocused("button_WATCHLIST")

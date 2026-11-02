@@ -1,4 +1,4 @@
-// "Mi lista" /watchlist (watchlist prd2 FR-W8–W10): URL-driven type and "Estado" filters and sort, infinite list
+// "Mi lista" /watchlist: URL-driven type and "Estado" filters and sort, infinite list
 // of 50-item pages (sentinel + "Cargar más" fallback), the library's cards and badges, a single
 // <h1> with the count once page 1 has loaded, empty/filtered/error states.
 import { useInfiniteQuery } from '@tanstack/react-query';

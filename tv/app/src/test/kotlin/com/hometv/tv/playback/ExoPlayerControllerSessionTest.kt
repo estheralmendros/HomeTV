@@ -21,7 +21,7 @@ import org.junit.runner.RunWith
 import org.robolectric.Shadows.shadowOf
 
 /**
- * prd3 §8 "Headset and Bluetooth play/pause": the Player's Media3 `MediaSession` lives while a `PlayerView`
+ * Headset and Bluetooth play/pause: the Player's Media3 `MediaSession` lives while a `PlayerView`
  * shows the player (Robolectric, a real ExoPlayer on the main looper). A session id still registered in the
  * process makes `MediaSession.Builder.build()` throw, so building a probe session with the same id proves
  * the old one was released.

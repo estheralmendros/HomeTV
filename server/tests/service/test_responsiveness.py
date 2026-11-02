@@ -1,5 +1,5 @@
-"""API responsiveness while background work runs (ACs "Scanner" responsiveness and Rev 4
-"Background keyframe indexing ... GET /api/films stays responsive meanwhile").
+"""API responsiveness while background work runs (scanner responsiveness;
+GET /api/films stays responsive during background keyframe indexing).
 
 Requests go through the in-process ASGI app, so they share the event loop and the thread pool
 with the scanner / indexer, which is where a blocking call or a long write transaction would
@@ -152,7 +152,7 @@ async def test_api_stays_responsive_during_a_slow_scan_of_500_files(app, client,
     assert status.state == "running"  # the whole window was during the scan
     assert probe.calls, "the scan reached the (slow) probe phase inside the window"
     # (``probe.lock_held_during_probe`` is meaningless here: the concurrent PUTs take the
-    # process-wide write lock in worker threads. The AC's hold-time check below covers it: a
+    # process-wide write lock in worker threads. The hold-time check below covers it: a
     # transaction held across a 1 s probe would show up as a hold >= 1 s.)
     for name, values in samples.items():
         assert len(values) >= 20, name

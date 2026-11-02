@@ -1,4 +1,4 @@
-"""Profiles & auth (PRD §8).
+"""Profiles & auth.
 
 - Avatar set (``AVATARS``), PIN hashing (``hash_pin`` / ``verify_pin``, scrypt).
 - ``TokenService``: profile tokens (identity, ``auth.token_ttl_days``) and admin tokens (fixed
@@ -8,7 +8,7 @@
   (5 failures in a rolling 60 s window; success resets; injectable monotonic clock).
 - ``plan_pin_change``: the pure PIN lifecycle rules; profile CRUD (``bootstrap``,
   ``create_profile``, ``update_profile``, ``delete_profile``) applies them in one write
-  transaction each and raises ``ApiError`` with the PRD codes.
+  transaction each and raises ``ApiError`` with the documented codes.
 """
 
 import hashlib
@@ -237,7 +237,7 @@ def _pin_not_allowed() -> ApiError:
 def plan_pin_change(
     *, was_admin: bool | None, is_admin: bool, pin_sent: bool, pin: str | None
 ) -> PinPlan:
-    """PIN lifecycle (§8). ``was_admin=None`` means create. ``pin_sent`` distinguishes an
+    """PIN lifecycle. ``was_admin=None`` means create. ``pin_sent`` distinguishes an
     absent ``pin`` from ``"pin": null``."""
     if is_admin:
         if was_admin is True and not pin_sent:

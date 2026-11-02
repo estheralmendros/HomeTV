@@ -4,7 +4,7 @@ import * as f from '../../../tests/fixtures';
 import { browseQuery, SCAN_POLL_MS, scanRefetchInterval, tmdbSearchQuery, tmdbSeasonQuery, tmdbSeasonsQuery } from './adminQueries';
 
 // The TMDB lookups are not gated by `enabled: token !== null` (they run through useAdminAction,
-// prd2 § State & data fetching), so no background refetch may pop the PIN keypad unprompted.
+// see adminQueries.ts), so no background refetch may pop the PIN keypad unprompted.
 describe('TMDB lookup queries', () => {
   const run = (() => Promise.reject(new Error('not called'))) as unknown as RunAdminAction;
 

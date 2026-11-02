@@ -1,4 +1,4 @@
-"""WebVTT subtitles (PRD §7 Subtitles).
+"""WebVTT subtitles.
 
 - Cache: ``{data_dir}/subtitles/{media_file_id}/{track_id}.vtt`` (atomic renames).
 - External sidecars: converted on request (``.vtt`` copied; srt/ass/ssa through ffmpeg with

@@ -1,4 +1,4 @@
-// es-ES formatting helpers (prd2 UI language, Technical Requirements). Intl objects are
+// es-ES formatting helpers. Intl objects are
 // created once and reused.
 import { S } from '@/strings.es';
 import { countFormat, LOCALE, oneDecimalFormat, plural } from './intl';
@@ -82,7 +82,7 @@ export function formatRelative(iso: string, now: number = Date.now()): string {
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 
 /**
- * /activity row time (ratings prd2 FR-W14), local time zone: "ahora mismo", "hace 5 minutos",
+ * /activity row time, local time zone: "ahora mismo", "hace 5 minutos",
  * "hace 2 horas" (same calendar day), "ayer" (previous calendar day), "12 oct", "12 oct 2025";
  * "" for an unparseable timestamp (the row still renders).
  */

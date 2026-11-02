@@ -31,7 +31,7 @@ data class SearchUiState(
     val error: ScreenError? = null,
 )
 
-/** Search (prd3 §5): `GET /api/search?q=&limit=20` debounced 300 ms, latest query wins. */
+/** Search: `GET /api/search?q=&limit=20` debounced 300 ms, latest query wins. */
 @OptIn(FlowPreview::class)
 class SearchViewModel(
     private val catalog: CatalogRepository,

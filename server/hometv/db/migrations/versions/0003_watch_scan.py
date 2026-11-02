@@ -1,4 +1,4 @@
-"""Change-triggered scoped scans (HOMETV-1).
+"""Change-triggered scoped scans.
 
 Revision ID: 0003
 Revises: 0002

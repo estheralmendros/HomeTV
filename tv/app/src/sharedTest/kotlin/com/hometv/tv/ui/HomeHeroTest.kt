@@ -17,7 +17,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** prd3 §3 step 4 (full-bleed backdrop): the hero art is a screen-level layer, and the hero text stays readable. */
+/** Full-bleed backdrop: the hero art is a screen-level layer, and the hero text stays readable. */
 @RunWith(AndroidJUnit4::class)
 class HomeHeroTest : UiTestBase() {
     private fun extent(tag: String): FloatArray {

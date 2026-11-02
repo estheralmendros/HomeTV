@@ -7,7 +7,7 @@ from hometv.parser import Ignored, MultiPart, ParsedEpisode, ParsedFilm, Unparse
 
 F, S = "films", "shows"
 
-# (row, library_type, relative_path, siblings, expected) — PRD §2 table, rows 1-38.
+# (row, library_type, relative_path, siblings, expected) — the filename-parsing table, rows 1-38.
 ROWS = [
     (1, F, "Dune (2021)/Dune (2021).mkv", (), ParsedFilm("Dune", 2021)),
     (2, F, "Dune.2021.2160p.UHD.BluRay.x265-GROUP.mkv", (), ParsedFilm("Dune", 2021)),

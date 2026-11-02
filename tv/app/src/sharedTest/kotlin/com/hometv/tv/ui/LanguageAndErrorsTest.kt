@@ -15,7 +15,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * prd3 §UI Language (Rev 9) and §10: Spanish catalog texts and es-ES formatting whatever the
+ * Spanish catalog texts and es-ES formatting whatever the
  * system language (the JVM variant `EnglishSystemLanguageTest` re-runs this class in en-US), the
  * Connection Error screen, the expired-session path and a removed title.
  */
@@ -29,7 +29,7 @@ open class LanguageAndErrorsTest : UiTestBase() {
         launch()
         text("Seguir viendo").assertIsDisplayed()
         text("Inicio").assertIsDisplayed()
-        // The default test profile is a viewer: "Ajustes" is admin-only (prd3 §3 step 1, TopNavFocusTest).
+        // The default test profile is a viewer: "Ajustes" is admin-only (TopNavFocusTest).
         rule.onAllNodesWithText("Ajustes", useUnmergedTree = true).assertCountEquals(0)
         press(Key.DirectionDown)
         press(Key.DirectionRight)
@@ -47,7 +47,7 @@ open class LanguageAndErrorsTest : UiTestBase() {
         api.onHome = { throw ConnectException("refused") }
         launch()
         text("No se puede conectar con tu servidor HomeTV en hometv.tail1234.ts.net. Puede que Tailscale esté desconectado; suele pasar después de reiniciar el televisor.").assertIsDisplayed()
-        assertTrue("no [Cambiar servidor] on the Connection Error (prd3 §10)", rule.onAllNodes(androidx.compose.ui.test.hasText("Cambiar servidor")).fetchSemanticsNodes().isEmpty())
+        assertTrue("no [Cambiar servidor] on the Connection Error", rule.onAllNodes(androidx.compose.ui.test.hasText("Cambiar servidor")).fetchSemanticsNodes().isEmpty())
         assertTrue("Tailscale is not installed: no [Abrir Tailscale]", rule.onAllNodes(androidx.compose.ui.test.hasText("Abrir Tailscale")).fetchSemanticsNodes().isEmpty())
         api.onHome = home
         press(Key.DirectionCenter)
@@ -89,7 +89,7 @@ open class LanguageAndErrorsTest : UiTestBase() {
         press(Key.DirectionRight)
         press(Key.DirectionCenter)
         text("Preparando el vídeo…").assertIsDisplayed()
-        // The Home payload's media_files: POST .../playback is sent without waiting for GET /api/episodes/{id} (§3.5).
+        // The Home payload's media_files: POST .../playback is sent without waiting for GET /api/episodes/{id}.
         assertTrue(api.calls.contains("POST /api/media-files/2/playback"))
         back()
         assertFocused("card_continue:episode:203")

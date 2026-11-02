@@ -20,7 +20,7 @@ import com.hometv.tv.core.util.SeasonTitle
 import com.hometv.tv.core.util.Stars
 
 /**
- * Turns core structured values and [UiText] into catalog text (prd3 §UI Language rules 5–6, §9.2).
+ * Turns core structured values and [UiText] into catalog text.
  * Join rules: language, codec, title and word tags are joined with " · "; parenthesized tags
  * ("(convertido)", "(no disponible)") are appended with a plain space. `Runtime(h, 0)` prints "2 h",
  * `Runtime(0, m)` prints "42 min".
@@ -58,7 +58,7 @@ class UiFormat(private val res: StringResolver) {
         else -> res.string(R.string.runtime_min, Format.count(runtime.minutes))
     }
 
-    /** "ahora mismo", "hace 5 minutos", "hace 1 hora", "ayer", "12 oct", "12 oct 2025" (ratings prd2 FR-W14). */
+    /** "ahora mismo", "hace 5 minutos", "hace 1 hora", "ayer", "12 oct", "12 oct 2025". */
     fun relativeTime(time: RelativeTime): String = when (time) {
         RelativeTime.JustNow -> res.string(R.string.time_just_now)
         is RelativeTime.Minutes -> res.plural(R.plurals.time_minutes_ago, time.n, Format.count(time.n))

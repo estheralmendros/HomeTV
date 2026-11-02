@@ -26,13 +26,13 @@ import java.io.IOException
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * [PlayerController] over Media3 ExoPlayer (prd3 Playback Flow). Keeps the wanted audio/subtitle
+ * [PlayerController] over Media3 ExoPlayer. Keeps the wanted audio/subtitle
  * selection and re-applies it on the first non-empty `Tracks` of every media item (rule 5), then
  * reports the `TrackCheck` input once per item (rule 10) after the overrides took effect. Every
  * `PlaybackException` becomes a pure [PlayerFailure]; `urlKind` comes from the most recent
  * `AnalyticsListener.onLoadError` (cleared on each new media item). While a `PlayerView` shows the
  * player, a Media3 [MediaSession] over a [RemoteCommandPlayer] receives headset / Bluetooth / media
- * controller commands and hands them to the listener (prd3 §8 "Headset and Bluetooth play/pause").
+ * controller commands and hands them to the listener (headset and Bluetooth play/pause).
  */
 @OptIn(UnstableApi::class)
 class ExoPlayerController(private val player: ExoPlayer) : PlayerController {
@@ -190,7 +190,7 @@ class ExoPlayerController(private val player: ExoPlayer) : PlayerController {
         }
 
         /**
-         * prd3 §10 `urlKind`: `file` scheme or a text load → SUBTITLE; `/api/hls/` → HLS (checked before
+         * `urlKind`: `file` scheme or a text load → SUBTITLE; `/api/hls/` → HLS (checked before
          * the media item URL, which is the HLS playlist in HLS mode); the direct stream URL → STREAM.
          */
         fun urlKind(load: LoadRecord?, streamUrl: String?): UrlKind {

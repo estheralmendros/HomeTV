@@ -11,7 +11,7 @@ export interface ErrorStateProps {
   children?: ReactNode;
 }
 
-/** Error message (from errorMessage / the catalog) with optional [Reintentar]. Never blank (G5). */
+/** Error message (from errorMessage / the catalog) with optional [Reintentar]. Never blank. */
 export function ErrorState({ message, onRetry, children }: ErrorStateProps) {
   return (
     <div className={styles.state} role="alert">

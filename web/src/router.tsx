@@ -1,5 +1,5 @@
-// Route table (prd2 Routes). /admin/* and /watch/* are lazy route modules (separate chunks);
-// the root errorElement handles stale chunks and unexpected errors (§13).
+// Route table. /admin/* and /watch/* are lazy route modules (separate chunks);
+// the root errorElement handles stale chunks and unexpected errors.
 import { Navigate, createBrowserRouter, type RouteObject } from 'react-router-dom';
 import { BootGate } from '@/auth/BootGate';
 import { RequireAdmin } from '@/auth/RequireAdmin';

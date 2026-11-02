@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Android 12+ backup / device-to-device transfer (prd3 Technical Requirements, Security): the session
+    Android 12+ backup / device-to-device transfer: the session
     token lives in filesDir/datastore/ and must never leave this TV. allowBackup="false" covers older
     versions; the Home cache is disposable and the server URL is re-entered in Setup if needed.
 -->

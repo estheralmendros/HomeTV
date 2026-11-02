@@ -1,4 +1,4 @@
-// Folder browser of the add dialog (folder-selection-admin prd2 §3): starts at the browse root,
+// Folder browser of the add dialog: starts at the browse root,
 // lists subfolders, "Subir", "Elegir esta carpeta". The server lists subfolders without opening
 // them, so any click can fail: a failed listing always leaves a way back (the last good listing,
 // or the root; "Reintentar" when the root itself fails).

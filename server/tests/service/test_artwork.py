@@ -1,4 +1,4 @@
-"""Artwork cache (PRD §5 Artwork cache): download on miss once, then serve from disk."""
+"""Artwork cache: download on miss once, then serve from disk."""
 
 import asyncio
 

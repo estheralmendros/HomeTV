@@ -4,7 +4,7 @@ import { formatDuration } from '@/lib/format';
 import { S } from '@/strings.es';
 import styles from './Player.module.css';
 
-/** §9 step 4a: "… quedan unos N min" (N = ceil(estimate / 60)), "… queda menos de un minuto" below 60 s. */
+/** "… quedan unos N min" (N = ceil(estimate / 60)), "… queda menos de un minuto" below 60 s. */
 export function preparingText(estimateSeconds: number | null, audioSwitch: boolean): string {
   if (audioSwitch) return S.player.preparing.audio;
   if (estimateSeconds == null) return S.player.preparing.plain;

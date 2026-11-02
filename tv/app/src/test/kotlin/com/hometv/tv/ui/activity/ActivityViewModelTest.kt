@@ -33,7 +33,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.RegisterExtension
 
-/** ratings prd3 FR-T15: the Actividad list (paging, dedupe, own rows, relative times, reload when shown). */
+/** The Actividad list (paging, dedupe, own rows, relative times, reload when shown). */
 class ActivityViewModelTest {
     @JvmField @RegisterExtension val main = MainDispatcherExtension()
 

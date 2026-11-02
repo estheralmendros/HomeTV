@@ -1,4 +1,4 @@
-// Re-entry rule (prd2 §9 step 1, Rev 5): exit write-through plus a barrier.
+// Re-entry rule: exit write-through plus a barrier.
 // - The final PUT of a mount is registered here. Its 200 body is written into the cached
 //   detail (`['film',id]` / `['episode',id]`) and the item's `['home']` entries, existing
 //   entries only, and THEN the player-exit invalidation runs. A failed PUT only invalidates.
@@ -36,9 +36,9 @@ export function writeProgress(queryClient: QueryClient, item: ItemRef, progress:
 }
 
 /**
- * Registers a mount's final `PUT /api/progress` (§9 step 14). Resolves once the write-through
+ * Registers a mount's final `PUT /api/progress`. Resolves once the write-through
  * and the invalidation have run; never rejects. The cache gets the `Progress` keys only; a
- * `rating_prompt` goes to `onPrompt` after the write (ratings prd2 FR-W9.1).
+ * `rating_prompt` goes to `onPrompt` after the write.
  */
 export function registerFinalReport(
   queryClient: QueryClient,

@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /**
- * prd3 §UI Language rule 2: `core` holds no Spanish UI words. Fails on string literals in
+ * `core` holds no Spanish UI words. Fails on string literals in
  * `core/src/main` that contain Spanish letters or catalog words (comments may quote catalog texts).
  */
 class CoreHasNoUiTextTest {

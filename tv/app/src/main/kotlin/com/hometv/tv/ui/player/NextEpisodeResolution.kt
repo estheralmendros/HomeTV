@@ -8,7 +8,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
-/** Where the Player's next-episode resolution stands (D12). */
+/** Where the Player's next-episode resolution stands. */
 internal sealed interface NextState {
     data object NotStarted : NextState
 
@@ -23,7 +23,7 @@ internal sealed interface NextState {
 }
 
 /**
- * The Player's next-episode resolution (prd3 §8 rows 15–19, D12): the prefetch near the end of an
+ * The Player's next-episode resolution: the prefetch near the end of an
  * episode, the resolution at `STATE_ENDED` and for the "Siguiente episodio" button, with a failure
  * retried up to [MAX_FAILURES] attempts in total. It only resolves and keeps the result; what to do
  * with it (countdown, end screen, exit, toast) stays with [PlayerViewModel], told through `onResolved`.

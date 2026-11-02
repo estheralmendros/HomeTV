@@ -13,7 +13,7 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.launch
 
 /**
- * The optimistic "Mi lista" toggle of Film and Show detail (watchlist prd3 FR-T6/FR-T7). The owning
+ * The optimistic "Mi lista" toggle of Film and Show detail. The owning
  * ViewModel keeps the shown value in its detail model; this holds the value the server last confirmed
  * (the rollback target), the inline failure line and the write run being awaited.
  *
@@ -48,7 +48,7 @@ class DetailWatchlistToggle(
 
     /**
      * A fetched detail answered [serverValue]. Returns the value to show: a write still in flight
-     * wins over the fetched value (with [shown], the value on screen) until it settles (FR-T6 step 9).
+     * wins over the fetched value (with [shown], the value on screen) until it settles.
      */
     fun fetched(serverValue: Boolean, shown: Boolean?): Boolean {
         confirmed = serverValue

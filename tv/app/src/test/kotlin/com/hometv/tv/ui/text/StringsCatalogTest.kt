@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
 
-/** prd3 §UI Language (Rev 9/10): one Spanish catalog, glossary terms, templates, no `%d`/`%f`. */
+/** One Spanish catalog, glossary terms, templates, no `%d`/`%f`. */
 class StringsCatalogTest {
     private val catalog = CatalogStrings
 
@@ -18,7 +18,7 @@ class StringsCatalogTest {
     }
 
     @Test
-    fun `glossary terms of prd md UI Language are in the catalog`() {
+    fun `UI glossary terms are in the catalog`() {
         val all = catalog.strings.values + catalog.plurals.values.flatMap { it.values }
         val glossary = listOf(
             "Inicio", "Películas", "Series", "Seguir viendo", "A continuación", "Añadidos recientemente", "Buscar", "Ajustes",
@@ -26,7 +26,7 @@ class StringsCatalogTest {
             "Marcar como visto", "Audio y subtítulos", "Desactivados", "Forzados", "Externo", "Predeterminado", "(convertido)",
             "Probar otra versión", "Preparando el vídeo…", "Reintentar", "Cancelar", "Volver", "¿Quién está viendo?", "Servidor",
             "Cambiar servidor", "Desconocido", "En tu catálogo", "Biografía",
-            // ratings prd.md glossary
+            // ratings glossary
             "Actividad", "Tu puntuación", "Media de la familia", "¿Qué te ha parecido?", "Puntuar", "Cambiar", "Guardar",
             "Ahora no", "Quitar puntuación", "Puntuación guardada", "Sin puntuación",
         )

@@ -77,7 +77,7 @@ class ApiModelsTest {
         assertEquals(false, ApiJson.decodeFromString(ShowDetail.serializer(), """{"id": 7, "title": "The Office"}""").in_watchlist)
     }
 
-    // ---- Ratings (ratings prd3 FR-T1) ------------------------------------------------------
+    // ---- Ratings ----------------------------------------------------------------------------
 
     @Test
     fun `detail rating fields decode and default for older servers`() {

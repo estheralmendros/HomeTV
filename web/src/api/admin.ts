@@ -69,7 +69,7 @@ export const updateProfile = (id: number, body: ProfileUpdateRequest) =>
 export const deleteProfile = (id: number) =>
   apiFetch<void>(`/api/admin/profiles/${id}`, { method: 'DELETE', admin: true });
 
-// --- Library folders (prd folder-selection-admin §6) -------------------------------------------
+// --- Library folders ---------------------------------------------------------------------------
 
 export const getLibraries = (signal?: AbortSignal) =>
   apiFetch<LibrariesResponse>('/api/admin/libraries', { admin: true, signal });

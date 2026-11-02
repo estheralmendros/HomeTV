@@ -1,4 +1,4 @@
-// PlayerPage test harness (prd2 § Testing Decisions, PlayerPage). Renders the real PlayerRoute
+// PlayerPage test harness. Renders the real PlayerRoute
 // shell at /watch/:type/:id inside the provider stack, with '/' in history (Back → '/').
 //
 //   vi.mock('hls.js', () => import('../../tests/fakeHls'));   // in the test file
@@ -76,7 +76,7 @@ export function deferred(): { promise: Promise<void>; resolve: () => void } {
 }
 
 /**
- * jsdom has no Fullscreen API (Testing Decisions): `requestFullscreen` sets
+ * jsdom has no Fullscreen API: `requestFullscreen` sets
  * `document.fullscreenElement` and dispatches `fullscreenchange`; so does `exitFullscreen`.
  */
 export function stubFullscreen(): () => void {

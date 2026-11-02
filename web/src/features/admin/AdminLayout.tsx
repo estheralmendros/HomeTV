@@ -1,6 +1,5 @@
 // Admin section layout (lazy admin chunk, entered through RequireAdmin's PIN gate): tabs
-// "Escaneo" / "Bibliotecas" / "Sin identificar" (badge = ScanStatus.unmatched_count) / "Perfiles"
-// (prd2 §11, folder-selection-admin prd2 §2).
+// "Escaneo" / "Bibliotecas" / "Sin identificar" (badge = ScanStatus.unmatched_count) / "Perfiles".
 // It owns the scan polling, so a scan that finishes while another tab is open still
 // invalidates the catalog and shows the summary toast.
 import { useQueryClient } from '@tanstack/react-query';

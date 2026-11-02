@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-// prd2 FR-W5: hover underlines `.name`. jsdom does not apply CSS Modules nor `:hover`, so the
+// Hover underlines `.name`. jsdom does not apply CSS Modules nor `:hover`, so the
 // stylesheet source is checked: the underline lives only in the hover rule.
 const CSS = readFileSync(join(__dirname, 'CastRow.module.css'), 'utf8');
 

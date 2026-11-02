@@ -31,7 +31,7 @@ import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 
-/** ratings prd3 FR-T4: rating writes in `appScope`, one per title in flight, `changes` on success. */
+/** Rating writes in `appScope`, one per title in flight, `changes` on success. */
 class RatingsRepositoryTest {
     /**
      * The wire contract against a MockWebServer (real Retrofit, real guard). `appScope` is the test's

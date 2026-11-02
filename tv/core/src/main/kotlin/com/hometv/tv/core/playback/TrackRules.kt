@@ -39,7 +39,7 @@ enum class AudioSwitchRoute {
 }
 
 /**
- * Pure track rules (prd3 §9): visible subtitles per mode, the default subtitle, structured labels
+ * Pure track rules: visible subtitles per mode, the default subtitle, structured labels
  * and the audio-switch route. No UI words: language names come from [LanguageNames], codecs are
  * technical tokens, every word is a [TrackTag] resolved by `app`.
  */

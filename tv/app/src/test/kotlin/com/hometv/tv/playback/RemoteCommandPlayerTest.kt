@@ -20,7 +20,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * prd3 §8 "Headset and Bluetooth play/pause": the player the Player's `MediaSession` wraps routes
+ * Headset and Bluetooth play/pause: the player the Player's `MediaSession` wraps routes
  * play / pause / seek back-forward to the ViewModel (`PlayerController.Listener.onRemote*`) and
  * never drives the wrapped player itself.
  */

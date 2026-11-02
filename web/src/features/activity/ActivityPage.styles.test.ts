@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-// ratings prd2 FR-W13 (addendum): jsdom has no layout, so the stylesheet source is checked.
+// Activity row layout: jsdom has no layout, so the stylesheet source is checked.
 const CSS = readFileSync(join(__dirname, 'ActivityPage.module.css'), 'utf8');
 
 function rule(selector: string): string {

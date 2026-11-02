@@ -6,7 +6,7 @@ import * as f from '../fixtures';
 /** Path prefix for handlers (relative paths resolve against jsdom's location). */
 export const API = '/api';
 
-/** prd.md error envelope response. */
+/** API error envelope response. */
 export function apiError(
   status: number,
   code: string,

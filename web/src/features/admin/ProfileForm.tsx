@@ -1,4 +1,4 @@
-// Create/edit profile modal (prd2 §11 Profile management): name, avatar, Administrador and the
+// Create/edit profile modal: name, avatar, Administrador and the
 // "PIN de administrador" section (required on create-as-admin and promote, keep/change for an
 // admin, removed on demote). Edit sends only the changed fields; no `pin` for non-admins.
 import { useId, useState, type FormEvent } from 'react';

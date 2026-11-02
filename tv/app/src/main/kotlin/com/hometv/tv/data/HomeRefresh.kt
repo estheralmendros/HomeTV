@@ -3,7 +3,7 @@ package com.hometv.tv.data
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Home refresh rules (prd3 §3.7): the Player route (watch state changes), a watched toggle on a
+ * Home refresh rules: the Player route (watch state changes), a watched toggle on a
  * detail screen and `ItemGone` mark Home stale; Home reloads when it becomes visible again.
  */
 class HomeRefresh {

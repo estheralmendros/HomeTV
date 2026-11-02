@@ -11,7 +11,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * prd3 §3 step 10 (row framing): the focused Home row is pinned to the top of the rows area (no part
+ * Row framing: the focused Home row is pinned to the top of the rows area (no part
  * of an earlier row stays visible under the hero), and the whole row fits above the 27 dp bottom
  * safe area. Robolectric screen: 960×540 dp.
  */

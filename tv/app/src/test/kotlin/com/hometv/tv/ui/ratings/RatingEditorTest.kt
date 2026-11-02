@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-/** ratings prd3 FR-T9: the dialog's state holder shared by the root host and the detail screens. */
+/** The dialog's state holder shared by the root host and the detail screens. */
 class RatingEditorTest {
     private val dispatcher = StandardTestDispatcher()
     private val repos = TestRepos(appScope = CoroutineScope(SupervisorJob() + dispatcher))

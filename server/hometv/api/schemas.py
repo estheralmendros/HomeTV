@@ -193,7 +193,7 @@ class ScanScopeOut(BaseModel):
 
 
 class WatcherStatus(BaseModel):
-    """Change detection (HOMETV-1): ``starting`` while the first arming walk runs."""
+    """Change detection: ``starting`` while the first arming walk runs."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -506,7 +506,7 @@ class WatchedResponse(BaseModel):
 
 
 class ProgressReport(Progress):
-    """``PUT /api/progress`` answer: the stored progress plus the rating prompt (ratings FR-8)."""
+    """``PUT /api/progress`` answer: the stored progress plus the rating prompt."""
 
     rating_prompt: RatingPrompt | None
 
@@ -759,7 +759,7 @@ class LibraryCounts(BaseModel):
 
 class HomeResponse(BaseModel):
     # In-progress films + exactly one card per show (its latest in-progress episode or its Next Up
-    # episode, whichever has the latest activity), newest first (prd.md §9, Rev 13/14).
+    # episode, whichever has the latest activity), newest first.
     continue_watching: list[Annotated[FilmSummary | HomeEpisode, Field(discriminator="type")]]
     recently_added: list[Annotated[FilmSummary | ShowSummary, Field(discriminator="type")]]
     library: LibraryCounts

@@ -1,4 +1,4 @@
-"""``catalog.person_detail`` (actor screen FR-9/FR-10): visibility, TMDB ∪ local credits,
+"""``catalog.person_detail`` (actor screen): visibility, TMDB ∪ local credits,
 ordering, per-profile summaries and a bounded query count."""
 
 from datetime import UTC, date, datetime

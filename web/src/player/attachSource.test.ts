@@ -344,7 +344,7 @@ describe('attachSource: common', () => {
   });
 });
 
-describe('play() rejections (§9 step 5a)', () => {
+describe('play() rejections', () => {
   it('NotAllowedError → PLAY_BLOCKED', async () => {
     vi.spyOn(HTMLMediaElement.prototype, 'play').mockRejectedValueOnce(new DOMException('', 'NotAllowedError'));
     attach({ response: direct });

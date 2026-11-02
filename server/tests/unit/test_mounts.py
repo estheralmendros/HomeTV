@@ -1,4 +1,4 @@
-"""``changes.mounts`` (prd.md FR-1): mountinfo parsing, mount lookup, watchability."""
+"""``changes.mounts``: mountinfo parsing, mount lookup, watchability."""
 
 import pytest
 

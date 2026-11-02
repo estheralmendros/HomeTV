@@ -1,4 +1,4 @@
-// Player state machine (prd2 § Playback flow): a pure reducer. Effects (usePlaybackSession,
+// Player state machine: a pure reducer. Effects (usePlaybackSession,
 // useProgressReporter, PlayerPage) dispatch events and act on the resulting state; everything
 // time-dependent arrives in the event payload (`now`, `position`), so the reducer stays pure.
 // Events not listed for a state return the SAME state object (explicit no-ops).
@@ -58,7 +58,7 @@ export type ResumeState = 'playing' | 'paused';
 export interface SwitchFrom {
   t: number;
   prevAudio: number | null;
-  /** The old HLS session was handed over as previous_session_id (the server stopped it, D7). */
+  /** The old HLS session was handed over as previous_session_id (the server stopped it). */
   oldSessionReleased: boolean;
 }
 
@@ -180,7 +180,7 @@ export function initialPlayerState(): PlayerState {
 
 // --- Pure helpers used by the effects -------------------------------------------------------
 
-/** `min(30 min, max(120 s, 2 × first estimate))`; 120 s without an estimate (§9 step 4a). */
+/** `min(30 min, max(120 s, 2 × first estimate))`; 120 s without an estimate. */
 export function prepareBudgetSeconds(firstEstimate: number | null): number {
   return firstEstimate == null ? 120 : Math.min(1800, Math.max(120, 2 * firstEstimate));
 }
@@ -204,7 +204,7 @@ export const acceptsMediaError = (name: PlayerStateName) => MEDIA_ERROR_STATES.h
 
 const messageFor = (code: string) => errorMessage(new ApiError({ status: 0, code }));
 
-/** §9 step 15: the error screen kind of a failed `POST playback`. */
+/** The error screen kind of a failed `POST playback`. */
 export function playerErrorFrom(err: unknown): PlayerError {
   if (!(err instanceof ApiError)) return { kind: 'failed', code: 'unknown', message: errorMessage(err), detail: null };
   const { code } = err;
@@ -242,7 +242,7 @@ function request(s: PlayerState, origin: RequestOrigin, intent: PlaybackIntent, 
   };
 }
 
-/** A new session at the saved position, same file and audio (D9 resume, recovery). */
+/** A new session at the saved position, same file and audio (resume after the pause release, recovery). */
 function sameSourceIntent(s: PlayerState, start: number, resetPosition = false): PlaybackIntent {
   return {
     fileId: s.fileId ?? s.lastIntent?.fileId ?? 0,
@@ -318,7 +318,7 @@ let noticeSeq = 0;
 const audioUnsupportedNotice = (): PlayerNotice => ({ kind: 'audio_unsupported', seq: ++noticeSeq });
 const switchFailedNotice = (message: string): PlayerNotice => ({ kind: 'switch_failed', message, seq: ++noticeSeq });
 
-/** Back to the previous audio after a failed/cancelled switch (§9 step 8). */
+/** Back to the previous audio after a failed/cancelled switch. */
 function restoreAfterSwitch(s: PlayerState, notice: PlayerNotice | null): PlayerState {
   const from = s.switchFrom;
   if (!from) return s;
@@ -327,7 +327,7 @@ function restoreAfterSwitch(s: PlayerState, notice: PlayerNotice | null): Player
     // Direct mode: the old source is still valid; resume it in place.
     return { ...base, name: s.resumeState ?? 'paused', resumeState: null, pendingRequest: null, resumeSeq: s.resumeSeq + 1 };
   }
-  // HLS: the old session is gone (D7); restore prevAudio with a new request at t (RESTORE_AUDIO).
+  // HLS: the old session is gone (the server stopped it); restore prevAudio with a new request at t (RESTORE_AUDIO).
   return request({ ...base, resumeState: null }, 'requesting', {
     fileId: s.fileId ?? 0,
     audioStreamIndex: from.prevAudio,

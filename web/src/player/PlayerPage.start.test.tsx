@@ -1,5 +1,5 @@
-// PlayerPage: item load, start decision, attach paths, one-shot ?t=, D11 notice, home fallback
-// and the Home → player flows deferred from phase 2 (prd2 §9 steps 1–5, Testing Decisions).
+// PlayerPage: item load, start decision, attach paths, one-shot ?t=, different-version notice, home fallback
+// and the Home → player flows flows.
 import { act, fireEvent, screen, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { StrictMode } from 'react';
@@ -133,7 +133,7 @@ describe('PlayerPage under StrictMode (dev double effects)', () => {
   });
 });
 
-describe('PlayerPage: one-shot ?t= (Rev 7/8)', () => {
+describe('PlayerPage: one-shot ?t=', () => {
   it('?t=0 overrides the saved position, then only t is dropped (replace, no remount, no second POST)', async () => {
     serveFilm(f.filmDetail({ progress: f.progress({ media_file_id: 91, position_seconds: 600 }) }));
     const p = renderPlayer('/watch/film/12?file=91&t=0');
@@ -171,7 +171,7 @@ describe('PlayerPage: one-shot ?t= (Rev 7/8)', () => {
   });
 });
 
-describe('PlayerPage: D11 notice', () => {
+describe('PlayerPage: different-version notice', () => {
   const files = (siblingDuration: number): MediaFile[] => [
     f.mediaFile({ id: 90, video: HEVC, duration_seconds: 7200 }),
     f.mediaFile({ id: 91, duration_seconds: siblingDuration }),
@@ -210,7 +210,7 @@ describe('PlayerPage: D11 notice', () => {
   });
 });
 
-describe('PlayerPage: home fallback (Rev 4)', () => {
+describe('PlayerPage: home fallback', () => {
   const homeEntry = (overrides: Partial<EpisodeDetail> = {}) =>
     f.homeEpisode({ id: 345, progress: f.progress({ media_file_id: 501, position_seconds: 300, duration_seconds: 1320 }), ...overrides });
 
@@ -259,7 +259,7 @@ describe('PlayerPage: home fallback (Rev 4)', () => {
   });
 });
 
-describe('Home → player (deferred from phase 2)', () => {
+describe('Home → player', () => {
   function renderHomeAndPlayer(home: ReturnType<typeof f.homeResponse>) {
     server.use(http.get(`${API}/home`, () => HttpResponse.json(home)));
     const rec = recordRequests();
@@ -277,7 +277,7 @@ describe('Home → player (deferred from phase 2)', () => {
       progress: f.progress({ media_file_id: 501, position_seconds: 600, duration_seconds: 1320 }),
     });
 
-  it('an HEVC-last-played episode starts its matching H.264 sibling at the saved position (D11)', async () => {
+  it('an HEVC-last-played episode starts its matching H.264 sibling at the saved position', async () => {
     serveEpisodes([f.episodeDetail({ media_files: episodeFiles(1318) })]);
     const { rec, user } = renderHomeAndPlayer(f.homeResponse({ continue_watching: [entry(1318)] }));
     await user.click(await screen.findByRole('link', { name: 'The Office · T2 · E3 · Office Olympics' }));

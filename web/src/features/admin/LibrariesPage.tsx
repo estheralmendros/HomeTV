@@ -1,4 +1,4 @@
-// /admin/libraries "Bibliotecas" (folder-selection-admin prd2 §3): the Películas and Series
+// /admin/libraries "Bibliotecas": the Películas and Series
 // folders with live status and title counts, a local draft (add / remove / undo), and one save:
 // POST …/plan → a confirmation built only from the server's plan (when it lists consequences) →
 // PUT, which starts a `libraries` scan. Every result shows on the page, never in a dialog.
@@ -110,7 +110,7 @@ export function LibrariesPage() {
   };
 
   const handleError = (err: unknown) => {
-    if (isAdminActionCancelled(err)) return; // RequireAdmin leaves the page (prd2 "Keypad cancel").
+    if (isAdminActionCancelled(err)) return; // RequireAdmin leaves the page (keypad cancelled).
     if (isApiError(err, 'invalid_library_folders')) {
       const folders = folderErrorsOf(err.details);
       if (folders) {

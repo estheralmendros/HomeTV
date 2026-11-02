@@ -8,7 +8,7 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
 import org.junit.jupiter.params.provider.ValueSource
 
-/** JVM default locale en-US: names must still be Spanish (prd3 §UI Language rule 5). */
+/** JVM default locale en-US: names must still be Spanish. */
 @ExtendWith(UsLocale::class)
 class LanguageNamesTest {
     @ParameterizedTest(name = "{0} -> {1}")
@@ -59,7 +59,7 @@ class LanguageNamesTest {
             "cze", "ces", "gre", "ell", "hun", "tur", "heb", "hin",
         ],
     )
-    fun `every table code (the 20 prd2 codes plus the TV extras) has a Spanish name`(code: String) {
+    fun `every table code (the 20 web codes plus the TV extras) has a Spanish name`(code: String) {
         val name = LanguageNames.name(code)
         assertTrue(name is LanguageName.Named, "$code -> $name")
         val text = (name as LanguageName.Named).name

@@ -1,4 +1,4 @@
-// On-screen numeric keypad for the admin PIN (prd2 §2 Admin operations): 0-9, ⌫, OK, physical
+// On-screen numeric keypad for the admin PIN: 0-9, ⌫, OK, physical
 // digits/Backspace/Enter, 4 masked dots, auto-submit at 4 digits.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { unlockAdmin } from '@/api/admin';

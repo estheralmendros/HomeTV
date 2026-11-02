@@ -45,7 +45,7 @@ import com.hometv.tv.ui.theme.HomeTvColors
 import com.hometv.tv.ui.theme.HomeTvDimens
 
 /**
- * (11) Mi lista (watchlist prd3 FR-T10): Browse's layout with "Ordenar" / "Tipo" / "Estado" list dialogs, the
+ * (11) Mi lista: Browse's layout with "Ordenar" / "Tipo" / "Estado" list dialogs, the
  * shared [PosterGridPane], the empty and filtered-empty states, and a reload in place on every resume.
  */
 @Composable
@@ -58,16 +58,16 @@ fun WatchlistScreen(vm: WatchlistViewModel, navigator: AppNavigator, avatar: Ava
     LaunchedEffect(vm) { vm.navigation.collect(navigator::handle) }
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { vm.onHidden() }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.onVisible() }
-    // No card to focus (FR-T10.7): "Ver todo" with a type or Estado filter, else "Ordenar"; after the new body is composed.
+    // No card to focus: "Ver todo" with a type or Estado filter, else "Ordenar"; after the new body is composed.
     LaunchedEffect(state.headerFocusVersion) {
         if (state.headerFocusVersion == 0 || state.items.isNotEmpty()) return@LaunchedEffect
         (if (state.noMatches) showAllButton else sortButton).requestFocusWhenReady()
     }
-    // The body (grid, or the empty / no-matches column) reports whether it holds focus (FR-T9.7).
+    // The body (grid, or the empty / no-matches column) reports whether it holds focus.
     val bodyFocus = Modifier.onFocusChanged { vm.onBodyFocusChanged(it.hasFocus) }
     // The grid takes focus when it appears on a screen nothing holds focus on (opening it, Back from a detail),
     // or for a new GridFocus; a resume that fills an empty list while the header or the top nav has focus
-    // leaves focus there (AC-T3d).
+    // leaves focus there.
     var screenHasFocus by remember { mutableStateOf(false) }
     var seenFocusVersion by remember { mutableStateOf(state.focus?.version) }
     val shouldRestore = { version: Int? ->

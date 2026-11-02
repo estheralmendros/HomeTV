@@ -1,4 +1,4 @@
-// The ONLY UI string catalog (es-ES, tú form; prd.md § UI Language glossary). Every visible
+// The ONLY UI string catalog (es-ES, tú form). Every visible
 // text, aria-label, alt, placeholder, title, toast and document.title comes from here. Texts
 // with values are functions; plurals are chosen here (Intl.PluralRules es-ES). Later phases add
 // their screens' groups (home, library, film, show, player, admin…).
@@ -530,7 +530,7 @@ export const S = {
     } as Record<string, string | undefined>,
   },
 
-  /** Player (prd2 §9). */
+  /** Player. */
   player: {
     loading: 'Cargando el vídeo…',
     playbackError: (message: string) => `Error de reproducción: ${message}`,

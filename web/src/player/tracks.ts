@@ -1,4 +1,4 @@
-// Subtitle/audio track helpers (prd2 §9 steps 6–8): visible tracks, default selection, labels.
+// Subtitle/audio track helpers: visible tracks, default selection, labels.
 import type { AudioTrack, SubtitleTrack } from '@/api/types';
 import { languageName } from '@/lib/languages';
 import { readString, writeString } from '@/lib/storage';

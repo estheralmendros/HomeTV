@@ -13,7 +13,7 @@ import com.hometv.tv.ui.text.resolve
 import com.hometv.tv.ui.theme.HomeTvColors
 
 /**
- * A full-screen player error (prd3 §10): the catalog message, the reason line (unsupported reasons),
+ * A full-screen player error: the catalog message, the reason line (unsupported reasons),
  * and the buttons chosen by `PlaybackErrorMapper` ([Reintentar] / [Reintentar desde aquí] /
  * [Probar otra versión] / [Volver]; the first one is focused). Never server text.
  */

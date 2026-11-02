@@ -1,5 +1,5 @@
-""" "Mi lista": PUT/DELETE /api/watchlist/{films|shows}/{id}, GET /api/watchlist (FR-8;
-``type``, ``sort``, ``watched=true|false`` (the library rule), ``page``, ``page_size``).
+""" "Mi lista": PUT/DELETE /api/watchlist/{films|shows}/{id}, GET /api/watchlist
+(``type``, ``sort``, ``watched=true|false`` (the library rule), ``page``, ``page_size``).
 
 Profile Bearer only (no ``?token=``, no admin token, no PIN); the profile comes from the token.
 Writes are idempotent and answer 204 with an empty body; unknown or hidden titles are 404.

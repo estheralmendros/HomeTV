@@ -1,4 +1,4 @@
-// "Mi lista" toggle on film/show detail (watchlist prd2 FR-W6): optimistic patch of the detail's
+// "Mi lista" toggle on film/show detail: optimistic patch of the detail's
 // `in_watchlist`, rollback + toast on error, invalidation on settle (the server's truth wins).
 // No success toast: the button change is the confirmation.
 import { useIsMutating, useMutation, useQueryClient } from '@tanstack/react-query';

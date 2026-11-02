@@ -3,7 +3,7 @@ import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PLAY_GLYPH, WARNING_GLYPH } from '@/components/glyphs';
 
-// prd2 §9 step 11 (Icons): icons are monochrome glyphs or SVG in currentColor; a colour emoji never
+// Icons: icons are monochrome glyphs or SVG in currentColor; a colour emoji never
 // reaches the UI. That covers Emoji_Presentation characters (🔊 🔇) and every other Emoji=Yes
 // character (▶ ⚠, which iPadOS may draw from Apple Color Emoji) unless the text-presentation
 // selector U+FE0E follows it. ASCII digits, # and * are Emoji=Yes too (keycap bases) and allowed.

@@ -26,7 +26,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** ratings prd3 FR-T11/T12 / T-AC-10..12: the detail ratings block's content, D-pad paths and focus restores. */
+/** The detail ratings block's content, D-pad paths and focus restores. */
 @RunWith(AndroidJUnit4::class)
 class DetailRatingsFocusTest : UiTestBase() {
     private fun other(id: Long, name: String, stars: Double) = OtherRating(ProfileRef(id, name, "avatar-0$id"), stars, "2026-10-3${id % 10}T10:00:00Z")

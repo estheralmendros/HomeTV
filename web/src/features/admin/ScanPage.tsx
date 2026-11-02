@@ -1,4 +1,4 @@
-// /admin/scan (prd2 §11 Scan): the status card of the current/last run and "Escanear ahora".
+// /admin/scan: the status card of the current/last run and "Escanear ahora".
 // AdminLayout polls `['admin','scan']` every 2 s while running (or while change detection is
 // starting) and handles the finish.
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -163,7 +163,7 @@ function ScanCard({ scan, onScanNow }: { scan: ScanStatus; onScanNow: () => void
   );
 }
 
-/** "Carpetas: MKV (archivos sueltos), películas/A" (first 5, then "y N más"; prd2 FR-26). */
+/** "Carpetas: MKV (archivos sueltos), películas/A" (first 5, then "y N más"). */
 function ScopeLine({ scope }: { scope: ScanScope[] }) {
   const shown = scope.slice(0, MAX_SCOPE_LABELS);
   const rest = scope.length - shown.length;
@@ -181,7 +181,7 @@ function ScopeLine({ scope }: { scope: ScanScope[] }) {
   );
 }
 
-/** "Detección de cambios: …", the unwatched roots and the raw diagnostic (prd2 FR-27). */
+/** "Detección de cambios: …", the unwatched roots and the raw diagnostic. */
 function WatcherLines({ watcher }: { watcher: WatcherStatus }) {
   const warn = watcher.state === 'unavailable' || watcher.state === 'error';
   return (

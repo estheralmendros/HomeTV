@@ -1,6 +1,6 @@
-// Version choice and start position (prd2 §7 step 3, §9 step 2; prd.md §9 D10/D11/D13). Pure:
+// Version choice and start position. Pure:
 // shared by the detail pages (labels, defaults) and the player. `media_files` keep the server
-// order (prd.md Rev 8) and are never re-sorted, so "first … in media_files order" picks the
+// order and are never re-sorted, so "first … in media_files order" picks the
 // same file as the TV app.
 import type { ClientCaps, MediaFile, Progress } from '@/api/types';
 import { formatBytes } from '@/lib/format';
@@ -51,13 +51,13 @@ const NO_CAPS: ClientCaps = {
   can_select_audio_track: false,
 };
 
-/** D10: the last-played file is a part, finished, and a next part exists. */
+/** The last-played file is a part, finished, and a next part exists. */
 function finishedNonFinalPart(files: readonly MediaFile[], last: MediaFile | null, progress: Progress): boolean {
   return last !== null && last.part_number !== null && isFinished(last, progress) && nextPart(files, last, NO_CAPS) !== null;
 }
 
 /**
- * D13: among the files with the smallest part number greater than `file`'s: same label and
+ * Among the files with the smallest part number greater than `file`'s: same label and
  * playable → first playable → same label and readable → first readable. Null for the last part
  * or a standalone file.
  */
@@ -79,7 +79,7 @@ export function nextPart(files: readonly MediaFile[], file: MediaFile, caps: Cli
 }
 
 /**
- * D11: `f` may carry the saved position: both durations known and within max(60 s, 2 %) of
+ * `f` may carry the saved position: both durations known and within max(60 s, 2 %) of
  * `progress.duration_seconds`, and the same part as the last-played file (when it is gone:
  * only items without parts can match).
  */
@@ -92,12 +92,12 @@ export function matchesLastPlayed(f: MediaFile, files: readonly MediaFile[], pro
   return !files.some((x) => x.part_number !== null);
 }
 
-/** The default version (§7 step 3). Null only when `files` is empty. */
+/** The default version. Null only when `files` is empty. */
 export function selectVersion(files: readonly MediaFile[], caps: ClientCaps, progress: Progress | null): MediaFile | null {
   if (files.length === 0) return null;
   const playable = (f: MediaFile) => isPlayable(f, caps);
 
-  // 1. Resume (D10 + D11); a watched item starts over.
+  // 1. Resume (next part, then version match); a watched item starts over.
   if (progress && !progress.watched) {
     const last = lastPlayedFile(files, progress);
     if (last && finishedNonFinalPart(files, last, progress)) {
@@ -124,7 +124,7 @@ export function selectVersion(files: readonly MediaFile[], caps: ClientCaps, pro
   return files.find(playable) ?? files.find(readable) ?? files[0] ?? null;
 }
 
-/** Where `f` starts (§7 step 3 `startPosition`, §9 step 2). */
+/** Where `f` starts. */
 export function startPosition(f: MediaFile, files: readonly MediaFile[], progress: Progress | null): StartPosition {
   const atZero = { seconds: 0, differentVersion: false };
   if (!progress || progress.watched || progress.position_seconds < MIN_RESUME_SECONDS) return atZero;
@@ -155,7 +155,7 @@ export function versionOptionLabel(file: MediaFile, caps: ClientCaps): string {
 }
 
 /**
- * Other versions to offer on the unsupported/error screen (§9.1): readable, playable per caps,
+ * Other versions to offer on the unsupported/error screen: readable, playable per caps,
  * the same part as `current`, and not `excluded` (the mount's failedFileIds).
  */
 export function playableAlternatives(

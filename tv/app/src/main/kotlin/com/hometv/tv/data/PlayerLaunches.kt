@@ -5,10 +5,10 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * In-memory registry of pushed Player routes (prd3 §8 Lifecycle "Process death"): a route whose
+ * In-memory registry of pushed Player routes (process death): a route whose
  * `launchId` is not here was restored by Navigation after the process died, and the Player pops it
  * without any request. It also carries the Home episode payload (its `media_files`), so the Player
- * can send `POST .../playback` without waiting for `GET /api/episodes/{id}` (§3.5).
+ * can send `POST .../playback` without waiting for `GET /api/episodes/{id}`.
  */
 class PlayerLaunches {
     private class Launch(val payload: EpisodeSummary?)

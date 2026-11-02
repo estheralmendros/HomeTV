@@ -25,11 +25,11 @@ sealed interface Route {
     @Serializable
     data object Settings : Route
 
-    /** (11) Mi lista: the profile's watchlist (watchlist prd3), a top-nav tab after "Series". */
+    /** (11) Mi lista: the profile's watchlist, a top-nav tab after "Series". */
     @Serializable
     data object Watchlist : Route
 
-    /** (12) Actividad: the household's ratings (ratings prd3), a top-nav tab after "Mi lista". */
+    /** (12) Actividad: the household's ratings, a top-nav tab after "Mi lista". */
     @Serializable
     data object Activity : Route
 
@@ -53,7 +53,7 @@ sealed interface Route {
      *   null to let `VersionSelector` pick (`defaultChoice` for films, `select`/`candidates` with
      *   `progress` for episodes).
      * - [fromStart]: "Ver desde el principio" (start at 0, no "different version" chip);
-     *   false = resume per `VersionSelector.startFor` (D10/D11).
+     *   false = resume per `VersionSelector.startFor`.
      */
     @Serializable
     data class Player(

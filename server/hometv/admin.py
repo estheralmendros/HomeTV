@@ -1,4 +1,4 @@
-"""Admin service functions (PRD Admin API). Phase 3 wires them to ``/api/admin/*`` routes.
+"""Admin service functions, called by the ``/api/admin/*`` routes.
 
 - ``list_unmatched(session, ...)`` / ``unmatched_count(session)``: sync, for ``def`` handlers
   with a ``ReadSession``. Entries of absent files (``missing_since`` set) are excluded.

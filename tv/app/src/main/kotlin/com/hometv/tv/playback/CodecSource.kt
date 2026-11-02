@@ -4,7 +4,7 @@ import com.hometv.tv.core.playback.AudioRouteCaps
 import com.hometv.tv.core.playback.CodecInventory
 
 /**
- * The capability-detection hook (prd3 Capability Detection): device decoders once per process,
+ * The capability-detection hook: device decoders once per process,
  * the audio route fresh for every playback request. `AndroidCodecInventory` implements it; tests fake it.
  */
 interface CodecSource {

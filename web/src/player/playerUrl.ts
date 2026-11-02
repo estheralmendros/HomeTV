@@ -1,4 +1,4 @@
-// Player URLs (prd2 Routes, §7 step 3, §9 step 2). `file` names the version; `t` is a one-shot
+// Player URLs. `file` names the version; `t` is a one-shot
 // start instruction (t=0 means from the start). Cards and episode rows send neither, so the
 // player runs selectVersion on fresh progress.
 export type PlayerItemType = 'film' | 'episode';

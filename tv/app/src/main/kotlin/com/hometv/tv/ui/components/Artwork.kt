@@ -24,8 +24,8 @@ val LocalArtwork = staticCompositionLocalOf<(String?) -> String?> { { null } }
 val LocalAppImageLoader = staticCompositionLocalOf<ImageLoader?> { null }
 
 /**
- * An image from the server over a colored placeholder that shows [fallbackTitle] (prd3 §3.9:
- * missing images → colored placeholder with title text), or [placeholder] instead (the Person
+ * An image from the server over a colored placeholder that shows [fallbackTitle]
+ * (missing images → colored placeholder with title text), or [placeholder] instead (the Person
  * screen's initial). A failed load leaves the placeholder.
  */
 @Composable

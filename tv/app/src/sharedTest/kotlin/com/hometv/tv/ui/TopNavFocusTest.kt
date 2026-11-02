@@ -25,7 +25,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * prd3 §3 step 1 (tab focus): while the top nav has focus the pill follows the focused tab, and
+ * Tab focus: while the top nav has focus the pill follows the focused tab, and
  * every tab label stays readable (≥ 4.5:1 against what is behind it).
  */
 @RunWith(AndroidJUnit4::class)
@@ -33,7 +33,7 @@ class TopNavFocusTest : UiTestBase() {
     /** The text tabs (Search is a lens icon without a label, see `SearchTabTest`). */
     private val labels = mapOf(NavTab.HOME to "Inicio", NavTab.FILMS to "Películas", NavTab.SHOWS to "Series", NavTab.WATCHLIST to "Mi lista", NavTab.ACTIVITY to "Actividad", NavTab.SETTINGS to "Ajustes")
 
-    /** "Ajustes" is an admin-only tab (prd3 §3 step 1): sign in as an admin so every label is on the bar. */
+    /** "Ajustes" is an admin-only tab: sign in as an admin so every label is on the bar. */
     private fun signInAsAdmin() {
         api.onMe = { Profile(5, "Esther", "avatar-05", is_admin = true) }
     }
@@ -152,7 +152,7 @@ class TopNavFocusTest : UiTestBase() {
 
     @Test
     fun theAdminBarShowsSevenTabsInsideTheSafeAreaWithActividadAfterMiLista() {
-        // ratings prd3 FR-T14 / T-AC-14: [🔍] [Inicio] [Películas] [Series] [Mi lista] [Actividad] [Ajustes].
+        // Tab order: [🔍] [Inicio] [Películas] [Series] [Mi lista] [Actividad] [Ajustes].
         useLibrary()
         signInAsAdmin()
         launch()

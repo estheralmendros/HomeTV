@@ -1,4 +1,4 @@
-"""GET /api/home, /api/search, /api/genres (PRD §9 home rows, §10, REST "Catalog")."""
+"""GET /api/home, /api/search, /api/genres."""
 
 from datetime import timedelta
 
@@ -77,7 +77,7 @@ async def test_continue_watching(client, db, user, admin):
 
 
 async def test_next_up_episodes_join_continue_watching(client, db, user):
-    """Rev 13: one Seguir viendo row with in-progress items and each started show's next episode."""
+    """One Seguir viendo row with in-progress items and each started show's next episode."""
     with db.write_session() as s:
         _office, oe = add_show(s, "Office", episodes={0: 1, 1: 3}, backdrop="ob.jpg")
         _lost, le = add_show(s, "Lost", episodes={1: 2})
@@ -94,7 +94,7 @@ async def test_next_up_episodes_join_continue_watching(client, db, user):
         add_progress(s, user.id, film_id=dune.id, position=600.0, updated_at=T0 + 1.5 * day)
         add_progress(s, user.id, episode_id=de[(1, 1)].id, watched=True)  # no next episode
         add_progress(s, user.id, episode_id=se[(0, 1)].id, watched=True)  # specials only
-        # Skip: E3 abandoned at T0, E1 watched later -> the latest activity wins (Rev 14): the
+        # Skip: E3 abandoned at T0, E1 watched later -> the latest activity wins: the
         # show's one card is its Next Up (E2), dated by that watched_at.
         add_progress(s, user.id, episode_id=ke[(1, 1)].id, watched=True, watched_at=T0 + 4 * day)
         add_progress(s, user.id, episode_id=ke[(1, 3)].id, position=200.0, updated_at=T0)
@@ -124,7 +124,7 @@ def _cw(home: dict) -> list[tuple[str, int]]:
 
 
 async def test_one_card_per_show_with_two_in_progress_episodes(client, db, user):
-    """Rev 14: only the most recently updated in-progress episode of a show, limit still filled."""
+    """Only the most recently updated in-progress episode of a show, limit still filled."""
     day = timedelta(days=1)
     with db.write_session() as s:
         _show, eps = add_show(s, "Office", episodes={1: 3})
@@ -138,7 +138,7 @@ async def test_one_card_per_show_with_two_in_progress_episodes(client, db, user)
 
 
 async def test_old_abandoned_episode_does_not_hide_show_watched_today(client, db, user):
-    """Rev 14: the show's latest watched_at is newer than its in-progress episode -> Next Up."""
+    """The show's latest watched_at is newer than its in-progress episode -> Next Up."""
     day = timedelta(days=1)
     with db.write_session() as s:
         _show, eps = add_show(s, "Office", episodes={1: 4})
@@ -211,7 +211,7 @@ async def test_null_watched_at_does_not_break_home(client, db, user):
 
 
 async def test_next_up_skips_missing_candidate(client, db, user):
-    """Rev 13 visibility: a Next Up candidate without a present file is skipped."""
+    """Visibility: a Next Up candidate without a present file is skipped."""
     with db.write_session() as s:
         show, eps = add_show(s, "Office", episodes={1: 1})
         gone = add_episode(s, show, 1, 2, with_file=False)

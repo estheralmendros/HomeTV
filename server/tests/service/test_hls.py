@@ -1,4 +1,4 @@
-"""HLS session manager with a stub ffmpeg (PRD §7 HLS steps 1-11, state machine, ACs)."""
+"""HLS session manager with a stub ffmpeg (session steps, state machine)."""
 
 import asyncio
 import logging

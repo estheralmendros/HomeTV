@@ -1,4 +1,4 @@
-"""Rating prompt (ratings PRD FR-7, FR-8, §4): ``rating_prompt`` on ``report_progress`` /
+"""Rating prompt: ``rating_prompt`` on ``report_progress`` /
 ``mark_watched`` exactly when the request watches the title's finishing item and the profile has
 neither rated nor dismissed it; the extra-query budget; the deleted-profile 401 on both writes."""
 
@@ -291,7 +291,7 @@ def test_mark_siblings_watched_returns_the_sibling_ids(mdb, profiles):
         assert _mark_siblings_watched(s, a, single.id, e1.id, m.utcnow()) == []
 
 
-# --- Query budget (FR-8 table) ---------------------------------------------------------------
+# --- Query budget ----------------------------------------------------------------------------
 
 
 def _flat(statements: list[str]) -> list[str]:
@@ -373,7 +373,7 @@ def test_episode_report_loads_the_episode_row_once(mdb, profiles):
         assert len(loads) == 1, loads
 
 
-# --- Deleted profile (§4) --------------------------------------------------------------------
+# --- Deleted profile -------------------------------------------------------------------------
 
 
 def _delete_profile(db: Database, profile_id: int) -> None:

@@ -1,4 +1,4 @@
-"""``PersonService`` (actor screen FR-6..8): on-demand TMDB fetch, 30-day cache, single-flight,
+"""``PersonService`` (actor screen): on-demand TMDB fetch, 30-day cache, single-flight,
 wait budget for never-fetched persons, stale-while-revalidate, stale-on-failure, ``stop()``."""
 
 import asyncio

@@ -1,4 +1,4 @@
-// Player end state and the rating prompt (ratings prd2 FR-W9, W-AC-6–8): nothing during
+// Player end state and the rating prompt: nothing during
 // playback; at `ended` without a next item the inline form replaces "Fin de la reproducción";
 // answers are final; leaving with the form visible = Ahora no (unless a save is pending);
 // leaving without it offers the prompt over the screen returned to.
@@ -119,7 +119,7 @@ describe('film: the inline rating form at the end', () => {
     await until(() => expect(dismissals(p)).toHaveLength(1));
   });
 
-  it('W-AC-6b: Ahora no, then Volver: nothing opens over the screen returned to, even with the final report carrying the prompt', async () => {
+  it('Ahora no, then Volver: nothing opens over the screen returned to, even with the final report carrying the prompt', async () => {
     const p = await filmAtEnd('all');
     fireEvent.click(await screen.findByRole('button', { name: 'Ahora no' }));
     fireEvent.click(within((await screen.findByRole('dialog', { name: 'Fin de la reproducción' })) as HTMLElement).getByRole('button', { name: 'Volver' }));
@@ -130,7 +130,7 @@ describe('film: the inline rating form at the end', () => {
     expect(dismissals(p)).toHaveLength(1);
   });
 
-  it('W-AC-6b: Guardar shows "Puntuación guardada" as a player toast and the end dialog; leaving sends no dismissal', async () => {
+  it('Guardar shows "Puntuación guardada" as a player toast and the end dialog; leaving sends no dismissal', async () => {
     const p = await filmAtEnd();
     const slider = await screen.findByRole('slider', { name: 'Puntuación' });
     fireEvent.keyDown(slider, { key: 'End' });
@@ -148,7 +148,7 @@ describe('film: the inline rating form at the end', () => {
     expect(hostDialog()).not.toBeInTheDocument();
   });
 
-  it('W-AC-6b: a failed save keeps the inline form with the error and [Reintentar]; Reintentar then shows the end dialog', async () => {
+  it('a failed save keeps the inline form with the error and [Reintentar]; Reintentar then shows the end dialog', async () => {
     server.use(http.put(`${API}/ratings/films/:id`, () => apiError(500, 'internal_error'), { once: true }));
     await filmAtEnd();
     fireEvent.keyDown(await screen.findByRole('slider', { name: 'Puntuación' }), { key: 'End' });
@@ -161,7 +161,7 @@ describe('film: the inline rating form at the end', () => {
     expect(form()).not.toBeInTheDocument();
   });
 
-  it('W-AC-6b: leaving after a failed save sends one dismissal and opens nothing over the screen returned to', async () => {
+  it('leaving after a failed save sends one dismissal and opens nothing over the screen returned to', async () => {
     server.use(http.put(`${API}/ratings/films/:id`, () => apiError(500, 'internal_error')));
     const p = await filmAtEnd();
     fireEvent.keyDown(await screen.findByRole('slider', { name: 'Puntuación' }), { key: 'End' });
@@ -179,7 +179,7 @@ describe('film: the inline rating form at the end', () => {
   it.each([
     ['succeeds', () => new HttpResponse(null, { status: 204 }), 'Puntuación guardada'],
     ['fails', () => apiError(500, 'internal_error'), 'No se ha podido guardar la puntuación.'],
-  ])('W-AC-6b: leaving while the inline save is pending sends no dismissal; when it %s an app toast says so', async (_n, answer, text) => {
+  ])('leaving while the inline save is pending sends no dismissal; when it %s an app toast says so', async (_n, answer, text) => {
     const gate = deferred();
     server.use(
       http.put(`${API}/ratings/films/:id`, async () => {
@@ -204,7 +204,7 @@ describe('film: the inline rating form at the end', () => {
   it.each([
     ['Volver in the top bar', () => fireEvent.click(within(playerRoot()!).getAllByRole('button', { name: 'Volver' })[0]!)],
     ['browser Back', (p: PlayerHarness) => void p.router.navigate(-1)],
-  ])('W-AC-6c: leaving with the form unanswered (%s) sends one dismissal and opens nothing', async (_n, leave) => {
+  ])('leaving with the form unanswered (%s) sends one dismissal and opens nothing', async (_n, leave) => {
     const p = await filmAtEnd();
     await screen.findByRole('dialog', { name: '¿Qué te ha parecido?' });
     leave(p);
@@ -216,7 +216,7 @@ describe('film: the inline rating form at the end', () => {
     expect(dismissals(p)).toHaveLength(1);
   });
 
-  it('W-AC-6c: Escape in the inline form answers Ahora no', async () => {
+  it('Escape in the inline form answers Ahora no', async () => {
     const p = await filmAtEnd();
     await until(() => expect(screen.getByRole('slider', { name: 'Puntuación' })).toHaveFocus());
     fireEvent.keyDown(screen.getByRole('slider', { name: 'Puntuación' }), { key: 'Escape' });
@@ -225,7 +225,7 @@ describe('film: the inline rating form at the end', () => {
   });
 });
 
-describe('W-AC-6a: player keys while the form shows', () => {
+describe('player keys while the form shows', () => {
   let ms: FakeMediaSession;
   beforeEach(() => {
     ms = stubMediaSession();
@@ -251,7 +251,7 @@ describe('W-AC-6a: player keys while the form shows', () => {
   });
 });
 
-describe('W-AC-7: last episode of a show', () => {
+describe('last episode of a show', () => {
   const file = f.episodeFile({ duration_seconds: DURATION });
   const last: EpisodeDetail = f.episodeDetail({ id: 347, episode_number: 5, media_files: [file], next_episode_id: null, progress: null });
 
@@ -273,7 +273,7 @@ describe('W-AC-7: last episode of a show', () => {
   });
 });
 
-describe('W-AC-8: leaving without the form visible offers the prompt over the screen returned to', () => {
+describe('leaving without the form visible offers the prompt over the screen returned to', () => {
   it('before the end, after a report carried it: the host dialog opens once over "/"', async () => {
     serveFilm();
     serveProgress(dune, 'non-final');

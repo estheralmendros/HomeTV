@@ -352,7 +352,7 @@ describe('keep-alive', () => {
   });
 });
 
-describe('30 min pause release (D9)', () => {
+describe('30 min pause release', () => {
   it('keep-alives for 29 min, then exactly one DELETE; Play re-requests at the paused position', async () => {
     answerPlayback(f.playbackHls(), f.playbackHls({ session_id: 'sess-2', url: '/api/hls/sess-2/index.m3u8' }));
     const h = setup();
@@ -544,7 +544,7 @@ describe('recovery', () => {
     expect((await postBodies())[1]).toMatchObject({ start_position_seconds: 400, previous_session_id: null, audio_stream_index: 1 });
   });
 
-  it('a fatal error before tracking went live re-requests at the original start (Rev 8)', async () => {
+  it('a fatal error before tracking went live re-requests at the original start', async () => {
     answerPlayback(f.playbackHls(), f.playbackHls({ session_id: 'sess-2' }));
     const h = setup({}, 400);
     h.dispatch({ type: 'LOAD', fileId: 91, startPositionSeconds: 400 });

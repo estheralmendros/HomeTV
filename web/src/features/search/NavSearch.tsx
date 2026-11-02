@@ -1,4 +1,4 @@
-// Search input (prd2 §6 step 1). Enter → /search?q=…; on /search, typing updates q in the URL
+// Search input. Enter → /search?q=…; on /search, typing updates q in the URL
 // (replace, debounced 300 ms) so results follow. Used in the NavBar and, as variant "page",
 // at the top of the search page (phones, where the NavBar input is hidden).
 import { useEffect, useRef, useState, type FormEvent } from 'react';

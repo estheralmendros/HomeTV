@@ -1,4 +1,4 @@
-"""Enrichment, merge rules and manual re-match (PRD §5) with respx TMDB mocks."""
+"""Enrichment, merge rules and manual re-match with respx TMDB mocks."""
 
 import asyncio
 import json

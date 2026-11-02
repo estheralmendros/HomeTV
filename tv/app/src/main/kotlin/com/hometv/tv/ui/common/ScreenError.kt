@@ -3,9 +3,9 @@ package com.hometv.tv.ui.common
 import com.hometv.tv.core.api.ApiException
 import com.hometv.tv.core.util.ServerUrl
 
-/** A screen-level failure (prd3 §10 API table). The screen renders it with the shared error screens. */
+/** A screen-level failure. The screen renders it with the shared error screens. */
 sealed interface ScreenError {
-    /** Full-screen Connection Error ([Reintentar] / [Abrir Tailscale] / [Cambiar servidor]); [tls] swaps in the §1.6 TLS text. */
+    /** Full-screen Connection Error ([Reintentar] / [Abrir Tailscale] / [Cambiar servidor]); [tls] swaps in the TLS text. */
     data class Connection(val host: String, val tls: Boolean) : ScreenError
 
     /** 404 `not_found`: "Este título ya no está disponible." [Volver] (+ `AppEvent.ItemGone`). */
@@ -27,7 +27,7 @@ sealed interface ScreenError {
     data object LoadFailed : ScreenError
 
     companion object {
-        /** `error.code`s defined by prd.md; any other code is shown as [Unexpected]. */
+        /** `error.code`s defined by the server API; any other code is shown as [Unexpected]. */
         private val KNOWN_CODES = setOf(
             "unauthorized", "forbidden", "not_found", "validation_error", "profile_not_found", "admin_locked", "pin_required",
             "preparing", "too_many_sessions", "hls_disk_full", "transcoder_failed", "file_missing", "invalid_audio_stream",

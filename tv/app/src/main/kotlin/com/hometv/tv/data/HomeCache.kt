@@ -16,7 +16,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 
-/** The three Home payloads of one load (prd3 §3.2): `/api/home` and the Films/Series rows. */
+/** The three Home payloads of one load: `/api/home` and the Films/Series rows. */
 @Serializable
 data class HomePayload(
     val home: HomeResponse,
@@ -76,7 +76,7 @@ class HomeCache(
         if (!f.isFile) null else ApiJson.decodeFromString(HomePayload.serializer(), f.readText())
     }.getOrNull()
 
-    /** The cache is disposable (prd3 §3): a failing write (disk full, read-only) is logged, never thrown. */
+    /** The cache is disposable: a failing write (disk full, read-only) is logged, never thrown. */
     private fun safeWrite(f: File, payload: HomePayload) {
         try {
             writeFile(f, payload)

@@ -82,7 +82,7 @@ async def test_openapi_and_docs_under_api(client):
     docs = await client.get("/api/docs")
     assert docs.status_code == 200
     assert "swagger" in docs.text.lower()
-    # Outside /api these are SPA paths (§12 fallback), never FastAPI's default docs/schema.
+    # Outside /api these are SPA paths (SPA fallback), never FastAPI's default docs/schema.
     root_docs = await client.get("/docs")
     assert "swagger" not in root_docs.text.lower()
     root_schema = await client.get("/openapi.json")

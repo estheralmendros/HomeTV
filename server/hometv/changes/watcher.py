@@ -1,5 +1,5 @@
-"""Change watcher service (prd.md FR-11): watches the library roots, settles the changes and asks
-the scheduler for scoped ``watch`` runs. Instance on ``app.state.watcher``.
+"""Change watcher service: watches the library roots, settles the changes and asks the
+scheduler for scoped ``watch`` runs. Instance on ``app.state.watcher``.
 
 States (``status()``, an immutable ``WatcherStatus`` snapshot, safe from any thread):
 ``disabled`` (setting off) and ``unavailable`` on a non-Linux platform are final (inert: every

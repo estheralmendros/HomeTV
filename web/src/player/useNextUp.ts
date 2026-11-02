@@ -1,5 +1,5 @@
-// What follows the current playback (prd2 §9 step 10):
-// - next episode (episodes only): resolved with resolveNextEpisode (D12) from the FETCHED
+// What follows the current playback:
+// - next episode (episodes only): resolved with resolveNextEpisode from the FETCHED
 //   `['episode', id]` detail, once the last 30 s are reached or on `ended`; the prompt shows in
 //   the last 30 s / on end, and `ended` starts a 10 s countdown that auto-advances. Cancel hides
 //   it until the next mount.

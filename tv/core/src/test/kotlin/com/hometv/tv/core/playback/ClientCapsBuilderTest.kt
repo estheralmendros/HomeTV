@@ -141,7 +141,7 @@ class ClientCapsBuilderTest {
     }
 
     @Test
-    fun `cross-check - the Streamer caps equal prd md TV example caps plus av1 and pcm_s16le`() {
+    fun `cross-check - the Streamer caps equal the reference TV caps plus av1 and pcm_s16le`() {
         val tvExample = ClientCaps(
             containers = listOf("mp4", "mkv", "webm", "ts"),
             video_codecs = listOf("h264", "hevc", "vp9"),

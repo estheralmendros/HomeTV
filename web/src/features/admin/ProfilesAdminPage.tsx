@@ -1,6 +1,6 @@
-// /admin/profiles (prd2 §11 Profile management): list, create/edit (ProfileForm) and delete with
+// /admin/profiles: list, create/edit (ProfileForm) and delete with
 // confirmation. Every mutation runs through useAdminAction. Editing your own PIN or admin flag
-// revokes only your admin token (prd.md §8): the profile session stays.
+// revokes only your admin token: the profile session stays.
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useId, useState } from 'react';
 import { useNavigate } from 'react-router-dom';

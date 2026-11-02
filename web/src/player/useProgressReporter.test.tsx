@@ -63,7 +63,7 @@ function setup(tracker: PositionTracker, props: Props = { stateName: 'playing', 
   });
 }
 
-describe('PositionTracker (attach generations, Rev 6–8)', () => {
+describe('PositionTracker (attach generations)', () => {
   it('tracks timeupdate/seeked/pause only for the current generation', () => {
     const { tracker, gen } = liveTracker(100);
     at(tracker, gen, 150);

@@ -5,7 +5,7 @@ import com.hometv.tv.core.api.PlaybackResponse
 import com.hometv.tv.core.api.SubtitleTrack
 import com.hometv.tv.core.util.ServerUrl
 
-/** prd.md unsupported reasons; [UNKNOWN] covers future ones ("Este formato no es compatible."). */
+/** The server's unsupported reasons; [UNKNOWN] covers future ones ("Este formato no es compatible."). */
 enum class UnsupportedReason(val wire: String?) {
     PROBE_FAILED("probe_failed"),
     NO_VIDEO_STREAM("no_video_stream"),
@@ -44,7 +44,7 @@ sealed interface PlaybackPlan {
     data class Unsupported(val reason: UnsupportedReason, val wireReason: String?, val detail: String?) : PlaybackPlan
 }
 
-/** `PlaybackResponse` → what the player attaches (prd3 Playback Flow rules 1–3). Pure. */
+/** `PlaybackResponse` → what the player attaches. Pure. */
 object PlaybackPlanner {
     /** Direct play MIME by `MediaFile.container` (progressive source; extractors sniff the content). */
     fun mimeForContainer(container: String?): String? = when (container?.lowercase()) {

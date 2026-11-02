@@ -15,7 +15,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * ratings prd3 T-AC-9a (native graphics, real text metrics): the dialog's buttons are one full-width
+ * Native graphics, real text metrics): the dialog's buttons are one full-width
  * row under the poster in the widest cases, every button fully visible inside the dialog and the
  * safe area, sharing one top.
  */

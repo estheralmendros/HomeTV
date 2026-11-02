@@ -1,4 +1,4 @@
-// Volume and mute, persisted to `hometv.volume` = { volume: 0..1, muted } (prd2 §2, §9 step 11).
+// Volume and mute, persisted to `hometv.volume` = { volume: 0..1, muted }.
 // They are user preferences: kept on the shell's <video> across PlayerPage mounts.
 import { useCallback, useEffect, useState } from 'react';
 import { readJson, writeJson } from '@/lib/storage';

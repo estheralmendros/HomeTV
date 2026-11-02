@@ -1,4 +1,4 @@
-"""Keyframe index service (PRD §7 Keyframe index, §4 step 5a).
+"""Keyframe index service (also the scanner's background indexer).
 
 - Sources in order: MKV/WebM ``Cues``, MP4 ``stss`` (``keyframe_readers``, off the loop), then
   the ffprobe packet scan run at idle priority with an ``rchar`` stall watchdog (wall-clock
@@ -68,7 +68,7 @@ def estimate_seconds(
     now: float,
     proc_io: bool,
 ) -> int:
-    """``estimated_seconds`` of §7 "Read-rate estimate": an int in ``[1, 86 400]``."""
+    """``estimated_seconds`` read-rate estimate: an int in ``[1, 86 400]``."""
     if not proc_io:
         bytes_read = max(0.0, now - started) * INITIAL_RATE
         rate = float(INITIAL_RATE)

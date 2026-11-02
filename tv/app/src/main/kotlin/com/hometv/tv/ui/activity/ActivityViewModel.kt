@@ -62,7 +62,7 @@ data class ActivityUiState(
 }
 
 /**
- * (12) Actividad (ratings prd3 FR-T15): the household's ratings, newest first, in pages of 50 (the
+ * (12) Actividad: the household's ratings, newest first, in pages of 50 (the
  * next page when focus reaches the last 5 rows, one request at a time, a failed page waits for
  * [retry]). Freshness: [onVisible] after an [onHidden] (Back from a detail, a return from the
  * background) reloads every loaded page in place, keeping the focused row by key; a rating saved

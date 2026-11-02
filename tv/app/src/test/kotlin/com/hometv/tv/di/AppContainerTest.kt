@@ -119,7 +119,7 @@ class AppContainerTest {
         assertTrue(!container.playerLaunches.isActive(id))
     }
 
-    /** ratings prd3 FR-T11: a rating saved anywhere makes Home reload its card badges on the next visit. */
+    /** A rating saved anywhere makes Home reload its card badges on the next visit. */
     @Test
     fun `a rating change marks Home stale`() = runTest(dispatcher) {
         val container = testContainer(api, scope)

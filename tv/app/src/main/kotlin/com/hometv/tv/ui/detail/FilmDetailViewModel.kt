@@ -60,7 +60,7 @@ sealed interface FilmDetailUiState {
         val castFocus: CastFocus? = null,
         /** "No se ha podido actualizar Mi lista." under the buttons after a failed write, until the next action. */
         val watchlistError: UiText? = null,
-        /** The ratings block under the buttons (ratings prd3 FR-T11). */
+        /** The ratings block under the buttons. */
         val ratingsRow: RatingsRowUi = RatingsRowUi.EMPTY,
         /** The manual rating dialog ([Puntuar] / [Cambiar]). */
         val ratingDialog: RatingDialogUi? = null,
@@ -72,9 +72,9 @@ sealed interface FilmDetailUiState {
 }
 
 /**
- * Film detail (prd3 §6): Resume/Play buttons from `VersionSelector` (D10 next part, D11 matching
+ * Film detail: Resume/Play buttons from `VersionSelector` (next part, matching
  * versions), the Version / Part / Part-version dialogs, the watched toggle, the optimistic "Mi lista"
- * toggle (watchlist prd3 FR-T6), 404 → ItemGone.
+ * toggle, 404 → ItemGone.
  */
 class FilmDetailViewModel(
     private val filmId: Long,
@@ -151,7 +151,7 @@ class FilmDetailViewModel(
 
     /**
      * The screen resumed (e.g. the Player popped back). When a Player was launched since the last
-     * fetch, the detail is refetched in place (no Loading, focus kept): progress, the D10 next part
+     * fetch, the detail is refetched in place (no Loading, focus kept): progress, the next part
      * and the watched mark change while playing.
      */
     fun onVisible() {
@@ -168,7 +168,7 @@ class FilmDetailViewModel(
     }
 
     /**
-     * OK on a cast card (cast-appearances prd3 FR-T5): remember the card for the focus restore on
+     * OK on a cast card: remember the card for the focus restore on
      * Back, then open the Person screen. No `focusVersion` bump: the card already has focus.
      */
     fun onCastSelected(key: String, index: Int, personId: Long) {
@@ -205,7 +205,7 @@ class FilmDetailViewModel(
         }
     }
 
-    /** OK on `rating_mine` ([Puntuar] / [Cambiar]): the manual rating dialog (FR-T11). */
+    /** OK on `rating_mine` ([Puntuar] / [Cambiar]): the manual rating dialog. */
     fun onRatingMine() {
         val f = film ?: return
         listToggle.clearError()
@@ -292,7 +292,7 @@ class FilmDetailViewModel(
         viewModelScope.launch {
             try {
                 val result = watch.setWatched(WatchTarget.FILM, filmId, !watched)
-                // The root host opens the prompt over this screen (ratings prd3 FR-T10).
+                // The root host opens the prompt over this screen.
                 result.ratingPrompt?.let { ratingPrompts.offer(store.session.value.profileId, it) }
                 refresh.markStale()
                 focus = ButtonId.WATCHED
@@ -305,7 +305,7 @@ class FilmDetailViewModel(
     }
 
     /**
-     * Optimistic (watchlist prd3 FR-T6): the label flips at once, focus stays on the button (no
+     * Optimistic: the label flips at once, focus stays on the button (no
      * `focusVersion` bump, no refetch). The write runs in `appScope`, coalesced per title, so it
      * survives Back; this ViewModel only awaits it to confirm or roll back.
      */
@@ -355,7 +355,7 @@ class FilmDetailViewModel(
     /**
      * Fetches the detail and recomputes the default choice. An explicit choice is kept while its file
      * still exists; after playback an "in parts" choice follows the default when that is a part, so
-     * a finished part moves on to the next one (D10).
+     * a finished part moves on to the next one.
      */
     private suspend fun fetch(afterPlayback: Boolean = false) {
         val fetched = catalog.film(filmId)

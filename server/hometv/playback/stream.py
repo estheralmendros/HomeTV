@@ -1,4 +1,4 @@
-"""Direct-play byte-range streaming (PRD §7 Direct play stream).
+"""Direct-play byte-range streaming.
 
 ``parse_range`` is pure. ``file_chunks`` reads the file read-only in 1 MiB chunks in a worker
 thread; Starlette's ``StreamingResponse`` stops iterating when the client disconnects.

@@ -1,4 +1,4 @@
-// Fake browser environments for player/capabilities.ts (prd2 §10, Testing Decisions). Each env
+// Fake browser environments for player/capabilities.ts. Each env
 // answers only for the exact MIME strings it lists, so a probe with a different string fails.
 // tests/setup.ts installs chromeEnv() as the default env for every test; player tests switch
 // with `setCapabilityEnv(iphoneEnv())`.

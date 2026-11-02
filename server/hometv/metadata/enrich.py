@@ -1,4 +1,4 @@
-"""Enrichment, merge rules and manual re-match (PRD §5).
+"""Enrichment, merge rules and manual re-match.
 
 Every item is processed as **fetch** (TMDB calls + artwork, no transaction open) then **apply**
 (one short ``write_session()`` transaction, run via ``asyncio.to_thread``). Apply re-reads the
@@ -6,8 +6,8 @@ item, discards stale results (item gone, or ``match_status``/``tmdb_id`` changed
 started) and re-checks the ``tmdb_id`` duplicate inside the transaction, merging instead of
 writing (``merge_items``), so ``UNIQUE(library_id, tmdb_id)`` is never violated.
 
-Service functions for the admin API (Phase 3 wires the routes): ``match_item`` and
-``resolve_unmatched``; they raise ``ApiError`` with the PRD error codes.
+Service functions for the admin API: ``match_item`` and
+``resolve_unmatched``; they raise ``ApiError`` with the documented error codes.
 """
 
 import asyncio
@@ -331,7 +331,7 @@ def _write_alias(
 def merge_items(
     session: Session, kind: ItemKind, loser: m.Film | m.Show, survivor: m.Film | m.Show
 ) -> int:
-    """Merge ``loser`` into ``survivor`` (PRD §5 Merge rules) in the caller's transaction."""
+    """Merge ``loser`` into ``survivor`` (merge rules) in the caller's transaction."""
     assert loser.id != survivor.id
     _write_alias(session, kind, loser, survivor.id)
     if kind == "film":

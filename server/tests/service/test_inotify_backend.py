@@ -1,4 +1,4 @@
-"""``InotifyBackend`` with a fake ``libc`` and a scripted ``read`` (prd.md FR-3; every OS).
+"""``InotifyBackend`` with a fake ``libc`` and a scripted ``read`` (every OS).
 
 ``FakeLibc`` behaves like the kernel where it matters: ``inotify_add_watch`` on an inode that is
 already watched returns the existing wd; errors go through ``ctypes.set_errno``. Its

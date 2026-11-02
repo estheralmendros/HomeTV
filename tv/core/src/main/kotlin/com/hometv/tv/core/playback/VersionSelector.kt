@@ -32,14 +32,14 @@ data class Grouping(val standalone: List<MediaFile>, val parts: List<PartGroup>)
     }
 }
 
-/** The default version: [startAtZero] is true for a D10 next part ("Reproducir parte N+1"). */
+/** The default version: [startAtZero] is true for the next part after a finished one ("Reproducir parte N+1"). */
 data class Choice(val group: VersionGroup, val file: MediaFile, val startAtZero: Boolean)
 
 data class Start(val positionSeconds: Double, val differentVersionNotice: Boolean)
 
 /**
- * Pure version choice, multi-part aware (prd3 §6.5, Capability Detection; prd.md §9 D10–D13).
- * Groups are sorted by the Rev 8 key (height DESC with null last, size DESC, id ASC), which equals
+ * Pure version choice, multi-part aware.
+ * Groups are sorted by the version key (height DESC with null last, size DESC, id ASC), which equals
  * the API order, so the TV picks the same file as the web (which keeps the API order).
  * "Playable" = no `probe_error`, a video stream, and its codec in the (per-file refined) caps.
  * A watched item's progress is ignored for the version choice (it starts over), as on the web.
@@ -82,7 +82,7 @@ object VersionSelector {
     }
 
     /**
-     * D11: [file] may carry the saved position — same `part_number` as the last-played file (two
+     * Matching versions: [file] may carry the saved position — same `part_number` as the last-played file (two
      * nulls are equal) and both durations known within max(60 s, 2 %) of `progress.duration_seconds`.
      * When the last-played file is gone, only items without parts can match (duration test alone).
      */
@@ -97,7 +97,7 @@ object VersionSelector {
 
     /**
      * Within [group]: the last-played file when it is there and playable; else the first playable
-     * version that matches it (D11); else the first playable; else the first readable; else null.
+     * version that matches it; else the first playable; else the first readable; else null.
      */
     fun select(files: List<MediaFile>, caps: CapsForFile, progress: Progress?, group: VersionGroup): MediaFile? {
         val versions = group(files).versionsOf(group)
@@ -111,7 +111,7 @@ object VersionSelector {
 
     /**
      * The playable versions of [group] in `select` order: the last-played file, then versions that
-     * match it (D11), then the rest. Used for [Probar otra versión] and the next-episode `nextPlan`;
+     * match it, then the rest. Used for [Probar otra versión] and the next-episode `nextPlan`;
      * empty → not playable on this TV.
      */
     fun candidates(files: List<MediaFile>, caps: CapsForFile, group: VersionGroup = VersionGroup.Standalone, progress: Progress? = null): List<MediaFile> {
@@ -123,7 +123,7 @@ object VersionSelector {
     }
 
     /**
-     * D13: among the files of the lowest part number above [current]'s: same `label` and playable →
+     * The next part: among the files of the lowest part number above [current]'s: same `label` and playable →
      * first playable → same `label` without `probe_error` → first without `probe_error`. Null for a
      * standalone file or the last part.
      */
@@ -140,9 +140,9 @@ object VersionSelector {
     }
 
     /**
-     * §6.5 default: (1) unwatched progress whose file is still here: a finished non-final part →
-     * the next part from 0 (D10, checked first); a playable file → resume it; an unplayable one → the
-     * first playable matching version of its group (D11); (2) otherwise the playable standalone
+     * The default: (1) unwatched progress whose file is still here: a finished non-final part →
+     * the next part from 0 (checked first); a playable file → resume it; an unplayable one → the
+     * first playable matching version of its group; (2) otherwise the playable standalone
      * version, else Part 1, else any readable standalone version. Null when nothing is readable.
      */
     fun defaultChoice(files: List<MediaFile>, caps: CapsForFile, progress: Progress?): Choice? {
@@ -168,10 +168,10 @@ object VersionSelector {
     }
 
     /**
-     * Where [file] starts (D11): the saved position when not [fromStart], the progress is resumable
+     * Where [file] starts: the saved position when not [fromStart], the progress is resumable
      * (unwatched, ≥ 30 s) and [file] is the last-played file or matches it; a carried position within
      * the last 30 s of [file] starts at 0. Otherwise 0, with the notice when a resumable position was
-     * lost (not for [fromStart] or a D10 next-part start).
+     * lost (not for [fromStart] or a next-part start).
      */
     fun startFor(file: MediaFile, files: List<MediaFile>, progress: Progress?, fromStart: Boolean = false): Start {
         val atZero = Start(0.0, differentVersionNotice = false)
@@ -192,7 +192,7 @@ object VersionSelector {
         return files.firstOrNull { it.id == id }
     }
 
-    /** D10: the last-played file is a part, finished (last 30 s or ≥ 90 %), and a next part exists. */
+    /** The last-played file is a part, finished (last 30 s or ≥ 90 %), and a next part exists. */
     private fun finishedNonFinalPart(files: List<MediaFile>, last: MediaFile, progress: Progress): Boolean {
         if (last.part_number == null) return false
         val duration = last.duration_seconds ?: progress.duration_seconds ?: return false

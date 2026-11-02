@@ -1,4 +1,4 @@
-// /activity (ratings prd2 FR-W12/13): the household's ratings, newest first, 50-item pages
+// /activity: the household's ratings, newest first, 50-item pages
 // (sentinel + "Cargar más"), deduped by profile + title, refetched on every visit.
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useId, useMemo, type ReactNode } from 'react';

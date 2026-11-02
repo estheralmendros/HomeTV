@@ -1,4 +1,4 @@
-// In-memory admin token (prd2 §2): never persisted, so a reload or a profile switch locks
+// In-memory admin token: never persisted, so a reload or a profile switch locks
 // again. Valid until its server-issued `expires_at` (fixed 15 min, never extended here).
 import type { UnlockResponse } from '@/api/types';
 

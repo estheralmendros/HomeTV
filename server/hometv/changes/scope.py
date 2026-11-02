@@ -1,4 +1,4 @@
-"""Scan scopes (prd.md FR-4, pure): what a change-triggered (``watch``) run walks.
+"""Scan scopes (pure): what a change-triggered (``watch``) run walks.
 
 Three shapes of ``ScanScope(root, rel_dir, recursive)``:
 

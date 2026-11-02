@@ -1,4 +1,4 @@
-/* Player shell, overlays and controls (prd2 §9). Full viewport, black, no AppShell. */
+/* Player shell, overlays and controls. Full viewport, black, no AppShell. */
 
 .root {
   position: fixed;
@@ -357,7 +357,7 @@
   gap: var(--space-2);
 }
 
-/* The rating form (ratings prd2 FR-W9.1): five 40px stars and two buttons. */
+/* The rating form: five 40px stars and two buttons. */
 .ratingPrompt {
   width: min(400px, calc(100% - 2 * var(--space-4)));
 }

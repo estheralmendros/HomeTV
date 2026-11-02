@@ -81,7 +81,7 @@ def test_run_starts_single_worker_uvicorn(monkeypatch, tmp_path):
     assert calls["proxy_headers"] is True
 
 
-# --- Stored library folders (HOMETV-1) ----------------------------------------------------------
+# --- Stored library folders ---------------------------------------------------------------------
 
 SESSION = "ab" * 16
 
@@ -167,7 +167,7 @@ async def test_env_root_guard_still_aborts_before_anything_is_written(make_setti
     assert not data.exists()
 
 
-# --- HOMETV-1: change watcher wiring (prd.md FR-12) --------------------------------------------
+# --- Change watcher wiring ---------------------------------------------------------------------
 
 
 async def test_lifespan_wires_the_change_watcher(make_settings, tmp_path):

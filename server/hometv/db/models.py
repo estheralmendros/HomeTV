@@ -1,4 +1,4 @@
-"""SQLAlchemy ORM models: the full PRD Data Model.
+"""SQLAlchemy ORM models: the full data model.
 
 Conventions:
 - ``id INTEGER PRIMARY KEY`` unless noted; FKs ``ON DELETE CASCADE`` unless noted.

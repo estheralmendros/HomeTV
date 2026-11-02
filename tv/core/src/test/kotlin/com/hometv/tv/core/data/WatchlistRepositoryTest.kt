@@ -26,7 +26,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 
-/** watchlist prd3 FR-T3: writes run in `appScope`, coalesced per title (latest wins), with the acknowledged value of one worker run. */
+/** Watchlist writes run in `appScope`, coalesced per title (latest wins), with the acknowledged value of one worker run. */
 class WatchlistRepositoryTest {
     /** `PUT`/`DELETE /api/watchlist/...` recorded in order; each answer waits for its gate when one is set. */
     private class Api : FakeHomeTvApi() {

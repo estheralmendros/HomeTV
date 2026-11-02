@@ -1,5 +1,5 @@
 // PlayerPage: controls, keyboard shortcuts, volume persistence, fullscreen (desktop and iOS),
-// auto-hide, the watched mark and the cross-tab notice (prd2 §2, §9 steps 11–12).
+// auto-hide, the watched mark and the cross-tab notice.
 import { act, fireEvent, screen, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -93,7 +93,7 @@ describe('volume (hometv.volume)', () => {
     await p.startDirect(0);
     expect(p.video().volume).toBe(0.4);
     expect(p.video().muted).toBe(true);
-    // prd2 §9 step 11 (Icons): the mute button draws an SVG speaker, never an emoji, in both states.
+    // Icons: the mute button draws an SVG speaker, never an emoji, in both states.
     const muteButton = screen.getByRole('button', { name: 'Activar sonido' });
     expect(muteButton.querySelector('svg')).not.toBeNull();
     expect(muteButton.textContent).not.toMatch(/\p{Emoji_Presentation}/u);

@@ -12,7 +12,7 @@ export interface VersionPickerProps {
   onChange: (fileId: number) => void;
 }
 
-/** "Versión" select, shown only with more than one media file (prd2 §7 step 3). */
+/** "Versión" select, shown only with more than one media file. */
 export function VersionPicker({ files, selectedId, caps, onChange }: VersionPickerProps) {
   const id = useId();
   if (files.length <= 1) return null;

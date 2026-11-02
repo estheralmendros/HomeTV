@@ -1,4 +1,4 @@
-"""Pure keyframe-index readers (PRD §7 Keyframe index, sources 1-2) + ffprobe row parsing.
+"""Pure keyframe-index readers (keyframe index sources 1-2) + ffprobe row parsing.
 
 Every reader works over a ``read(offset, size) -> bytes`` callable, reads at most
 ``MAX_READ_BYTES`` in total, and returns presentation times in seconds on the container's

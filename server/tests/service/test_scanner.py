@@ -1,4 +1,4 @@
-"""Scanner service tests (PRD §4): tmp media trees, migrated SQLite, stub probe."""
+"""Scanner service tests: tmp media trees, migrated SQLite, stub probe."""
 
 import errno
 import hashlib
@@ -308,7 +308,7 @@ async def test_missing_file_is_purged_only_after_grace_period(
 async def test_relinking_every_file_of_a_title_drops_its_watchlist_entries(
     mdb, media: MediaTree, media_settings, stub_probe
 ):
-    """FR-5 (Implementation Decision 11): the old item loses its last file, ``delete_orphans``
+    """The old item loses its last file, ``delete_orphans``
     deletes it at the end of the scan and its entries cascade; no carry-over to the new item."""
     a = media.add("Dune (2021)/Dune (2021).mkv")
     media.add("Alien (1979)/Alien (1979).mkv")
@@ -793,7 +793,7 @@ async def test_scan_run_row_tracks_progress(mdb, media: MediaTree, media_setting
     assert run.phase == "probing"
 
 
-# --- Library folders provider, re-roots and relinks (HOMETV-1) -------------------------------
+# --- Library folders provider, re-roots and relinks ------------------------------------------
 
 
 def _provider(films=(), shows=()):

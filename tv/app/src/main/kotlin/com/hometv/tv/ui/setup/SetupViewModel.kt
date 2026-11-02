@@ -33,7 +33,7 @@ sealed interface SetupEvent {
     data class Connected(val changed: Boolean) : SetupEvent
 }
 
-/** Server setup (prd3 §1): normalize, validate (`/api/health` then `/api/info`), store. */
+/** Server setup: normalize, validate (`/api/health` then `/api/info`), store. */
 class SetupViewModel(
     private val validate: suspend (String) -> ServerValidation,
     private val store: SessionStore,

@@ -81,7 +81,7 @@ fun SearchScreen(vm: SearchViewModel, navigator: AppNavigator, avatar: AvatarUi?
                 onValueChange = vm::onQueryChange,
                 hint = stringResource(R.string.search_placeholder),
                 imeAction = ImeAction.Search,
-                // The keyboard's search (lens) key closes it; results already follow the text (prd3 §5 step 1).
+                // The keyboard's search (lens) key closes it; results already follow the text.
                 onImeAction = { keyboard?.hide() },
                 modifier = Modifier
                     .width(640.dp)

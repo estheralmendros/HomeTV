@@ -1,4 +1,4 @@
-// Boot step 1 (prd2 Routes): GET /api/info on every full page load. needs_bootstrap routes
+// Boot step 1: GET /api/info on every full page load. needs_bootstrap routes
 // every path to /setup; /setup redirects to /profiles once bootstrapped (to / when this tab
 // already holds a session, e.g. right after the bootstrap form signed in).
 import { useQuery } from '@tanstack/react-query';

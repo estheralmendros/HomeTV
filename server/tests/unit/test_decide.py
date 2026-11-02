@@ -1,4 +1,4 @@
-"""PRD §7 playback decision table (17 rows x web/TV caps) + edge cases."""
+"""Playback decision table (17 rows x web/TV caps) + edge cases."""
 
 from typing import Any
 

@@ -11,7 +11,7 @@ import com.hometv.tv.ui.KeyDispatch
 /**
  * Single activity. Every key event is first offered to [keyDispatch] (the Player registers its
  * handler there via `KeyEventInterceptor`), then to Compose focus as usual.
- * `ON_START` runs the proactive session refresh (prd3 §2.5; at launch it also replaces an expired token).
+ * `ON_START` runs the proactive session refresh (at launch it also replaces an expired token).
  */
 class MainActivity : ComponentActivity() {
     val keyDispatch = KeyDispatch()

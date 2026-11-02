@@ -4,7 +4,7 @@ import { S } from '@/strings.es';
 import styles from './Player.module.css';
 
 /**
- * `blocked` (§9 step 5a): a large focused play glyph "Toca para reproducir". The click handler must call
+ * `blocked`: a large focused play glyph "Toca para reproducir". The click handler must call
  * `video.play()` synchronously inside the user gesture (PlaybackSession.play does).
  */
 export function TapToPlayOverlay({ onPlay }: { onPlay: () => void }) {

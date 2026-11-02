@@ -1,4 +1,4 @@
-"""Scheduler (PRD §11): single-flight scan -> enrich, status, periodic ticks, shutdown."""
+"""Scheduler: single-flight scan -> enrich, status, periodic ticks, shutdown."""
 
 import asyncio
 
@@ -237,7 +237,7 @@ async def test_keyframe_hook_is_passed_to_the_scanner(mdb, media: MediaTree, med
     assert len(queued) == 1
 
 
-# --- HOMETV-1: before=, ensure_idle, libraries trigger -----------------------------------------
+# --- before=, ensure_idle, libraries trigger ---------------------------------------------------
 
 
 async def test_trigger_runs_before_under_the_lock_before_creating_the_run(mdb, media_settings):
@@ -342,7 +342,7 @@ async def test_scheduled_runs_never_relink(mdb, media_settings, monkeypatch):
     assert captured == [False, False]
 
 
-# --- HOMETV-1: trigger ``watch`` and the pending-scope queue (prd.md FR-10) --------------------
+# --- Trigger ``watch`` and the pending-scope queue ---------------------------------------------
 
 
 def _scope(root, rel_dir: str = "", recursive: bool = True):

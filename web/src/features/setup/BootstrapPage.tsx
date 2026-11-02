@@ -1,4 +1,4 @@
-// First run (/setup): name, avatar and a required, confirmed 4-digit admin PIN (prd2 §2).
+// First run (/setup): name, avatar and a required, confirmed 4-digit admin PIN.
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';

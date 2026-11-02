@@ -25,7 +25,7 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.MethodSource
 
 /**
- * prd3 §8 Player session states, one test (or more) per row of the transition table: the requests
+ * Player session states, one test (or more) per row of the transition table: the requests
  * sent (progress PUT, keep-alive, DELETE, `POST .../playback` with its `previous_session_id`,
  * `audio_stream_index`, `start_position_seconds`), the timers running and the next state.
  */
@@ -242,7 +242,7 @@ class PlayerSessionStateTest : PlayerTestBase() {
         assertEquals(610.0, bodies().single().start_position_seconds)
     }
 
-    // ---- §8 Headset and Bluetooth play/pause (the media session's commands) ----------------
+    // ---- Headset and Bluetooth play/pause (the media session's commands) -------------------
 
     @Test
     fun `a media-session pause is row 1 - PUT, keep-alive and the 30 min timer, then a media-session play is row 2`() = playerTest {
@@ -611,7 +611,7 @@ class PlayerSessionStateTest : PlayerTestBase() {
     }
 
     @Test
-    fun `row 18 - resolving to no next episode (D12 skips) stops the keep-alive, DELETEs and exits`() = playerTest {
+    fun `row 18 - resolving to no next episode (same-file skips) stops the keep-alive, DELETEs and exits`() = playerTest {
         // E204 holds the playing file 1 (multi-episode file) and is the last one.
         episodes(episodeDetail(203, listOf(F.file(1)), next = 204), episodeDetail(204, listOf(F.file(1)), next = null))
         answerWith(hls("S1"))

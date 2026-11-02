@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  The single UI string catalog (prd3 §UI Language): Spanish (es-ES, tú) only, no values-<lang>/ folders.
+  The single UI string catalog: Spanish (es-ES, tú) only, no values-<lang>/ folders.
   Numbers are always pre-formatted es-ES by core Format.kt and passed as %s (never %d / %f), also in
   <plurals> (call shape: pluralStringResource(R.plurals.x, n, Format.count(n))).
 -->
@@ -85,7 +85,7 @@
     <string name="sort_year_asc">Año (más antiguos)</string>
     <string name="sort_added_desc">Añadidos recientemente</string>
 
-    <!-- (11) Mi lista (watchlist prd3 §5); the sort entries reuse the Browse sort_* strings -->
+    <!-- (11) Mi lista; the sort entries reuse the Browse sort_* strings -->
     <string name="watchlist_title">Mi lista</string>
     <string name="watchlist_toggle">Mi lista</string>
     <string name="watchlist_in_list">En Mi lista</string>
@@ -135,7 +135,7 @@
     <string name="version_label_unknown">Desconocido</string>
     <string name="item_gone">Este título ya no está disponible.</string>
 
-    <!-- Person (actor screen, cast-appearances prd3) -->
+    <!-- Person (actor screen) -->
     <string name="person_in_catalog">En tu catálogo</string>
     <string name="person_biography">Biografía</string>
     <string name="person_as_character">como %1$s</string>
@@ -151,7 +151,7 @@
         <item quantity="other">%1$s años</item>
     </plurals>
 
-    <!-- Ratings (ratings prd3): detail block, dialog, card badge. Retry / cancel / "A · B" reuse
+    <!-- Ratings: detail block, dialog, card badge. Retry / cancel / "A · B" reuse
          action_retry, action_cancel and pair_dot. -->
     <string name="rating_rate">Puntuar</string>
     <string name="rating_change">Cambiar</string>
@@ -177,7 +177,7 @@
     </plurals>
     <string name="card_my_rating">tu puntuación: %1$s</string>
 
-    <!-- (12) Actividad (ratings prd3 FR-T14..T16) -->
+    <!-- (12) Actividad -->
     <string name="activity_title">Actividad</string>
     <string name="activity_row">%1$s ha puntuado %2$s con</string>
     <string name="activity_row_own">Has puntuado %1$s con</string>
@@ -256,7 +256,7 @@
     <string name="settings_caps">Vídeo: %1$s · Audio: %2$s</string>
     <string name="tmdb_logo">Logotipo de TMDB</string>
 
-    <!-- Errors and connectivity (§10) -->
+    <!-- Errors and connectivity -->
     <string name="error_connection">No se puede conectar con tu servidor HomeTV en %1$s. Puede que Tailscale esté desconectado; suele pasar después de reiniciar el televisor.</string>
     <string name="error_open_tailscale">Abrir Tailscale</string>
     <string name="error_load_failed">No se ha podido cargar el contenido.</string>

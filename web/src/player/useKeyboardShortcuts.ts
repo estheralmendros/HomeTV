@@ -1,8 +1,8 @@
-// Player keyboard shortcuts (prd2 §9 step 12): Space/K play-pause, ←/→ ∓10 s, ↑/↓ volume ±10 %,
+// Player keyboard shortcuts: Space/K play-pause, ←/→ ∓10 s, ↑/↓ volume ±10 %,
 // F fullscreen, M mute, Esc closes an open menu (the browser handles the fullscreen exit), N next
 // episode/part while its prompt is visible. In `blocked`, Space/Enter/K activate "Toca para
 // reproducir" (synchronously, inside the key gesture). Ignored while typing or with a menu open,
-// except the media keys (MediaPlayPause toggles, MediaPlay / MediaPause; prd2 §9 step 12).
+// except the media keys (MediaPlayPause toggles, MediaPlay / MediaPause).
 import { useEffect, useRef } from 'react';
 
 export interface ShortcutHandlers {

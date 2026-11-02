@@ -18,7 +18,7 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** prd3 §10 "Errors during playback": `PlaybackException` → pure `PlayerFailure` (urlKind, status, body code, renderer). */
+/** Errors during playback: `PlaybackException` → pure `PlayerFailure` (urlKind, status, body code, renderer). */
 @RunWith(AndroidJUnit4::class)
 class ExoPlayerControllerTest {
     private val stream = "https://hometv.ts.net/api/media-files/91/stream"

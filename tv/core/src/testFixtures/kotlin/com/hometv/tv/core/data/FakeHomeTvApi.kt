@@ -65,7 +65,7 @@ open class FakeHomeTvApi : HomeTvApi {
     private fun unused(): Nothing = throw UnsupportedOperationException("not used by this test")
 
     companion object {
-        /** The exception Retrofit throws for a non-2xx answer with the prd.md error envelope. */
+        /** The exception Retrofit throws for a non-2xx answer with the API error envelope. */
         fun httpError(status: Int, code: String, details: String = "{}", retryAfter: String? = null): HttpException {
             val headers = if (retryAfter == null) headersOf() else headersOf("Retry-After", retryAfter)
             val raw = okhttp3.Response.Builder()

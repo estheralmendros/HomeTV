@@ -6,7 +6,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** prd3 §5.2 / §UI Language rule 8: free-form recognition in es-ES with the catalog prompt. */
+/** Voice search: free-form recognition in es-ES with the catalog prompt. */
 @RunWith(AndroidJUnit4::class)
 class VoiceIntentsTest {
     @Test

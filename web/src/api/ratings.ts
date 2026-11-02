@@ -1,4 +1,4 @@
-// Ratings endpoints (ratings-per-user prd.md FR-12). Bearer only; writes answer 204.
+// Ratings endpoints. Bearer only; writes answer 204.
 import { apiFetch } from './client';
 import { kindSegment } from './kind';
 import type { ActivityEntry, Page, RatingKind } from './types';

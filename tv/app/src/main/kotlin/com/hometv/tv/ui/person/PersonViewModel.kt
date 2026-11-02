@@ -65,7 +65,7 @@ sealed interface PersonFocus {
 }
 
 /**
- * (10) Person (cast-appearances prd3 §3): `GET /api/people/{id}`, 404 → [ScreenError.PersonGone].
+ * (10) Person: `GET /api/people/{id}`, 404 → [ScreenError.PersonGone].
  * After a Player launch ([DetailRefresh]) the screen refetches in place when it is visible again,
  * keeping focus where the viewer has it while that target still exists.
  */
@@ -175,7 +175,7 @@ class PersonViewModel(
         fun subtitle(a: PersonAppearance): UiText? =
             a.character?.takeIf { it.isNotBlank() }?.let { UiText.Res(R.string.person_as_character, listOf(it)) }
 
-        /** The life span line (cast-appearances prd.md "Life span line"); null → hidden. */
+        /** The life span line; null → hidden. */
         fun lifeSpanText(span: LifeSpan?): UiText? = when (span) {
             is LifeSpan.Living -> span.age?.let { UiText.Res(R.string.person_life_living, listOf(span.birth, ageText(it))) } ?: UiText.Data(span.birth)
             is LifeSpan.Deceased -> span.age?.let { UiText.Res(R.string.person_life_deceased, listOf(span.birth, span.death, ageText(it))) }

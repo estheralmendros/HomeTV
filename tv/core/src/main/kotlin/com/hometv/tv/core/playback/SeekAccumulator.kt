@@ -1,7 +1,7 @@
 package com.hometv.tv.core.playback
 
 /**
- * D-pad seek stepping with a delayed commit (prd3 §8). Pure: times come in as parameters.
+ * D-pad seek stepping with a delayed commit. Pure: times come in as parameters.
  *
  * Steps: 10 s for `repeatCount < 5`, 30 s below 15, 60 s beyond. The target is clamped to
  * `[0, duration − 1 s]`, or only to `≥ 0` while the duration is unknown. The first key of a gesture

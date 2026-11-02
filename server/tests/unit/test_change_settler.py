@@ -1,4 +1,4 @@
-"""``changes.settle.ChangeSettler`` (prd.md FR-5): table tests with a fake ``now``."""
+"""``changes.settle.ChangeSettler``: table tests with a fake ``now``."""
 
 import os
 

@@ -1,4 +1,4 @@
-// Client capability detection (prd2 §10). Pure with respect to the injected env, so tests pass
+// Client capability detection. Pure with respect to the injected env, so tests pass
 // fakes. hls.js is never imported here: `mse` performs the same probe as `Hls.isSupported()`,
 // so detail pages can compute version defaults without loading the player chunk.
 import type { ClientCaps } from '@/api/types';

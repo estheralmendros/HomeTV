@@ -5,7 +5,7 @@ import androidx.annotation.StringRes
 import com.hometv.tv.R
 
 /**
- * Text a ViewModel emits without holding UI words (prd3 §UI Language rule 2): a catalog id plus
+ * Text a ViewModel emits without holding UI words: a catalog id plus
  * arguments, resolved in Compose by [UiFormat]. Arguments may be pre-formatted `String`s (numbers
  * come from core `Format`), core structured values (`Runtime`, `EpisodeCode`, `SeasonTitle`,
  * `EpisodeTitle`, `LanguageName`, `TrackLabel`, `PreparingEstimate`) or nested [UiText]. Raw numbers

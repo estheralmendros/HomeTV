@@ -1,4 +1,4 @@
-// localStorage read/write/clear of the session (prd2 §2 Session storage). Only the picker and
+// localStorage read/write/clear of the session. Only the picker and
 // bootstrap write it; AuthProvider reads it once at boot into its per-tab memory.
 import type { SessionResponse } from '@/api/types';
 import { readJson, readString, removeKey, writeJson, writeString } from '@/lib/storage';

@@ -1,5 +1,4 @@
-"""Keyframe readers on stored header fixtures, ffprobe row parsing, and the `preparing` estimate
-(PRD §7 Keyframe index)."""
+"""Keyframe readers on stored header fixtures, ffprobe row parsing, and the `preparing` estimate."""
 
 import base64
 import json

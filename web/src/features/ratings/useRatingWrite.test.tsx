@@ -1,4 +1,4 @@
-// The "form gone" rule (ratings prd2 FR-W7): a save that settles after its form unmounted toasts
+// The "form gone" rule: a save that settles after its form unmounted toasts
 // through the app toast (both outcomes); while mounted, success goes to `notify` and an error
 // shows no toast (the form's error line does).
 import { screen, waitFor } from '@testing-library/react';

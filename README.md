@@ -16,8 +16,7 @@ The repo holds:
 - `tv/`: the Android TV / Google TV app (Kotlin, Compose for TV, Media3 ExoPlayer, Spanish
   only), viewer-only. See [`tv/README.md`](tv/README.md) and
   [`docs/tv-app-installation.md`](docs/tv-app-installation.md).
-- `specs/HOMETV-1/hometv-app/`: the product specs. `prd.md` (server and deployment) is the
-  source of truth and the API contract, `prd2.md` the web UI, `prd3.md` the TV app.
+- `scripts/`: `create-environment.sh` starts a local demo environment (see Development).
 - `docs/`: user guides: installing the server on
   [Linux](docs/server-installation-linux.md) or [Windows](docs/server-installation-windows.md),
   the [Android TV app](docs/tv-app-installation.md), and using HomeTV on an
@@ -49,7 +48,7 @@ make web-dev   # Vite on http://localhost:5173, proxies /api to the server (HOME
 `make web-build` builds `web/dist`; `make run` then serves it at `/` (without a build, `/` shows a
 "Web UI not built" page). `make web-test` runs the Vitest suite (no network). The optional
 Playwright smoke runs against a real server: `npx playwright install chromium` once, then
-`HOMETV_E2E_URL=http://127.0.0.1:8000 make web-e2e` (add `HOMETV_E2E_FILM=Dune` for the demo library below). `specs/HOMETV-1/hometv-app/create-environment.sh`
+`HOMETV_E2E_URL=http://127.0.0.1:8000 make web-e2e` (add `HOMETV_E2E_FILM=Dune` for the demo library below). `scripts/create-environment.sh`
 starts a server with a generated demo library (admin "Admin", PIN 1234) that serves `web/dist`.
 Contributor conventions (TDD, DB write rules, test layout) are in `CLAUDE.md`.
 

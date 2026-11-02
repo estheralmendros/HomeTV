@@ -34,7 +34,7 @@ sealed interface EpisodeTitle {
     data class Numbered(val number: Int) : EpisodeTitle
 }
 
-/** The life span line's data (cast-appearances prd.md "Life span line"); the words come from `app` (`UiFormat`). */
+/** The life span line's data; the words come from `app` (`UiFormat`). */
 sealed interface LifeSpan {
     /** "8 de octubre de 1992 (34 años)"; [age] null when the birthday is in the future. */
     data class Living(val birth: String, val age: Int?) : LifeSpan
@@ -47,7 +47,7 @@ sealed interface LifeSpan {
 }
 
 /**
- * es-ES formatting with one constant locale (prd3 §UI Language rule 5): never `Locale.getDefault()`,
+ * es-ES formatting with one constant locale: never `Locale.getDefault()`,
  * so an English TV still shows "4 oct 2005", "1.234" and "7,8". Returns numbers and dates (data)
  * or structured values; no UI words. Formatters are created once (thread-safe ones are shared,
  * DecimalFormat instances are per thread).

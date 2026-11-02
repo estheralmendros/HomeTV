@@ -22,7 +22,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** ratings prd3 FR-T14..T16 / T-AC-13..15: the Actividad tab and screen, and the card badge. */
+/** The Actividad tab and screen, and the card badge. */
 @RunWith(AndroidJUnit4::class)
 class ActivityFocusTest : UiTestBase() {
     override val clock: Clock = Clock.fixed(Instant.parse("2026-10-31T12:00:00Z"), ZoneOffset.UTC)

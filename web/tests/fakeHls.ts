@@ -1,5 +1,5 @@
-// Fake hls.js for `vi.mock('hls.js', () => import('<rel>/tests/fakeHls'))` (prd2 § Testing
-// Decisions): records constructor config, loadSource/attachMedia/destroy/recoverMediaError calls
+// Fake hls.js for `vi.mock('hls.js', () => import('<rel>/tests/fakeHls'))`:
+// records constructor config, loadSource/attachMedia/destroy/recoverMediaError calls
 // in a shared, ordered `hlsLog` (to assert "old destroy before new attachMedia"), and exposes
 // `emit(Hls.Events.ERROR, data)`. `destroy()` detaches like hls.js does: it clears the element's
 // `src` and calls `load()` (the media stub resets currentTime and queues a `timeupdate`).

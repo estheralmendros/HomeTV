@@ -1,4 +1,4 @@
-"""Browse-endpoint latency (PRD G3): p95 < 100 ms on 2,000 films / 200 shows / 10,000 episodes /
+"""Browse-endpoint latency: p95 < 100 ms on 2,000 films / 200 shows / 10,000 episodes /
 5 profiles, measured in-process over 200 requests per endpoint (warm SQLite).
 
 Not part of the default run: ``cd server && uv run pytest -m perf -s``.

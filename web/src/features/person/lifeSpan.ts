@@ -1,4 +1,4 @@
-// Pure date/age helpers of the actor screen (cast-appearances prd2 FR-W10). Dates are TMDB
+// Pure date/age helpers of the actor screen. Dates are TMDB
 // "YYYY-MM-DD" strings; ages are computed on integers, never with Date arithmetic or time zones.
 import { LOCALE } from '@/lib/intl';
 import { S } from '@/strings.es';
@@ -45,7 +45,7 @@ export function todayIso(now: Date = new Date()): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
-/** The life span line (prd.md Shared Definitions) or null; invalid dates count as unknown. */
+/** The life span line or null; invalid dates count as unknown. */
 export function lifeSpanText(birthday: string | null, deathday: string | null, today: string): string | null {
   const birth = birthday !== null && isValidIsoDate(birthday) ? birthday : null;
   const death = deathday !== null && isValidIsoDate(deathday) ? deathday : null;

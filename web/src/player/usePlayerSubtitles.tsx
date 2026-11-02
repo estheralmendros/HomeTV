@@ -1,4 +1,4 @@
-// Subtitle selection and loading for one PlayerPage mount (prd2 §9 steps 6–7):
+// Subtitle selection and loading for one PlayerPage mount:
 // - one SubtitleLoader per mount (blob URLs cached by `${fileId}:${track.id}`, revoked when the
 //   file changes and on unmount);
 // - the default track (stored language → default flag → forced in the audio language → off) is

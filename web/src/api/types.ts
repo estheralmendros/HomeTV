@@ -1,6 +1,6 @@
-// Hand-written from prd.md § REST API Reference (Rev 9), plus the later feature PRDs (watchlist,
-// cast appearances, ratings). Field names are 1:1 with the server (snake_case). Re-diff against
-// server/hometv/api/schemas.py when a PRD changes.
+// Hand-written from the server's REST API (server/hometv/api/schemas.py; OpenAPI at
+// /api/openapi.json). Field names are 1:1 with the server (snake_case). Keep in sync with
+// server/hometv/api/schemas.py whenever the API changes.
 
 /** ISO 8601 UTC timestamp, e.g. "2026-10-21T18:04:05Z". */
 export type Timestamp = string;
@@ -31,7 +31,7 @@ export interface Progress {
   updated_at: Timestamp;
 }
 
-// --- Ratings (ratings-per-user prd.md FR-11) ------------------------------------------------
+// --- Ratings ------------------------------------------------------------------------------
 
 /** A title as a whole: films and shows (seasons and episodes are never rated nor listed). */
 export type TitleKind = 'film' | 'show';
@@ -85,7 +85,7 @@ export interface Info {
   version: string;
   needs_bootstrap: boolean;
   tmdb_configured: boolean;
-  /** Spanish TMDB notice (Rev 9), shown as received. */
+  /** Spanish TMDB notice, shown as received. */
   tmdb_attribution: string;
   avatars: Avatar[];
 }
@@ -177,7 +177,7 @@ export interface MediaFile {
   size_bytes: number;
   container: string | null;
   duration_seconds: number | null;
-  /** Server-built label; "Desconocido" when the probe failed (Rev 9). */
+  /** Server-built label; "Desconocido" when the probe failed. */
   label: string;
   video: VideoInfo | null;
   audio_tracks: AudioTrack[];
@@ -245,7 +245,7 @@ export interface EpisodeSummary {
 
 /**
  * Continue Watching episode entry (in progress, or a started show's Next Up episode with
- * `progress` null or below 30 s, prd.md Rev 13): same version order as GET /api/episodes/{id}.
+ * `progress` null or below 30 s): same version order as GET /api/episodes/{id}.
  */
 export type HomeEpisode = EpisodeSummary & { media_files: MediaFile[]; show_backdrop: Image | null };
 
@@ -256,7 +256,7 @@ export interface LibraryCounts {
 }
 
 export interface HomeResponse {
-  /** In-progress films/episodes plus each started show's Next Up episode, newest first (Rev 13). */
+  /** In-progress films/episodes plus each started show's Next Up episode, newest first. */
   continue_watching: Array<FilmSummary | HomeEpisode>;
   recently_added: Array<FilmSummary | ShowSummary>;
   library: LibraryCounts;
@@ -282,7 +282,7 @@ export interface CastMember {
   profile_image: Image | null;
 }
 
-// GET /api/people/{person_id} (actor screen, cast-appearances prd.md FR-11).
+// GET /api/people/{person_id} (actor screen).
 export interface PersonFilmAppearance {
   kind: 'film';
   item: FilmSummary;
@@ -388,7 +388,7 @@ export interface ShowDetail {
   household_average: HouseholdAverage | null;
 }
 
-// "Mi lista" (watchlist prd.md FR-8): GET /api/watchlist, PUT/DELETE /api/watchlist/{films|shows}/{id}.
+// "Mi lista": GET /api/watchlist, PUT/DELETE /api/watchlist/{films|shows}/{id}.
 export type WatchlistKind = TitleKind;
 export type WatchlistType = 'all' | 'films' | 'shows';
 export type WatchlistSort = 'added' | 'title' | 'year';
@@ -553,7 +553,7 @@ export interface PlaybackHls {
 
 export interface PlaybackUnsupported {
   mode: 'unsupported';
-  /** Known reasons are typed; an unknown string renders the generic §9.1 row. */
+  /** Known reasons are typed; an unknown string renders the generic row. */
   reason: UnsupportedReason | (string & {});
   /** English diagnostic: only inside "Detalles técnicos". */
   detail: string;

@@ -1,4 +1,4 @@
-"""Actor screen: TMDB person details, cached 30 days (actor screen PRD §3).
+"""Actor screen: TMDB person details, cached 30 days.
 
 Pure part (no I/O, table-tested): ``normalize_credits``, ``normalize_person``, ``is_fresh``.
 

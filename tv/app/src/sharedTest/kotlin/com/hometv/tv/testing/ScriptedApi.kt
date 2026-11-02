@@ -42,14 +42,14 @@ open class ScriptedApi : FakeHomeTvApi() {
     var onProfiles: suspend () -> ProfileList = { ProfileList(emptyList()) }
     var onCreateSession: suspend (Long) -> SessionResponse = { id -> session("tok-$id", id) }
     var onMe: suspend () -> Profile = { Profile(5, "Esther", "avatar-05") }
-    /** `POST /api/admin/unlock`: the PIN check behind the server change (prd3 §11 step 3). */
+    /** `POST /api/admin/unlock`: the PIN check behind the server change. */
     var onUnlock: suspend (pin: String) -> com.hometv.tv.core.api.UnlockResponse = { throw httpError(401, "invalid_pin") }
     var onHome: suspend (Int) -> HomeResponse = { HomeResponse() }
     var onFilms: suspend (page: Int, pageSize: Int, sort: String, order: String) -> Page<FilmSummary> = { p, s, _, _ -> Page(emptyList(), p, s, 0) }
     var onGenres: suspend (type: String) -> com.hometv.tv.core.api.GenreList = { com.hometv.tv.core.api.GenreList() }
     var onShows: suspend (page: Int, pageSize: Int, sort: String, order: String) -> Page<ShowSummary> = { p, s, _, _ -> Page(emptyList(), p, s, 0) }
     var onFilm: suspend (Long) -> FilmDetail = { throw httpError(404, "not_found") }
-    /** `GET /api/people/{id}` (the Person screen, cast-appearances prd3). */
+    /** `GET /api/people/{id}` (the Person screen). */
     var onPerson: suspend (Long) -> com.hometv.tv.core.api.PersonDetail = { throw httpError(404, "not_found") }
     var onShow: suspend (Long) -> ShowDetail = { throw httpError(404, "not_found") }
     var onSeason: suspend (Long, Int) -> SeasonDetail = { _, _ -> throw httpError(404, "not_found") }
@@ -58,7 +58,7 @@ open class ScriptedApi : FakeHomeTvApi() {
     var onWatched: suspend (WatchedRequest) -> WatchedResponse = { WatchedResponse(1) }
     val watchedBodies: MutableList<WatchedRequest> = Collections.synchronizedList(mutableListOf())
 
-    /** `GET /api/watchlist` ("Mi lista", watchlist prd3; [watched] = the "Estado" filter, null = all); an empty list by default. */
+    /** `GET /api/watchlist` ("Mi lista"; [watched] = the "Estado" filter, null = all); an empty list by default. */
     var onWatchlist: suspend (type: String, sort: String, page: Int, pageSize: Int, watched: Boolean?) -> Page<WatchlistEntry> = { _, _, p, s, _ -> Page(emptyList(), p, s, 0) }
 
     /** `PUT` ([inList] true) / `DELETE` ([inList] false) `/api/watchlist/{segment}/{id}`: return to answer 204, throw to fail, suspend to gate. */
@@ -66,7 +66,7 @@ open class ScriptedApi : FakeHomeTvApi() {
 
     /**
      * `PUT` ([stars] non-null) / `DELETE` ([stars] null) `/api/ratings/{segment}/{id}`: return to answer
-     * 204, throw to fail, suspend to gate (ratings prd3).
+     * 204, throw to fail, suspend to gate.
      */
     var onRatingWrite: suspend (segment: String, id: Long, stars: Double?) -> Unit = { _, _, _ -> }
 

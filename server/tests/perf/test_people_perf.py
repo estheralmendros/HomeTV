@@ -1,5 +1,5 @@
-"""Actor screen latency (actor screen PRD G3/AC "Perf"): ``GET /api/people/{id}`` p95 < 100 ms on
-the G3 browse seed plus 3,000 persons, 15 local credits per film and per show, and 300 fetched
+"""Actor screen latency: ``GET /api/people/{id}`` p95 < 100 ms on the browse seed
+(``test_browse_perf``) plus 3,000 persons, 15 local credits per film and per show, and 300 fetched
 persons with 80 TMDB credits each (half of them on catalog titles). No TMDB key: no network.
 
 Not part of the default run: ``cd server && uv run pytest -m perf -s``.
