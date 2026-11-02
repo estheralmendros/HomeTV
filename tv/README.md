@@ -33,9 +33,10 @@ message that says so.
 Install or update on the TV:
 
 ```sh
-adb connect <tv-ip>:5555
-adb install -r app/build/outputs/apk/release/app-release.apk
+adb pair <tv-ip>:<pairing-port>               # once per computer (Wireless debugging → pair with code)
+adb connect <tv-ip>:<connection-port>         # port from the Wireless debugging screen; changes on restart
+adb -s <tv-ip>:<connection-port> install -r app/build/outputs/apk/release/app-release.apk
 ```
 
-TV prerequisites (developer options, wireless debugging, Tailscale): see
-[`docs/tv-app-installation.md`](../docs/tv-app-installation.md).
+The version comes from the repo-root `version.txt`. Step by step (key questions, ports, connection
+errors, the update checklist): see [`docs/tv-app-installation.md`](../docs/tv-app-installation.md).
