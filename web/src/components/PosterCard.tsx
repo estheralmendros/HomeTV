@@ -1,12 +1,10 @@
 import { Link } from 'react-router-dom';
 import type { Image } from '@/api/types';
-import { cx } from '@/lib/cx';
-import { starsFormat } from '@/lib/intl';
 import { S } from '@/strings.es';
 import { Artwork } from './Artwork';
 import styles from './Card.module.css';
 import { ProgressBar } from './ProgressBar';
-import { StarIcon } from './StarRating';
+import { RatingBadge } from './RatingBadge';
 
 export interface PosterCardProps {
   to: string;
@@ -61,12 +59,7 @@ export function PosterCard({
         ) : (
           badge && <span className={styles.badge}>{badge}</span>
         )}
-        {myRating !== null && (
-          <span className={cx(styles.rating, showProgress && styles.ratingAboveProgress)} data-testid="rating-badge" aria-hidden="true">
-            <StarIcon fill="full" />
-            {starsFormat.format(myRating)}
-          </span>
-        )}
+        {myRating !== null && <RatingBadge stars={myRating} aboveProgress={showProgress} />}
         {progress && !watched && (
           <ProgressBar className={styles.progress} value={progress.position} max={progress.duration} />
         )}

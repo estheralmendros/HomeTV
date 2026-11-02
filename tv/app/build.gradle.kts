@@ -8,6 +8,12 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// Release version: the repo-root version.txt ("MAJOR.MINOR.PATCH"); versionCode = M*10000+m*100+p.
+val releaseVersion = rootProject.file("../version.txt").readText().trim()
+val releaseVersionCode = releaseVersion.split(".").map(String::toInt).let { (major, minor, patch) ->
+    major * 10_000 + minor * 100 + patch
+}
+
 // Release signing: tv/keystore.properties (gitignored).
 val keystoreFile = rootProject.file("keystore.properties")
 val keystore = Properties().apply { if (keystoreFile.exists()) keystoreFile.inputStream().use(::load) }
@@ -20,8 +26,8 @@ android {
         applicationId = "com.hometv.tv"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = releaseVersionCode
+        versionName = releaseVersion
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

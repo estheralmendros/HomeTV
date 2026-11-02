@@ -40,13 +40,12 @@ async def test_info_exact_shape_without_tmdb_key(client):
     assert r.status_code == 200
     assert r.json() == {
         "name": "HomeTV",
-        "version": "0.1.0",
+        "version": __version__,
         "needs_bootstrap": True,
         "tmdb_configured": False,
         "tmdb_attribution": ATTRIBUTION,
         "avatars": [{"id": f"avatar-{i:02d}", "color": c} for i, c in enumerate(AVATAR_COLORS, 1)],
     }
-    assert __version__ == "0.1.0"
 
 
 class TestWithTmdbKey:

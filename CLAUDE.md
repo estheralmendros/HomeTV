@@ -254,7 +254,7 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     `Toolbar.module.css` (toolbar/field/input/select classes shared by both toolbars); `Artwork` `largeAt2x` (false = `small` only) and `placeholder`
     (null/failed image); `PosterCard`/`SummaryCard` `subtitle` (also in the link name via
     `S.cards.withSubtitle`) and `myRating` (bottom-left "★ 4,5" badge, above the progress bar,
-    name + `S.cards.withRating`; `SummaryCard` and Home's `ContinueFilm` pass `my_rating`), `PosterGrid` `subtitleFor`;
+    name + `S.cards.withRating`, shared `RatingBadge`; `SummaryCard` passes `my_rating`), `WideCard` (16:9 "Seguir viendo" card: episode `still` or film `backdrop`, title + line (episode code / year), progress, `myRating`), `PosterGrid` `subtitleFor`;
     `StarRating` (inline SVG `StarIcon` (`data-fill`, half = `clipPath`), `StarDisplay` (`role="img"`,
     `label` override), `StarInput` (`role="slider"` ½…5: ←/↓ →/↑ Home End, Enter → `onEnter`, every
     handled key prevented + stopped, Space not handled; pointer halves via `starsFromPointer`, mouse
@@ -452,6 +452,11 @@ is a contract shared by the web and TV clients: change it deliberately and updat
 - Single test: `cd server && uv run pytest tests/unit/test_parser.py -k row11`;
   `cd web && npx vitest run src/player/versions.test.ts -t "nextPart"`;
   `cd tv && ./gradlew :core:test --tests '*VersionSelectorTest*'`.
+
+- Release version: `version.txt` (repo root). The TV app reads it in `tv/app/build.gradle.kts`
+  (`versionCode` = M×10000 + m×100 + p); a bump also edits `server/pyproject.toml` (+ `uv lock`;
+  `hometv.__version__` comes from the package metadata, shown in "Acerca de") and `web/package.json`
+  (`npm version X --no-git-tag-version`); `server/tests/unit/test_version.py` guards both.
 
 ## Conventions
 

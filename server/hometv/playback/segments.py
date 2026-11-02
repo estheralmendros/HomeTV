@@ -60,9 +60,16 @@ class PlanCheck:
 
 
 def check_plan(plan: list[Segment], seg: float) -> PlanCheck:
-    """Sparse-keyframe guard: every segment (the last included) <= max(4 x seg, 30 s)."""
+    """Sparse-keyframe guard: every segment <= max(4 x seg, 30 s); the last one of a plan with
+    several segments may reach twice that, since audio/subtitles often run past the video's
+    last keyframe (end credits)."""
+    bound = max_segment_seconds(seg)
     longest = max((s.duration for s in plan), default=0.0)
-    return PlanCheck(round(longest, 6) <= max_segment_seconds(seg), longest)
+    ok = all(
+        round(s.duration, 6) <= (2 * bound if 0 < k == len(plan) - 1 else bound)
+        for k, s in enumerate(plan)
+    )
+    return PlanCheck(ok, longest)
 
 
 def render_playlist(plan: list[Segment]) -> str:

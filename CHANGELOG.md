@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.5.1] - Released on 2026-11-02 by Esther Almendros Pérez
+
+### Added
+
+#### Project
+- HomeTV is released under the MIT License (`LICENSE`).
+
+### Changed
+
+#### Web app
+- "Seguir viendo" on Home shows films as wide previews (the film's backdrop, title and year), like the episodes, instead of vertical posters. The progress bar, "Detalles" and the viewer's star badge are unchanged.
+
+#### Documentation
+- The README was rewritten: an overview with highlights, screenshots of the web app on desktop and phone, how it works, getting started, and tables for configuration, repository layout and the guides.
+
+### Fixed
+
+#### Server
+- Films whose audio or subtitles run on after the last keyframe of the video (for example end credits after the picture stops) could not be converted for playback ("Sus fotogramas clave están demasiado separados…") although they stream fine. The final segment may now be up to twice the normal limit (60 s with the default 6 s segments); the other segments keep the 30 s limit.
+
+#### Server, web app and TV app
+- The version shown in "Acerca de" (web) and in the TV app's settings was stuck at 0.1.0. Every part now reports the release version from `version.txt`; the TV app's version code follows it too, so a new APK installs as an upgrade.
+
 ## [0.5.0] - Released on 2026-11-01 by Esther Almendros Pérez
 
 ### Added

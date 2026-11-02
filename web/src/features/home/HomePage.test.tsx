@@ -100,6 +100,15 @@ describe('HomePage', () => {
       expect(await findProbedLocation()).toBe('/watch/film/12');
     });
 
+    it('film cards are 16:9 like the episodes: the backdrop, the title and the year', async () => {
+      renderHome();
+      const row = await screen.findByRole('region', { name: 'Seguir viendo' });
+      const card = within(row).getByRole('link', { name: 'Dune (2021)' });
+      expect(card.querySelector('[data-kind]')).toHaveAttribute('data-kind', 'backdrop');
+      expect(card).toHaveTextContent('Dune');
+      expect(card).toHaveTextContent('2021');
+    });
+
     it('a rated film card carries the rating badge in its name', async () => {
       serveHome(f.homeResponse({ continue_watching: [f.filmSummary({ progress: f.progress(), my_rating: 4.5 })] }));
       renderHome();
