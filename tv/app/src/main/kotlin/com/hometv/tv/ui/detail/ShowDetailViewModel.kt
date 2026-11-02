@@ -86,7 +86,7 @@ sealed interface ShowDetailUiState {
         val seasonGone: Boolean = false,
         /** "No se ha podido actualizar Mi lista." under the buttons after a failed write, until the next action. */
         val watchlistError: UiText? = null,
-        /** The ratings block under the buttons (ratings prd3 FR-T11). */
+        /** The ratings block under the buttons. */
         val ratingsRow: RatingsRowUi = RatingsRowUi.EMPTY,
         val ratingDialog: RatingDialogUi? = null,
         /** The "Puntuaciones" list ("y N más"). */
@@ -102,9 +102,9 @@ sealed interface ShowDetailUiState {
 }
 
 /**
- * Show detail (prd3 §7): next-episode button, show/season/episode watched toggles, seasons fetched
+ * Show detail: next-episode button, show/season/episode watched toggles, seasons fetched
  * 250 ms after focus settles and cached, episode actions dialog, the optimistic "Mi lista" toggle
- * (watchlist prd3 FR-T6), 404 handling.
+ * 404 handling.
  */
 class ShowDetailViewModel(
     private val showId: Long,
@@ -204,7 +204,7 @@ class ShowDetailViewModel(
         }
     }
 
-    /** OK on `rating_mine` ([Puntuar] / [Cambiar]): the manual rating dialog (FR-T11). */
+    /** OK on `rating_mine` ([Puntuar] / [Cambiar]): the manual rating dialog. */
     fun onRatingMine() {
         val s = show ?: return
         listToggle.clearError()
@@ -306,7 +306,7 @@ class ShowDetailViewModel(
     }
 
     /**
-     * Optimistic (watchlist prd3 FR-T6): the label flips at once, focus stays on the button (no
+     * Optimistic: the label flips at once, focus stays on the button (no
      * refetch). The write runs in `appScope`, coalesced per title, so it survives Back; this
      * ViewModel only awaits it to confirm or roll back.
      */
@@ -323,7 +323,7 @@ class ShowDetailViewModel(
         if (cleared) publish()
     }
 
-    /** A fetched show; a list write still in flight wins over its `in_watchlist` until it settles (FR-T6 step 9). */
+    /** A fetched show; a list write still in flight wins over its `in_watchlist` until it settles. */
     private fun apply(fetched: ShowDetail) {
         show = fetched.copy(in_watchlist = listToggle.fetched(fetched.in_watchlist, show?.in_watchlist))
         ratingsBlock.fetched(fetched.my_rating, fetched.ratings, fetched.household_average)
@@ -358,7 +358,7 @@ class ShowDetailViewModel(
         viewModelScope.launch {
             try {
                 val result = watch.setWatched(target, id, watched)
-                // The root host opens the prompt over this screen (ratings prd3 FR-T10).
+                // The root host opens the prompt over this screen.
                 result.ratingPrompt?.let { ratingPrompts.offer(store.session.value.profileId, it) }
                 refresh.markStale()
                 if (clearCache) seasonCache.clear() else selected?.let { seasonCache.remove(it) }

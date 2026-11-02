@@ -1,4 +1,4 @@
-"""TmdbClient (PRD §5 TMDB client) with respx mocks and JSON fixtures."""
+"""TmdbClient with respx mocks and JSON fixtures."""
 
 import json
 from pathlib import Path
@@ -196,7 +196,7 @@ async def test_tv_details_appends_credits(client):
     assert route.calls[0].request.url.params["append_to_response"] == "credits"
 
 
-# --- person_details (actor screen FR-4) ------------------------------------------------------
+# --- person_details --------------------------------------------------------------------------
 
 PERSON_URL = f"{TMDB_BASE_URL}/person/1190668"
 

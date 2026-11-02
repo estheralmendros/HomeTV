@@ -20,7 +20,7 @@ import java.io.IOException
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
-/** A `POST .../playback` running in `appScope`: abandoning its await never cancels it (prd3 §8 In-flight requests). */
+/** A `POST .../playback` running in `appScope`: abandoning its await never cancels it. */
 class InFlightPlayback(val result: Deferred<Result<PlaybackResponse>>) {
     suspend fun await(): Result<PlaybackResponse> = result.await()
 }
@@ -59,7 +59,7 @@ fun interface SubtitleSource {
 enum class KeepAliveResult { ALIVE, SESSION_LOST, FAILED }
 
 /**
- * Playback requests and HLS/subtitle side calls (prd3 §8, §10, Playback Flow rule 3).
+ * Playback requests and HLS/subtitle side calls.
  *
  * Every `POST .../playback` runs as `appScope.async`, so abandoning the await (Cancel, Back,
  * `ON_STOP`, `onCleared()`) never cancels a request on the wire; the flow announces each one with
@@ -80,7 +80,7 @@ class PlaybackRepository(
      * is below `min(30 min, max(120 s, 2 × first estimated_seconds))`. Cancelling the collector stops
      * further attempts. `SessionGuard.ensureFresh()` runs before each POST; a 401 renews and re-sends once.
      * [retryStartPosition], when given, supplies `start_position_seconds` for each retry (a direct → HLS
-     * audio switch retries at the direct media's position at that moment, prd3 §8 row 36).
+     * audio switch retries at the direct media's position at that moment).
      */
     fun requestPlayback(
         mediaFileId: Long,

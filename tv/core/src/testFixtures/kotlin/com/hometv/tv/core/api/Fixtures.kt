@@ -1,6 +1,6 @@
 package com.hometv.tv.core.api
 
-/** JSON payloads in the prd.md shapes, with extra unknown fields to prove lenient decoding. */
+/** JSON payloads in the REST API shapes, with extra unknown fields to prove lenient decoding. */
 object Fixtures {
     fun mediaFileJson(id: Long = 91, partNumber: Int? = null): String = """
         { "id": $id, "file_name": "Dune (2021).mkv", "size_bytes": 23456789012, "container": "mkv",

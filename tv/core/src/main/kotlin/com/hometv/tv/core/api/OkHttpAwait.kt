@@ -25,7 +25,7 @@ const val DEFAULT_MAX_BODY_BYTES: Long = 1L shl 20
 /**
  * Suspends until the call answers and its body is read. The body is read on OkHttp's thread, inside the
  * callback: the caller may resume on the main thread, where reading the socket throws
- * `NetworkOnMainThreadException` (prd3 Technical Requirements: no network on the main thread).
+ * `NetworkOnMainThreadException` (no network on the main thread).
  * Cancelling the coroutine cancels the call; a body read failure is an [IOException] like a failed call.
  * At most [maxBytes] are read: a longer body (declared or streamed) is a [ResponseTooLargeException], so
  * a huge answer from a host that is not HomeTV never exhausts the heap. Any other [Throwable] while

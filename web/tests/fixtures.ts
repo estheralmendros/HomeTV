@@ -1,4 +1,4 @@
-// Typed factories for every prd.md shape. Each takes `overrides` (shallow merge) and returns a
+// Typed factories for every API shape. Each takes `overrides` (shallow merge) and returns a
 // fresh object, so tests can mutate results freely. Defaults are a coherent small library:
 // film 12 "Dune" (2021, file 91), show 7 "The Office" (season 2, episode 345, file 501).
 import type {
@@ -426,7 +426,7 @@ export function seasonDetail(overrides: Partial<SeasonDetail> = {}): SeasonDetai
 
 export function homeResponse(overrides: Partial<HomeResponse> = {}): HomeResponse {
   return {
-    // An in-progress film and a Next Up episode (no progress), prd.md Rev 13.
+    // An in-progress film and a Next Up episode (no progress).
     continue_watching: [filmSummary({ progress: progress() }), homeEpisode({ id: 346, episode_number: 4, title: 'The Fire', progress: null })],
     recently_added: [filmSummary({ id: 13, title: 'Heat', year: 1995 }), showSummary()],
     library: { films: 1234, shows: 87, empty: false },

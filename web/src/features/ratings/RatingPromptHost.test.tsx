@@ -1,4 +1,4 @@
-// RatingPromptHost (ratings prd2 FR-W8, W-AC-3a/3b): offer, dedup, markHandled, suppression,
+// RatingPromptHost: offer, dedup, markHandled, suppression,
 // profile change, navigation = Ahora no (except a pending save), session end = no answer.
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
@@ -223,7 +223,7 @@ describe('RatingPromptHost', () => {
     });
   });
 
-  describe('session end is not an answer (W-AC-3b)', () => {
+  describe('session end is not an answer', () => {
     it('sign-out → /profiles: closes, no dismissal', async () => {
       const view = renderHost();
       view.click('offer dune');

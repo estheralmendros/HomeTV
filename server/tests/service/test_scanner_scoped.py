@@ -1,4 +1,4 @@
-"""Scoped ``Scanner`` (prd.md FR-6..9): only the scope is walked, diffed and marked missing.
+"""Scoped ``Scanner``: only the scope is walked, diffed and marked missing.
 
 The layout mirrors the household library: films roots ``MKV/`` (flat) and ``películas/{A,B}``
 (letter folders); shows root ``series/`` with ``Breaking Bad/…`` and a loose episode.

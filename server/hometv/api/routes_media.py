@@ -1,4 +1,4 @@
-"""Media & playback routes (PRD REST "Media & playback", §7).
+"""Media & playback routes.
 
 - ``GET /api/media-files/{id}`` and ``POST .../playback``: ``CurrentProfile`` (Bearer only).
 - ``GET|HEAD .../stream`` and ``GET .../subtitles/{track}.vtt``: ``MediaUser`` (``?token=``).

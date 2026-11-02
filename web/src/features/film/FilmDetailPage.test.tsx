@@ -64,7 +64,7 @@ describe('FilmDetailPage', () => {
     expect(await screen.findByRole('link', { name: 'Reproducir' })).toBeInTheDocument();
   });
 
-  describe('versions (capability-aware default, D11)', () => {
+  describe('versions (capability-aware default)', () => {
     const hevcFirst: MediaFile[] = [
       f.mediaFile({ id: 91, video: HEVC, label: '2160p HEVC HDR10 · EAC3 5.1', size_bytes: 58_100_000_000, duration_seconds: 9360 }),
       f.mediaFile({ id: 92, label: '1080p H264 · AAC 2.0', size_bytes: 23_400_000_000, duration_seconds: 9350 }),
@@ -191,7 +191,7 @@ describe('FilmDetailPage', () => {
     });
   });
 
-  describe('rating prompt (ratings prd2 FR-W9.3, W-AC-9, W-AC-3a)', () => {
+  describe('rating prompt', () => {
     const prompt = f.ratingPrompt();
 
     function answerWatched() {
@@ -231,7 +231,7 @@ describe('FilmDetailPage', () => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
 
-    it('W-AC-3a (renderApp): navigation back while the prompt is open = Ahora no (one dismissal); no later offer reopens it', async () => {
+    it('renderApp: navigation back while the prompt is open = Ahora no (one dismissal); no later offer reopens it', async () => {
       server.use(http.post(`${API}/watched`, () => HttpResponse.json({ updated: 1, rating_prompt: prompt })));
       const rec = recordRequests();
       const { user, router } = renderApp({ route: '/films/12', history: ['/films'] });

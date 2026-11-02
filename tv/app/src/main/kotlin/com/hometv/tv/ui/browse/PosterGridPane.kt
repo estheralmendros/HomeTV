@@ -32,7 +32,7 @@ import com.hometv.tv.ui.theme.HomeTvColors
 import com.hometv.tv.ui.theme.HomeTvDimens
 
 /**
- * The poster grid of Browse and Mi lista (prd3 §4, watchlist prd3 FR-T10.5): 6 fixed columns of
+ * The poster grid of Browse and Mi lista: 6 fixed columns of
  * [PosterCard]s (progress, watched ✓, unwatched badge) tagged `grid_<index>`, the first row's Up on
  * [header] (the screen's first header button, not the top nav), and the failed-page row ("No se han
  * podido cargar más títulos." [Reintentar], tag [retryTag]). Focus: initially and on each
@@ -83,7 +83,7 @@ fun PosterGridPane(
                 onClick = { onClick(item) },
                 modifier = Modifier
                     .focusRequester(cards[index])
-                    // The first row's Up goes to the header buttons, not to the top nav (prd3 §4 step 2).
+                    // The first row's Up goes to the header buttons, not to the top nav.
                     .focusProperties { if (index < BrowseViewModel.COLUMNS) up = header }
                     .testTag("grid_$index")
                     .onFocusChanged { if (it.isFocused) onFocused(index) },

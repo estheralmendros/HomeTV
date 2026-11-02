@@ -1,4 +1,4 @@
-"""Catalog queries (PRD §9 home rows, §10): lists, details, search, genres, home.
+"""Catalog queries: lists, details, search, genres, home.
 
 Visibility: a film is visible iff it has a present media file (``missing_since IS NULL``); an
 episode iff a present file is linked to it; a season/show iff it has a visible episode. Hidden
@@ -7,7 +7,7 @@ files never appear in ``media_files``. Counts (``season_count``, ``episode_count
 ``ShowDetail.seasons`` cover that season (specials included for season 0).
 
 Every builder works on batches (one query per kind of data for the whole page, never one per
-item) so browse endpoints stay within the p95 budget (G3). Functions take a read ``Session``
+item) so browse endpoints stay within the p95 budget (100 ms). Functions take a read ``Session``
 and the profile id and return the pydantic response models of ``api/schemas.py``.
 """
 
@@ -66,7 +66,7 @@ from hometv.watch import (
     progress_out,
 )
 
-UNKNOWN_LABEL = "Desconocido"  # Spanish (es-ES): shown to viewers (PRD §UI Language)
+UNKNOWN_LABEL = "Desconocido"  # Spanish (es-ES): shown to viewers
 _HDR_LABELS = {"hdr10": "HDR10", "hlg": "HLG", "dolby_vision": "DV"}
 
 SortKey = Literal["title", "year", "added"]
@@ -193,7 +193,7 @@ def media_file_out(row: m.MediaFile, sidecars: Iterable[m.SubtitleFile] = ()) ->
 
 
 def _version_order(include_part: bool) -> list[Any]:
-    """Rev 8 total order: [part_number ASC NULLS FIRST,] height DESC NULLS LAST, size DESC, id."""
+    """Total version order: [part_number ASC NULLS FIRST,] height DESC NULLS LAST, size DESC, id."""
     order: list[Any] = []
     if include_part:
         order += [m.MediaFile.part_number.is_not(None), m.MediaFile.part_number]
@@ -387,7 +387,7 @@ def show_summaries(session: Session, profile_id: int, shows: Sequence[m.Show]) -
 
 
 def _episode_durations(session: Session, episode_ids: Sequence[int]) -> dict[int, float | None]:
-    """Duration of each episode's first version (Rev 8 order)."""
+    """Duration of each episode's first version (total version order)."""
     result: dict[int, float | None] = {}
     if not episode_ids:
         return result
@@ -1066,7 +1066,7 @@ def _latest_watched(session: Session, profile_id: int) -> dict[int, datetime]:
 
 
 def _next_up_ids(session: Session, profile_id: int, show_ids: Sequence[int]) -> dict[int, int]:
-    """``show_id -> Next Up episode id`` (§9 rule) for the shows that have one."""
+    """``show_id -> Next Up episode id`` (Next Up rule) for the shows that have one."""
     if not show_ids:
         return {}
     episodes = _visible_episodes(
@@ -1083,7 +1083,7 @@ def _next_up_ids(session: Session, profile_id: int, show_ids: Sequence[int]) -> 
 
 
 def _show_cards(session: Session, profile_id: int) -> list[tuple[datetime, int, int]]:
-    """Exactly one ``(date, kind, episode_id)`` card per show (§9 Rev 14, latest activity wins):
+    """Exactly one ``(date, kind, episode_id)`` card per show (latest activity wins):
     the in-progress episode (dated by its ``updated_at``) unless the show's latest ``watched_at``
     is newer and the show has a Next Up episode (dated by that ``watched_at``)."""
     in_progress = _in_progress_episodes(session, profile_id)
@@ -1102,7 +1102,7 @@ def _show_cards(session: Session, profile_id: int) -> list[tuple[datetime, int, 
 
 
 def _continue_watching(session: Session, profile_id: int, limit: int) -> list[Any]:
-    """One row (Rev 13): in-progress films + one card per show (Rev 14), newest first.
+    """One row: in-progress films + one card per show, newest first.
 
     Fixed number of queries per call: the per-show choice is made in memory over the profile's
     started shows, then only the ``limit`` picked items are loaded and summarized in batches."""

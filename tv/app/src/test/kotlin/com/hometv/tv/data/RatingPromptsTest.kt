@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 
-/** ratings prd3 FR-T5: the app-scoped prompt store (once per title per process, profile-safe). */
+/** The app-scoped prompt store (once per title per process, profile-safe). */
 class RatingPromptsTest {
     private val expires = Instant.parse("2026-12-20T00:00:00Z")
     private val store = InMemorySessionStore(Session("https://a.ts.net", 5, "tok", expires))

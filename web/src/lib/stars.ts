@@ -1,4 +1,4 @@
-// Pure star helpers (ratings prd2 FR-W5): fills, keyboard steps, pointer halves. Values are
+// Pure star helpers: fills, keyboard steps, pointer halves. Values are
 // ½ … 5 in ½ steps; null = not rated. The text equivalent lives in S.ratings.stars.
 export type StarFill = 'full' | 'half' | 'empty';
 

@@ -16,7 +16,7 @@ export interface PlayerErrorScreenProps {
 }
 
 /**
- * §9 step 15 error kinds: busy / prepare_timeout / decode / failed → message + [Reintentar]
+ * Error kinds: busy / prepare_timeout / decode / failed → message + [Reintentar]
  * [Volver] ("Detalles técnicos" for a transcoder detail); gone → the item-type copy + [Volver];
  * version_failed → no Retry, [Probar …] per alternative + [Volver].
  */

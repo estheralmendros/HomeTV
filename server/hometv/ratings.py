@@ -1,4 +1,4 @@
-"""Per-profile ratings and household activity (ratings PRD FR-4, FR-5).
+"""Per-profile ratings and household activity.
 
 - ``set_rating`` / ``remove_rating`` / ``dismiss_prompt``: idempotent, one short write
   transaction each, only on a visible title (404 ``not_found`` otherwise, same message as detail),

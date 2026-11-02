@@ -1,4 +1,4 @@
-// RatingForm / RatingDialog (ratings prd2 FR-W7, W-AC-2/3/4): button sets, Escape semantics,
+// RatingForm / RatingDialog: button sets, Escape semantics,
 // pending guard, markHandled at the first save and at Ahora no, save success / error / retry.
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';

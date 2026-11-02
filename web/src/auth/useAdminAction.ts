@@ -1,4 +1,4 @@
-// Every admin op goes through useAdminAction (prd2 §2): PIN keypad when locked, and one
+// Every admin op goes through useAdminAction: PIN keypad when locked, and one
 // re-prompt + retry when the op fails with 401 admin_locked.
 import { useCallback, useSyncExternalStore } from 'react';
 import { isApiError } from '@/api/errors';

@@ -14,7 +14,7 @@ sealed interface LanguageName {
 }
 
 /**
- * ISO 639-2 (B and T) → BCP 47 → Spanish name from the platform (prd3 §UI Language rule 5, same
+ * ISO 639-2 (B and T) → BCP 47 → Spanish name from the platform (the same
  * rule and the same table as the web's `lib/languages.ts`, so both clients name a code the same
  * way). Results are memoized per code.
  */

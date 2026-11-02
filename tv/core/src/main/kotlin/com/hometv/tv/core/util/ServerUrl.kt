@@ -21,7 +21,7 @@ sealed interface ServerUrlResult {
     data class Invalid(val error: ServerUrlError) : ServerUrlResult
 }
 
-/** Normalizes and validates the server address typed on the Setup screen (prd3 §1.3). */
+/** Normalizes and validates the server address typed on the Setup screen. */
 object ServerUrl {
     /** Hosts debug builds may reach over cleartext (emulator loopback and localhost). */
     private val DEBUG_CLEARTEXT_HOSTS = setOf("10.0.2.2", "localhost")

@@ -1,7 +1,7 @@
-// Home (prd2 §4): Continue Watching and Recently Added rows from GET /api/home.
+// Home: Continue Watching and Recently Added rows from GET /api/home.
 // Continue Watching holds in-progress items and each started show's Next Up episode
-// (prd.md Rev 13; no progress → no bar). Its cards open the player WITHOUT ?file=: the player
-// runs selectVersion on the home payload (multi-part and D11 rules), never a stale version choice.
+// (no progress → no bar). Its cards open the player WITHOUT ?file=: the player
+// runs selectVersion on the home payload (multi-part and version-match rules), never a stale version choice.
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { homeQuery } from '@/api/queries';

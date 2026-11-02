@@ -1,15 +1,15 @@
-// The playback session effects behind the player machine (prd2 §9 steps 4, 5, 8, 13, 14):
+// The playback session effects behind the player machine:
 // - sends `POST playback` whenever the machine bumps `requestSeq` (initial, Retry, PLAY_FILE,
-//   audio switch, recovery, D9 resume), with one retry on 422 invalid_audio_stream;
+//   audio switch, recovery, resume after the pause release), with one retry on 422 invalid_audio_stream;
 // - the `preparing` wait: PREPARE_TICK after Retry-After (the reducer applies the time cap);
 // - attaches each decision (`attachSeq`) to the shell's <video> through attachSource, after
 //   releasing the previous source (tracker snapshot → hls.destroy() / src reset);
 // - maps element signals to machine events; fatal errors release the source first, so the
 //   recovery request uses the tracked position (direct MEDIA_ERR_NETWORK checks the file first);
 // - HLS keep-alive every 30 s (paused/blocked/buffering/ended; also playing on native HLS);
-// - D9: after 30 min of continuous pause, release + one DELETE + PAUSE_RELEASE;
+// - pause release: after 30 min of continuous pause, release + one DELETE + PAUSE_RELEASE;
 // - exit (unmount or pagehide): release the element / DELETE the owned session (keepalive). A session handed over as
-//   previous_session_id (D7) is never kept alive or DELETEd again.
+//   previous_session_id (the server stops it) is never kept alive or DELETEd again.
 // Call useProgressReporter BEFORE this hook: its final report must run before the release.
 import { useCallback, useEffect, useRef, type Dispatch } from 'react';
 import { retryDelaySeconds } from '@/api/client';
@@ -149,7 +149,7 @@ export function usePlaybackSession(options: PlaybackSessionOptions): PlaybackSes
     const pending = s.pendingRequest;
     if (!pending || !REQUEST_STATES.has(s.name)) return;
     const { intent } = pending;
-    // D7: the server stops previous_session_id whatever the answer; never touch it again.
+    // The server stops previous_session_id whatever the answer; never touch it again.
     if (intent.previousSessionId && ownedSession.current === intent.previousSessionId) ownedSession.current = null;
     const controller = new AbortController();
     void (async () => {
@@ -269,7 +269,7 @@ export function usePlaybackSession(options: PlaybackSessionOptions): PlaybackSes
     return () => clearInterval(timer);
   }, [keepAliveWanted, sessionId]);
 
-  // --- D9: release after 30 min of continuous pause ---------------------------------------
+  // --- Release after 30 min of continuous pause --------------------------------------------
   const pausedWithSession = sessionId !== null && PAUSED_STATES.has(state.name);
   useEffect(() => {
     if (!pausedWithSession) return;

@@ -1,4 +1,4 @@
-"""Local TMDB artwork cache (PRD §5 Artwork cache) + the API Image object.
+"""Local TMDB artwork cache + the API Image object.
 
 Files live at ``{data_dir}/artwork/{size}/{file_name}`` and are written atomically
 (``.tmp`` + rename). Posters/backdrops are fetched eagerly by enrichment (``prefetch``);

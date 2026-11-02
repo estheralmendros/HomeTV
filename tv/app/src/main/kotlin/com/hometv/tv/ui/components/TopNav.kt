@@ -47,7 +47,7 @@ import com.hometv.tv.ui.theme.HomeTvColors
 import com.hometv.tv.ui.theme.HomeTvDimens
 import com.hometv.tv.ui.theme.HomeTvFocus
 
-/** The top nav tabs in display order: Search (a lens icon, [icon]) at the left end (prd3 §3 step 1). */
+/** The top nav tabs in display order: Search (a lens icon, [icon]) at the left end. */
 enum class NavTab(@param:StringRes val label: Int, @param:DrawableRes val icon: Int? = null) {
     SEARCH(R.string.nav_search, R.drawable.ic_search),
     HOME(R.string.nav_home),
@@ -59,7 +59,7 @@ enum class NavTab(@param:StringRes val label: Int, @param:DrawableRes val icon: 
     ;
 
     companion object {
-        /** The tabs a profile sees: "Ajustes" only for admins (prd3 §3 step 1). */
+        /** The tabs a profile sees: "Ajustes" only for admins. */
         fun visible(showSettings: Boolean): List<NavTab> = if (showSettings) entries else entries - SETTINGS
     }
 }
@@ -97,7 +97,7 @@ fun TopNav(
     val current = selected.takeIf { it in tabs } ?: NavTab.HOME
     Row(modifier.fillMaxWidth().padding(horizontal = HomeTvDimens.SafeHorizontal, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         // While the bar has focus the pill follows the focused tab (tv-material draws the focused tab's
-        // label for the pill); when focus leaves, it returns to the current screen's tab (prd3 §3 step 1).
+        // label for the pill); when focus leaves, it returns to the current screen's tab.
         var focusedTab by remember { mutableStateOf<NavTab?>(null) }
         val pillTab = focusedTab?.takeIf { it in tabs } ?: current
         // Entering the bar with the D-pad (Up from the content) lands on the current screen's tab, not the

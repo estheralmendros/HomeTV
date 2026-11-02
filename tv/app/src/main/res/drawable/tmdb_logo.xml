@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- TMDB attribution logo (prd.md NFR-4): the "TMDB" wordmark in TMDB's green-to-blue gradient with its rounded bar. -->
+<!-- TMDB attribution logo: the "TMDB" wordmark in TMDB's green-to-blue gradient with its rounded bar. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
     android:width="154dp" android:height="20dp" android:viewportWidth="154" android:viewportHeight="20">

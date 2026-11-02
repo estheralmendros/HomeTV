@@ -1,4 +1,4 @@
-// PlayerPage: subtitles (prd2 §9 steps 6–7) — menu, Bearer fetch, blob <track> showing, the
+// PlayerPage: subtitles — menu, Bearer fetch, blob <track> showing, the
 // remembered language, subtitle_pending spinner then attach, terminal failures.
 import { fireEvent, screen, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';

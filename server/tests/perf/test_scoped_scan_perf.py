@@ -1,4 +1,4 @@
-"""Scoped scan duration (prd.md NFR-3): a one-folder ``watch`` scan does not depend on library
+"""Scoped scan duration: a one-folder ``watch`` scan does not depend on library
 size. 2,000 folders x 3 files already scanned; a scoped scan of one folder (stub probe) must
 finish in < 1 s.
 

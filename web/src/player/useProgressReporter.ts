@@ -1,7 +1,7 @@
-// Progress reporting (prd2 §9 step 9).
+// Progress reporting.
 // - PositionTracker holds `lastKnownPosition`/`lastKnownDuration`, updated from the element only
-//   while this mount's source is attached, guarded by attach generations (Rev 7) and by
-//   `trackingLive` (tracking resumes once the new source reaches its start, Rev 8). Every final
+//   while this mount's source is attached, guarded by attach generations and by
+//   `trackingLive` (tracking resumes once the new source reaches its start). Every final
 //   report sends these tracked values, never the shared element's (it is reset on release).
 // - useProgressReporter: `PUT /api/progress` every 10 s while playing, on pause, seeked
 //   (debounced 1 s), ended (position = duration), pagehide / visibilitychange→hidden (keepalive)
@@ -56,7 +56,7 @@ export class PositionTracker {
     return this.gen;
   }
 
-  /** Conditional snapshot (Rev 8): only an attached, live source moves the tracked values. */
+  /** Conditional snapshot: only an attached, live source moves the tracked values. */
   snapshot(video: HTMLMediaElement): void {
     if (!this.attached || !this.live) return;
     this.position = video.currentTime;
@@ -103,7 +103,7 @@ export interface ProgressReporterOptions {
   /** The machine's `hasPlayed`: no pause/final report before the first frame. */
   hasPlayed: boolean;
   tracker: PositionTracker;
-  /** The final report's `rating_prompt` (ratings prd2 FR-W9.1); read at send time. */
+  /** The final report's `rating_prompt`; read at send time. */
   onFinalPrompt?: (prompt: RatingPrompt) => void;
 }
 

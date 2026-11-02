@@ -44,8 +44,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * The Home rows in display order (prd3 §3.3); each is hidden when empty. "Seguir viendo" holds the
- * in-progress items and each started show's Next Up episode (prd.md Rev 13: no separate Next Up row).
+ * The Home rows in display order; each is hidden when empty. "Seguir viendo" holds the
+ * in-progress items and each started show's Next Up episode (no separate Next Up row).
  */
 enum class HomeRowId(val prefix: String, @param:StringRes val title: Int) {
     CONTINUE("continue", R.string.home_continue_watching),
@@ -75,7 +75,7 @@ data class ItemCard(
     val badge: String?,
     /** Shown under poster cards. */
     val year: String? = null,
-    /** This profile's rating: the poster card's star badge (ratings prd3 FR-T13). */
+    /** This profile's rating: the poster card's star badge. */
     val myRating: Stars? = null,
 ) : HomeCard
 
@@ -89,7 +89,7 @@ data class HomeRow(val id: HomeRowId, val cards: List<HomeCard>)
 /** Where focus goes after the rows were replaced (fresh data, Back to the first card). */
 data class FocusTarget(val key: String, val rowIndex: Int, val cardIndex: Int, val version: Int)
 
-/** The hero above the rows (prd3 §3.4): film/show `backdrop.large` (else `.small`), title, year, overview; episodes the show's. */
+/** The hero above the rows: film/show `backdrop.large` (else `.small`), title, year, overview; episodes the show's. */
 data class HeroUi(val backdrop: String?, val title: String, val year: String?, val episodeLine: UiText?, val overview: String?)
 
 data class HomeUiState(
@@ -102,7 +102,7 @@ data class HomeUiState(
 )
 
 /**
- * Home (prd3 §3): cache-first render (TG1), then `/api/home` + Films + Series rows in parallel,
+ * Home: cache-first render, then `/api/home` + Films + Series rows in parallel,
  * replaced in place keeping the focused item by key; hero with a 300 ms settle; refresh rules.
  */
 @OptIn(FlowPreview::class)

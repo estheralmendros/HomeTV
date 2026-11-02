@@ -50,7 +50,7 @@ data class WatchlistUiState(
     val loading: Boolean = true,
     val error: ScreenError? = null,
     val focus: GridFocus? = null,
-    /** Bumped when focus must go to the header because the grid has no card (FR-T9.6, FR-T10.7). */
+    /** Bumped when focus must go to the header because the grid has no card. */
     val headerFocusVersion: Int = 0,
 ) {
     /** A next page failed while the grid has items: inline "No se han podido cargar más títulos." [Reintentar]. */
@@ -112,7 +112,7 @@ data class WatchlistUiState(
 }
 
 /**
- * (11) Mi lista (watchlist prd3 FR-T9): the Browse grid rules (pages of 50, 6 columns, the next page
+ * (11) Mi lista: the Browse grid rules (pages of 50, 6 columns, the next page
  * when focus reaches the last two loaded rows, one request in flight, inline failed page + [retry]),
  * the "Ordenar" / "Tipo" / "Estado" list dialogs, and a reload in place when the screen resumes after being
  * stopped ([onHidden], [onVisible]) that picks up changes made on a detail screen, on the web or on
@@ -267,7 +267,7 @@ class WatchlistViewModel(
         jobKind = JobKind.RESUME
         job = viewModelScope.launch {
             try {
-                // A toggle made on the detail just before Back is still in flight in appScope (FR-T9.8.1).
+                // A toggle made on the detail just before Back is still in flight in appScope.
                 watchlist.awaitIdle()
                 val (items, total) = fetchLoaded(pages)
                 lastPage = pages

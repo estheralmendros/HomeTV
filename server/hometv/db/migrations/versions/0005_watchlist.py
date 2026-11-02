@@ -1,4 +1,4 @@
-"""Per-profile watchlist "Mi lista" (HOMETV-1).
+"""Per-profile watchlist "Mi lista".
 
 Revision ID: 0005
 Revises: 0004

@@ -13,7 +13,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** prd3 §4 step 2: the sort, genre, decade and watched buttons open list dialogs that are usable with the D-pad. */
+/** The Browse sort, genre, decade and watched buttons open list dialogs that are usable with the D-pad. */
 @RunWith(AndroidJUnit4::class)
 class BrowseFiltersFocusTest : UiTestBase() {
     private fun openFilms() {

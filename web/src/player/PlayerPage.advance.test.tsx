@@ -1,5 +1,5 @@
-// PlayerPage: next episode / next part (prd2 §9 step 10, D12) and the same-route navigation
-// guarantees of the stable shell (Player identity, Rev 5): remount, subtitles of the new file,
+// PlayerPage: next episode / next part and the same-route navigation
+// guarantees of the stable shell: remount, subtitles of the new file,
 // fullscreen and the <video> node kept, old source released before the new one attaches.
 import { fireEvent, screen } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
@@ -138,7 +138,7 @@ describe('next episode', () => {
   });
 });
 
-describe('D12: multi-episode files', () => {
+describe('next episode: multi-episode files', () => {
   const shared = f.episodeFile({ id: 501, file_name: 'Friends.S01E01E02.mkv', duration_seconds: DURATION });
 
   it('E01 played from Friends.S01E01E02.mkv offers and auto-advances to E03, never E02', async () => {

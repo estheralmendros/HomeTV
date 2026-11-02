@@ -17,7 +17,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** prd3 §6/§7: a detail screen refetches in place when the Player pops back (DetailRefresh), keeping focus on its buttons. */
+/** A detail screen refetches in place when the Player pops back (DetailRefresh), keeping focus on its buttons. */
 @RunWith(AndroidJUnit4::class)
 class DetailRefreshFocusTest : UiTestBase() {
     private fun text(value: String) = rule.onNodeWithText(value, useUnmergedTree = true)

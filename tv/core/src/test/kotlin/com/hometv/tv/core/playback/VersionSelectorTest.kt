@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 
-/** prd3 Capability Detection `VersionSelector`; prd.md §9 D10–D13, Rev 8 order. */
+/** `VersionSelector`: version order, multi-part defaults, next part, matching versions, start positions. */
 class VersionSelectorTest {
     private val vs = VersionSelector
     private fun ids(files: List<MediaFile>) = files.map { it.id }
@@ -49,7 +49,7 @@ class VersionSelectorTest {
         }
 
         @Test
-        fun `Rev 8 order - height DESC with null last, then size DESC, then id ASC`() {
+        fun `version order - height DESC with null last, then size DESC, then id ASC`() {
             val files = listOf(
                 file(5, video = null, size = 9),
                 file(4, video = H264.copy(height = 720), size = 1),
@@ -172,7 +172,7 @@ class VersionSelectorTest {
         }
 
         @Test
-        fun `D10 next part wins over a matching Part 1 sibling and starts everything at 0`() {
+        fun `the next part after a finished one wins over a matching Part 1 sibling and starts everything at 0`() {
             val files = listOf(part(1, 1, video = HEVC), part(2, 1), part(3, 2))
             val p = progress(1, 2980.0, 3000.0)
             assertEquals(Choice(Part(2), files[2], true), vs.defaultChoice(files, caps, p))
@@ -181,7 +181,7 @@ class VersionSelectorTest {
     }
 
     @Nested
-    inner class NextPartD13 {
+    inner class NextPart {
         private val remuxP1 = part(1, 1, label = "Remux")
         private val p2Hevc = part(2, 2, video = HEVC, label = "Remux")
         private val p2Web = part(3, 2, label = "Web")
@@ -217,7 +217,7 @@ class VersionSelectorTest {
         }
 
         @Test
-        fun `the D10 default prefers the playable Part 2 over the same label`() {
+        fun `the next-part default prefers the playable Part 2 over the same label`() {
             val p1 = part(1, 1, video = HEVC, label = "2160p HEVC")
             val files = listOf(p1, part(2, 2, video = HEVC, label = "2160p HEVC"), part(3, 2, label = "1080p H264"))
             assertEquals(3L, vs.defaultChoice(files, caps, progress(1, 2990.0, 3000.0))?.file?.id)
@@ -225,7 +225,7 @@ class VersionSelectorTest {
     }
 
     @Nested
-    inner class MatchesD11 {
+    inner class Matches {
         private fun last(duration: Double = 9360.0, part: Int? = null) = hevc(1, duration = duration, part = part)
         private fun p(duration: Double = 9360.0) = progress(1, 3723.0, duration)
 

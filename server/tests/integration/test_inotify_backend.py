@@ -1,4 +1,4 @@
-"""Real inotify (prd.md FR-3, FR-T): Linux only; needs no ffmpeg (marker ``inotify`` keeps it
+"""Real inotify: Linux only; needs no ffmpeg (marker ``inotify`` keeps it
 out of the ffmpeg auto-skip).
 
 Run: ``uv run pytest -m integration tests/integration/test_inotify_backend.py``.

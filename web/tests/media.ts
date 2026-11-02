@@ -1,4 +1,4 @@
-// HTMLMediaElement stubs (prd2 § Testing Decisions). Installed by tests/setup.ts.
+// HTMLMediaElement stubs. Installed by tests/setup.ts.
 interface MediaStubState {
   currentTime: number;
   duration: number;

@@ -1,4 +1,4 @@
-// Player-local toasts (D11 notice, audio/subtitle failures, the cross-tab notice). They render
+// Player-local toasts (different-version notice, audio/subtitle failures, the cross-tab notice). They render
 // inside the player root, so they stay visible in element fullscreen (the global toast region
 // sits outside the fullscreen container).
 import { useCallback, useEffect, useRef, useState } from 'react';

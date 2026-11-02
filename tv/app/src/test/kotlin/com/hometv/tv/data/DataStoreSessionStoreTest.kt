@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-/** Preferences DataStore keys `server_url`, `profile_id`, `token`, `token_expires_at` (prd3 Persistence). */
+/** Preferences DataStore keys `server_url`, `profile_id`, `token`, `token_expires_at`. */
 class DataStoreSessionStoreTest {
     private val dir: File = Files.createTempDirectory("session").toFile()
     private val file = File(dir, "session.preferences_pb")

@@ -1,5 +1,5 @@
 """PUT/DELETE /api/watchlist/{films|shows}/{id}, GET /api/watchlist, ``in_watchlist`` on detail
-("Mi lista", FR-7/FR-8)."""
+("Mi lista")."""
 
 from datetime import timedelta
 

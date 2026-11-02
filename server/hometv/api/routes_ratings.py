@@ -1,5 +1,5 @@
 """ "Puntuar" and "Actividad": PUT/DELETE /api/ratings/{films|shows}/{id},
-POST /api/ratings/{films|shows}/{id}/dismiss-prompt, GET /api/activity (ratings PRD FR-12).
+POST /api/ratings/{films|shows}/{id}/dismiss-prompt, GET /api/activity.
 
 Profile Bearer only (no ``?token=``, no admin token, no PIN); every write acts on the token's
 profile. Writes are idempotent and answer 204 with an empty body; unknown or hidden titles are

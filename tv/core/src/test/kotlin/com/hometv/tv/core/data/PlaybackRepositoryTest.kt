@@ -146,7 +146,7 @@ class PlaybackRepositoryTest {
         }
 
         @Test
-        fun `a retry can carry a fresh start position (direct to HLS switch, prd3 row 36)`() = runTest {
+        fun `a retry can carry a fresh start position (direct to HLS audio switch)`() = runTest {
             val h = Harness(this)
             h.answers += listOf(h.preparing(), h.preparing(), h.ok())
             var position = 1234.0

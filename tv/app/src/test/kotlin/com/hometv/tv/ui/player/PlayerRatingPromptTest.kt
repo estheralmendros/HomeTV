@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 
 /**
- * ratings prd3 FR-T6 / T-AC-1, 2, 3, 5a: the player holds the latest `rating_prompt` of its session
+ * The player holds the latest `rating_prompt` of its session
  * (every reporter, the released PUT) and hands it to `RatingPrompts` once, on exit or when cleared.
  */
 class PlayerRatingPromptTest : PlayerTestBase() {

@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /**
- * prd3 §UI Language rule 2 (+ prd3-review Suggested 2): no UI string literal in `app/src/main/kotlin`.
+ * No UI string literal in `app/src/main/kotlin`.
  * Fails on non-empty literals passed to `Text(`, `text =`, `label =`, `placeholder =`,
  * `contentDescription =`, `title =`, `Toast.makeText`, and on ViewModel `UiText.Data("…")` literals.
  */

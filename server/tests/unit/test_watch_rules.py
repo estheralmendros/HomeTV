@@ -1,4 +1,4 @@
-"""Watch-state rules (PRD §9), pure: watched ratio (films 95 %, episodes 90 %), last-part rule,
+"""Watch-state rules, pure: watched ratio (films 95 %, episodes 90 %), last-part rule,
 in-progress, Next Up."""
 
 import pytest
@@ -118,7 +118,7 @@ def test_first_unwatched():
     assert first_unwatched(EPISODES, {i: EpisodeState(True, 0) for i in range(2, 7)}) is None
 
 
-# --- "Finished" rule (ratings PRD FR-7) ----------------------------------------------------------
+# --- "Finished" rule -----------------------------------------------------------------------------
 
 
 def _film_reaches(position: float, part: int | None = None, parts: tuple[int, ...] = ()) -> bool:

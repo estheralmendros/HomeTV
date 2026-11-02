@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 
-/** ratings prd3 FR-T3 / prd2 FR-W14: the activity row's relative time, in the device zone. */
+/** The activity row's relative time, in the device zone. */
 class RelativeTimeTest {
     private val madrid = ZoneId.of("Europe/Madrid")
 

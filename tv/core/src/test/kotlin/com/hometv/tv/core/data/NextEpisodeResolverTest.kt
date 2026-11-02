@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-/** prd.md §9 D12: the next episode skips episodes in the same multi-episode file, ≤ 10 hops. */
+/** The next episode skips episodes in the same multi-episode file, ≤ 10 hops. */
 class NextEpisodeResolverTest {
     private val fetched = mutableListOf<Long>()
 

@@ -6,8 +6,8 @@ import com.hometv.tv.core.util.EpisodeCode
 import com.hometv.tv.ui.text.UiText
 
 /**
- * prd3 §8 Player session states (the single source of truth for HLS session ownership), plus the
- * full-screen [Error] of §10 and [Exited]. `Loading` covers every `POST .../playback` (and the item
+ * Player session states (the single source of truth for HLS session ownership), plus the
+ * full-screen [Error] and [Exited]. `Loading` covers every `POST .../playback` (and the item
  * load before the first one) until its response is attached; a direct → HLS audio switch is `Loading`
  * with a `switchBase` (the direct media keeps playing).
  */
@@ -51,7 +51,7 @@ sealed interface PlayerScreenUi {
     /** "El siguiente episodio no se puede reproducir…" (+ code/title + reason) or "No se ha podido cargar el siguiente episodio". */
     data class EndScreen(val message: UiText, val detail: UiText?, val canRetry: Boolean) : PlayerScreenUi
 
-    /** A full-screen player error (§10): message, optional reason line, buttons (first focused). */
+    /** A full-screen player error: message, optional reason line, buttons (first focused). */
     data class Error(val message: UiText, val reason: UiText?, val actions: List<PlayerAction>) : PlayerScreenUi
 }
 

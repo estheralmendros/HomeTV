@@ -1,4 +1,4 @@
-// Every endpoint function hits the prd.md method + path with the right query/body.
+// Every endpoint function hits the documented method + path with the right query/body.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as f from '../../tests/fixtures';
 import { recordRequests } from '../../tests/msw/server';

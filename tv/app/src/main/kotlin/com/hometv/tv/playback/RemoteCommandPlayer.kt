@@ -7,7 +7,7 @@ import androidx.media3.common.util.UnstableApi
 import com.hometv.tv.core.playback.PlayerController
 
 /**
- * The player the Player screen's `MediaSession` wraps (prd3 §8 "Headset and Bluetooth play/pause").
+ * The player the Player screen's `MediaSession` wraps (headset and Bluetooth play/pause).
  * Bluetooth AVRCP, the headset button and other media controllers reach the app only through that
  * session; their play / pause / seek back-forward commands go to the ViewModel through [listener]
  * (`PlayerController.Listener.onRemote*`), exactly like the remote's keys, and never drive the

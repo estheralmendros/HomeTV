@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /**
- * prd3 Theme & legibility: text over the detail backdrop stays readable whatever the artwork. Worst
+ * Text over the detail backdrop stays readable whatever the artwork. Worst
  * case: a pure-white backdrop pixel under the [BACKDROP_SCRIM_ALPHA] scrim.
  */
 class DetailLegibilityTest {
@@ -37,7 +37,7 @@ class DetailLegibilityTest {
         assertTrue(DetailText.secondary != HomeTvColors.Error)
     }
 
-    /** ratings prd3 FR-T12: the block's stars are graphics (≥ 3:1) over the worst backdrop pixel; its texts use the secondary tone. */
+    /** The ratings block's stars are graphics (≥ 3:1) over the worst backdrop pixel; its texts use the secondary tone. */
     @Test
     fun `the ratings block's stars are visible over a white backdrop`() {
         val filled = contrast(HomeTvColors.Rating, worstBackground)

@@ -5,16 +5,16 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 
-/** Global events observed by `HomeTvRoot` / `HomeViewModel` (prd3 Technical Requirements "State"). */
+/** Global events observed by `HomeTvRoot` / `HomeViewModel`. */
 sealed interface AppEvent {
     /** The renewal answered 404 `profile_not_found`: Profile Picker with the "Tu sesión ha caducado…" banner. */
     data object AuthExpired : AppEvent
 
     /**
-     * A foreground call's renewal failed with an IOException (prd3 §2.5, Technical Requirements
-     * "State"). Reserved: no subscriber acts on it today, because the foreground call that triggered
-     * it also throws and its screen shows the Connection Error. [Origin] still matters: background
-     * callers never emit it, which the player tests assert. Kept as the PRD's event contract.
+     * A foreground call's renewal failed with an IOException. Reserved: no subscriber acts on it
+     * today, because the foreground call that triggered it also throws and its screen shows the
+     * Connection Error. [Origin] still matters: background callers never emit it, which the player
+     * tests assert. Kept as part of the event contract.
      */
     data class ServerUnreachable(val cause: ApiException.Unreachable) : AppEvent
 

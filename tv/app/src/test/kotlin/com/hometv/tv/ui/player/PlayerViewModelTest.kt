@@ -31,7 +31,7 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-/** prd3 Testing Decisions "Player" (ViewModel with a fake `PlayerController`, virtual time). */
+/** Player (ViewModel with a fake `PlayerController`, virtual time). */
 class PlayerViewModelTest : PlayerTestBase() {
     @Test
     fun `an unknown launchId (process death) pops at once without any request`() = playerTest {
@@ -555,7 +555,7 @@ class PlayerViewModelTest : PlayerTestBase() {
     }
 
     @Test
-    fun `D13 - the next part prefers a playable file before the same label`() = playerTest {
+    fun `the next part prefers a playable file before the same label`() = playerTest {
         codecs.inventory = codecs.inventory.copy(video = codecs.inventory.video.filter { it.mime == "video/avc" })
         val p1 = F.part(1, 1, label = "Remux")
         val p2hevc = F.part(2, 2, video = VideoInfo("hevc", 1920, 1080), label = "Remux")
@@ -604,7 +604,7 @@ class PlayerViewModelTest : PlayerTestBase() {
     @Test
     fun `progress reports carry the file that is playing`() = playerTest {
         startFilm(direct(fileId = 2), F.part(1, 1), F.part(2, 2), progress = Progress(position_seconds = 2990.0, duration_seconds = 3000.0, media_file_id = 1))
-        assertEquals(0.0, bodies().single().start_position_seconds) // D10: finished part 1 → part 2 from 0
+        assertEquals(0.0, bodies().single().start_position_seconds) // finished part 1 → part 2 from 0
         clearCalls()
         advance(10_000)
         assertEquals(2L, api.progressBodies.single().media_file_id)

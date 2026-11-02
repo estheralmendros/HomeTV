@@ -12,8 +12,7 @@ export function createQueryClient(): QueryClient {
     defaultOptions: {
       // networkMode stays the default 'online': offline, queries pause (detail pages keep their
       // skeleton). Exception: personQuery sets 'always' so the actor page shows the connection
-      // error with "Reintentar" offline (prd2 States) instead of a skeleton that never ends
-      // (found in validation Run 1, prd2 step 15).
+      // error with "Reintentar" offline instead of a skeleton that never ends.
       queries: {
         staleTime: 30_000,
         gcTime: 5 * 60_000,

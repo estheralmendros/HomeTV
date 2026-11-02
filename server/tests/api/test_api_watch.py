@@ -1,4 +1,4 @@
-"""PUT /api/progress, POST /api/watched (PRD §9, REST "Watch state")."""
+"""PUT /api/progress, POST /api/watched."""
 
 from sqlalchemy import delete, select
 
@@ -378,7 +378,7 @@ async def test_mark_watched_many_episode_show_keeps_one_row_per_episode(client, 
     assert await mark(False) == 0
 
 
-# --- Rating prompt (ratings FR-8) ------------------------------------------------------------
+# --- Rating prompt ---------------------------------------------------------------------------
 
 
 async def test_progress_prompt_has_the_film_poster_and_respects_rating_and_dismissal(

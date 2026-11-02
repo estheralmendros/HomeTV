@@ -53,7 +53,7 @@ import com.hometv.tv.ui.theme.HomeTvColors
 import com.hometv.tv.ui.theme.HomeTvFocus
 
 /**
- * The D-pad rating dialog (ratings prd3 FR-T8), stateless: a [RatingEditor] owns [ui]. Poster and the
+ * The D-pad rating dialog, stateless: a [RatingEditor] owns [ui]. Poster and the
  * right column (title, "¿Qué te ha parecido?", the star row, the error line) on top; under them one
  * full-width button row (or "Puntuación guardada" while SAVED). The star row has initial focus:
  * Left/Right step ½, OK saves; Down goes to the first button, Up from a button returns. Back is

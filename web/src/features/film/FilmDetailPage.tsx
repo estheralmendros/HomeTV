@@ -1,5 +1,5 @@
-// Film detail (prd2 §7). The version the player would start (VersionPicker selection, default
-// selectVersion) drives the Resume / Play labels via startPosition (D10/D11). Player URLs:
+// Film detail. The version the player would start (VersionPicker selection, default
+// selectVersion) drives the Resume / Play labels via startPosition. Player URLs:
 // Resume and Play → ?file=<selected> (no t); Play from start → ?file=<selected>&t=0.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
@@ -181,7 +181,7 @@ function FilmWatchlistToggle({ film }: { film: FilmDetail }) {
 
 /**
  * Optimistic: patch progress.watched in ['film', id], roll back + toast on error, invalidate on
- * settle. A `rating_prompt` in the answer is offered to the prompt host (ratings prd2 FR-W9.3).
+ * settle. A `rating_prompt` in the answer is offered to the prompt host.
  */
 function FilmWatchedToggle({ film }: { film: FilmDetail }) {
   const queryClient = useQueryClient();

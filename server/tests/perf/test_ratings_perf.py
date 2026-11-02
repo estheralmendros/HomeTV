@@ -1,4 +1,4 @@
-"""Ratings latency (ratings PRD §7 / G5 / S-AC-15) on the G3 seed (``test_browse_perf._seed``:
+"""Ratings latency on the browse seed (``test_browse_perf._seed``:
 5 profiles, 2,000 films, 200 shows x 5 seasons x 10 episodes) plus the "Mi lista" seed
 (``test_watchlist_perf._seed_lists``) and 2,000 ratings (each profile rates 320 films and 80
 shows, random ``stars_x2``/``rated_at``; films 1-20 and shows 1-5 rated by all five) and 200

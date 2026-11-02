@@ -16,7 +16,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** prd3 Playback Flow rules 4–5 and 10. */
+/** Server tracks ↔ ExoPlayer `Tracks`. */
 @RunWith(AndroidJUnit4::class)
 class ExoTrackMapperTest {
     private fun group(format: Format, selected: Boolean = false, supported: Boolean = true) = Tracks.Group(

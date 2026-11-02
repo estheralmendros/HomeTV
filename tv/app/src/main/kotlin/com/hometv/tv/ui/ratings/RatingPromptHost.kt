@@ -20,7 +20,7 @@ import com.hometv.tv.di.AppContainer
 import com.hometv.tv.ui.navigation.Route
 
 /**
- * The one root-level rating prompt (ratings prd3 FR-T7), after the `NavHost` in `HomeTvRoot`: takes a
+ * The one root-level rating prompt, after the `NavHost` in `HomeTvRoot`: takes a
  * pending prompt of `AppContainer.ratingPrompts` for the current profile once the current destination
  * is RESUMED and is not the Player, Setup or the Profile Picker, and shows it as a prompt-mode
  * [RatingDialog] over that screen (one at a time: a newer offer waits until this one closes). Leaving
@@ -66,6 +66,6 @@ fun RatingPromptHost(container: AppContainer, nav: NavHostController) {
     }
 }
 
-/** The prompt never opens over the Player (T-AC-1), Setup or the Profile Picker. */
+/** The prompt never opens over the Player, Setup or the Profile Picker. */
 private fun blocksPrompt(destination: NavDestination): Boolean =
     destination.hasRoute<Route.Player>() || destination.hasRoute<Route.Setup>() || destination.hasRoute<Route.Profiles>()

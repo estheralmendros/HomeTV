@@ -1,4 +1,4 @@
-// localStorage access wrapped in try/catch (prd2 §2): the app works without storage.
+// localStorage access wrapped in try/catch: the app works without storage.
 
 function storage(): Storage | null {
   try {

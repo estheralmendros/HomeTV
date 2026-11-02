@@ -1,6 +1,5 @@
 // PlayerPage: request-time outcomes — preparing (texts, loop, cap, Cancel), busy, transcoder
-// failures (detail, keyframe_index_failed terminal per version), item 404 and unsupported
-// (prd2 §9 steps 1, 4a, 15 and §9.1).
+// failures (detail, keyframe_index_failed terminal per version), item 404 and unsupported.
 import { fireEvent, screen, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -28,7 +27,7 @@ beforeEach(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 });
 
-describe('503 preparing (§9 step 4a)', () => {
+describe('503 preparing', () => {
   it('×2 (estimates 150 then 40) then 200: "quedan unos 3 min" → "queda menos de un minuto", three identical POSTs 5 s apart, then playback', async () => {
     useFakePlayerTimers();
     answerPlayback(preparing(150), preparing(40), f.playbackDirect());
@@ -142,7 +141,7 @@ describe('500 transcoder_failed', () => {
   });
 });
 
-describe('item 404 (§9 step 1)', () => {
+describe('item 404', () => {
   it('a film item load 404 → the gone screen, no POST, ["home"] invalidated; [Volver] goes back', async () => {
     server.use(http.get(`${API}/films/:id`, () => apiError(404, 'not_found')));
     const queryClient = createTestQueryClient();
@@ -167,7 +166,7 @@ describe('item 404 (§9 step 1)', () => {
   });
 });
 
-describe('unsupported (§9.1)', () => {
+describe('unsupported', () => {
   it('reason-specific message and caps-filtered alternatives of the same part; a choice re-requests that file', async () => {
     serveFilm(
       f.filmDetail({

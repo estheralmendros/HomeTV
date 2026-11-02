@@ -1,4 +1,4 @@
-// Fullscreen on the shell's root (prd2 §9 step 11, Rev 5): element fullscreen when the document
+// Fullscreen on the shell's root: element fullscreen when the document
 // allows it (standard or webkit-prefixed); else the iPhone's native player through
 // `video.webkitEnterFullscreen()`; else no button. The root belongs to PlayerRoute, so
 // fullscreen survives next-episode / next-part navigations.

@@ -15,7 +15,7 @@ sealed interface NextEpisodeResult {
 
 /**
  * Next episode via `next_episode_id`, skipping candidates whose `media_files` contain the file that
- * is playing (prd.md §9 D12, multi-episode files), one `GET /api/episodes/{id}` per hop, at most
+ * is playing (multi-episode files), one `GET /api/episodes/{id}` per hop, at most
  * [maxHops] requests. `fetch` is normally `catalog.episode(id, Origin.Background)` (the prefetch is a
  * background caller).
  */

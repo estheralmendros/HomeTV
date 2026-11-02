@@ -1,4 +1,4 @@
-"""Static ``web_dist`` serving + SPA fallback (PRD §12).
+"""Static ``web_dist`` serving + SPA fallback.
 
 Any ``GET``/``HEAD`` outside ``/api``:
 

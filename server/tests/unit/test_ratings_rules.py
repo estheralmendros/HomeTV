@@ -1,4 +1,4 @@
-"""Ratings, pure (ratings PRD FR-6, FR-11): household average rounding, ``RatingRequest``
+"""Ratings, pure: household average rounding, ``RatingRequest``
 validation and the stars <-> ``stars_x2`` conversion."""
 
 import json

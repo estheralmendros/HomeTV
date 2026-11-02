@@ -1,4 +1,4 @@
-"""Pure person normalisation (actor screen FR-5): ``normalize_credits`` rules 1-5,
+"""Pure person normalisation: ``normalize_credits`` rules 1-5,
 ``normalize_person``, ``is_fresh``."""
 
 from datetime import UTC, date, datetime, timedelta

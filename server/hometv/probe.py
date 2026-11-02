@@ -1,4 +1,4 @@
-"""ffprobe wrapper and normalization to ProbeResult (PRD §3).
+"""ffprobe wrapper and normalization to ProbeResult.
 
 - ``normalize(ffprobe_json)`` is pure.
 - ``probe(path)`` runs ffprobe through an injectable ``runner`` (default ``run_subprocess``,

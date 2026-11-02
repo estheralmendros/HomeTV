@@ -1,4 +1,4 @@
-// PlayerPage: audio switch (prd2 §9 step 8, D7) — request body, session ownership and every
+// PlayerPage: audio switch — request body, session ownership and every
 // outcome in HLS and direct mode, including the preparing wait and its Cancel.
 import { fireEvent, screen, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';

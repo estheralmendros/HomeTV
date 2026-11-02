@@ -10,12 +10,12 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-/** prd3 Testing Decisions "Next episode (D12, D11)" and §8 Autoplay. */
+/** Next episode: same-file skips, matching versions and autoplay. */
 class PlayerNextEpisodeTest : PlayerTestBase() {
     private val friends = F.file(7, duration = 2640.0, fileName = "Friends.S01E01E02.mkv")
 
     @Test
-    fun `D12 - a multi-episode file skips the same-file episode and counts down to the one after`() = playerTest {
+    fun `a multi-episode file skips the same-file episode and counts down to the one after`() = playerTest {
         episodes(
             episodeDetail(101, listOf(friends), next = 102, season = 1, episode = 1),
             episodeDetail(102, listOf(friends), next = 103, season = 1, episode = 2),
@@ -39,7 +39,7 @@ class PlayerNextEpisodeTest : PlayerTestBase() {
     }
 
     @Test
-    fun `D12 - when the same-file episode is the last one there is no countdown and the player exits`() = playerTest {
+    fun `when the same-file episode is the last one there is no countdown and the player exits`() = playerTest {
         episodes(episodeDetail(101, listOf(friends), next = 102), episodeDetail(102, listOf(friends), next = null))
         answerWith(direct(fileId = 7, duration = 2640.0))
         val vm = vm(itemType = "episode", itemId = 101)
@@ -52,7 +52,7 @@ class PlayerNextEpisodeTest : PlayerTestBase() {
     }
 
     @Test
-    fun `D12 - eleven consecutive same-file episodes stop after 10 hops and count as the last one`() = playerTest {
+    fun `eleven consecutive same-file episodes stop after 10 hops and count as the last one`() = playerTest {
         val chain = (101L..112L).map { id -> episodeDetail(id, listOf(friends), next = id + 1) }
         episodes(*chain.toTypedArray())
         answerWith(direct(fileId = 7, duration = 2640.0))
@@ -66,7 +66,7 @@ class PlayerNextEpisodeTest : PlayerTestBase() {
     }
 
     @Test
-    fun `D11 - the next episode starts on a matching playable version at its saved position`() = playerTest {
+    fun `the next episode starts on a matching playable version at its saved position`() = playerTest {
         codecs.inventory = codecs.inventory.copy(video = codecs.inventory.video.filter { it.mime == "video/avc" })
         val uhd = F.hevc(21, duration = 1320.0)
         val hd = F.file(22, duration = 1325.0)
@@ -90,7 +90,7 @@ class PlayerNextEpisodeTest : PlayerTestBase() {
     }
 
     @Test
-    fun `D11 - a non-matching version starts at 0 with the different-version notice`() = playerTest {
+    fun `a non-matching version starts at 0 with the different-version notice`() = playerTest {
         codecs.inventory = codecs.inventory.copy(video = codecs.inventory.video.filter { it.mime == "video/avc" })
         episodes(
             episodeDetail(203, listOf(F.file(1, duration = 1320.0)), next = 204),

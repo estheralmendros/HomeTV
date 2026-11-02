@@ -100,14 +100,14 @@ describe('HomePage', () => {
       expect(await findProbedLocation()).toBe('/watch/film/12');
     });
 
-    it('a rated film card carries the rating badge in its name (ratings prd2 FR-W11)', async () => {
+    it('a rated film card carries the rating badge in its name', async () => {
       serveHome(f.homeResponse({ continue_watching: [f.filmSummary({ progress: f.progress(), my_rating: 4.5 })] }));
       renderHome();
       const row = await screen.findByRole('region', { name: 'Seguir viendo' });
       expect(within(row).getByRole('link', { name: 'Dune (2021), tu puntuación: 4,5 estrellas' })).toHaveAttribute('href', '/watch/film/12');
     });
 
-    it('episode cards open /watch/episode/{id} without ?file=; the home media_files pick a playable sibling (D11)', async () => {
+    it('episode cards open /watch/episode/{id} without ?file=; the home media_files pick a playable sibling', async () => {
       const files: MediaFile[] = [
         f.episodeFile({ id: 501, video: HEVC, label: '2160p HEVC', duration_seconds: 1320 }),
         f.episodeFile({ id: 502, duration_seconds: 1318 }),
@@ -124,7 +124,7 @@ describe('HomePage', () => {
       expect(card).toHaveTextContent('T2 · E3 · Office Olympics');
       expect(within(row).getByRole('link', { name: 'Detalles de The Office' })).toHaveAttribute('href', '/shows/7');
 
-      // What the player (phase 4) will start from the home payload under Chrome caps (no HEVC).
+      // What the player will start from the home payload under Chrome caps (no HEVC).
       const chosen = selectVersion(entry.media_files, getClientCaps(), entry.progress);
       expect(chosen?.id).toBe(502);
       expect(startPosition(chosen!, entry.media_files, entry.progress)).toEqual({ seconds: 600, differentVersion: false });
@@ -163,7 +163,7 @@ describe('HomePage', () => {
     });
   });
 
-  describe('Next Up episodes (prd.md Rev 13: part of Continue Watching)', () => {
+  describe('Next Up episodes (part of Continue Watching)', () => {
     it('one "Seguir viendo" row holds the in-progress film and the Next Up episode; no "A continuación" row', async () => {
       const nextUp = f.homeEpisode({ id: 346, episode_number: 4, title: 'The Fire', progress: null });
       serveHome(f.homeResponse({ continue_watching: [f.filmSummary({ progress: f.progress() }), nextUp] }));

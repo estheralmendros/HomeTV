@@ -15,7 +15,7 @@ import com.hometv.tv.core.api.ShowSummary
 import com.hometv.tv.core.api.UnknownSummary
 import com.hometv.tv.core.api.apiCall
 
-/** The five Browse sort options (prd3 §4.2), in the order the sort button cycles through them. */
+/** The five Browse sort options, in the order the sort button cycles through them. */
 enum class BrowseSort(val sort: String, val order: String) {
     TITLE_ASC("title", "asc"),
     TITLE_DESC("title", "desc"),
@@ -24,10 +24,10 @@ enum class BrowseSort(val sort: String, val order: String) {
     ADDED_DESC("added", "desc"),
 }
 
-/** Browse filters (prd3 §4 step 2): a TMDB genre id and an inclusive year range; null = not set. */
+/** Browse filters: a TMDB genre id and an inclusive year range; null = not set. */
 data class BrowseFilter(val genreId: Long? = null, val yearFrom: Int? = null, val yearTo: Int? = null, val watched: Boolean? = null)
 
-/** Catalog reads (prd3 §3–§7). Every call renews the session silently on a 401 (§2.5). */
+/** Catalog reads. Every call renews the session silently on a 401. */
 class CatalogRepository(
     private val api: () -> HomeTvApi,
     private val guard: SessionGuard,

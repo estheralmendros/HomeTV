@@ -1,4 +1,4 @@
-// Stable player shell for /watch/:type/:id (prd2 §9 Player identity, Rev 5/7). Not keyed: React
+// Stable player shell for /watch/:type/:id. Not keyed: React
 // Router keeps it mounted across next-episode / next-part navigations, so the fullscreen container
 // and the single <video playsinline preload="metadata"> survive them. PlayerPage (all per-playback
 // state) is keyed by pathname + `file` only, never by `t`.
@@ -31,7 +31,7 @@ export function usePlayerShell(): PlayerShell {
   return shell;
 }
 
-/** The PlayerPage key: pathname + `?file=` (Rev 7: never `t`). */
+/** The PlayerPage key: pathname + `?file=` (never `t`). */
 export function playerPageKey(pathname: string, search: URLSearchParams): string {
   return `${pathname}?file=${search.get('file') ?? ''}`;
 }
@@ -43,7 +43,7 @@ export function PlayerRoute() {
   const [rootEl, setRootEl] = useState<HTMLDivElement | null>(null);
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
   const shell = useMemo<PlayerShell | null>(() => (rootEl && videoEl ? { rootEl, videoEl } : null), [rootEl, videoEl]);
-  // No rating prompt dialog during playback (ratings prd2 FR-W9.1): the host waits for the release.
+  // No rating prompt dialog during playback: the host waits for the release.
   const { suppress } = useRatingPrompt();
   useEffect(() => suppress(), [suppress]);
   const type = parsePlayerType(params.type);

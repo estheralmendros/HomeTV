@@ -32,9 +32,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * cast-appearances prd3 (Android TV): OK on a Film detail cast card opens the Person screen; its
- * focus map (FR-T10), the biography dialog, Back chains that restore focus, the in-place refetch
- * after playback (rule 6), the degraded / empty / 404 states and the 960×540 dp layout fit (FR-T7).
+ * OK on a Film detail cast card opens the Person screen; its
+ * focus map, the biography dialog, Back chains that restore focus, the in-place refetch
+ * after playback, the degraded / empty / 404 states and the 960×540 dp layout fit.
  */
 @RunWith(AndroidJUnit4::class)
 class PersonFocusTest : UiTestBase() {
@@ -69,7 +69,7 @@ class PersonFocusTest : UiTestBase() {
         ) + (20L until 28L).map { appearance(FilmSummary(it, "Film $it", 2000), "Personaje $it") },
     )
 
-    /** Never fetched with TMDB unreachable: name and photo only (prd.md "credits_complete"). */
+    /** Never fetched with TMDB unreachable: name and photo only (`credits_complete` false). */
     private fun degraded(id: Long, appearances: List<PersonAppearance> = listOf(appearance(duneCard, "Paul Atreides"), appearance(officeCard, "Finn Walden"))) =
         PersonDetail(person_id = id, name = "Timothée Chalamet", credits_complete = false, appearances = appearances)
 
@@ -110,7 +110,7 @@ class PersonFocusTest : UiTestBase() {
 
     private fun scroll(tag: String): Float = node(tag).fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()
 
-    // ---- Layout fit (FR-T7; written before the layout) ------------------------------------------
+    // ---- Layout fit (written before the layout) -------------------------------------------------
 
     @Test
     fun theNameAndTheFirstCardsSubtitleFitTheSafeAreaWithFocusOnTheFirstCard() {

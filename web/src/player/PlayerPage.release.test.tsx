@@ -1,4 +1,4 @@
-// PlayerPage: exit reports from tracked values (Rev 6) and in-mount releases (Rev 7/8). The
+// PlayerPage: exit reports from tracked values and in-mount releases. The
 // shared <video> is reset by every release (load()/destroy() stubs: currentTime → 0 + a queued
 // timeupdate), so no report may ever carry 0 because of a release.
 import { fireEvent, screen, within } from '@testing-library/react';
@@ -34,7 +34,7 @@ beforeEach(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 });
 
-describe('exit report from tracked values (Rev 6)', () => {
+describe('exit report from tracked values', () => {
   it('play a film from 0 to 400 s, Back → exactly one final PUT with position_seconds 400', async () => {
     serveFilm([f.mediaFile()], f.progress({ position_seconds: 0, media_file_id: 91 }));
     const p = renderPlayer('/watch/film/12');
@@ -93,7 +93,7 @@ describe('exit report from tracked values (Rev 6)', () => {
   });
 });
 
-describe('in-mount releases (Rev 7/8)', () => {
+describe('in-mount releases', () => {
   it('(a) HLS paused at 400 s, released after 30 min, then Back → the final PUT carries 400', async () => {
     useFakePlayerTimers();
     serveFilm();

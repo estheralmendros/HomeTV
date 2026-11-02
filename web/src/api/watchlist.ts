@@ -1,4 +1,4 @@
-// "Mi lista" endpoints (watchlist prd.md FR-8). Bearer only; writes answer 204.
+// "Mi lista" endpoints. Bearer only; writes answer 204.
 import { apiFetch } from './client';
 import { kindSegment } from './kind';
 import type { Page, WatchlistEntry, WatchlistKind, WatchlistQuery } from './types';

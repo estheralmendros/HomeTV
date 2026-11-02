@@ -137,7 +137,7 @@ const DYNAMIC_PARENTS = [
   'admin.libraries.errors',
 ];
 
-describe('UI string catalog (Rev 9)', () => {
+describe('UI string catalog', () => {
   it('detects literal JSX text and literal accessible props', () => {
     const src = `export const A = () => (<div title="Hola" aria-label={'Menú'}>
       Texto suelto {'otro'} {S.x} ✓ · <img alt="" /> <input placeholder="Buscar" /> HomeTV </div>);`;
@@ -165,7 +165,7 @@ describe('UI string catalog (Rev 9)', () => {
     expect(unused).toEqual([]);
   });
 
-  it('has an S.errors entry for every error code listed in prd2 §1', () => {
+  it('has an S.errors entry for every error code the API returns', () => {
     const codes = [
       'network_error', 'not_found', 'forbidden', 'too_many_sessions', 'too_many_attempts', 'invalid_pin',
       'admin_locked', 'pin_required', 'pin_not_allowed', 'scan_in_progress', 'tmdb_unavailable',
@@ -183,7 +183,7 @@ describe('UI string catalog (Rev 9)', () => {
     }
   });
 
-  it('uses the exact Spanish texts of the PRD', () => {
+  it('uses the exact Spanish texts', () => {
     expect(errorMessage(new ApiError({ status: 0, code: 'network_error' }))).toBe(
       'No se puede conectar con el servidor.',
     );
@@ -206,7 +206,7 @@ describe('UI string catalog (Rev 9)', () => {
     expect(html).toMatch(/<title>HomeTV<\/title>/);
   });
 
-  it('has the ratings glossary texts (ratings prd.md § Glossary, prd2 FR-W16)', () => {
+  it('has the ratings glossary texts', () => {
     expect(S.titles.activity).toBe('Actividad');
     expect(S.nav.activity).toBe('Actividad');
     expect(S.nav.search).toBe('Buscar');

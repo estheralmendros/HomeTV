@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-/** `filesDir/home_cache/{profileId}.json` (prd3 §3.6, Persistence). */
+/** `filesDir/home_cache/{profileId}.json`. */
 class HomeCacheTest {
     private val dir: File = Files.createTempDirectory("home_cache").toFile()
     private val cache = HomeCache(dir, Dispatchers.Unconfined)
@@ -45,7 +45,7 @@ class HomeCacheTest {
     }
 
     @Test
-    fun `an old cache file that still has next_up (prd md Rev 12 and earlier) reads without failing`() = runTest {
+    fun `an old cache file that still has next_up reads without failing`() = runTest {
         val legacy = Fixtures.home.replace("\"recently_added\": [", "\"next_up\": [ { \"type\": \"episode\", \"id\": 346, \"show_id\": 7, \"show_title\": \"The Office\", \"season_number\": 2, \"episode_number\": 4 } ], \"recently_added\": [")
         File(dir, "5.json").writeText("""{ "home": $legacy, "films": [], "shows": [] }""")
         val read = cache.read(5)!!

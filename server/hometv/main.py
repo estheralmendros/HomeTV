@@ -181,7 +181,7 @@ def create_app(
 
 
 def run() -> None:
-    """Production entry point: exactly one uvicorn worker (PRD §6 Concurrency model)."""
+    """Production entry point: exactly one uvicorn worker (single-process write lock)."""
     workers = os.environ.get("WEB_CONCURRENCY", "1").strip() or "1"
     if workers != "1":
         raise SystemExit(f"HomeTV must run as a single worker (WEB_CONCURRENCY={workers})")

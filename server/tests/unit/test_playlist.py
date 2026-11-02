@@ -1,4 +1,4 @@
-"""HLS playlist text from segment plans (PRD §7 HLS step 2)."""
+"""HLS playlist text from segment plans."""
 
 from hometv.playback.segments import Segment, plan_segments, render_playlist
 

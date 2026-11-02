@@ -58,7 +58,7 @@ import com.hometv.tv.ui.theme.HomeTvColors
 import com.hometv.tv.ui.theme.HomeTvDimens
 import com.hometv.tv.ui.theme.HomeTvFocus
 
-/** (10) Person (cast-appearances prd3 §4); Back pops to the screen that opened it (Film detail restores its cast card). */
+/** (10) Person; Back pops to the screen that opened it (Film detail restores its cast card). */
 @Composable
 fun PersonScreen(vm: PersonViewModel, navigator: AppNavigator) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -76,7 +76,7 @@ fun PersonScreen(vm: PersonViewModel, navigator: AppNavigator) {
 /**
  * Header (photo, 1-line name, life span, place, incomplete note, 3-line biography block), "En tu
  * catálogo" and the poster row: sized so the name and the first card's subtitle fit 960×540 dp with
- * focus on the first card (FR-T7). D-pad moves are never reported to the VM: `state.focus` only
+ * focus on the first card. D-pad moves are never reported to the VM: `state.focus` only
  * changes on OK, on closing the biography and on a refetch whose target is gone.
  */
 @Composable

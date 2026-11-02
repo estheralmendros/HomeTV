@@ -1,19 +1,19 @@
-"""Scan scheduler (PRD §11): startup + periodic + manual scans, single-flight, scan status.
+"""Scan scheduler: startup + periodic + manual scans, single-flight, scan status.
 
 One ``scan_run`` row per run; each run = ``Scanner.run`` then ``Enricher.run`` (phases
 walking -> probing -> enriching -> done). Single-flight via an ``asyncio.Lock``: a manual
 trigger while running raises 409 ``scan_in_progress`` (``details.scan`` = ScanStatus); a
 scheduled tick while running is skipped.
 
-Phase 3 wiring: ``app.state.scheduler.trigger("manual")`` -> 202 ScanStatus and
+Wiring: ``app.state.scheduler.trigger("manual")`` -> 202 ScanStatus and
 ``app.state.scheduler.status()`` (or ``scan_status(session)``) -> 200 ScanStatus.
-Phase 4 hook: pass ``keyframe_hook`` (forwarded to the scanner, §4 step 5a).
+Keyframe hook: pass ``keyframe_hook`` (forwarded to the scanner).
 
-Library folders (HOMETV-1): production passes ``folders=LibraryFolders.current`` (forwarded to
+Library folders: production passes ``folders=LibraryFolders.current`` (forwarded to
 every ``Scanner``); ``trigger("libraries", before=save)`` runs ``save`` under the lock before the
 run row exists, and only a ``libraries`` run relinks (``Scanner(relinks=True)``).
 
-Change-triggered scans (HOMETV-1, prd.md FR-10): ``request_scoped(scopes)`` merges settled scopes
+Change-triggered scans: ``request_scoped(scopes)`` merges settled scopes
 into a pending queue and kicks one ``watch`` run (``Scanner(scope=...)``) when the lock is free;
 scopes requested while any run holds the lock run right after it. A full run clears the queue
 once its row exists (it covers those scopes) and calls ``on_full_run`` (the watcher re-arms).
@@ -124,7 +124,7 @@ class Scheduler:
         self._lock = asyncio.Lock()
         self.background_task: asyncio.Task[None] | None = None
         self._scan_task: asyncio.Task[None] | None = None
-        # Change-triggered runs (prd.md FR-10).
+        # Change-triggered runs.
         self._pending: list[ScanScope] = []
         self._kick_task: asyncio.Task[None] | None = None
         self._stopping = False

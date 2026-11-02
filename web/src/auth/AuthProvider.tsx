@@ -1,4 +1,4 @@
-// Per-tab profile identity (prd2 §2): the session is read from localStorage ONCE at boot into
+// Per-tab profile identity: the session is read from localStorage ONCE at boot into
 // memory; every request of this tab uses that token. Another tab's switch only shows a banner.
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import {
@@ -46,7 +46,7 @@ export interface AuthContextValue {
    * admin token and, unless `clearCache` is false, the per-profile query cache.
    */
   signIn: (response: SessionResponse, options?: { clearCache?: boolean }) => void;
-  /** Client-side sign out (prd.md has no revocation endpoint), then /profiles. */
+  /** Client-side sign out (the API has no revocation endpoint), then /profiles. */
   signOut: () => void;
   crossTabNotice: CrossTabNotice | null;
   dismissCrossTabNotice: () => void;

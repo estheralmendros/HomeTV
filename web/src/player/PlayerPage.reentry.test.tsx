@@ -1,5 +1,5 @@
-// PlayerPage: the re-entry rule (Rev 5: exit write-through + barrier) and the one-shot `?t=`
-// across reloads (Rev 7/8). The MSW server here is stateful: PUT /api/progress updates the
+// PlayerPage: the re-entry rule (exit write-through + barrier) and the one-shot `?t=`
+// across reloads. The MSW server here is stateful: PUT /api/progress updates the
 // progress that GET /api/films|episodes/{id} answers, like the real server.
 import { cleanup, fireEvent, screen } from '@testing-library/react';
 import { delay, http, HttpResponse } from 'msw';
@@ -52,7 +52,7 @@ function statefulServer({
 
 const back = () => fireEvent.click(screen.getAllByRole('button', { name: 'Volver' })[0] as HTMLElement);
 
-describe('re-entry within 30 s (Rev 5)', () => {
+describe('re-entry within 30 s', () => {
   it('an episode started from the home fallback: the second POST uses the final report’s 400, not 100', async () => {
     useFakePlayerTimers();
     const files = [f.episodeFile({ id: 501 })];
@@ -114,7 +114,7 @@ describe('re-entry within 30 s (Rev 5)', () => {
   });
 });
 
-describe('one-shot ?t= across reloads (Rev 7/8)', () => {
+describe('one-shot ?t= across reloads', () => {
   it('next-part URL ?file=<p2>&t=0 → ?file=<p2> without a second POST; play to 600; a reload of that URL resumes at 600', async () => {
     useFakePlayerTimers();
     const parts = [f.mediaFile({ id: 201, part_number: 1, duration_seconds: 3000 }), f.mediaFile({ id: 202, part_number: 2, duration_seconds: 3000 })];

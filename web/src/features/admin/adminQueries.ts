@@ -1,5 +1,5 @@
 // Admin queries (lazy admin chunk). `['admin', …]` queries are disabled while no admin token is
-// held (prd2 § State & data fetching); a 401 admin_locked clears the token, which pauses them
+// held; a 401 admin_locked clears the token, which pauses them
 // until RequireAdmin's keypad unlocks again, then they refetch.
 import { keepPreviousData, queryOptions, useQuery } from '@tanstack/react-query';
 import { browseFolders, getLibraries, getScan, listUnmatched, tmdbSearch, tmdbSeason, tmdbSeasons } from '@/api/admin';

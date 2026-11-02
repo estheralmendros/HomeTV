@@ -1,4 +1,4 @@
-"""Profiles: /api/profiles (public list), bootstrap, session (no PIN), /api/me (PRD §8)."""
+"""Profiles: /api/profiles (public list), bootstrap, session (no PIN), /api/me."""
 
 import asyncio
 

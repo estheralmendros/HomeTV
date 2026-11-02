@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-/** `ServerRepository.validate` outcome matrix (prd3 §1.4). */
+/** `ServerRepository.validate` outcome matrix. */
 class ServerRepositoryTest {
     private val t = TestServer()
     private val repo = ServerRepository(ApiClientFactory.validationClient("UA"))

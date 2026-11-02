@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-/** D12 resolution retries, extracted from [PlayerViewModel] (the session behaviour is in `PlayerNextEpisodeTest`). */
+/** Next-episode resolution retries, extracted from [PlayerViewModel] (the session behaviour is in `PlayerNextEpisodeTest`). */
 class NextEpisodeResolutionTest {
     private var fetches = 0
     private var failing = true

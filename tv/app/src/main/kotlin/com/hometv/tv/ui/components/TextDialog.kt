@@ -37,7 +37,7 @@ import com.hometv.tv.ui.theme.HomeTvColors
 import kotlinx.coroutines.launch
 
 /**
- * A read-only text dialog (the Person biography, cast-appearances prd3 FR-T9): title, then the full
+ * A read-only text dialog (the Person biography): title, then the full
  * text in a focusable scroll area that takes focus on open; Up/Down scroll it by 3/4 of its height.
  * Back closes it ([onDismiss]); there is no button, as in [ListDialog].
  */

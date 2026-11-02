@@ -1,4 +1,4 @@
-"""choose_match / merge_results (PRD §5 Matching): synthetic TMDB result lists."""
+"""choose_match / merge_results: synthetic TMDB result lists."""
 
 import pytest
 

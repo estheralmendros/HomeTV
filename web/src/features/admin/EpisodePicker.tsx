@@ -1,4 +1,4 @@
-// Season + episodes of a shows-library file entry in the fix-match dialog (prd2 §11 step 3):
+// Season + episodes of a shows-library file entry in the fix-match dialog:
 // dropdowns filled from the TMDB season lookups and prefilled from `parsed`; when a lookup fails,
 // the error plus a plain season number input and an episodes text input (`3` or `16-17`).
 import { useQuery } from '@tanstack/react-query';

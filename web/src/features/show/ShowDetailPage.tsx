@@ -1,4 +1,4 @@
-// Show detail (prd2 §8): header, next-episode button, season selector synced to ?season=N
+// Show detail: header, next-episode button, season selector synced to ?season=N
 // (default: next_episode's season, else the first), the season's episodes and bulk watched
 // actions. A 404 on the season (its episodes went missing) refetches the show and falls back
 // to the default season.

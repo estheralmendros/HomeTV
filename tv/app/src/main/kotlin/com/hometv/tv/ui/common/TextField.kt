@@ -55,7 +55,7 @@ fun TvTextField(
         singleLine = true,
         textStyle = TextStyle(color = HomeTvColors.OnBackground, fontSize = 18.sp),
         cursorBrush = SolidColor(HomeTvColors.Primary),
-        // The app is Spanish-only: ask the IME for its Spanish layout (with "ñ") whatever the TV's language (prd3 §5 step 1).
+        // The app is Spanish-only: ask the IME for its Spanish layout (with "ñ") whatever the TV's language.
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction, autoCorrectEnabled = false, hintLocales = SPANISH),
         keyboardActions = KeyboardActions(onAny = { onImeAction() }),
         modifier = modifier

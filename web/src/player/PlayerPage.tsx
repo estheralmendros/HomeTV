@@ -1,9 +1,9 @@
-// One playback of one item/file (prd2 §9). Keyed by PlayerRoute on pathname + `?file=`, so the
+// One playback of one item/file. Keyed by PlayerRoute on pathname + `?file=`, so the
 // next episode / next part / an explicit `?file=` change remount it with a fresh machine,
 // session, reporter and subtitle cache, while the shell's <video> and fullscreen root survive.
 // Wiring (order matters: unmount cleanups run in declaration order):
 //   start decision → LOAD → useProgressReporter → usePlaybackSession → UI.
-// Rating prompt (ratings prd2 FR-W9): a `rating_prompt` from a report shows nothing during playback;
+// Rating prompt: a `rating_prompt` from a report shows nothing during playback;
 // at `ended` with no next item the inline RatingForm replaces "Fin de la reproducción" until it is
 // answered. Leaving with the form visible = Ahora no; leaving without it offers the prompt to the
 // host (RatingPromptHost), which shows it over the screen returned to.
@@ -104,7 +104,7 @@ export function PlayerPage({ type, id }: PlayerPageProps) {
   const [params] = useState(() => ({ file: parseFile(search.get('file')), t: parseStart(search.get('t')) }));
 
   // --- 1. item + start decision --------------------------------------------------------------
-  // Rev 5: requested on every mount, even when a fresh copy is cached.
+  // Requested on every mount, even when a fresh copy is cached.
   const query = useQuery<PlayerItem>({
     queryKey: type === 'film' ? queryKeys.film(id) : queryKeys.episode(id),
     queryFn: ({ signal }) => (type === 'film' ? getFilm(id, signal) : getEpisode(id, signal)),
@@ -131,7 +131,7 @@ export function PlayerPage({ type, id }: PlayerPageProps) {
     loaded.current = true;
     tracker.position = ready.start;
     dispatch({ type: 'LOAD', fileId: ready.file.id, startPositionSeconds: ready.start });
-    // `?t=` is one-shot (Rev 7/8): drop only `t`, keep everything else (never add `file`).
+    // `?t=` is one-shot: drop only `t`, keep everything else (never add `file`).
     if (search.has('t')) {
       const rest = new URLSearchParams(search);
       rest.delete('t');
@@ -174,7 +174,7 @@ export function PlayerPage({ type, id }: PlayerPageProps) {
     notify(notice.kind === 'audio_unsupported' ? S.player.audioUnsupported : notice.message);
   }, [state.notice, notify]);
 
-  // D11: "Reproduciendo otra versión desde el principio" for 4 s once playback starts.
+  // Different version: "Reproduciendo otra versión desde el principio" for 4 s once playback starts.
   const differentVersionShown = useRef(false);
   useEffect(() => {
     if (!state.hasPlayed || !ready?.differentVersion || differentVersionShown.current) return;

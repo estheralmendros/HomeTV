@@ -4,8 +4,8 @@ import com.hometv.tv.core.api.ClientCaps
 import com.hometv.tv.core.api.MediaFile
 
 /**
- * Pure: device decoders + current audio route (+ the file, + exclusions) → `ClientCaps`
- * (prd3 Capability Detection). Exclusions hold codecs/containers removed after a decoder,
+ * Pure: device decoders + current audio route (+ the file, + exclusions) → `ClientCaps`.
+ * Exclusions hold codecs/containers removed after a decoder,
  * silent-track or container failure; callers keep them for the rest of the item's playback.
  * Output order is fixed (containers, then codecs in the order of the tables below).
  */

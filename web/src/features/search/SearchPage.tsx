@@ -1,4 +1,4 @@
-// Global search (prd2 §6): GET /api/search?q=&limit=20 when q.trim() is not empty; films and
+// Global search: GET /api/search?q=&limit=20 when q.trim() is not empty; films and
 // shows sections (hidden when empty). The server does accent/case folding; the UI only trims.
 import { useQuery } from '@tanstack/react-query';
 import { useId } from 'react';

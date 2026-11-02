@@ -69,7 +69,7 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     `create_profile`, `update_profile`, `delete_profile`).
   - `hometv/watch.py`: pure rules (90 %, last part, in-progress, `next_up`, ratings "finished":
     `last_episode` (max present (season, episode), specials only without regulars),
-    `is_title_finished` (used by the show prompt; `last_episode` = spec + test oracle)) + `report_progress` -> `ProgressReport` / `mark_watched` -> `WatchedResponse`
+    `is_title_finished` (used by the show prompt; `last_episode` = reference rule + test oracle)) + `report_progress` -> `ProgressReport` / `mark_watched` -> `WatchedResponse`
     (`updated` + `rating_prompt`), both write blocks in `fk_to_unauthorized()`; prompt only when the
     request watches the finishing item (film; the show's last present episode, incl. a sibling from
     `_mark_siblings_watched` (returns the sibling ids) or a season/show mark) and the profile has no
@@ -124,7 +124,7 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     `open_segment()` -> `SegmentFile(file, size)` opened before eviction, the caller closes it,
     streamed by `stream.open_file_chunks`; `_stop_run` waits for an in-flight `finalizing` split),
     `subtitles.py` (`SubtitleService`), `procs.py` (spawn, `IDLE_PREFIX`, kill sequence).
-  - `hometv/spa.py`: §12 static `web_dist` serving + SPA fallback (`SpaRoute` catch-all for
+  - `hometv/spa.py`: static `web_dist` serving + SPA fallback (`SpaRoute` catch-all for
     non-`/api` GET/HEAD, appended last by `install_spa`; `/assets/*` immutable, stale asset ->
     plain 404, else `index.html` no-cache; "Web UI not built" placeholder without a dist).
   - `hometv/main.py`: `create_app(settings, *, watch_backend_factory=None)` factory + lifespan
@@ -186,9 +186,9 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     `admin_locked`), `AdminPinModal`. `AppProviders` (Query, Toast, Auth, `RatingPromptHost`, AdminPin;
     optional `subscribeLocation` built by `lib/routerLocation.ts` `locationSubscriber(router)` in
     `main.tsx` and the test harness: committed location changes only, as `LocationChange {pathname, previousPathname, action}`; `isSamePageReplace`).
-  - `src/player/`: pure `capabilities`, `versions` (`selectVersion`/`startPosition`/`nextPart`,
-    D10–D13), `playerMachine` (reducer), `tracks`, `nextEpisode`, `progressSync`; I/O hooks
-    `usePlaybackSession` (POST/preparing/attach/keep-alive/D9/recovery/exit), `attachSource`
+  - `src/player/`: pure `capabilities`, `versions` (`selectVersion`/`startPosition`/`nextPart`),
+    `playerMachine` (reducer), `tracks`, `nextEpisode`, `progressSync`; I/O hooks
+    `usePlaybackSession` (POST/preparing/attach/keep-alive/recovery/exit), `attachSource`
     (direct, hls.js, native iOS HLS), `useProgressReporter` (`PositionTracker` attach
     generations; `ratingPrompt` state = the latest non-null `rating_prompt` of a non-final report,
     `onFinalPrompt` option read at send time → `registerFinalReport(qc, item, put, onPrompt)` caches
@@ -300,7 +300,7 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     `AuthInterceptor` Bearer for the server host only), `data/` (`SessionStore` StateFlow +
     `InMemorySessionStore`, `SessionGuard` single-flight `renew` → Renewed|ProfileGone|Unreachable, `currentProfileId()`,
     `withRenewal(Origin.Foreground|Background)`, repositories, `AppEvents`, `NextEpisodeResolver`
-    (D12), `CatalogRepository.person(id)` (`GET /api/people/{id}`, drops non film/show appearances),
+    (skips the playing multi-episode file), `CatalogRepository.person(id)` (`GET /api/people/{id}`, drops non film/show appearances),
     `ProfileRepository.verifyAdminPin` → `PinCheck` (the only PIN on the TV: server change; an
     expired token renews once, `invalid_pin` never renews), `PlaybackRepository` (`preparing` loop as a `Flow<PlaybackProgress>`, POSTs in
     `appScope`; `subtitleLoop`, keep-alive, DELETE), `WatchlistRepository` ("Mi lista": `list(type,
@@ -315,14 +315,14 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     on every successful write; `dismiss` fire-and-forget (`Origin.Background`, logged); `activity(page)`
     drops non film/show; `RatingKind(wire, segment)`), `WatchRepository.putProgress` → `ProgressReport`
     (`rating_prompt`), `setWatched` → `WatchedResult(updated, ratingPrompt)`), `playback/` (pure `ClientCapsBuilder`,
-    `VersionSelector` (D10–D13), `TrackRules`, `TrackCheck`, `PlaybackErrorMapper`,
+    `VersionSelector`, `TrackRules`, `TrackCheck`, `PlaybackErrorMapper`,
     `PlaybackPlanner`, `SeekAccumulator`, `ProgressReporter`, the `PlayerController` interface (its `Listener.onRemote*` carry
     media-session commands, no Media3 types in `core`)),
     `util/` (`ServerUrl`, `Format` (constant es-ES; `longDate`/`age`/`lifeSpan(birthday, deathday,
     today)` → structured `LifeSpan` Living|Deceased|DeathOnly, invalid dates = unknown; `stars(Stars)` "4,5",
     `shortDay(date, withYear)` "12 oct"), `Stars` (value class, halves 1..10: `of(Double?)` nearest ½,
     `fills()`/`fillsOf(null)` → `StarFill`, `step`), pure `relativeTime(at|iso, now, zone)` → `RelativeTime`
-    JustNow|Minutes|Hours|Yesterday|Day (prd2 FR-W14 table; future = JustNow; bad iso = null), `LanguageNames`).
+    JustNow|Minutes|Hours|Yesterday|Day (future = JustNow; bad iso = null), `LanguageNames`).
     `src/testFixtures`: `FakeHomeTvApi`, `TestServer` (MockWebServer routing), `F` media files.
   - `app/` (`com.hometv.tv`): `MainActivity` (offers every key to `KeyDispatch` before Compose
     focus; screens register with `KeyEventInterceptor { event -> Boolean }`), `di/AppContainer`
@@ -410,11 +410,11 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     both reporters and `releasedFinalPut`; `sessionPrompt` (latest wins, kept across attachments) is handed
     to `PlayerDeps.ratingPrompts` (no default) once by `exit()`/`onCleared()`, a later answer at once),
     `NextEpisodeResolution` (next-episode state + retry),
-    `HlsSessionOwner` (HLS DELETEs and row-33 orphans in `appScope`), `PlayerScreen` with Media3 `PlayerView`, overlay, track dialog, countdown, error
+    `HlsSessionOwner` (HLS DELETEs and abandoned-POST orphans in `appScope`), `PlayerScreen` with Media3 `PlayerView`, overlay, track dialog, countdown, error
     screen)). `res/values/strings.xml` is the only catalog; the APK keeps only `es` resources
     (`localeFilters`).
   - Tests: `app/src/test` (ViewModel/glue tests, JUnit 5; `ui/player/PlayerSessionStateTest` covers
-    the §8 session table with `FakePlayerController`; `TestRepos(appScope =)` gives the real
+    the player session table with `FakePlayerController`; `TestRepos(appScope =)` gives the real
     repositories incl. `watchlist`, `ratings` and `ratingPrompts`, pass a scope on the test dispatcher for
     virtual time; `ActivityViewModelTest`, `RatingEditorTest`, `DetailRatingsTest`, `PlayerRatingPromptTest`), `app/src/sharedTest` (Compose focus/navigation
     tests on Robolectric via `UiTestBase` (`assertFullyVisible`/`assertInsideSafeArea`, overridable
@@ -432,7 +432,7 @@ is a contract shared by the web and TV clients: change it deliberately and updat
 
 - `make install`: uv sync + `npm ci`. `make test`: `uv run pytest -m "not perf"`, then
   `npm test` in `web/`, then `make tv-test` (`make server-test` / `make web-test` run one side).
-- Perf (G3 browse p95 < 100 ms): `make perf` (`cd server && uv run pytest -m perf -s`).
+- Perf (browse p95 < 100 ms): `make perf` (`cd server && uv run pytest -m perf -s`).
 - Deploy: `make docker-build` (linux/amd64 image), `make compose-config` (validates the compose
   file with `.env.example`); run with `docker compose up -d --build` in `deploy/`.
 - `make lint`: `server-lint` (ruff check + format check + `uv run mypy`: `[tool.mypy]` in
@@ -450,7 +450,7 @@ is a contract shared by the web and TV clients: change it deliberately and updat
   `make web-typecheck`, `make web-e2e` (Playwright smoke, Chromium, against `HOMETV_E2E_URL`;
   `npx playwright install chromium` once; `HOMETV_E2E_FILM=Dune` for the demo library).
 - Single test: `cd server && uv run pytest tests/unit/test_parser.py -k row11`;
-  `cd web && npx vitest run src/player/versions.test.ts -t "D13"`;
+  `cd web && npx vitest run src/player/versions.test.ts -t "nextPart"`;
   `cd tv && ./gradlew :core:test --tests '*VersionSelectorTest*'`.
 
 ## Conventions

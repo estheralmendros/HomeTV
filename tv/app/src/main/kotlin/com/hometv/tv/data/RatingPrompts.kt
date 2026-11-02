@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
 data class PendingPrompt(val profileId: Long, val prompt: RatingPrompt)
 
 /**
- * The rating prompts waiting to be shown (ratings prd3 FR-T5), app-scoped (`AppContainer.ratingPrompts`):
+ * The rating prompts waiting to be shown, app-scoped (`AppContainer.ratingPrompts`):
  * fed by the player on exit and by "Marcar como visto", consumed by the root `RatingPromptHost`.
  *
  * In memory and thread-safe (offers arrive from `appScope` and from the main thread; one lock). A newer

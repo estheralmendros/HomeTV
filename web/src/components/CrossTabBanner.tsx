@@ -3,7 +3,7 @@ import { reloader } from '@/lib/reload';
 import { S } from '@/strings.es';
 import styles from './CrossTabBanner.module.css';
 
-/** Non-blocking notice after another tab chose a different profile (prd2 §2). */
+/** Non-blocking notice after another tab chose a different profile. */
 export function CrossTabBanner() {
   const { crossTabNotice, dismissCrossTabNotice } = useAuth();
   if (!crossTabNotice) return null;

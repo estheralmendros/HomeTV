@@ -29,7 +29,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * The Browse sort per library, remembered for the app session (not persisted; prd3 §4.2). The
+ * The Browse sort per library, remembered for the app session (not persisted). The
  * filters are not here: they live in the screen's ViewModel and reset when the screen is left.
  */
 class BrowseSortMemory {
@@ -112,9 +112,9 @@ data class BrowseUiState(
 }
 
 /**
- * Browse grid (prd3 §4): pages of 50, 6 columns, the next page when focus reaches the last two
+ * Browse grid: pages of 50, 6 columns, the next page when focus reaches the last two
  * loaded rows (one request in flight, until `items.size == total`; a failed page shows an inline
- * error and waits for [retry]), and the sort / genre / decade / watched list dialogs (§4 step 2). The grid state and
+ * error and waits for [retry]), and the sort / genre / decade / watched list dialogs. The grid state and
  * the loaded pages live here, so Back from a detail restores the same card.
  */
 class BrowseViewModel(

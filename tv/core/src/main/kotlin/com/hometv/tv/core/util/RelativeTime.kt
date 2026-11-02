@@ -6,7 +6,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeParseException
 
-/** When an activity row was rated, relative to now (ratings prd2 FR-W14); the words come from `app` (`UiFormat`). */
+/** When an activity row was rated, relative to now; the words come from `app` (`UiFormat`). */
 sealed interface RelativeTime {
     /** Less than a minute ago, or in the future (a device clock behind the server). */
     data object JustNow : RelativeTime
@@ -22,7 +22,7 @@ sealed interface RelativeTime {
 }
 
 /**
- * The FR-W14 table, checked in order: under 60 s or in the future → just now (whatever the calendar
+ * The rules, checked in order: under 60 s or in the future → just now (whatever the calendar
  * day); same calendar day in [zone] → minutes (< 60) else hours, floored; the previous day →
  * yesterday; older → the day, with the year only when it is not [now]'s.
  */

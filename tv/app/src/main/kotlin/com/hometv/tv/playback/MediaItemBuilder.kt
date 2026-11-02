@@ -7,7 +7,7 @@ import androidx.media3.common.MimeTypes
 import com.hometv.tv.core.playback.MediaItemSpec
 
 /**
- * [MediaItemSpec] → Media3 `MediaItem` (prd3 Playback Flow rules 2–3): the stream/HLS URL with its
+ * [MediaItemSpec] → Media3 `MediaItem`: the stream/HLS URL with its
  * MIME (container MIME for direct play, `application/x-mpegURL` for HLS), plus one
  * `SubtitleConfiguration` per cached WebVTT file (`Format.id` = server track id, so `ExoTrackMapper`
  * finds it; forced tracks carry `SELECTION_FLAG_FORCED`). Subtitles are parsed during extraction

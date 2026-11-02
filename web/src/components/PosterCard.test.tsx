@@ -1,4 +1,4 @@
-// The viewer's rating badge on poster cards (ratings prd2 FR-W11, W-AC-11).
+// The viewer's rating badge on poster cards.
 import { screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import * as f from '../../tests/fixtures';

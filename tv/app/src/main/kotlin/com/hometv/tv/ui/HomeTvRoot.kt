@@ -51,7 +51,7 @@ val LocalAppContainer = staticCompositionLocalOf<AppContainer> { error("AppConta
  * `AppEvent.ServerUnreachable` needs no handling here: the foreground call that triggered it also
  * throws, and that screen shows the Connection Error (shown once). `AppEvent.ItemGone` is handled by
  * `HomeViewModel` (rows) and the container (Home cache). [RatingPromptHost] (after the NavHost) shows
- * the rating prompts (ratings prd3 FR-T7).
+ * the rating prompts.
  */
 @Composable
 fun HomeTvRoot(container: AppContainer, onExit: () -> Unit, keyDispatch: KeyDispatch = remember { KeyDispatch() }) {
@@ -80,7 +80,7 @@ private fun AppNavHost(container: AppContainer, onExit: () -> Unit) {
     val profile by container.account.profile.collectAsStateWithLifecycle()
     val info by container.account.info.collectAsStateWithLifecycle()
     val avatar = profile?.let { p -> AvatarUi.of(p.name, p.avatar_id, info?.avatars) }
-    // "Ajustes" is an admin-only tab (prd3 §3 step 1); hidden while the profile is still unknown.
+    // "Ajustes" is an admin-only tab; hidden while the profile is still unknown.
     val showSettings = profile?.is_admin == true
 
     val expired by container.sessionExpired.collectAsStateWithLifecycle()

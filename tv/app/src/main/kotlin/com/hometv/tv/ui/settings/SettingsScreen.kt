@@ -38,7 +38,7 @@ import com.hometv.tv.ui.text.resolve
 import com.hometv.tv.ui.theme.HomeTvColors
 import com.hometv.tv.ui.theme.HomeTvDimens
 
-/** Settings / About (prd3 §11). The only admin feature: the server change, admins only, behind the PIN (step 3). */
+/** Settings / About. The only admin feature: the server change, admins only, behind the PIN. */
 @Composable
 fun SettingsScreen(vm: SettingsViewModel, navigator: AppNavigator, avatar: AvatarUi?, showSettings: Boolean) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -46,7 +46,7 @@ fun SettingsScreen(vm: SettingsViewModel, navigator: AppNavigator, avatar: Avata
     val focus = rememberFocusRequesters<String>()
     BackHandler { navigator.backToHome(NavTab.SETTINGS) }
     LaunchedEffect(vm) { vm.changeServer.collect { navigator.changeServer() } }
-    // Viewers have no Settings screen (prd3 §11): a profile demoted while it is open (the `/api/me`
+    // Viewers have no Settings screen: a profile demoted while it is open (the `/api/me`
     // refresh of `SettingsViewModel`) goes back to Home, focus on "Inicio" (the bar no longer has "Ajustes").
     LaunchedEffect(showSettings) { if (!showSettings) navigator.backToHome(NavTab.HOME) }
     // Initial focus: [Cambiar servidor]. The [Cambiar de perfil] fallback only covers the moment before a

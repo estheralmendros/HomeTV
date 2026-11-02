@@ -5,7 +5,7 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 
-/** ratings prd3 FR-T3: a profile's rating in ½ steps (1..10 halves). */
+/** A profile's rating in ½ steps (1..10 halves). */
 class StarsTest {
     @Test
     fun `of rounds to the nearest half and is null outside one half to five`() {

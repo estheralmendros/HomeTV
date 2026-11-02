@@ -21,7 +21,7 @@ import com.hometv.tv.ui.text.starsText
 import com.hometv.tv.ui.theme.HomeTvColors
 
 /**
- * Five star icons (ratings prd3 FR-T8): full and half ones in [HomeTvColors.Rating], empty outlines in
+ * Five star icons: full and half ones in [HomeTvColors.Rating], empty outlines in
  * [emptyColor] ([HomeTvColors.Muted]; over artwork the detail block passes a lighter tone); null = five empty stars. One accessible node: "4,5 estrellas" / "Sin puntuación".
  * Inside a control that already says the value ([described] false), the row is hidden from accessibility so TalkBack reads it once.
  */

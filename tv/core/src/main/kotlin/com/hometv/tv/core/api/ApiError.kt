@@ -7,8 +7,8 @@ import kotlinx.serialization.json.JsonObject
 import retrofit2.HttpException
 
 /**
- * Every API failure, parsed from the prd.md error envelope. `serverMessage` and `detail` are
- * English diagnostics: logged, never shown (prd3 §UI Language rule 7); the UI picks its text
+ * Every API failure, parsed from the API error envelope. `serverMessage` and `detail` are
+ * English diagnostics: logged, never shown; the UI picks its text
  * from `code`.
  */
 sealed class ApiException(message: String?, cause: Throwable? = null) : Exception(message, cause) {
@@ -35,7 +35,7 @@ sealed class ApiException(message: String?, cause: Throwable? = null) : Exceptio
     /** A 2xx body that does not decode. */
     class Decode(cause: Throwable) : ApiException(cause.toString(), cause)
 
-    /** Session renewal answered 404 `profile_not_found`: the only path back to the Profile Picker (prd3 §2.5). */
+    /** Session renewal answered 404 `profile_not_found`: the only path back to the Profile Picker. */
     class ProfileGone : ApiException("profile_not_found")
 }
 

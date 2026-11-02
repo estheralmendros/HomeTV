@@ -12,7 +12,7 @@ import kotlinx.coroutines.CancellationException
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
-/** Outcome of validating a server address (message keys; prd3 §1.4/§1.6). */
+/** Outcome of validating a server address (message keys). */
 sealed interface ServerValidation {
     data class Ok(val info: ServerInfo) : ServerValidation
 

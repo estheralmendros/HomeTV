@@ -1,4 +1,4 @@
-"""Per-profile watchlist "Mi lista" (FR-2/FR-3).
+"""Per-profile watchlist "Mi lista".
 
 - ``add`` / ``remove``: idempotent, one short write transaction each, only on a visible title
   (404 ``not_found`` otherwise, same message as detail). ``add`` keeps the original

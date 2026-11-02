@@ -1,4 +1,4 @@
-"""Change settling (prd.md FR-5, pure): no clock, no I/O; times and sizes come in.
+"""Change settling (pure): no clock, no I/O; times and sizes come in.
 
 Each relevant event dirties one ``ScanScope`` (``scope_for`` under the longest accepted root)
 and sets its ``last_event``; video files also record their observed size. A scope is quiet once

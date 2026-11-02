@@ -50,7 +50,7 @@ private val KEYS = listOf(listOf("1", "2", "3"), listOf("4", "5", "6"), listOf("
 private const val DELETE = "delete"
 
 /**
- * The admin PIN dialog before a server change (prd3 §11 step 3): 4 dots, a D-pad keypad and the
+ * The admin PIN dialog before a server change: 4 dots, a D-pad keypad and the
  * remote's digit keys; Back dismisses. The ViewModel ignores input while checking or locked.
  */
 @Composable

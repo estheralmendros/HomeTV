@@ -5,7 +5,7 @@ must go through ``Db.write_session()`` (one short transaction under the process-
 lock). Service objects created in the lifespan: ``SchedulerDep``, ``TmdbDep`` (``None`` without
 a TMDB key), ``TmdbProxyDep``, ``ArtworkDep``, ``TokensDep``, ``LimiterDep``, ``LibrariesDep``.
 
-Auth (PRD §8; each loads the profile in its own short read session, so no read transaction
+Auth (each loads the profile in its own short read session, so no read transaction
 stays open across an ``await`` in async handlers):
 - ``CurrentProfile``: ``user`` auth, ``Authorization: Bearer <profile token>`` only -> 401
   ``unauthorized``.
@@ -131,7 +131,7 @@ def get_media_profile(
         Query(description="Profile token for <video>/<track>/<img> (header wins if both)"),
     ] = None,
 ) -> m.Profile:
-    """Token from the header, else ``?token=``. Only for the media endpoints of §8 (stream,
+    """Token from the header, else ``?token=``. Only for the media endpoints (stream,
     subtitles, artwork); every other endpoint uses ``CurrentProfile``."""
     return profile_from_token(db, tokens, credentials.credentials if credentials else token)
 

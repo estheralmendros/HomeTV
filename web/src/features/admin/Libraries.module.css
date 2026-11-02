@@ -1,4 +1,4 @@
-/* Administración → Bibliotecas (folder-selection-admin prd2 §3 mockups). Phone layout (< 600 px)
+/* Administración → Bibliotecas. Phone layout (< 600 px)
    is chosen in the components with useMediaQuery(PHONE_QUERY): rowPhone, saveBarPhone,
    [data-full-width], dialogPhone. */
 

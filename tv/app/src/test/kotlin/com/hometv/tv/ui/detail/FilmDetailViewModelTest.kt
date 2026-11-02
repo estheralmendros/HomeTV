@@ -105,7 +105,7 @@ class FilmDetailViewModelTest {
     }
 
     @Test
-    fun `D11 resumes a matching version when the last-played one is not playable here`() = runTest(main.dispatcher) {
+    fun `resumes a matching version when the last-played one is not playable here`() = runTest(main.dispatcher) {
         val uhd = F.hevc(1, duration = 9360.0)
         val hd = F.file(2, duration = 9372.0, label = "1080p H264 · AC3 5.1")
         withFiles(uhd, hd, progress = F.progress(1, position = 3723.0, duration = 9360.0))
@@ -117,7 +117,7 @@ class FilmDetailViewModelTest {
     }
 
     @Test
-    fun `D11 another cut starts at 0 with Play, and picking a non-matching version turns Resume into Play`() = runTest(main.dispatcher) {
+    fun `another cut starts at 0 with Play, and picking a non-matching version turns Resume into Play`() = runTest(main.dispatcher) {
         val uhd = F.hevc(1, duration = 9360.0)
         val cut = F.file(2, duration = 8100.0, label = "1080p H264 · AC3 5.1")
         withFiles(uhd, cut, progress = F.progress(1, position = 3723.0, duration = 9360.0))
@@ -207,7 +207,7 @@ class FilmDetailViewModelTest {
     }
 
     @Test
-    fun `D10 back from the Player after Part 1 ended offers Play part 2 without a loading screen`() = runTest(main.dispatcher) {
+    fun `back from the Player after Part 1 ended offers Play part 2 without a loading screen`() = runTest(main.dispatcher) {
         withFiles(F.part(11, 1), F.part(21, 2), progress = F.progress(11, position = 600.0, duration = 3000.0))
         val vm = vm()
         advanceUntilIdle()
@@ -269,7 +269,7 @@ class FilmDetailViewModelTest {
     }
 
     @Test
-    fun `D10 an explicitly chosen Part 1 that ended moves on to Part 2`() = runTest(main.dispatcher) {
+    fun `an explicitly chosen Part 1 that ended moves on to Part 2`() = runTest(main.dispatcher) {
         withFiles(F.part(11, 1), F.part(21, 2), progress = F.progress(21, position = 600.0, duration = 3000.0))
         val vm = vm()
         advanceUntilIdle()
@@ -334,7 +334,7 @@ class FilmDetailViewModelTest {
         assertEquals(listOf<AppEvent>(AppEvent.ItemGone("film", 12)), repos.received)
     }
 
-    // ---- Cast navigation (cast-appearances prd3 FR-T5) ----------------------------------------
+    // ---- Cast navigation ---------------------------------------------------------------------
 
     private val cast = listOf(CastMember(3, "Timothée Chalamet", "Paul Atreides"), CastMember(4, "Zendaya", "Chani"), CastMember(5, "Rebecca Ferguson"))
 
@@ -493,7 +493,7 @@ class FilmDetailViewModelTest {
         assertEquals(ButtonId.VERSION, vm.content().focus)
     }
 
-    // ---- Mi lista (watchlist prd3 FR-T5/FR-T6) --------------------------------------------
+    // ---- Mi lista ---------------------------------------------------------------------------
 
     /** The write answers only when the returned gate is completed (suspended until released). */
     private fun gateWrites(): MutableList<CompletableDeferred<Unit>> {

@@ -1,4 +1,4 @@
-"""Subtitle service with stubbed ffmpeg (PRD §7 Subtitles; ACs 27-29)."""
+"""Subtitle service with stubbed ffmpeg."""
 
 import asyncio
 import logging

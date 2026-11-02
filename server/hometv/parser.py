@@ -1,6 +1,6 @@
-"""Filename parser (PRD §2). Pure: never touches the filesystem.
+"""Filename parser. Pure: never touches the filesystem.
 
-Decisions on PRD ambiguities:
+Parsing decisions:
 - guessit strips ``Vol N`` into ``volume`` the same way it strips ``Part N``; both are
   re-appended to the title (``"{title} Vol {n}"`` / ``"{title} Part {n}"``) so table row 10
   (``Kill Bill Vol 1``) holds.

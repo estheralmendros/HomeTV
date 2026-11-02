@@ -18,7 +18,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** watchlist prd3 FR-T5..FR-T8: the "Mi lista" button of Film and Show detail, its inline failure line and the action row's fit. */
+/** The "Mi lista" button of Film and Show detail, its inline failure line and the action row's fit. */
 @RunWith(AndroidJUnit4::class)
 class DetailWatchlistTest : UiTestBase() {
     private fun openFilm() {
@@ -112,7 +112,7 @@ class DetailWatchlistTest : UiTestBase() {
 
     @Test
     fun theWidestFilmRowKeepsEveryButtonInsideTheSafeAreaWhenFocused() {
-        // FR-T8 rule 3: one standalone file + two parts with two versions each, progress on a part:
+        // The widest row: one standalone file + two parts with two versions each, progress on a part:
         // Reanudar / Ver desde el principio / Marcar como visto / Mi lista / Versión / Parte / Versión de la parte.
         useLibrary()
         val overview = List(12) { "En un lejano futuro, la galaxia conocida es gobernada por casas nobles." }.joinToString(" ")
@@ -141,7 +141,7 @@ class DetailWatchlistTest : UiTestBase() {
         ids.forEach { node("button_${it.name}").assertExists() }
         assertTrue("the overview is clamped to 3 lines", overviewLines() <= 3)
         assertInsideSafeArea("button_RESUME")
-        // Right walks the buttons in row order, across the wrapped rows (FR-T11: Right from WATCHED is WATCHLIST).
+        // Right walks the buttons in row order, across the wrapped rows (Right from WATCHED is WATCHLIST).
         ids.drop(1).forEach { id ->
             press(Key.DirectionRight)
             assertFocused("button_${id.name}")

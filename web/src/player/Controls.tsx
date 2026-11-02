@@ -1,4 +1,4 @@
-// Player chrome (prd2 §9 step 11): back arrow + title on top; seek bar, play/pause, ∓10 s,
+// Player chrome: back arrow + title on top; seek bar, play/pause, ∓10 s,
 // time, volume + mute, subtitle/audio menus and fullscreen at the bottom. Every control has a
 // Spanish aria-label from the catalog.
 import type { ReactNode } from 'react';
@@ -118,7 +118,7 @@ export function Controls(props: ControlsProps) {
   );
 }
 
-/** Monochrome speaker in the text colour (prd2 §9 step 11 Icons): sound waves when audible, a cross when muted. */
+/** Monochrome speaker in the text colour: sound waves when audible, a cross when muted. */
 function SpeakerIcon({ muted }: { muted: boolean }) {
   return (
     <svg className={styles.icon} viewBox="0 0 24 24" aria-hidden="true" focusable="false">

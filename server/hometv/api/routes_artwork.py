@@ -1,4 +1,4 @@
-"""GET /api/artwork/{size}/{file_name}: cached TMDB image, downloaded on a miss (PRD §5)."""
+"""GET /api/artwork/{size}/{file_name}: cached TMDB image, downloaded on a miss."""
 
 from fastapi import APIRouter
 from fastapi.responses import FileResponse

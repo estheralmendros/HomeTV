@@ -20,7 +20,7 @@ data class ProgressSnapshot(
 )
 
 /**
- * Periodic + event-driven `PUT /api/progress` (prd3 §8 Progress reporting): every 10 s while
+ * Periodic + event-driven `PUT /api/progress`: every 10 s while
  * playing, immediately on pause and at the end (position = duration), 2 s after a committed seek,
  * and a final report on exit/stop/background that runs in the app scope ([finish]). At most one
  * request in flight; a newer report replaces a queued one. No report while the duration is unknown

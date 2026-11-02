@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-// watchlist prd2 FR-W11 / AC-W13 / AC-W14, ratings prd2 FR-W15: jsdom has no layout, so the
+// Navigation layout: jsdom has no layout, so the
 // stylesheet source is checked.
 const CSS = readFileSync(join(__dirname, 'NavBar.module.css'), 'utf8');
 

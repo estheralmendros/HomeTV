@@ -1,4 +1,4 @@
-""" "Mi lista" latency (G4 / AC-S12) on the G3 seed (``test_browse_perf._seed``) plus 500 list
+""" "Mi lista" latency on the browse seed (``test_browse_perf._seed``) plus 500 list
 entries per profile (400 films, 100 shows, random ``added_at``): list (also with the ``watched``
 filter) and detail p95 < 100 ms, PUT/DELETE p95 < 50 ms, over 200 requests per case
 (in-process, warm SQLite).

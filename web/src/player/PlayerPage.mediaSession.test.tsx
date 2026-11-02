@@ -1,5 +1,5 @@
 // PlayerPage: Media Session handlers and metadata, so a Bluetooth headset's play/pause button and
-// OS media keys reach the player (prd2 §9 step 12, /t-fix headset / Bluetooth play-pause).
+// OS media keys reach the player.
 import { fireEvent, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { queryKeys } from '@/api/queryKeys';

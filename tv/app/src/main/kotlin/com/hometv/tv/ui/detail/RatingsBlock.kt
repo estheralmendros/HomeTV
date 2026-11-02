@@ -48,7 +48,7 @@ import com.hometv.tv.ui.theme.HomeTvDimens
 import com.hometv.tv.ui.theme.HomeTvFocus
 
 /**
- * The ratings block of Film and Show detail (ratings prd3 FR-T12), tag `rating_block`:
+ * The ratings block of Film and Show detail, tag `rating_block`:
  * ```
  * line 1: [ Tu puntuación ★★★★☆ Cambiar ]  Media de la familia ★★★½☆ 3,5 (3)
  * line 2: (A) Ana ★★★★½   (L) Luis ★★   [ y 2 más ]

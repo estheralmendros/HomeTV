@@ -1,5 +1,5 @@
-"""Library folders managed from Administración (HOMETV-1): the stored folder list, its
-seeding, validation, change plans and the admin folder browser.
+"""Library folders managed from Administración: the stored folder list, its seeding,
+validation, change plans and the admin folder browser.
 
 The database owns the folders (``library_folder``). They are seeded once per library
 (``library.folders_seeded_at``) from the env/YAML library keys, else from the roots of present

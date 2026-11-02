@@ -31,7 +31,7 @@ def test_page_shape():
     assert page.model_dump() == {"items": [1, 2], "page": 1, "page_size": 50, "total": 2}
 
 
-# --- HOMETV-1: WatcherStatus / ScanStatus (prd2 FR-23) -------------------------------------
+# --- WatcherStatus / ScanStatus ------------------------------------------------------------
 
 
 def test_disabled_watcher_constant():
@@ -85,7 +85,7 @@ def test_watcher_status_detail_with_a_lone_surrogate_serializes():
     assert status.unavailable_roots == ("/media/\\udcff",)
 
 
-# --- Actor screen: PersonDetail / PersonAppearance (FR-11) -----------------------------------
+# --- Actor screen: PersonDetail / PersonAppearance -------------------------------------------
 
 
 def _summary(type_: str) -> dict:

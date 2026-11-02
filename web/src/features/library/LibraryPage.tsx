@@ -1,4 +1,4 @@
-// Library grids /films and /shows (prd2 §5): URL-driven toolbar, infinite list of 60-item pages
+// Library grids /films and /shows: URL-driven toolbar, infinite list of 60-item pages
 // (sentinel 600 px before the end, "Cargar más" fallback), empty/filtered/error states.
 import { useInfiniteQuery } from '@tanstack/react-query';
 import type { ReactNode } from 'react';

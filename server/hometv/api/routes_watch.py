@@ -1,5 +1,5 @@
-"""Watch state: PUT /api/progress, POST /api/watched (PRD §9). Both answer ``rating_prompt``
-(ratings FR-8); a profile deleted between auth and the write answers 401."""
+"""Watch state: PUT /api/progress, POST /api/watched. Both answer ``rating_prompt``;
+a profile deleted between auth and the write answers 401."""
 
 from fastapi import APIRouter
 

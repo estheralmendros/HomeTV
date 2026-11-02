@@ -77,7 +77,7 @@ describe('ProfilesAdminPage', () => {
       expect(post[0]!.headers.get('x-admin-token')).toBe('admin-token-1');
       // The initial load, then the refetch after the mutation.
       await waitFor(() => expect(rec.find('GET', '/api/profiles')).toHaveLength(2));
-      // The PRD invalidation table (profilesChanged): ['profiles'] and ['me'].
+      // The invalidation table in queryKeys.ts (profilesChanged): ['profiles'] and ['me'].
       await waitFor(() => expect(rec.find('GET', '/api/me')).toHaveLength(1));
     });
 

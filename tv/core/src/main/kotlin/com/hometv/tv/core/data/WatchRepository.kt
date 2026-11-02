@@ -9,15 +9,15 @@ import com.hometv.tv.core.api.apiCall
 
 enum class WatchTarget(val wire: String) { FILM("film"), EPISODE("episode"), SEASON("season"), SHOW("show") }
 
-/** `POST /api/watched`: rows changed and the rating prompt when the mark finished a title (ratings prd.md FR-8). */
+/** `POST /api/watched`: rows changed and the rating prompt when the mark finished a title. */
 data class WatchedResult(val updated: Int, val ratingPrompt: RatingPrompt?)
 
-/** Watch state writes (prd3 §6–§8). */
+/** Watch state writes. */
 class WatchRepository(
     private val api: () -> HomeTvApi,
     private val guard: SessionGuard,
 ) {
-    /** A background caller by default: a renewal IOException drops the report (§2.5). */
+    /** A background caller by default: a renewal IOException drops the report. */
     suspend fun putProgress(report: ProgressRequest, origin: Origin = Origin.Background): ProgressReport =
         guard.withRenewal(origin) { apiCall { api().putProgress(report) } }
 

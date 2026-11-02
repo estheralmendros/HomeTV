@@ -1,4 +1,4 @@
-// Query key factory, stale times and the invalidation table (prd2 § State & data fetching).
+// Query key factory, stale times and the invalidation table.
 // Keys never include the profile id: switching profile clears the whole cache.
 import type { QueryKey } from '@tanstack/react-query';
 import { kindSegment } from './kind';
@@ -99,7 +99,7 @@ export type InvalidationEvent =
   /** Profile create / edit / delete. */
   | { type: 'profilesChanged' };
 
-/** The query keys (prefixes) to invalidate after an event (the PRD invalidation table). */
+/** The query keys (prefixes) to invalidate after an event (the invalidation table). */
 export function invalidateAfter(event: InvalidationEvent): QueryKey[] {
   switch (event.type) {
     case 'playerExit': {

@@ -7,7 +7,7 @@ import org.junit.jupiter.api.extension.ExtendWith
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
 
-/** JVM default locale en-US: the output must still be es-ES (prd3 §UI Language rule 5). */
+/** JVM default locale en-US: the output must still be es-ES. */
 @ExtendWith(UsLocale::class)
 class FormatTest {
     @Test
@@ -77,7 +77,7 @@ class FormatTest {
         assertEquals("1 de enero de 2000", Format.longDate(LocalDate.of(2000, 1, 1)))
     }
 
-    /** The web's `ageOn` table (prd2 FR-W10), 29 February included; empty = null. */
+    /** The web's `ageOn` table, 29 February included; empty = null. */
     @ParameterizedTest(name = "{0} on {1} -> {2}")
     @CsvSource(
         "1995-12-27, 2026-10-27, 30",
@@ -97,7 +97,7 @@ class FormatTest {
         assertEquals(age, Format.age(LocalDate.parse(birth), LocalDate.parse(on)))
     }
 
-    /** prd.md "Life span line" with today = 2026-10-27; the words come from `app` (`UiFormat`). */
+    /** The life span line with today = 2026-10-27; the words come from `app` (`UiFormat`). */
     @Test
     fun `life span shapes`() {
         val today = LocalDate.of(2026, 10, 27)
@@ -128,7 +128,7 @@ class FormatTest {
         assertEquals(null, Format.lifeSpan("+11995-12-27", null, today))
     }
 
-    /** ratings prd3 FR-T3: one profile's value, at most one decimal. */
+    /** One profile's rating, at most one decimal. */
     @Test
     fun `stars are es-ES with at most one decimal`() {
         assertEquals("4,5", Format.stars(Stars(9)))
@@ -137,7 +137,7 @@ class FormatTest {
         assertEquals("5", Format.stars(Stars(10)))
     }
 
-    /** ratings prd3 FR-T11: the household average keeps one decimal ("4,0 (3)"), half up like the server. */
+    /** The household average keeps one decimal ("4,0 (3)"), half up like the server. */
     @Test
     fun `household averages use the rating format`() {
         assertEquals("4,0", Format.rating(4.0))
@@ -145,7 +145,7 @@ class FormatTest {
         assertEquals("3,5", Format.rating(3.5))
     }
 
-    /** ratings prd3 FR-T17: the activity row's older dates, "12 oct" / "12 oct 2025" (no trailing dot). */
+    /** The activity row's older dates, "12 oct" / "12 oct 2025" (no trailing dot). */
     @Test
     fun `short days drop the month dot and add the year only when asked`() {
         assertEquals("12 oct", Format.shortDay(LocalDate.of(2026, 10, 12), withYear = false))

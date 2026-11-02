@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1
 # check=skip=FromPlatformFlagConstDisallowed
-# HomeTV image (prd.md "Deployment", prd2.md Technical Requirements). Build from the repo root:
+# HomeTV image. Build from the repo root:
 #   docker build --platform=linux/amd64 -f deploy/Dockerfile -t hometv .
 # docker-compose.yml does this with `build: { context: .., dockerfile: deploy/Dockerfile }`.
 # Stages: web-build (the SPA, Node 24) and server-build (uv venv), combined in runtime; the
-# server serves /app/web/dist (settings `server.web_dist`) with SPA fallback (prd.md §12).
+# server serves /app/web/dist (settings `server.web_dist`) with SPA fallback.
 
 ARG PYTHON_IMAGE=python:3.12-slim-bookworm
 ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.12.5

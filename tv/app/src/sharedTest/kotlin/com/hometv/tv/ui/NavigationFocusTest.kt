@@ -19,7 +19,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** prd3 Testing Decisions "Compose UI tests": initial focus, D-pad moves, Back table, focus restoration. */
+/** Compose UI tests: initial focus, D-pad moves, Back table, focus restoration. */
 @RunWith(AndroidJUnit4::class)
 class NavigationFocusTest : UiTestBase() {
     @Test
@@ -135,7 +135,7 @@ class NavigationFocusTest : UiTestBase() {
         useLibrary()
         launch()
         press(Key.DirectionUp)
-        // Search is the lens at the left end of the bar, before Inicio (prd3 §3 step 1).
+        // Search is the lens at the left end of the bar, before Inicio.
         press(Key.DirectionLeft)
         press(Key.DirectionCenter)
         assertFocused("search_field")
@@ -162,7 +162,7 @@ class NavigationFocusTest : UiTestBase() {
         assertFocused("card_recent:show:7")
         press(Key.DirectionCenter)
         assertFocused("button_RESUME")
-        // ratings prd3 FR-T12: Down goes through `rating_mine` to the selected season (next_episode's, 2).
+        // Down goes through `rating_mine` to the selected season (next_episode's, 2).
         press(Key.DirectionDown)
         assertFocused("rating_mine")
         press(Key.DirectionDown)
@@ -205,7 +205,7 @@ class NavigationFocusTest : UiTestBase() {
         press(Key.DirectionRight, times = 5)
         assertFocused("tab_SETTINGS")
         press(Key.DirectionCenter)
-        // An admin's Settings starts on [Cambiar servidor] (prd3 §11 step 3).
+        // An admin's Settings starts on [Cambiar servidor].
         assertFocused("settings_change_server")
         back()
         assertFocused("tab_SETTINGS")
@@ -219,7 +219,7 @@ class NavigationFocusTest : UiTestBase() {
         api.onMe = { throw java.net.ConnectException("refused") }
         launch()
         assertTrue(rule.onAllNodes(hasTestTag("tab_SETTINGS"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
-        // Tailscale is up now: [Reintentar] loads Home, and the admin's profile follows (prd3 §10).
+        // Tailscale is up now: [Reintentar] loads Home, and the admin's profile follows.
         api.onHome = home
         api.onMe = { Profile(5, "Esther", "avatar-05", is_admin = true) }
         press(Key.DirectionCenter)
@@ -235,7 +235,7 @@ class NavigationFocusTest : UiTestBase() {
         press(Key.DirectionUp)
         press(Key.DirectionRight, times = 2)
         assertFocused("tab_SHOWS")
-        assertTrue("no Ajustes tab for a viewer (prd3 §3 step 1)", rule.onAllNodes(hasTestTag("tab_SETTINGS"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
+        assertTrue("no Ajustes tab for a viewer", rule.onAllNodes(hasTestTag("tab_SETTINGS"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
         rule.onAllNodesWithText("Ajustes", useUnmergedTree = true).assertCountEquals(0)
         press(Key.DirectionRight)
         assertFocused("tab_WATCHLIST")

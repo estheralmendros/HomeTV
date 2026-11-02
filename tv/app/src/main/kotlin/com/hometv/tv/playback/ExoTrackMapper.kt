@@ -12,7 +12,7 @@ import com.hometv.tv.core.playback.MediaItemSpec
 import com.hometv.tv.core.playback.TrackCheckInput
 
 /**
- * Server tracks ↔ ExoPlayer `Tracks` (prd3 Playback Flow rules 4–5, 10). Pure over Media3 value types.
+ * Server tracks ↔ ExoPlayer `Tracks`. Pure over Media3 value types.
  * - Audio groups match `audio_tracks` by ordinal position (both follow container order); HLS has one audio group.
  * - Side-loaded text groups match by `Format.id` == server track id (`MergingMediaSource` prefixes the
  *   *group* id, not the format id; a `n:` prefix on the format id is tolerated too).

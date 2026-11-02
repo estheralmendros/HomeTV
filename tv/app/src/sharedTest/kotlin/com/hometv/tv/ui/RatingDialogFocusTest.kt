@@ -21,7 +21,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** ratings prd3 FR-T8 / T-AC-6..8, 11, 11b: the D-pad rating dialog opened from Film detail's `rating_mine`. */
+/** The D-pad rating dialog opened from Film detail's `rating_mine`. */
 @RunWith(AndroidJUnit4::class)
 class RatingDialogFocusTest : UiTestBase() {
     private var myRating: Double? = 4.0

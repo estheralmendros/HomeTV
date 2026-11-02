@@ -1,4 +1,4 @@
-"""System & profiles endpoints (PRD §8, REST API Reference "System & profiles")."""
+"""System & profiles endpoints."""
 
 import pytest
 

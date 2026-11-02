@@ -1,4 +1,4 @@
-// Attaches a playback decision to the shell's single <video> (prd2 §9 step 5, Player identity):
+// Attaches a playback decision to the shell's single <video>:
 // - direct  → `video.src = withToken(url)`, seek + play() on loadedmetadata;
 // - hls on iOS/iPadOS (platform.nativeHls) → native HLS: `video.src = url` (no token), seek on
 //   loadedmetadata (once more on canplay when > 1 s off), then play(); hls.js is never loaded;
@@ -13,7 +13,7 @@ import { isChunkLoadError, reloadOnce } from '@/lib/chunkReload';
 import type { Platform } from './capabilities';
 import type { MediaErrorKind, MediaErrorSource } from './playerMachine';
 
-/** hls.js ≥ 1.5 load policies (prd2 Technical Requirements): segments up to 30 s, 20 s init.mp4 wait. */
+/** hls.js ≥ 1.5 load policies: segments up to 30 s, 20 s init.mp4 wait. */
 export const HLS_CONFIG = {
   enableWorker: true,
   lowLatencyMode: false,
@@ -110,7 +110,7 @@ export interface AttachHandle {
 }
 
 /**
- * Awaits `video.play()` (§9 step 5a): NotAllowedError → PLAY_BLOCKED, AbortError ignored,
+ * Awaits `video.play()`: NotAllowedError → PLAY_BLOCKED, AbortError ignored,
  * NotSupportedError → decode failure, anything else → network failure (recovery).
  */
 export async function playMedia(
@@ -237,7 +237,7 @@ export function attachSource(options: AttachOptions): AttachHandle {
       }
       return;
     }
-    if (stale() || !module?.default) return; // undefined module: a reload is under way (§13)
+    if (stale() || !module?.default) return; // undefined module: a reload is under way
     const Hls = module.default;
     const env = options.mediaSourceEnv ?? (window as unknown as MediaSourceEnv);
     if (!env.MediaSource && env.ManagedMediaSource) video.disableRemotePlayback = true;

@@ -3,7 +3,7 @@ package com.hometv.tv.playback
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
-/** Where side-loaded WebVTT files live (prd3 Playback Flow rule 3); faked or backed by a temp dir in tests. */
+/** Where side-loaded WebVTT files live; faked or backed by a temp dir in tests. */
 interface SubtitleStore {
     /** The `file://` URI of the cached VTT, or null when it is not cached. Called on the main thread: no disk I/O. */
     fun get(mediaFileId: Long, trackId: String): String?
@@ -20,7 +20,7 @@ interface SubtitleStore {
 
 /**
  * `cacheDir/subtitles/{mediaFileId}/{trackId}.vtt`, cleared at app start and capped at [capBytes].
- * Eviction (prd3-review "SubtitleFileCache eviction"): after a write over the cap, the least recently
+ * Eviction: after a write over the cap, the least recently
  * written files of **other** media files go first; the files of the media file being written are never
  * evicted (they may be attached to the playing `MediaItem`; one file's subtitles are small).
  * [get] answers from an in-memory index of the files this cache wrote (nothing survives a process),

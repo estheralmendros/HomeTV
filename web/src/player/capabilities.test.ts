@@ -37,7 +37,7 @@ const CHROME_CAPS = caps({
   hls: true,
 });
 
-describe('detectClientCaps / detectPlatform (prd2 §10)', () => {
+describe('detectClientCaps / detectPlatform', () => {
   const table: Array<{ name: string; env: () => CapsEnv; caps: ClientCaps; platform: ReturnType<typeof detectPlatform> }> = [
     { name: 'Chrome desktop', env: chromeEnv, caps: CHROME_CAPS, platform: { ios: false, nativeHls: false, mse: true } },
     { name: 'Firefox desktop', env: firefoxEnv, caps: CHROME_CAPS, platform: { ios: false, nativeHls: false, mse: true } },

@@ -44,7 +44,7 @@ import com.hometv.tv.ui.theme.HomeTvColors
 import com.hometv.tv.ui.theme.HomeTvDimens
 
 /**
- * (12) Actividad (ratings prd3 FR-T16): the top nav with "Actividad" selected, the header and a list of
+ * (12) Actividad: the top nav with "Actividad" selected, the header and a list of
  * [ActivityRow]s (`activity_row_<i>`); OK opens the title's detail, Back from it restores the row, Back
  * here goes Home with focus on the tab. Empty: the glossary text (focus stays on the tab); page 1
  * failing: the shared error screen; a next page failing: the inline retry row (`activity_retry`).

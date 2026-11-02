@@ -1,4 +1,4 @@
-"""Async TMDB v3 client (PRD §5 TMDB client).
+"""Async TMDB v3 client.
 
 - Auth: keys starting with ``eyJ`` (v4 read token) -> ``Authorization: Bearer``; else
   ``api_key`` query parameter.

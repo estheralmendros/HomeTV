@@ -6,7 +6,7 @@ import kotlin.math.floor
 enum class StarFill { FULL, HALF, EMPTY }
 
 /**
- * A rating from ½ to 5 stars in ½ steps (ratings prd.md FR-1.1), stored as [halves] 1..10 like the
+ * A rating from ½ to 5 stars in ½ steps, stored as [halves] 1..10 like the
  * server's `stars_x2`. The text ("4,5") comes from [Format.stars]; the words from `app`.
  */
 @JvmInline

@@ -1,4 +1,4 @@
-"""HLS remux sessions (PRD §7 HLS remux sessions + state machine).
+"""HLS remux sessions + state machine.
 
 One ffmpeg ``segment``-muxer run at a time per session writes ``raw_k.mp4`` + ``run.csv``; a
 per-run monitor task verifies each row against the plan, splits it into ``init.mp4`` +
@@ -7,7 +7,7 @@ Segment requests decide ready / wait / restart under the session lock (never hel
 waiting). Readiness is tracked in memory (``Session.ready``), so no request stats the disk.
 
 ``segment_times`` semantics differ between ffmpeg versions: 5.x compares the list with packet
-timestamps (``absolute``, the PRD reference command: boundaries + T0), newer versions add the
+timestamps (``absolute``, the reference behaviour: boundaries + T0), newer versions add the
 reference stream's first PTS to every entry (``relative``: boundaries minus the run's first
 keyframe). ``detect_segment_times_mode`` probes the installed ffmpeg once.
 

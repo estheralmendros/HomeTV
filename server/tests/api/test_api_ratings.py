@@ -1,4 +1,4 @@
-"""Ratings and household activity (ratings PRD §6): PUT/DELETE /api/ratings/{films|shows}/{id},
+"""Ratings and household activity: PUT/DELETE /api/ratings/{films|shows}/{id},
 POST .../dismiss-prompt, GET /api/activity, the detail rating block and ``my_rating`` on every
 summary-producing endpoint."""
 
@@ -330,7 +330,7 @@ async def test_activity_hides_hidden_titles(client, db, user):
     assert (await _activity(client, user))["total"] == 1
 
 
-# --- my_rating on every summary (S-AC-7) -----------------------------------------------------
+# --- my_rating on every summary --------------------------------------------------------------
 
 
 async def test_my_rating_on_every_summary_endpoint(client, db, user, admin):

@@ -10,7 +10,7 @@ from hometv.api.schemas import Avatar, HealthResponse, InfoResponse
 from hometv.db.models import Profile
 from hometv.profiles import AVATARS
 
-# Spanish (es-ES): server-produced text shown to viewers (PRD §UI Language, §5).
+# Spanish (es-ES): server-produced text shown to viewers.
 TMDB_ATTRIBUTION = (
     "Este producto utiliza la API de TMDB, pero no está respaldado ni certificado por TMDB."
 )

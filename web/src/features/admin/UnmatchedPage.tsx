@@ -1,4 +1,4 @@
-// /admin/unmatched (prd2 §11 Unmatched): filterable, paginated list of unmatched entries with a
+// /admin/unmatched: filterable, paginated list of unmatched entries with a
 // parsed summary and "Corregir identificación" (film/show rows → match, media_file rows → resolve).
 // Filters and page live in the URL (`?library=&reason=&page=`).
 import { useId, useState } from 'react';

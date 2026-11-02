@@ -9,7 +9,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** prd3 Playback Flow rules 2–3. */
+/** [MediaItemSpec] → Media3 `MediaItem`. */
 @RunWith(AndroidJUnit4::class)
 class MediaItemBuilderTest {
     @Test

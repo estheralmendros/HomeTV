@@ -1,4 +1,4 @@
-"""Library folders managed from Administración (HOMETV-1).
+"""Library folders managed from Administración.
 
 Revision ID: 0002
 Revises: 0001

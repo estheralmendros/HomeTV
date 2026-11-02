@@ -238,7 +238,7 @@ class HomeViewModelTest {
         assertNull(vm.hero.value)
         advanceTimeBy(2)
         val hero = vm.hero.value!!
-        // The full-bleed hero uses the large backdrop (prd3 §3 step 4).
+        // The full-bleed hero uses the large backdrop.
         assertEquals("/api/artwork/w1280/ob.jpg", hero.backdrop)
         assertEquals("The Office", hero.title)
         assertNull(hero.year)

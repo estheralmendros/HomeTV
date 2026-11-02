@@ -42,7 +42,7 @@ sealed interface ProfilesEvent {
     data object SignedIn : ProfilesEvent
 }
 
-/** Profile Picker (prd3 §2): no PIN on the TV, any profile signs in with one OK press. */
+/** Profile Picker: no PIN on the TV, any profile signs in with one OK press. */
 class ProfilesViewModel(
     private val profiles: ProfileRepository,
     private val store: SessionStore,

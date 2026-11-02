@@ -1,4 +1,4 @@
-// "¿Quién está viendo?" (prd2 §2): one click signs in to any profile; no PIN for anyone.
+// "¿Quién está viendo?": one click signs in to any profile; no PIN for anyone.
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';

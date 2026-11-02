@@ -28,12 +28,12 @@ data class SettingsUiState(
     val profileName: String? = null,
     val appVersion: UiText,
     val serverVersion: UiText? = null,
-    /** `tmdb_attribution` (Spanish since prd.md Rev 9), shown verbatim. */
+    /** `tmdb_attribution` (Spanish), shown verbatim. */
     val tmdbAttribution: String? = null,
     /** "Vídeo: h264, hevc · Audio: aac, ac3, …". */
     val caps: UiText? = null,
     /**
-     * [Cambiar servidor] is offered to admin profiles only (prd3 §11 step 3). Viewers never reach Settings
+     * [Cambiar servidor] is offered to admin profiles only. Viewers never reach Settings
      * (no "Ajustes" tab; a demoted profile is sent back to Home), so this is a guard in depth.
      */
     val canChangeServer: Boolean = false,
@@ -45,7 +45,7 @@ data class SettingsUiState(
 data class PinUi(val entered: Int = 0, val message: UiText? = null, val locked: Boolean = false)
 
 /**
- * Settings / About (prd3 §11): server, profile, app + server versions, TMDB notice and logo, caps
+ * Settings / About: server, profile, app + server versions, TMDB notice and logo, caps
  * summary, and the server change (admin profiles only, behind the admin PIN, step 3).
  */
 class SettingsViewModel(

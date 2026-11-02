@@ -17,7 +17,7 @@ enum class Library(val wire: String) {
  * What a screen asks the Player to play (turned into [Route.Player] by `AppNavigator.play`).
  * [mediaFileId] null = the Player picks the version (`VersionSelector`, honoring `progress.media_file_id`);
  * [fromStart] = "Ver desde el principio"; [payload] = a Home episode entry, whose `media_files`
- * let the Player send `POST .../playback` without waiting for `GET /api/episodes/{id}` (prd3 §3.5).
+ * let the Player send `POST .../playback` without waiting for `GET /api/episodes/{id}`.
  */
 data class PlayRequest(
     val itemType: String,

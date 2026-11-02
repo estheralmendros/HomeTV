@@ -1,4 +1,4 @@
-// apiFetch: same-origin `/api/...` calls with this tab's in-memory Bearer token (prd2 §1).
+// apiFetch: same-origin `/api/...` calls with this tab's in-memory Bearer token.
 import { adminUnlock } from '@/auth/adminUnlock';
 import { ApiError } from './errors';
 

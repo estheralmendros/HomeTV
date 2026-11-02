@@ -1,4 +1,4 @@
-// "Mi lista" toolbar (watchlist prd2 FR-W10.2): type filter as a three-button group (aria-pressed),
+// "Mi lista" toolbar: type filter as a three-button group (aria-pressed),
 // the "Estado" (watched) filter and the sort as labelled <select>s. Fixed directions, so no order
 // toggle. Same controls on phones (the shared toolbar wraps).
 import { useId } from 'react';

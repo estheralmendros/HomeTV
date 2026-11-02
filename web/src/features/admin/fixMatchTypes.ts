@@ -1,4 +1,4 @@
-// Types of the fix-match dialog (prd2 §11 Fix-match dialog), importable without loading the
+// Types of the fix-match dialog, importable without loading the
 // lazy admin chunk (type-only).
 import type { LibraryType, UnmatchedParsed, UnmatchedReason } from '@/api/types';
 

@@ -10,7 +10,7 @@ import retrofit2.http.Path
 import retrofit2.http.Query
 
 /**
- * The prd.md endpoints the TV uses (prd3 Technical Requirements "API surface used"). Paths are
+ * The REST endpoints the TV uses. Paths are
  * relative to the server URL (Retrofit base URL with a trailing slash). Stream, subtitle, HLS
  * media and artwork URLs are loaded by Media3/Coil/`PlaybackRepository` directly, not here.
  * Non-2xx answers throw `retrofit2.HttpException`; callers go through [apiCall].
@@ -38,7 +38,7 @@ interface HomeTvApi {
     @GET("api/home")
     suspend fun home(@Query("limit") limit: Int): HomeResponse
 
-    /** Null filters are omitted from the query (prd.md list filters). */
+    /** Null filters are omitted from the query. */
     @GET("api/films")
     suspend fun films(
         @Query("page") page: Int,
@@ -54,7 +54,7 @@ interface HomeTvApi {
     @GET("api/films/{id}")
     suspend fun film(@Path("id") id: Long): FilmDetail
 
-    /** The actor screen (cast-appearances prd3): person details and their catalog appearances. */
+    /** The actor screen: person details and their catalog appearances. */
     @GET("api/people/{id}")
     suspend fun person(@Path("id") id: Long): PersonDetail
 
@@ -93,7 +93,7 @@ interface HomeTvApi {
     suspend fun setWatched(@Body body: WatchedRequest): WatchedResponse
 
     /**
-     * "Mi lista" (watchlist prd.md FR-8): `type` = `all` | `films` | `shows`, `sort` = `added` | `title` | `year`;
+     * "Mi lista": `type` = `all` | `films` | `shows`, `sort` = `added` | `title` | `year`;
      * [watched] = the library `watched` filter ("Estado"), omitted when null.
      */
     @GET("api/watchlist")
@@ -112,7 +112,7 @@ interface HomeTvApi {
     @DELETE("api/watchlist/{segment}/{id}")
     suspend fun removeFromWatchlist(@Path("segment") segment: String, @Path("id") id: Long)
 
-    /** Ratings (ratings prd.md): [segment] = `films` | `shows`; 204 with no body. */
+    /** Ratings: [segment] = `films` | `shows`; 204 with no body. */
     @PUT("api/ratings/{segment}/{id}")
     suspend fun setRating(@Path("segment") segment: String, @Path("id") id: Long, @Body body: RatingRequest)
 

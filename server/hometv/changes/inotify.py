@@ -1,4 +1,4 @@
-"""Linux inotify backend over ctypes (prd.md FR-3). Stdlib only; never writes to the media.
+"""Linux inotify backend over ctypes. Stdlib only; never writes to the media.
 
 Watches are set on directories only. The root's own watch follows a symlinked root (no
 ``IN_DONT_FOLLOW``); every other watch does not, and symlinked subdirectories are never walked
@@ -144,7 +144,7 @@ def _file_kind(mask: int) -> EventKind | None:
 def map_batch(
     raw: list[RawEvent], wd_paths: Mapping[int, str], roots: Mapping[int, str]
 ) -> MappedBatch:
-    """Pure raw-to-``WatchEvent`` mapping of one read (prd.md FR-3 table). ``roots`` maps the
+    """Pure raw-to-``WatchEvent`` mapping of one read. ``roots`` maps the
     wd of each root's own watch to the root as configured."""
     root_paths = sorted(set(roots.values()))
     out = MappedBatch()

@@ -1,4 +1,4 @@
-"""GET /api/films, GET /api/films/{id} (PRD §10, REST "Catalog")."""
+"""GET /api/films, GET /api/films/{id}."""
 
 from datetime import date, timedelta
 
@@ -485,7 +485,7 @@ async def test_film_detail_404(client, user):
 
 
 async def test_watched_filter_is_per_profile(client, db, user, admin):
-    """PRD §10 list filters: `watched` (in-progress counts as not watched)."""
+    """List filters: `watched` (in-progress counts as not watched)."""
     with db.write_session() as s:
         seen = add_film(s, "Alien")
         started = add_film(s, "Blade Runner")

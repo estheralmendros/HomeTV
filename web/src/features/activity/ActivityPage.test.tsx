@@ -1,4 +1,4 @@
-// /activity (ratings prd2 FR-W12/13, W-AC-12): rows, own rows, links, paging, dedupe, empty,
+// /activity: rows, own rows, links, paging, dedupe, empty,
 // error, refetch on every visit.
 import { screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';

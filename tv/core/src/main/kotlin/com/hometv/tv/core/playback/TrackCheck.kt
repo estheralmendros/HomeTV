@@ -1,6 +1,6 @@
 package com.hometv.tv.core.playback
 
-/** What `ExoPlayerController` reports on `onTracksChanged` after the overrides are applied (Playback Flow rule 10). */
+/** What `ExoPlayerController` reports on `onTracksChanged` after the overrides are applied. */
 data class TrackCheckInput(
     /** `MediaFile.video != null`. */
     val fileHasVideo: Boolean,
@@ -16,7 +16,7 @@ enum class TrackFailure { NONE, VIDEO, AUDIO }
 
 /**
  * Silent track failures (pure): ExoPlayer would otherwise play black video or silence without an
- * error. Both are handled as a decoder failure of that type (§10). When both fail, VIDEO wins: its
+ * error. Both are handled as a decoder failure of that type. When both fail, VIDEO wins: its
  * retry leads to the unsupported screen, and an audio retry could not fix the video.
  */
 object TrackCheck {

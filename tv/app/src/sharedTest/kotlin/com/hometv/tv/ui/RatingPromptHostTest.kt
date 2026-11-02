@@ -23,7 +23,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * ratings prd3 FR-T7 / T-AC-1..5b, 8a: the root prompt opens over the screen shown after the player
+ * The root prompt opens over the screen shown after the player
  * or a mark watched, never over the player; Back = Ahora no; focus returns; profile safety; the
  * host's write-failure policy.
  */

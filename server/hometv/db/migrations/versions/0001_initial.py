@@ -1,4 +1,4 @@
-"""Initial schema: the full PRD Data Model.
+"""Initial schema: the full data model.
 
 Revision ID: 0001
 Revises:

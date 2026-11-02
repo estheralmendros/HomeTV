@@ -115,7 +115,7 @@ class UiFormatTest {
         assertEquals(null, UiFormat.showStatusRes(null))
     }
 
-    /** cast-appearances prd.md "Life span line" and "Appearance subtitle", as the Person screen shows them. */
+    /** The life span line and the appearance subtitle, as the Person screen shows them. */
     @Test
     fun `person life span lines and the appearance subtitle`() {
         val today = java.time.LocalDate.of(2026, 10, 27)
@@ -132,7 +132,7 @@ class UiFormatTest {
         assertEquals("como Paul Atreides", com.hometv.tv.ui.person.PersonViewModel.subtitle(com.hometv.tv.core.api.PersonAppearance("film", dune, "Paul Atreides"))?.let(fmt::text))
     }
 
-    // ---- Ratings (ratings prd3 FR-T17) ----------------------------------------------------
+    // ---- Ratings -------------------------------------------------------------------------
 
     @Test
     fun `stars print es-ES and as an accessible text`() {

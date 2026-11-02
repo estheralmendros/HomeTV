@@ -1,4 +1,4 @@
-// One /activity row (ratings prd2 FR-W13): a link to the title with avatar, sentence + stars,
+// One /activity row: a link to the title with avatar, sentence + stars,
 // relative time and a small poster (a compact title tile without one). The link's name is the full
 // text equivalent.
 import { Link } from 'react-router-dom';

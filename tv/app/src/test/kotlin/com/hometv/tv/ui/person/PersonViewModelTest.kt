@@ -31,7 +31,7 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.MethodSource
 
-/** cast-appearances prd3 §3: the Person screen's state, focus memory and in-place refetch. */
+/** The Person screen's state, focus memory and in-place refetch. */
 class PersonViewModelTest {
     @JvmField @RegisterExtension val main = MainDispatcherExtension()
 

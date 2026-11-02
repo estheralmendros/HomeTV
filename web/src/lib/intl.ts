@@ -1,4 +1,4 @@
-// es-ES Intl instances, created once and shared (UI language, Rev 9).
+// es-ES Intl instances, created once and shared.
 export const LOCALE = 'es-ES';
 
 export const countFormat = new Intl.NumberFormat(LOCALE, { useGrouping: 'always' });

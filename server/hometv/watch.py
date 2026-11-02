@@ -1,4 +1,4 @@
-"""Watch state (PRD §9).
+"""Watch state.
 
 Pure rules (table-tested in ``tests/unit/test_watch_rules.py``): ``apply_progress_rule`` with
 ``watched_ratio`` (films 95 %, episodes 90 %), ``is_last_part`` (multi-part films),
@@ -8,7 +8,7 @@ episode lists.
 DB operations (one short write transaction each): ``report_progress`` (``PUT /api/progress``)
 and ``mark_watched`` (``POST /api/watched``). "Library episodes" are episodes with at least one
 present media file (``missing_since IS NULL``), the same visibility rule as the catalog. Both
-answer ``rating_prompt`` (ratings FR-8): the film or show whose finishing item (the film, or the
+answer ``rating_prompt``: the film or show whose finishing item (the film, or the
 show's last present episode) the request just watched, while the profile has neither rated nor
 dismissed it; computed in the same transaction for at most 3 extra indexed statements, none
 below the rule. A profile deleted between auth and the write answers 401 (``fk_to_unauthorized``).
@@ -96,7 +96,7 @@ def _ordered(episodes: Iterable[EpisodeKey]) -> list[EpisodeKey]:
 
 
 def next_up(episodes: Iterable[EpisodeKey], state: Mapping[int, EpisodeState]) -> int | None:
-    """Next Up (§9): after the highest watched non-special episode L, the first library episode
+    """Next Up: after the highest watched non-special episode L, the first library episode
     with (s, e) > L, s > 0, not watched; ``None`` if there is none or it is in progress."""
     ordered = _ordered(episodes)
     watched_idx = [i for i, e in enumerate(ordered) if (st := state.get(e.id)) and st.watched]
@@ -144,7 +144,7 @@ def is_title_finished(
     last_episode_id: int | None = None,
     watched_episode_ids: Collection[int] = (),
 ) -> bool:
-    """ "Finished" (ratings FR-7): a film is finished when watched for the profile (playback past
+    """ "Finished": a film is finished when watched for the profile (playback past
     the rule on its last part, or marked); a show when its last present episode is watched."""
     if kind == "film":
         return film_watched
@@ -310,7 +310,7 @@ def _mark_siblings_watched(
     return list(siblings)
 
 
-# --- Rating prompt (ratings FR-8) ----------------------------------------------------------------
+# --- Rating prompt -------------------------------------------------------------------------------
 
 
 def _show_last_episode_id(session: Session, show_id: int) -> int | None:
@@ -339,7 +339,7 @@ def _rating_prompt(
     item_id: int,
     item: m.Film | m.Show | None = None,
 ) -> RatingPrompt | None:
-    """Steps 2-4 of FR-8: the prompt of the film/show unless hidden (films; a show with a last
+    """The rating prompt of the film/show unless hidden (films; a show with a last
     present episode is visible), rated or dismissed by the profile. One combined SELECT; the row
     is the caller's already-loaded ``item`` (the identity map only holds weak references), else
     one load by id."""
@@ -372,7 +372,7 @@ def _show_prompt_if_finished(
     marked_ids: Iterable[int],
     show: m.Show | None = None,
 ) -> RatingPrompt | None:
-    """The show's prompt when the request watched its last present episode: the FR-7
+    """The show's prompt when the request watched its last present episode: the
     "finished" rule over the episodes this request marked (an earlier watch never prompts)."""
     last = _show_last_episode_id(session, show_id)
     if not is_title_finished("show", last_episode_id=last, watched_episode_ids=set(marked_ids)):

@@ -1,4 +1,4 @@
-// Stale lazy chunks after a redeploy (prd2 §13): reload once, never loop.
+// Stale lazy chunks after a redeploy: reload once, never loop.
 import type { createBrowserRouter } from 'react-router-dom';
 import { reloader } from './reload';
 

@@ -1,4 +1,4 @@
-"""Library scanner (PRD §4): walk -> diff -> parse -> probe -> link -> purge -> sidecars.
+"""Library scanner: walk -> diff -> parse -> probe -> link -> purge -> sidecars.
 
 Read-only on media: only ``scandir``/``stat`` (through ``FsOps``, injectable for tests) and the
 injectable ``probe_fn``. Every DB access runs in ``asyncio.to_thread``; writes go through
@@ -16,8 +16,8 @@ another root of the same Películas library is re-rooted (path only, links kept)
 (the ``libraries`` run started by a confirmed save); any other run leaves the row untouched and
 reports ``relink_pending: <root_path> -> <walk root>``.
 
-Phase 4 hook: ``keyframe_hook(media_file_ids)`` is called at the end of the probe phase with the
-present files that need a background keyframe index (§4 step 5a), new/changed files first.
+Keyframe hook: ``keyframe_hook(media_file_ids)`` is called at the end of the probe phase with the
+present files that need a background keyframe index, new/changed files first.
 """
 
 import asyncio
@@ -323,7 +323,7 @@ def link_manual_match(session: Session, row: m.MediaFile, manual: dict[str, Any]
 
 def delete_orphans(session: Session) -> None:
     """Episodes without files, seasons without episodes, shows without seasons, films without
-    files (PRD §4 step 7)."""
+    files."""
     session.execute(
         delete(m.Episode).where(
             m.Episode.id.not_in(select(m.MediaFileEpisode.episode_id).scalar_subquery())
@@ -375,7 +375,7 @@ class Scanner:
     ) -> None:
         self.db = db
         # ``None``/empty: full scan. Else a change-triggered (``watch``) run: only the scope
-        # directories are walked, diffed and marked missing (prd.md FR-6..9).
+        # directories are walked, diffed and marked missing.
         self.scope: list[ScanScope] | None = merge_scopes(scope) if scope else None
         self._configured_roots: set[str] = set()
         self.settings = settings
@@ -531,7 +531,7 @@ class Scanner:
         return subdirs
 
     def _walk_scoped(self) -> list[_RootWalk]:
-        """prd.md FR-7: one root listing per scope root, then only the scope directories."""
+        """One root listing per scope root, then only the scope directories."""
         assert self.scope is not None
         roots = self.folders().roots()  # one snapshot per run
         configured = dict(roots)
@@ -793,7 +793,7 @@ class Scanner:
         )
 
     def _scoped_root_guards(self, session: Session, walks: list[_RootWalk]) -> None:
-        """prd.md FR-8 root guards: an empty root listing (any scope shape), or a whole-root
+        """Root guards: an empty root listing (any scope shape), or a whole-root
         scope that found no video, with present rows of that root -> nothing marked missing."""
         rep = self._report
         for walk in walks:
@@ -1039,7 +1039,7 @@ class Scanner:
                 for row in session.scalars(
                     select(m.SubtitleFile).where(m.SubtitleFile.media_file_id.in_(id_chunk))
                 ):
-                    # Scoped run: never touch a sidecar row outside the scope (prd.md FR-9).
+                    # Scoped run: never touch a sidecar row outside the scope.
                     if self.scope is None or any(s.contains(row.path) for s in scopes):
                         existing[row.path] = row
 

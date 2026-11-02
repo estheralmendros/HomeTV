@@ -4,7 +4,7 @@ import { createQueryClient, shouldRetry } from './queryClient';
 import { invalidateAfter, mutationKeys, queryKeys, staleTimes } from './queryKeys';
 
 describe('queryKeys', () => {
-  it('builds the PRD keys', () => {
+  it('builds the documented keys', () => {
     expect(queryKeys.info()).toEqual(['info']);
     expect(queryKeys.profiles()).toEqual(['profiles']);
     expect(queryKeys.me()).toEqual(['me']);
@@ -53,7 +53,7 @@ describe('queryKeys', () => {
     expect(mutationKeys.ratingWrite('show', 7)).toEqual(['ratingWrite', 'show', 7]);
   });
 
-  it('has the PRD stale times', () => {
+  it('has the documented stale times', () => {
     expect(staleTimes).toEqual({
       info: Infinity, profiles: 30_000, me: 300_000, home: 0, library: 30_000, genres: 300_000, search: 30_000,
       film: 30_000, show: 30_000, season: 30_000, episode: 30_000, person: 30_000, watchlist: 30_000, activity: 0, adminScan: 0, adminUnmatched: 0, adminTmdb: 300_000,

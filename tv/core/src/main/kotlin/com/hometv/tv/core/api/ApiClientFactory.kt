@@ -8,7 +8,7 @@ import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 
-/** Lenient JSON (prd3 Technical Requirements "Serialization"). */
+/** Lenient JSON. */
 val ApiJson: Json = Json {
     ignoreUnknownKeys = true
     explicitNulls = false
@@ -26,7 +26,7 @@ class ApiClients(
     val api: HomeTvApi,
 )
 
-/** Builds the two OkHttp profiles of prd3 Playback Flow rule 7 (shared pool and interceptors) and Retrofit. */
+/** Builds the two OkHttp profiles (shared pool and interceptors) and Retrofit. */
 object ApiClientFactory {
     const val CONNECT_TIMEOUT_MS = 10_000L
     const val API_READ_TIMEOUT_MS = 20_000L

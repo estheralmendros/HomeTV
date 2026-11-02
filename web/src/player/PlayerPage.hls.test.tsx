@@ -1,5 +1,5 @@
-// PlayerPage: HLS session lifecycle through the UI — exit DELETE, keep-alive, the D9 pause
-// release, autoplay rejection and media-error recovery (prd2 §9 steps 5a, 13, 14).
+// PlayerPage: HLS session lifecycle through the UI — exit DELETE, keep-alive, the 30 min pause
+// release, autoplay rejection and media-error recovery.
 import { fireEvent, screen } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -96,7 +96,7 @@ describe('keep-alive', () => {
   });
 });
 
-describe('30 min pause release (D9)', () => {
+describe('30 min pause release', () => {
   it('29 min → keep-alives only; 30 min → one DELETE; Play → new POST at the paused position, loading, playback', async () => {
     useFakePlayerTimers();
     answerPlayback(f.playbackHls(), hls2());
@@ -180,7 +180,7 @@ describe('30 min pause release (D9)', () => {
   });
 });
 
-describe('autoplay rejection (§9 step 5a)', () => {
+describe('autoplay rejection', () => {
   it('NotAllowedError → "Toca para reproducir"; a click calls play() again and playback starts; no report while blocked', async () => {
     useFakePlayerTimers();
     const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockRejectedValueOnce(new DOMException('', 'NotAllowedError'));
@@ -209,7 +209,7 @@ describe('autoplay rejection (§9 step 5a)', () => {
   });
 });
 
-describe('media errors and recovery (§9 step 13)', () => {
+describe('media errors and recovery', () => {
   function networkError(p: ReturnType<typeof renderPlayer>) {
     mediaState(p.video()).error = { code: 2 };
     p.fire('error');

@@ -1,8 +1,8 @@
-"""Watch backend protocol and events (prd.md FR-2).
+"""Watch backend protocol and events.
 
 ``deliver`` is called **from the backend's reader thread** with one batch per read, never from
 the event loop. ``watch_limit`` and ``backend_failed`` are never produced by the kernel: the
-reader thread reports its own health with them (prd.md FR-3 "Reader thread failures").
+reader thread reports its own health with them.
 """
 
 import os

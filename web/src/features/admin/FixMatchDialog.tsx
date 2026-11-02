@@ -1,4 +1,4 @@
-// Fix-match dialog (prd2 §11): TMDB search through the server proxy, one result chosen, then
+// Fix-match dialog: TMDB search through the server proxy, one result chosen, then
 // "Aplicar" sends the request of the mode (film/show match, or resolve for a file entry; shows
 // files add season + episodes). Lazy admin chunk: FixMatchButton (detail pages) loads it on
 // demand, UnmatchedPage renders it directly. Errors stay inside the dialog.

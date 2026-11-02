@@ -1,5 +1,5 @@
-"""Keyframe service: registry, ffprobe fallback watchdog, failure memory, background indexer
-(PRD §7 Keyframe index; ACs Rev 4-7). ffprobe and /proc are stubbed (tests/stubs.py)."""
+"""Keyframe service: registry, ffprobe fallback watchdog, failure memory, background indexer.
+ffprobe and /proc are stubbed (tests/stubs.py)."""
 
 import asyncio
 import logging
@@ -185,7 +185,7 @@ async def test_preparing_with_estimates(mdb, settings):
 
 
 async def test_flat_rchar_returns_preparing_with_cumulative_estimate(mdb, settings):
-    """Rev 6: 2 GB then flat for 15 s (below the stall window) -> 503 preparing with a finite
+    """2 GB then flat for 15 s (below the stall window) -> 503 preparing with a finite
     estimate from cumulative_rate; huge elapsed time -> 1 MB/s floor; clamped to [1, 86 400]."""
     clock = {"t": 0.0}
     rchar = {"v": 0}
@@ -306,7 +306,7 @@ async def test_stalled_read_is_killed_and_remembered(mdb, settings, caplog):
 
 
 async def test_stall_with_process_ignoring_sigkill(mdb, settings):
-    """Rev 7: the waiter gets `stalled` within one sampling interval of the kill even when the
+    """The waiter gets `stalled` within one sampling interval of the kill even when the
     process never exits."""
 
     async def scenario(proc):
@@ -327,7 +327,7 @@ async def test_stall_with_process_ignoring_sigkill(mdb, settings):
 
 
 async def test_large_output_is_drained_while_rchar_grows(mdb, settings):
-    """Rev 7: 10 MB of CSV on stdout with steadily growing rchar completes (no stall)."""
+    """10 MB of CSV on stdout with steadily growing rchar completes (no stall)."""
     big = "".join(f"{t / 25:.6f},{t / 25:.6f},{'K__' if t % 50 == 0 else '___'}\n"
                   for t in range(400_000))  # fmt: skip
     assert len(big) > 10 * MB

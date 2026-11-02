@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-// ratings prd2 FR-W6 / W-AC-5: stars are a non-text graphic (WCAG 1.4.11, ≥ 3:1). The web has one
+// Stars are a non-text graphic (WCAG 1.4.11, ≥ 3:1). The web has one
 // (dark) theme, so the check runs against its three backgrounds, from the token values.
 const CSS = readFileSync(join(__dirname, 'tokens.css'), 'utf8');
 

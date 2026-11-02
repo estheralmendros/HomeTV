@@ -32,7 +32,7 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
 import org.junit.jupiter.params.provider.ValueSource
 
-/** Every row of prd3 §10; outcomes carry message keys, never the server `detail` or `error.message`. */
+/** Every playback failure case; outcomes carry message keys, never the server `detail` or `error.message`. */
 class PlaybackErrorMapperTest {
     private val mapper = PlaybackErrorMapper
 
@@ -217,7 +217,7 @@ class PlaybackErrorMapperTest {
     @Nested
     inner class Switch {
         @Test
-        fun `row 40 toasts by outcome`() {
+        fun `a failed audio switch toasts by outcome`() {
             assertEquals(SwitchFailure.Toast(AUDIO_TRACK_UNPLAYABLE), mapper.forSwitchUnsupported())
             assertEquals(SwitchFailure.Toast(AUDIO_TRACK_UNPLAYABLE), mapper.forSwitchError(http(500, "transcoder_failed", """{"detail": "keyframe_index_failed: x"}""")))
             assertEquals(SwitchFailure.Toast(AUDIO_TRACK_UNPLAYABLE), mapper.forSwitchError(http(422, "invalid_audio_stream")))

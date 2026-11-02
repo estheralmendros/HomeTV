@@ -9,7 +9,7 @@ export interface NextPartPromptProps {
   onBack: () => void;
 }
 
-/** "Parte 1 terminada" on `ended` of a non-final part; no countdown, no auto-advance (§9 step 10). */
+/** "Parte 1 terminada" on `ended` of a non-final part; no countdown, no auto-advance. */
 export function NextPartPrompt({ finishedPart, nextPart, onPlay, onBack }: NextPartPromptProps) {
   const playRef = useRef<HTMLButtonElement>(null);
   useEffect(() => playRef.current?.focus(), []);

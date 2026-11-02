@@ -1,7 +1,7 @@
-// Global test setup (prd2 § Testing Decisions):
+// Global test setup:
 // - jest-dom matchers, RTL cleanup, MSW lifecycle with onUnhandledRequest: 'error' (no network);
 // - HTMLMediaElement stubs: play/pause/load, writable currentTime/duration/paused/error, and a
-//   load() that resets like a browser's media element load algorithm (Rev 6/7);
+//   load() that resets like a browser's media element load algorithm;
 // - URL.createObjectURL / revokeObjectURL stubs (fresh vi.fn per test);
 // - per-test reset of storage and of module state (api client hooks, admin unlock);
 // - client capabilities detected from a desktop Chrome env (tests/capsEnvs.ts; no HEVC). Switch

@@ -17,7 +17,7 @@ data class PosterItem(
     val progress: Float?,
     val watched: Boolean,
     val badge: String?,
-    /** This profile's rating: the card's star badge (ratings prd3 FR-T13). */
+    /** This profile's rating: the card's star badge. */
     val myRating: Stars? = null,
 ) {
     companion object {

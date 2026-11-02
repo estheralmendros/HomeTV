@@ -1,4 +1,4 @@
-"""Segment plan, playlist text, run.csv verification and the fMP4 splitter (PRD §7). Pure.
+"""Segment plan, playlist text, run.csv verification and the fMP4 splitter. Pure.
 
 Times are seconds relative to ``probe.start_seconds``. ffmpeg's outputs (``run.csv``, ``tfdt``)
 are on the offset timeline (plan time + ``TS_OFFSET_SECONDS``); the offset is removed here
@@ -12,7 +12,7 @@ import re
 import struct
 from dataclasses import dataclass, field
 
-TS_OFFSET_SECONDS = 10  # T0: constant -output_ts_offset of every ffmpeg run (§7 HLS step 3)
+TS_OFFSET_SECONDS = 10  # T0: constant -output_ts_offset of every ffmpeg run
 MIN_TAIL_SECONDS = 0.5
 MAX_REORDER_SECONDS = 0.5  # open-GOP leading pictures / B-frame reorder depth
 LAST_SEGMENT_SLACK_SECONDS = 1.0
@@ -116,7 +116,7 @@ def verify_row(
     frame: float,
     expected_start: float | None = None,
 ) -> RowCheck:
-    """Check a ``run.csv`` row against the plan (PRD §7 HLS step 4, Rev 4/5 rules).
+    """Check a ``run.csv`` row against the plan.
 
     ``expected_start`` overrides ``plan[k].start`` (segment 0 starts at the first keyframe,
     which may be slightly after 0). The first row of a run whose start is exactly 0.0 (the

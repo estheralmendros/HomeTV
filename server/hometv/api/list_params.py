@@ -1,4 +1,4 @@
-"""Query parameters shared by GET /api/films and GET /api/shows (PRD REST "Catalog").
+"""Query parameters shared by GET /api/films and GET /api/shows.
 
 ``PageNumber`` (``MAX_PAGE``) and ``WatchedParam`` / ``watched_flag`` are also used by
 GET /api/watchlist.

@@ -1,4 +1,4 @@
-// Episode rows of a season (prd2 §8 step 4): still, "E3 · Título", air date, runtime, clamped
+// Episode rows of a season: still, "E3 · Título", air date, runtime, clamped
 // overview, progress ("Quedan 9 min") or ✓, play and an optimistic watched toggle. Rows never
 // list versions: the player runs selectVersion on the episode's media_files.
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -43,7 +43,7 @@ export function EpisodeList({ showId, seasonNumber, episodes }: { showId: number
       patch(id, watched);
       return { previous };
     },
-    // Marking the show's last present episode can finish it (ratings prd2 FR-W9.3).
+    // Marking the show's last present episode can finish it.
     onSuccess: (response) => {
       if (response.rating_prompt) offer(response.rating_prompt);
     },

@@ -1,6 +1,6 @@
-// Optional smoke test (prd2 Testing Decisions), Chromium only, not part of `npm test`.
-// Runs against a real server seeded with a library (prd.md's integration clips, or the demo
-// library of specs/HOMETV-1/hometv-app/create-environment.sh):
+// Optional smoke test, Chromium only, not part of `npm test`.
+// Runs against a real server seeded with a library (the server's integration clips, or the demo
+// library of scripts/create-environment.sh):
 //   HOMETV_E2E_URL=http://127.0.0.1:8000 npm run e2e
 // Optional: HOMETV_E2E_FILM (title of an H.264/AAC MP4 film, default "h264_aac", the integration
 // clip; the demo library has "Dune"), HOMETV_E2E_PROFILE (profile to pick when no bootstrap is
@@ -49,7 +49,7 @@ test('profile → films grid → play a direct film → back → Continue Watchi
   await expect(page).toHaveURL(/\/watch\/film\/\d+/);
   await expect.poll(() => currentTime(page), { timeout: 10_000 }).toBeGreaterThan(2);
 
-  // Continue Watching needs ≥ 30 s of progress (prd.md §9): seek, let the player track it, leave.
+  // Continue Watching needs ≥ 30 s of progress: seek, let the player track it, leave.
   await page.locator('video').evaluate((v: HTMLVideoElement) => {
     v.currentTime = 35;
   });
@@ -62,7 +62,7 @@ test('profile → films grid → play a direct film → back → Continue Watchi
   await expect(continueWatching.getByRole('link', { name: new RegExp(FILM) }).first()).toBeVisible();
 });
 
-// Navigation layout (watchlist prd2 AC-W13/AC-W14, ratings prd2 FR-W15 / W-AC-14/14a): real layout
+// Navigation layout: real layout
 // checks jsdom cannot make.
 const SECTION_LABELS = ['Inicio', 'Películas', 'Series', 'Mi lista', 'Actividad'];
 

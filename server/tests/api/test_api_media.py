@@ -1,4 +1,4 @@
-"""Media & playback API (PRD REST "Media & playback", §7 ACs). ffmpeg/ffprobe are stubbed."""
+"""Media & playback API. ffmpeg/ffprobe are stubbed."""
 
 import asyncio
 import time
@@ -506,7 +506,7 @@ async def test_subtitles_prefetched_on_playback(client, user, make_file, app):
     assert started == [fid]
 
 
-# --- latency (G4, in-process) ------------------------------------------------------------------
+# --- latency (in-process) ----------------------------------------------------------------------
 
 
 async def test_g4_latency_targets(client, user, make_file, ffmpeg, app):
@@ -528,7 +528,7 @@ async def test_g4_latency_targets(client, user, make_file, ffmpeg, app):
     response = await play(client, user, remux)
     timings["playback_hls"] = time.perf_counter() - t
     assert response.json()["mode"] == "hls"
-    print("G4 " + " ".join(f"{k}={v * 1000:.1f}ms" for k, v in timings.items()))
+    print("latency " + " ".join(f"{k}={v * 1000:.1f}ms" for k, v in timings.items()))
     assert timings["playback_direct"] < 0.2
     assert timings["playback_hls"] < 0.2
     assert timings["first_byte"] < 0.3

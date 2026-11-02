@@ -477,7 +477,7 @@ def test_prepare_runtime_does_not_write_into_media_root(tmp_path):
     assert sorted(os.listdir(media)) == before
 
 
-# --- Change-triggered scans (HOMETV-1 prd2 FR-22) ---------------------------------------------
+# --- Change-triggered scans -------------------------------------------------------------------
 
 
 def test_watch_settings_env_overrides_yaml(tmp_path):

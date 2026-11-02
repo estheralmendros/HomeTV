@@ -15,7 +15,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** prd3 Playback Flow rule 9. */
+/** Retry rules for stream/HLS loads. */
 @RunWith(AndroidJUnit4::class)
 class HomeTvLoadErrorHandlingPolicyTest {
     private val policy = HomeTvLoadErrorHandlingPolicy()

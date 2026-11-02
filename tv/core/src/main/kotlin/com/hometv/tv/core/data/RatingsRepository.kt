@@ -38,7 +38,7 @@ data class RatingKey(val kind: RatingKind, val id: Long)
 data class RatingChange(val kind: RatingKind, val id: Long, val stars: Stars?)
 
 /**
- * Ratings reads and writes (ratings prd3 FR-T4). A write runs in [appScope] and the caller awaits it,
+ * Ratings reads and writes. A write runs in [appScope] and the caller awaits it,
  * so leaving the screen (Back, a cleared ViewModel) never cancels it; failures reach the awaiting
  * caller as `ApiException`. At most one write per title is in flight: a second [set]/[remove] for a
  * title already in [writing] sends nothing and returns the in-flight write's outcome (whichever kind

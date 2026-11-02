@@ -13,7 +13,7 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * prd3 §4 step 2: the four Browse header buttons stay on one line, inside the safe area and clear of
+ * The four Browse header buttons stay on one line, inside the safe area and clear of
  * the title, even with the longest labels. JVM only: it needs Robolectric's native graphics, which
  * measure text (legacy mode gives text no width); the whole JVM suite runs native
  * (`robolectric.graphicsMode` in `app/build.gradle.kts`), the annotation keeps it so on its own.

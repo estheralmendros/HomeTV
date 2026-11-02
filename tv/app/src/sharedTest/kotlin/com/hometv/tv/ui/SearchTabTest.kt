@@ -20,7 +20,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * prd3 §3 step 1 and §5 step 1: Search is a lens icon at the left end of the top nav (before
+ * Search is a lens icon at the left end of the top nav (before
  * "Inicio"), and the keyboard's search key closes the keyboard.
  */
 @RunWith(AndroidJUnit4::class)
@@ -82,7 +82,7 @@ class SearchTabTest : UiTestBase() {
         assertFocused("search_field")
         node("search_field").performTextInput("españa")
         settle()
-        // prd3 §5 step 1: the field's EditorInfo.hintLocales asks the IME for its Spanish layout (with "ñ").
+        // The field's EditorInfo.hintLocales asks the IME for its Spanish layout (with "ñ").
         val info = EditorInfo()
         rule.runOnIdle {
             val view = requireNotNull(textEditorView(rule.activity.window.decorView)) { "no view is accepting text input" }

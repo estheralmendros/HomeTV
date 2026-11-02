@@ -1,4 +1,4 @@
-"""Pure TMDB match decision (PRD §5 Matching). No I/O.
+"""Pure TMDB match decision. No I/O.
 
 Results are raw TMDB search result dicts (movie: ``title``/``original_title``/``release_date``;
 tv: ``name``/``original_name``/``first_air_date``). ``merge_results`` combines the searches made

@@ -8,7 +8,7 @@ import java.time.Instant
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** Who triggered a renewal: decides how an unreachable server surfaces (prd3 §2.5). */
+/** Who triggered a renewal: decides how an unreachable server surfaces. */
 enum class Origin {
     /** A screen load, a user action, any `POST .../playback`, a player stream failure: Connection Error screen. */
     Foreground,
@@ -28,7 +28,7 @@ sealed interface RenewOutcome {
 }
 
 /**
- * Silent re-session (prd3 §2.5). Profile tokens are identity only (no PIN), so an expired or
+ * Silent re-session. Profile tokens are identity only (no PIN), so an expired or
  * rejected token is replaced by `POST /api/profiles/{profileId}/session` for the remembered
  * profile; the viewer only reaches the Profile Picker when that profile is gone. Renewal is
  * single-flight: concurrent 401s wait on the mutex and reuse the token the first renewal stored.

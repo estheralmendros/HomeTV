@@ -21,7 +21,7 @@ function renderMessage(props: Partial<UnsupportedMessageProps> = {}) {
   return { onTry, onBack };
 }
 
-describe('UnsupportedMessage (§9.1)', () => {
+describe('UnsupportedMessage', () => {
   it.each([
     [
       'video_codec_unsupported',

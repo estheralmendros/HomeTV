@@ -8,10 +8,10 @@ import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 
 /**
- * Retry rules of prd3 Playback Flow rule 9 for stream/HLS loads (subtitles are local files and never
+ * Retry rules for stream/HLS loads (subtitles are local files and never
  * reach it): 504 `segment_timeout` → retry after 2 s, at most 3 times; an `IOException` without a
  * status (network, read timeout) → default backoff, at most 3 times; 401, 404, 410, 416, 422, 500 →
- * no retry (the error reaches §10 at once: renewal, recovery, `file_missing`…). No fallback selection.
+ * no retry (the error reaches the player error handling at once: renewal, recovery, `file_missing`…). No fallback selection.
  */
 @OptIn(UnstableApi::class)
 class HomeTvLoadErrorHandlingPolicy : DefaultLoadErrorHandlingPolicy() {

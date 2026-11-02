@@ -1,4 +1,4 @@
-// Subtitle and audio menus (prd2 §9 steps 7–8). The open state lives in PlayerPage, so the
+// Subtitle and audio menus. The open state lives in PlayerPage, so the
 // keyboard shortcuts know when a menu is open (Esc closes it, other keys are ignored).
 import { useId, type ReactNode } from 'react';
 import type { AudioTrack, SubtitleTrack } from '@/api/types';

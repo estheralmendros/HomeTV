@@ -1,4 +1,4 @@
-// The single owner of "¿Qué te ha parecido?" (ratings prd2 FR-W8). Sits above the routes (in
+// The single owner of "¿Qué te ha parecido?". Sits above the routes (in
 // AppProviders), so a prompt survives the navigation that leaves the player; the player
 // suppresses it while mounted. One pending prompt at a time (a newer offer replaces an unopened
 // one); a title is offered at most once per host lifetime (`handled`: added when the dialog opens

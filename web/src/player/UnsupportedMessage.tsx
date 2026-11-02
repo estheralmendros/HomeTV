@@ -24,7 +24,7 @@ function rowFor(reason: string): Row {
   return (reason !== 'generic' ? rows[reason] : undefined) ?? S.player.unsupported.generic;
 }
 
-/** §9.1: reason-specific heading/body, collapsed detail, "Otras versiones", [Volver]. */
+/** Reason-specific heading/body, collapsed detail, "Otras versiones", [Volver]. */
 export function UnsupportedMessage({ reason, detail, codec, alternatives, onTry, onBack }: UnsupportedMessageProps) {
   const row = rowFor(reason);
   const body = typeof row.body === 'function' ? row.body((codec ?? S.common.unknown).toUpperCase()) : row.body;

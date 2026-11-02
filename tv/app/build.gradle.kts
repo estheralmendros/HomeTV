@@ -8,7 +8,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-// Release signing (prd3 Technical Requirements): tv/keystore.properties (gitignored).
+// Release signing: tv/keystore.properties (gitignored).
 val keystoreFile = rootProject.file("keystore.properties")
 val keystore = Properties().apply { if (keystoreFile.exists()) keystoreFile.inputStream().use(::load) }
 
@@ -45,7 +45,7 @@ android {
         }
     }
 
-    // UI is Spanish only (prd3 §UI Language): every visible app string comes from values/. Keep only
+    // UI is Spanish only: every visible app string comes from values/. Keep only
     // the default and `es` resources of the libraries (drops ~86 unused library locales from the APK).
     androidResources {
         localeFilters += "es"

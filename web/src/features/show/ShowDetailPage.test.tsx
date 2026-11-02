@@ -305,7 +305,7 @@ describe('ShowDetailPage', () => {
     });
   });
 
-  describe('rating prompt (ratings prd2 FR-W9.3, W-AC-9)', () => {
+  describe('rating prompt', () => {
     const prompt = f.ratingPrompt({ kind: 'show', id: 7, title: 'The Office', poster: null });
 
     function answerWatched() {

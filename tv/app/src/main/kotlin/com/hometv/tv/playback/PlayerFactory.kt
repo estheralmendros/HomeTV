@@ -15,7 +15,7 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import okhttp3.OkHttpClient
 
 /**
- * Builds the ExoPlayer of the Player screen (prd3 Playback Flow rules 1, 2, 7, 8, 9, 12):
+ * Builds the ExoPlayer of the Player screen:
  * - data: `OkHttpDataSource.Factory(streamClient)` (Bearer from its `AuthInterceptor`, read 45 s)
  *   wrapped in `DefaultDataSource.Factory` so the `file://` subtitle URIs of `SubtitleFileCache` load too;
  * - one `DefaultMediaSourceFactory` with [HomeTvLoadErrorHandlingPolicy] (progressive + HLS);
@@ -35,7 +35,7 @@ object PlayerFactory {
 
     /**
      * Movie audio attributes: the player's, and the ones `AndroidCodecInventory` queries passthrough
-     * support with (prd3 Capability Detection), so both see the same audio route.
+     * support with, so both see the same audio route.
      */
     val AUDIO_ATTRIBUTES: AudioAttributes = AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build()
 

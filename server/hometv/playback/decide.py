@@ -1,4 +1,4 @@
-"""Playback decision (PRD §7 Decision). Pure: no I/O."""
+"""Playback decision. Pure: no I/O."""
 
 from dataclasses import dataclass
 from typing import Literal

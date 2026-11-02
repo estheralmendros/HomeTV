@@ -67,7 +67,7 @@ fun tailscaleIntent(context: Context): Intent? {
 const val TAILSCALE_PACKAGE = "com.tailscale.ipn"
 
 /**
- * Connection Error (prd3 §10): [Reintentar] (focused), [Abrir Tailscale] (only when installed). No
+ * Connection Error: [Reintentar] (focused), [Abrir Tailscale] (only when installed). No
  * [Cambiar servidor]: it needs the admin PIN, which can't be checked while the server is unreachable.
  */
 @Composable

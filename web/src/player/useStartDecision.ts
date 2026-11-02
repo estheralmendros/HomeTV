@@ -1,4 +1,4 @@
-// The player's start decision (prd2 §9 steps 1–2, Rev 4/5/7): which file and from where, taken
+// The player's start decision: which file and from where, taken
 // ONCE per mount.
 // - Re-entry barrier: a pending final report of this item (this tab's previous visit) is awaited
 //   for ≤ 3 s; on timeout the decision waits for the item query's first fetch after this mount
@@ -7,7 +7,7 @@
 //   the read-only home entry (Continue Watching, in progress or Next Up), so a home start never waits for
 //   GET /api/episodes/{id}.
 // - File: `?file=` when it belongs to the item, else selectVersion(). Start: `?t=` (one-shot),
-//   else startPosition() (D10/D11) with its "different version" flag.
+//   else startPosition() with its "different version" flag.
 import { useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { queryKeys, type PlayedItem } from '@/api/queryKeys';
@@ -24,7 +24,7 @@ export interface StartDecision {
   files: MediaFile[];
   progress: Progress | null;
   start: number;
-  /** D11: resumable progress exists but this version doesn't match it (never with `?t=`). */
+  /** Resumable progress exists but this version doesn't match it (never with `?t=`). */
   differentVersion: boolean;
   source: DecisionSource;
 }

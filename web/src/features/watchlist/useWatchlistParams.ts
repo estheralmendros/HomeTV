@@ -1,4 +1,4 @@
-// "Mi lista" state lives in the URL (watchlist prd2 FR-W8): ?type=films|shows&watched=true|false&
+// "Mi lista" state lives in the URL: ?type=films|shows&watched=true|false&
 // sort=title|year. Defaults ('all', null, 'added') and invalid values are never written; setters
 // replace the history entry.
 import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';

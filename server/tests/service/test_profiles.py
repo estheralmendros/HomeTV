@@ -1,4 +1,4 @@
-"""Profiles & auth (PRD §8): PIN hashing, tokens, unlock limiter, PIN lifecycle rules."""
+"""Profiles & auth: PIN hashing, tokens, unlock limiter, PIN lifecycle rules."""
 
 from datetime import UTC, datetime, timedelta
 

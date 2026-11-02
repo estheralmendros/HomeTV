@@ -15,7 +15,7 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    assetsDir: 'assets', // the server marks /assets/* immutable (prd.md §12)
+    assetsDir: 'assets', // the server marks /assets/* immutable
     // The only chunk above Vite's 500 kB default is hls.js (~595 kB, ~186 kB gzip), a lazy chunk
     // loaded only for an `hls` decision off iOS. Everything else stays far below this limit.
     chunkSizeWarningLimit: 650,

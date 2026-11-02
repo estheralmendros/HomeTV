@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-/** prd3 §10 container/parse failure in direct mode (user decision: automatic HLS fallback) and M2TS. */
+/** Container/parse failure in direct mode (user decision: automatic HLS fallback) and M2TS. */
 class PlayerContainerFallbackTest : PlayerTestBase() {
     @Test
     fun `a parse failure in direct mode sends one request without the container and continues in HLS`() = playerTest {

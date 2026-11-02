@@ -73,7 +73,7 @@ describe('selectVersion: single versions and plain siblings', () => {
   });
 });
 
-describe('selectVersion: multi-part films (D10)', () => {
+describe('selectVersion: multi-part films', () => {
   const p1 = part(1, 1);
   const p2 = part(2, 2, { duration_seconds: 3200 });
 
@@ -119,7 +119,7 @@ describe('selectVersion: multi-part films (D10)', () => {
   });
 });
 
-describe('nextPart (D13)', () => {
+describe('nextPart', () => {
   it("prefers the next part's playable file with the same label over an earlier-listed one", () => {
     const p1 = part(1, 1, { label: 'A' });
     const files = [p1, part(2, 2, { label: 'B' }), part(3, 2, { label: 'A' })];
@@ -191,7 +191,7 @@ describe('playableAlternatives', () => {
   });
 });
 
-describe('D11: selectVersion + startPosition + matchesLastPlayed', () => {
+describe('version match: selectVersion + startPosition + matchesLastPlayed', () => {
   it('a matching sibling resumes when the last-played version is not in caps', () => {
     const files = [hevc(1, { duration_seconds: 7200 }), file(2, { duration_seconds: 7190 })];
     const p = progress({ media_file_id: 1, position_seconds: 3000, duration_seconds: 7200 });
@@ -259,7 +259,7 @@ describe('D11: selectVersion + startPosition + matchesLastPlayed', () => {
     expect(startPosition(chosen!, files, p).seconds).toBe(0);
   });
 
-  it('D10 next part takes precedence over a matching Part 1 sibling', () => {
+  it('the next part takes precedence over a matching Part 1 sibling', () => {
     const files = [part(1, 1, { video: HEVC }), part(2, 1), part(3, 2)];
     const p = progress({ media_file_id: 1, position_seconds: 2980, duration_seconds: 3000 });
     const chosen = selectVersion(files, caps, p);
@@ -267,7 +267,7 @@ describe('D11: selectVersion + startPosition + matchesLastPlayed', () => {
     for (const x of files) expect(startPosition(x, files, p)).toEqual({ seconds: 0, differentVersion: false });
   });
 
-  it('D13: with two Part 2 versions the playable one wins over the same label', () => {
+  it('with two Part 2 versions the playable one wins over the same label', () => {
     const files = [
       part(1, 1, { video: HEVC, label: '2160p HEVC' }),
       part(2, 2, { video: HEVC, label: '2160p HEVC' }),

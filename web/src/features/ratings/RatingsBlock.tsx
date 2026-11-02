@@ -1,4 +1,4 @@
-// "Tu puntuación" / "Media de la familia" / the other profiles (ratings prd2 FR-W10), under the
+// "Tu puntuación" / "Media de la familia" / the other profiles, under the
 // detail's meta line. Reads only the cached detail: useRatingWrite patches it optimistically. A
 // write in flight for the title (any mount) disables [Puntuar] / [Cambiar] with `aria-disabled`
 // (not `disabled`): the Modal returns focus to this button on close, often while the write is still
