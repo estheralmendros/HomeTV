@@ -9,7 +9,6 @@ import { Artwork } from './Artwork';
 import { Avatar, ProfileAvatar, avatarColor, initialOf } from './Avatar';
 import { CastRow } from './CastRow';
 import { EmptyState } from './EmptyState';
-import { EpisodeCard } from './EpisodeCard';
 import { ErrorState } from './ErrorState';
 import { Modal } from './Modal';
 import { PosterCard } from './PosterCard';
@@ -19,6 +18,7 @@ import { SkeletonGrid, SkeletonRow } from './Skeleton';
 import { ToastProvider, useToast } from './Toast';
 import { WatchedToggle } from './WatchedToggle';
 import { WatchlistToggle } from './WatchlistToggle';
+import { WideCard } from './WideCard';
 
 describe('CastRow', () => {
   it('renders a person listed twice (two characters) without a duplicate-key warning', () => {
@@ -175,13 +175,14 @@ describe('Artwork', () => {
   });
 });
 
-describe('EpisodeCard', () => {
-  it('links with its accessible name and shows the show title, code line and progress', () => {
+describe('WideCard', () => {
+  it('links with its accessible name and shows the title, second line and progress', () => {
     renderWithProviders(
-      <EpisodeCard
+      <WideCard
         to="/watch/episode/345"
-        still={f.image('s', 'still')}
-        showTitle="The Office"
+        image={f.image('s', 'still')}
+        kind="still"
+        title="The Office"
         line="T2 · E3 · Office Olympics"
         ariaLabel="The Office · T2 · E3 · Office Olympics"
         progress={{ position: 660, duration: 1320 }}
@@ -190,7 +191,27 @@ describe('EpisodeCard', () => {
     const link = screen.getByRole('link', { name: 'The Office · T2 · E3 · Office Olympics' });
     expect(link).toHaveAttribute('href', '/watch/episode/345');
     expect(link).toHaveTextContent('T2 · E3 · Office Olympics');
+    expect(link.querySelector('[data-kind]')).toHaveAttribute('data-kind', 'still');
     expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50');
+    expect(screen.queryByTestId('rating-badge')).not.toBeInTheDocument();
+  });
+
+  it('a film backdrop card carries the rating badge, also in the link name', () => {
+    renderWithProviders(
+      <WideCard
+        to="/watch/film/12"
+        image={f.image('b', 'backdrop')}
+        kind="backdrop"
+        title="Dune"
+        line="2021"
+        ariaLabel="Dune (2021)"
+        progress={{ position: 600, duration: 6000 }}
+        myRating={4.5}
+      />,
+    );
+    const link = screen.getByRole('link', { name: 'Dune (2021), tu puntuación: 4,5 estrellas' });
+    expect(link.querySelector('[data-kind]')).toHaveAttribute('data-kind', 'backdrop');
+    expect(screen.getByTestId('rating-badge')).toHaveTextContent('4,5');
   });
 });
 

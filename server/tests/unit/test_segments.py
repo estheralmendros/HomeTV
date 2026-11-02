@@ -113,6 +113,23 @@ def test_check_plan_30s_gap_boundary():
     assert not check_plan(plan_segments([0.0, 30.1], 60.0, 6), 6).ok
 
 
+def test_check_plan_last_segment_may_reach_twice_the_bound():
+    # Audio/subtitles running past the video's last keyframe (real file: 44.4 s tail).
+    keyframes = [float(t) for t in range(0, 5608, 10)]
+    assert check_plan(plan_segments(keyframes, 5652.3, 6), 6).ok
+    assert check_plan(plan_segments([0.0, 20.0], 80.0, 6), 6).ok  # tail 60 s
+    assert not check_plan(plan_segments([0.0, 20.0], 80.1, 6), 6).ok
+
+
+def test_check_plan_tail_allowance_only_for_the_last_segment():
+    assert not check_plan(plan_segments([0.0, 31.0, 40.0], 50.0, 6), 6).ok
+
+
+def test_check_plan_single_segment_keeps_the_normal_bound():
+    assert check_plan(plan_segments([0.0], 30.0, 6), 6).ok
+    assert not check_plan(plan_segments([0.0], 31.0, 6), 6).ok
+
+
 def test_check_plan_bound_with_larger_segment_setting():
     assert max_segment_seconds(6) == 30
     assert max_segment_seconds(10) == 40

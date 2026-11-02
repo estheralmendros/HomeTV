@@ -9,12 +9,11 @@ import { errorMessage } from '@/api/errors';
 import type { FilmSummary, HomeEpisode, HomeResponse } from '@/api/types';
 import { EmptyLibrary } from '@/components/EmptyLibrary';
 import { EmptyState } from '@/components/EmptyState';
-import { EpisodeCard } from '@/components/EpisodeCard';
 import { ErrorState } from '@/components/ErrorState';
-import { PosterCard } from '@/components/PosterCard';
 import { Row } from '@/components/Row';
 import { SkeletonRow } from '@/components/Skeleton';
 import { SummaryCard } from '@/components/SummaryCard';
+import { WideCard } from '@/components/WideCard';
 import { cx } from '@/lib/cx';
 import { episodeLabel, episodeLine } from '@/lib/episodes';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
@@ -92,12 +91,14 @@ function DetailsLink({ to, title }: { to: string; title: string }) {
 function ContinueFilm({ film }: { film: FilmSummary }) {
   const p = film.progress;
   return (
-    <div className={styles.item}>
-      <PosterCard
+    <div className={cx(styles.item, styles.wideItem)}>
+      <WideCard
         to={playerUrl('film', film.id)}
+        image={film.backdrop}
+        kind="backdrop"
         title={film.title}
-        year={film.year}
-        poster={film.poster}
+        line={film.year !== null ? String(film.year) : null}
+        ariaLabel={S.common.titleWithYear(film.title, film.year)}
         progress={p ? { position: p.position_seconds, duration: p.duration_seconds } : null}
         myRating={film.my_rating}
       />
@@ -109,11 +110,12 @@ function ContinueFilm({ film }: { film: FilmSummary }) {
 function ContinueEpisode({ episode }: { episode: HomeEpisode }) {
   const p = episode.progress;
   return (
-    <div className={cx(styles.item, styles.episodeItem)}>
-      <EpisodeCard
+    <div className={cx(styles.item, styles.wideItem)}>
+      <WideCard
         to={playerUrl('episode', episode.id)}
-        still={episode.still}
-        showTitle={episode.show_title}
+        image={episode.still}
+        kind="still"
+        title={episode.show_title}
         line={episodeLine(episode)}
         ariaLabel={episodeLabel(episode)}
         progress={p ? { position: p.position_seconds, duration: p.duration_seconds } : null}
