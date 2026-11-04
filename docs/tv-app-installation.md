@@ -147,6 +147,9 @@ Tailscale's official Android app supports Android TV (Android 8.0+).
    also find it in **Ajustes**). The **Ajustes** tab, and its **Cambiar servidor** button, are shown only to admin
    profiles; **Cambiar servidor** asks for the admin PIN (the server checks it, so it must be reachable). If the old server is gone for
    good, clear the app's data (Settings → Apps → HomeTV → Clear data) or reinstall it to start from the setup screen.
+   To leave HomeTV, press Back on Inicio until it asks "¿Salir de la aplicación?" and choose **Salir**: this signs
+   the profile out, and the next launch shows "¿Quién está viendo?". Leaving with the remote's Home button keeps the
+   profile signed in.
 
 If you see "No se puede conectar con tu servidor HomeTV", open the Tailscale app on the TV
 (the **Abrir Tailscale** button does this) and check that it says *Connected*.

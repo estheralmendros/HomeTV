@@ -32,6 +32,11 @@ import kotlinx.coroutines.launch
  */
 class WatchlistMemory {
     @Volatile var sort: WatchlistSort = WatchlistSort.ADDED
+
+    /** Back to Añadidos ("Salir" forgets the viewer's choice). */
+    fun reset() {
+        sort = WatchlistSort.ADDED
+    }
 }
 
 enum class WatchlistDialogKind { SORT, TYPE, WATCHED }

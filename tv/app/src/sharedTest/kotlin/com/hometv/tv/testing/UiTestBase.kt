@@ -5,6 +5,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.nativeKeyCode
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onLast
@@ -107,6 +108,16 @@ abstract class UiTestBase {
 
     protected fun node(tag: String): SemanticsNodeInteraction = rule.onNodeWithTag(tag, useUnmergedTree = true)
 
+    /** No node carries [tag] (e.g. a closed dialog). */
+    protected fun absent(tag: String) = rule.onAllNodes(hasTestTag(tag), useUnmergedTree = true).fetchSemanticsNodes().isEmpty()
+
+    /** The bounds of [tag] in dp, `[left, top, right, bottom]`, in its own window's root (a dialog's window for dialog nodes). */
+    protected fun dpBounds(tag: String): FloatArray {
+        val n = node(tag).fetchSemanticsNode()
+        val d = n.layoutInfo.density.density
+        return floatArrayOf(n.positionInRoot.x / d, n.positionInRoot.y / d, (n.positionInRoot.x + n.size.width) / d, (n.positionInRoot.y + n.size.height) / d)
+    }
+
     protected fun assertFocused(tag: String) {
         try {
             node(tag).assertIsFocused()
@@ -146,6 +157,17 @@ abstract class UiTestBase {
 
     @After
     fun cancelScope() = scope.cancel()
+
+    companion object {
+        /** The 24 dp inner padding of the app's dialogs (`ConfirmDialog`, `RatingDialog`). */
+        const val DIALOG_PADDING = 24f
+
+        /**
+         * Robolectric does not model a TV's dialog-window insets (they added ~77 dp on the emulator), so
+         * a dialog must leave that much room inside the 27 dp vertical safe area.
+         */
+        const val DIALOG_WINDOW_INSETS = 80f
+    }
 
     // ---- A small library ------------------------------------------------------------------
 

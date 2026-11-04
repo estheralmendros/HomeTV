@@ -50,6 +50,7 @@ import androidx.tv.material3.Text
 import com.hometv.tv.R
 import com.hometv.tv.ui.components.Artwork
 import com.hometv.tv.ui.components.AvatarUi
+import com.hometv.tv.ui.components.ConfirmDialog
 import com.hometv.tv.ui.components.FocusRequesters
 import com.hometv.tv.ui.components.LandscapeCard
 import com.hometv.tv.ui.components.LoadingScreen
@@ -67,7 +68,7 @@ import com.hometv.tv.ui.text.resolve
 import com.hometv.tv.ui.theme.HomeTvColors
 import com.hometv.tv.ui.theme.HomeTvDimens
 
-/** (4) Home: top nav, hero, rows; Back returns to the first card before exiting. */
+/** (4) Home: top nav, hero, rows; Back returns to the first card, then asks "¿Salir de la aplicación?". */
 @Composable
 fun HomeScreen(vm: HomeViewModel, navigator: AppNavigator, avatar: AvatarUi?, showSettings: Boolean, focusTab: NavTab?, onFocusTabConsumed: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -79,7 +80,7 @@ fun HomeScreen(vm: HomeViewModel, navigator: AppNavigator, avatar: AvatarUi?, sh
 
     LaunchedEffect(vm) { vm.navigation.collect(navigator::handle) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.onVisible() }
-    BackHandler { if (!vm.onBack()) navigator.exit() }
+    BackHandler { vm.onBack() }
 
     // Back from Browse / Search / Settings: focus the tab of the screen we came from.
     val pendingTab by rememberUpdatedState(focusTab)
@@ -106,7 +107,7 @@ fun HomeScreen(vm: HomeViewModel, navigator: AppNavigator, avatar: AvatarUi?, sh
         Column(Modifier.fillMaxSize()) {
             TopNav(NavTab.HOME, navigator::openTab, avatar, navigator::switchProfile, tabs, showSettings, onFocused = vm::onNavFocused)
             when {
-                error != null -> ScreenErrorView(error, onRetry = vm::retry, onBack = navigator::exit)
+                error != null -> ScreenErrorView(error, onRetry = vm::retry, onBack = vm::onBack)
                 state.loading -> LoadingScreen()
                 state.libraryEmpty && state.rows.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(stringResource(R.string.home_library_empty), style = MaterialTheme.typography.titleMedium, modifier = Modifier.widthIn(max = 640.dp))
@@ -117,6 +118,12 @@ fun HomeScreen(vm: HomeViewModel, navigator: AppNavigator, avatar: AvatarUi?, sh
                 }
             }
         }
+    }
+    state.exitDialog?.let {
+        ConfirmDialog(
+            stringResource(R.string.exit_dialog_title), stringResource(R.string.action_exit), stringResource(R.string.action_cancel),
+            onConfirm = vm::onExitConfirmed, onDismiss = vm::onExitDismissed,
+        )
     }
 }
 

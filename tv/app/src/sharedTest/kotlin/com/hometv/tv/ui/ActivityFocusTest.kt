@@ -49,8 +49,6 @@ class ActivityFocusTest : UiTestBase() {
         press(Key.DirectionCenter)
     }
 
-    private fun absent(tag: String) = rule.onAllNodes(hasTestTag(tag), useUnmergedTree = true).fetchSemanticsNodes().isEmpty()
-
     @Test
     fun rowsReadAsSentencesAndOkOpensTheDetailAndBackRestoresTheRow() {
         useActivity()

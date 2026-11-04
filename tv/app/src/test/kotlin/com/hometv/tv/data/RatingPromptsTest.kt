@@ -8,7 +8,9 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /** The app-scoped prompt store (once per title per process, profile-safe). */
@@ -105,5 +107,19 @@ class RatingPromptsTest {
         assertNull(prompts.pending.value)
         prompts.offer(5, dune)
         assertEquals(PendingPrompt(5, dune), prompts.pending.value)
+    }
+
+    @Test
+    fun `setHeld toggles held and clear leaves it`() = runTest(UnconfinedTestDispatcher()) {
+        val prompts = prompts()
+        assertFalse(prompts.held.value)
+        prompts.setHeld(true)
+        assertTrue(prompts.held.value)
+        prompts.offer(5, dune)
+        prompts.clear()
+        assertTrue(prompts.held.value)
+        assertNull(prompts.pending.value)
+        prompts.setHeld(false)
+        assertFalse(prompts.held.value)
     }
 }

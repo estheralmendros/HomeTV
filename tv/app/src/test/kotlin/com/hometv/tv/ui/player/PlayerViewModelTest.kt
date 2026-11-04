@@ -271,6 +271,21 @@ class PlayerViewModelTest : PlayerTestBase() {
     }
 
     @Test
+    fun `a stream 401 after a sign-out emits nothing and fails with the generic playback error`() = playerTest {
+        val vm = startDirect()
+        repos.recordEvents(backgroundScope)
+        repos.store.signOut()
+        clearCalls()
+        controller.fail(PlayerFailure(PlaybackErrorCodes.IO_BAD_HTTP_STATUS, httpStatus = 401, urlKind = UrlKind.STREAM))
+        runCurrent()
+        assertTrue(api.calls.none { it.startsWith("POST /api/profiles") }, "${api.calls}")
+        assertTrue(repos.received.isEmpty())
+        val error = vm.state.value.screen as PlayerScreenUi.Error
+        assertEquals(UiText.Res(R.string.player_playback_failed), error.message)
+        assertEquals(listOf(PlayerAction.BACK), error.actions)
+    }
+
+    @Test
     fun `an HLS 404 recovers once per 30 s`() = playerTest {
         val vm = startHls("S1")
         answerWith(hls("S2"))

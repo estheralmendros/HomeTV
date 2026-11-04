@@ -372,4 +372,14 @@ class BrowseViewModelTest {
         shows.onCardClick(shows.state.value.items[1])
         assertEquals(NavRequest.Detail("show", 8), shows.navigation.first())
     }
+
+    @Test
+    fun `reset returns every library to Titulo A-Z`() {
+        val sorts = BrowseSortMemory()
+        sorts.set(Library.FILMS, BrowseSort.YEAR_DESC)
+        sorts.set(Library.SHOWS, BrowseSort.ADDED_DESC)
+        sorts.reset()
+        assertEquals(BrowseSort.TITLE_ASC, sorts.get(Library.FILMS))
+        assertEquals(BrowseSort.TITLE_ASC, sorts.get(Library.SHOWS))
+    }
 }

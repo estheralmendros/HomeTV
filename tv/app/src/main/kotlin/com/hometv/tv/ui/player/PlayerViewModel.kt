@@ -854,6 +854,8 @@ class PlayerViewModel(
                     when (val outcome = deps.guard.renew()) {
                         RenewOutcome.Renewed -> recover(a, position, wasPlaying)
                         RenewOutcome.ProfileGone -> deps.events.emit(AppEvent.AuthExpired)
+                        // Signed out or another profile meanwhile: no renewal, no banner (unreachable in practice).
+                        RenewOutcome.NoSession -> failAttached(a, PlayerError(MessageKey.PLAYBACK_FAILED, actions = listOf(PlayerAction.BACK)))
                         is RenewOutcome.Unreachable -> failAttached(a, connectionError(outcome.cause))
                     }
                 }

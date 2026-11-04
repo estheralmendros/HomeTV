@@ -1,6 +1,6 @@
 [project]
 name = "hometv"
-version = "0.5.1"
+version = "0.6.0"
 description = "HomeTV server: self-hosted media catalog and playback"
 requires-python = ">=3.12"
 dependencies = [

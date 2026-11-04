@@ -5,7 +5,6 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasContentDescription
-import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.hometv.tv.core.api.CastMember
@@ -41,8 +40,6 @@ class RatingDialogFocusTest : UiTestBase() {
         press(Key.DirectionCenter)
         assertFocused("rating_stars")
     }
-
-    private fun absent(tag: String) = rule.onAllNodes(hasTestTag(tag), useUnmergedTree = true).fetchSemanticsNodes().isEmpty()
 
     private fun ratingPuts() = api.calls.count { it == "PUT /api/ratings/films/13" }
 

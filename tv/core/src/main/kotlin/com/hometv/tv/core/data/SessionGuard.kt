@@ -20,8 +20,14 @@ enum class Origin {
 sealed interface RenewOutcome {
     data object Renewed : RenewOutcome
 
-    /** 404 `profile_not_found` (or no remembered profile): the token is cleared. */
+    /** 404 `profile_not_found` while the renewed profile is still stored: its token is cleared. */
     data object ProfileGone : RenewOutcome
+
+    /**
+     * The session the failed request belonged to is no longer stored (signed out, or another
+     * profile signed in): nothing was stored, and the request must not be retried.
+     */
+    data object NoSession : RenewOutcome
 
     /** The session request failed: an IOException, or any other non-404 error answer. */
     data class Unreachable(val cause: ApiException) : RenewOutcome
@@ -32,6 +38,9 @@ sealed interface RenewOutcome {
  * rejected token is replaced by `POST /api/profiles/{profileId}/session` for the remembered
  * profile; the viewer only reaches the Profile Picker when that profile is gone. Renewal is
  * single-flight: concurrent 401s wait on the mutex and reuse the token the first renewal stored.
+ * Nothing renews a signed-out session, and a request belongs to the profile that sent it: a
+ * renewal stores its result only into that session (`saveRenewedSession` / `clearToken(profileId)`),
+ * and a request is never retried under another profile.
  * The guard never navigates: [renew] returns an outcome and [withRenewal] maps it by origin.
  */
 class SessionGuard(
@@ -45,25 +54,30 @@ class SessionGuard(
     /** The profile the current session belongs to (null when none is remembered). */
     fun currentProfileId(): Long? = store.session.value.profileId
 
+    /** Renews the stored session: [renew] with its token and profile, read from one snapshot. */
+    suspend fun renew(): RenewOutcome {
+        val session = store.session.value
+        return renew(session.token, session.profileId)
+    }
+
     /**
-     * Renews the session that [failedToken] belonged to. When another caller already replaced that
-     * token while this one waited, returns [RenewOutcome.Renewed] without a request.
+     * Renews the session that [failedToken] (sent by [failedProfileId]) belonged to. When another
+     * caller already replaced that token for the same profile while this one waited, returns
+     * [RenewOutcome.Renewed] without a request. [RenewOutcome.NoSession] when no profile is stored,
+     * another profile is, or the store refused the result (signed out or switched meanwhile).
      */
-    suspend fun renew(failedToken: String? = store.session.value.token): RenewOutcome = mutex.withLock {
+    suspend fun renew(failedToken: String?, failedProfileId: Long?): RenewOutcome = mutex.withLock {
         val current = store.session.value
+        val profileId = current.profileId ?: return@withLock RenewOutcome.NoSession
+        if (profileId != failedProfileId) return@withLock RenewOutcome.NoSession
         if (current.token != null && current.token != failedToken) return@withLock RenewOutcome.Renewed
-        val profileId = current.profileId ?: run {
-            store.clearToken()
-            return@withLock RenewOutcome.ProfileGone
-        }
         try {
             val response = createSession(profileId)
-            store.saveSession(response.profile.id, response.token, Instant.parse(response.expires_at))
-            RenewOutcome.Renewed
+            val saved = store.saveRenewedSession(profileId, response.token, Instant.parse(response.expires_at))
+            if (saved) RenewOutcome.Renewed else RenewOutcome.NoSession
         } catch (e: ApiException.Http) {
             if (e.status == 404 && e.code == "profile_not_found") {
-                store.clearToken()
-                RenewOutcome.ProfileGone
+                if (store.clearToken(profileId)) RenewOutcome.ProfileGone else RenewOutcome.NoSession
             } else {
                 RenewOutcome.Unreachable(e)
             }
@@ -73,9 +87,10 @@ class SessionGuard(
     }
 
     /**
-     * Proactive refresh (activity `ON_START`, before each `POST .../playback`, and at startup for
-     * an expired token): renews when `expiresAt` is within 24 h. Returns null when nothing was
-     * needed, or when the renewal failed while the current token is still valid (ignored).
+     * Proactive refresh (activity `ON_START`, the Player's `onStart`, before each `POST .../playback`,
+     * and at startup for an expired token): renews when `expiresAt` is within 24 h. Returns null when
+     * nothing was needed, when the session was signed out or switched meanwhile ([RenewOutcome.NoSession]),
+     * or when the renewal failed while the current token is still valid (ignored).
      * A gone profile emits [AppEvent.AuthExpired].
      */
     suspend fun ensureFresh(): RenewOutcome? {
@@ -84,26 +99,31 @@ class SessionGuard(
         if (session.token == null) return null
         val now = clock.instant()
         if (Duration.between(now, expiresAt) > REFRESH_WINDOW) return null
-        return when (val outcome = renew(session.token)) {
+        return when (val outcome = renew(session.token, session.profileId)) {
             RenewOutcome.Renewed -> outcome
             RenewOutcome.ProfileGone -> outcome.also { events.emit(AppEvent.AuthExpired) }
+            RenewOutcome.NoSession -> null
             is RenewOutcome.Unreachable -> if (expiresAt.isAfter(now)) null else outcome
         }
     }
 
     /**
-     * Runs [block] (an [com.hometv.tv.core.api.apiCall]); on a 401 renews once and retries once.
-     * A 401 on the retry propagates (no second renewal). ProfileGone emits AuthExpired and throws
+     * Runs [block] (an [com.hometv.tv.core.api.apiCall]); on a 401 renews once and retries once,
+     * only while the profile that sent the request is still stored. A 401 on the retry propagates
+     * (no second renewal). A 401 sent without a token, [RenewOutcome.NoSession], or a profile change
+     * before the retry rethrow the 401 with no event. ProfileGone emits AuthExpired and throws
      * [ApiException.ProfileGone]; Unreachable emits ServerUnreachable only for [Origin.Foreground]
      * and throws the cause either way.
      */
     suspend fun <T> withRenewal(origin: Origin, block: suspend () -> T): T {
-        val usedToken = store.session.value.token
+        val used = store.session.value
         try {
             return block()
         } catch (e: ApiException.Unauthorized) {
-            when (val outcome = renew(usedToken)) {
-                RenewOutcome.Renewed -> return block()
+            if (used.token == null) throw e
+            when (val outcome = renew(used.token, used.profileId)) {
+                RenewOutcome.Renewed -> if (store.session.value.profileId == used.profileId) return block() else throw e
+                RenewOutcome.NoSession -> throw e
                 RenewOutcome.ProfileGone -> {
                     events.emit(AppEvent.AuthExpired)
                     throw ApiException.ProfileGone()

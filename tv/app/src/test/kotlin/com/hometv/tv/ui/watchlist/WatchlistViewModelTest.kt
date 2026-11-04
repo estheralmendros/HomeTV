@@ -750,4 +750,12 @@ class WatchlistViewModelTest {
         advanceUntilIdle()
         assertEquals("GET /api/watchlist?type=all&sort=added&page=2&page_size=50", calls().last())
     }
+
+    @Test
+    fun `reset returns the sort to Anadidos`() {
+        val m = WatchlistMemory()
+        m.sort = WatchlistSort.TITLE
+        m.reset()
+        assertEquals(WatchlistSort.ADDED, m.sort)
+    }
 }

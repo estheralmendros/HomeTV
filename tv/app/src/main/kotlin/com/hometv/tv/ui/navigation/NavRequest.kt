@@ -38,4 +38,7 @@ sealed interface NavRequest {
 
     /** (10) Person: the actor screen, opened from Film detail's cast row. */
     data class Person(val id: Long) : NavRequest
+
+    /** Close the app (Home's exit dialog, after "Salir" signed the profile out). */
+    data object Exit : NavRequest
 }

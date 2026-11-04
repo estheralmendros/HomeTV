@@ -33,25 +33,19 @@ class RatingDialogFitTest : UiTestBase() {
         assertFocused("button_PLAY")
     }
 
-    private fun bounds(tag: String): FloatArray {
-        val n = node(tag).fetchSemanticsNode()
-        val d = n.layoutInfo.density.density
-        return floatArrayOf(n.positionInRoot.x / d, n.positionInRoot.y / d, (n.positionInRoot.x + n.size.width) / d, (n.positionInRoot.y + n.size.height) / d)
-    }
-
     /**
      * Dialog nodes are positioned in the dialog window, so they are checked against the dialog's own
      * bounds; the dialog itself must fit the safe area with the room a TV's dialog-window insets take
-     * (Robolectric does not model them, see `ServerChangePinTest`).
+     * (Robolectric does not model them, see `UiTestBase.DIALOG_WINDOW_INSETS`).
      */
     private fun assertOneRowInsideTheDialog(vararg tags: String) {
-        val dialog = bounds("rating_dialog")
+        val dialog = dpBounds("rating_dialog")
         val contentLeft = dialog[0] + DIALOG_PADDING
         val contentRight = dialog[2] - DIALOG_PADDING
-        val tops = tags.map { bounds(it)[1] }
+        val tops = tags.map { dpBounds(it)[1] }
         tags.forEach { tag ->
             node(tag).assertExists()
-            val b = bounds(tag)
+            val b = dpBounds(tag)
             assertTrue("'$tag' ends at ${b[2]} dp, past the dialog's content edge ($contentRight dp)", b[2] <= contentRight + 0.5f)
             assertTrue("'$tag' starts at ${b[0]} dp, left of the dialog's content (${contentLeft} dp)", b[0] >= contentLeft - 0.5f)
             assertTrue("'$tag' ends at ${b[3]} dp, below the dialog (${dialog[3]} dp)", b[3] <= dialog[3] - DIALOG_PADDING + 0.5f)
@@ -96,10 +90,5 @@ class RatingDialogFitTest : UiTestBase() {
         press(Key.DirectionCenter)
         assertFocused("rating_retry")
         assertOneRowInsideTheDialog("rating_retry", "rating_not_now")
-    }
-
-    private companion object {
-        const val DIALOG_PADDING = 24f
-        const val DIALOG_WINDOW_INSETS = 80f
     }
 }

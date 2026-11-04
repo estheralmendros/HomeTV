@@ -23,7 +23,8 @@ data class PendingPrompt(val profileId: Long, val prompt: RatingPrompt)
  * offer for another title replaces an untaken one. A taken prompt's (profile, kind, id) is "handled" for
  * the process: a later report of the same title never reopens it. A real change of
  * (serverUrl, profileId) clears everything; `AppNavigator.authExpired` calls [clear] too. Opening the
- * Profile Picker or Setup and coming back changes neither, so nothing is lost there.
+ * Profile Picker or Setup and coming back changes neither, so nothing is lost there. [held] is UI
+ * state set by Home's exit dialog (nothing opens over a confirmation); [clear] leaves it.
  */
 class RatingPrompts(session: StateFlow<Session>, scope: CoroutineScope) {
     private data class Key(val profileId: Long, val kind: String, val id: Long)
@@ -32,6 +33,14 @@ class RatingPrompts(session: StateFlow<Session>, scope: CoroutineScope) {
     private val handled = HashSet<Key>()
     private val _pending = MutableStateFlow<PendingPrompt?>(null)
     val pending: StateFlow<PendingPrompt?> = _pending.asStateFlow()
+    private val _held = MutableStateFlow(false)
+
+    /** While true (Home's exit dialog is open), the host shows nothing; the pending prompt waits. */
+    val held: StateFlow<Boolean> = _held.asStateFlow()
+
+    fun setHeld(held: Boolean) {
+        _held.value = held
+    }
 
     init {
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
