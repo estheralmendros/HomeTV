@@ -22,7 +22,8 @@ import com.hometv.tv.ui.navigation.Route
 /**
  * The one root-level rating prompt, after the `NavHost` in `HomeTvRoot`: takes a
  * pending prompt of `AppContainer.ratingPrompts` for the current profile once the current destination
- * is RESUMED and is not the Player, Setup or the Profile Picker, and shows it as a prompt-mode
+ * is RESUMED and is not the Player, Setup or the Profile Picker, and no confirmation holds the prompts
+ * (`RatingPrompts.held`: Home's exit dialog), and shows it as a prompt-mode
  * [RatingDialog] over that screen (one at a time: a newer offer waits until this one closes). Leaving
  * for Profiles/Setup (auth expiry: the modal dialog blocks every other way there) closes it at once,
  * also while saving, with no dismissal; the write keeps running in `appScope` and its outcome reaches
@@ -32,6 +33,7 @@ import com.hometv.tv.ui.navigation.Route
 @Composable
 fun RatingPromptHost(container: AppContainer, nav: NavHostController) {
     val pending by container.ratingPrompts.pending.collectAsStateWithLifecycle()
+    val held by container.ratingPrompts.held.collectAsStateWithLifecycle()
     val entry by nav.currentBackStackEntryAsState()
     val lifecycle = entry?.lifecycle?.currentStateFlow?.collectAsState()?.value
     val blocked = entry?.destination?.let(::blocksPrompt) ?: true
@@ -44,8 +46,8 @@ fun RatingPromptHost(container: AppContainer, nav: NavHostController) {
             editor = null
         }
     }
-    LaunchedEffect(pending, blocked, lifecycle, editor == null) {
-        if (editor != null || pending == null || blocked || lifecycle != Lifecycle.State.RESUMED) return@LaunchedEffect
+    LaunchedEffect(pending, blocked, lifecycle, editor == null, held) {
+        if (held || editor != null || pending == null || blocked || lifecycle != Lifecycle.State.RESUMED) return@LaunchedEffect
         val taken = container.ratingPrompts.take(container.store.session.value.profileId) ?: return@LaunchedEffect
         val prompt = taken.prompt
         val kind = RatingKind.fromWire(prompt.kind) ?: return@LaunchedEffect

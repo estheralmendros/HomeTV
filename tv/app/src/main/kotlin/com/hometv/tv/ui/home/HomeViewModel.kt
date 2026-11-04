@@ -1,5 +1,6 @@
 package com.hometv.tv.ui.home
 
+import android.util.Log
 import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -24,6 +25,7 @@ import com.hometv.tv.ui.navigation.Library
 import com.hometv.tv.ui.navigation.NavRequest
 import com.hometv.tv.ui.navigation.PlayRequest
 import com.hometv.tv.ui.text.UiText
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -99,7 +101,15 @@ data class HomeUiState(
     val fromCache: Boolean = false,
     val error: ScreenError? = null,
     val focus: FocusTarget? = null,
+    /** "¿Salir de la aplicación?" while non-null. */
+    val exitDialog: ExitDialogUi? = null,
 )
+
+/**
+ * The exit dialog. [signingOut] is true after "Salir" until the app exits; while it is, the ViewModel
+ * ignores every press. It is ViewModel-only: the dialog does not render it (the buttons keep their look).
+ */
+data class ExitDialogUi(val signingOut: Boolean = false)
 
 /**
  * Home: cache-first render, then `/api/home` + Films + Series rows in parallel,
@@ -114,6 +124,10 @@ class HomeViewModel(
     private val refresh: HomeRefresh,
     /** After a successful fresh load: re-fetch the profile if the cold-start one failed (`AccountState.ensureLoaded`). */
     private val onFreshLoad: suspend () -> Unit = {},
+    /** "Salir": forgets the profile on this device (`SignOut`); the app exits once it returns. */
+    private val signOut: suspend () -> Unit = {},
+    /** Holds the rating prompts while the exit dialog is open (`RatingPrompts.setHeld`). */
+    private val holdPrompts: (Boolean) -> Unit = {},
 ) : ViewModel() {
     private val _state = MutableStateFlow(HomeUiState())
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
@@ -167,13 +181,56 @@ class HomeViewModel(
         focusedKey = null
     }
 
-    /** Back table: a deep focus returns to the first card (true); on the first card, exit (false). */
-    fun onBack(): Boolean {
-        val first = _state.value.rows.firstOrNull()?.cards?.firstOrNull() ?: return false
-        if (focusedKey == first.key) return false
-        focusedKey = first.key
-        _state.update { it.copy(focus = FocusTarget(first.key, 0, 0, ++focusVersion)) }
-        return true
+    /**
+     * Back table: a deep focus (or the top nav) returns to the first card; on the first card, with
+     * no cards (loading, empty library) or on the error screen, opens the exit dialog.
+     */
+    fun onBack() {
+        val current = _state.value
+        if (current.exitDialog != null) return
+        val first = current.rows.firstOrNull()?.cards?.firstOrNull()
+        if (current.error == null && first != null && focusedKey != first.key) {
+            focusedKey = first.key
+            _state.update { it.copy(focus = FocusTarget(first.key, 0, 0, ++focusVersion)) }
+            return
+        }
+        holdPrompts(true)
+        _state.update { it.copy(exitDialog = ExitDialogUi()) }
+    }
+
+    /**
+     * "Salir": single-flight; cancels the load, signs out, then asks to exit. A failing sign-out is
+     * logged and the app still exits; a cleared ViewModel (cancelled scope) sends nothing.
+     */
+    fun onExitConfirmed() {
+        val dialog = _state.value.exitDialog ?: return
+        if (dialog.signingOut) return
+        _state.update { it.copy(exitDialog = ExitDialogUi(signingOut = true)) }
+        // A load finishing after the press would refill the account and write the Home cache.
+        job?.cancel()
+        viewModelScope.launch {
+            try {
+                signOut()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                runCatching { Log.w("HomeTvSession", "sign-out failed", e) }
+            }
+            _navigation.send(NavRequest.Exit)
+        }
+    }
+
+    /** "Cancelar" or Back on the dialog; ignored while signing out. */
+    fun onExitDismissed() {
+        val dialog = _state.value.exitDialog ?: return
+        if (dialog.signingOut) return
+        _state.update { it.copy(exitDialog = null) }
+        holdPrompts(false)
+    }
+
+    override fun onCleared() {
+        // After "Salir" the activity finishes; a next Home in the same process must not inherit the hold.
+        holdPrompts(false)
     }
 
     fun onCardClick(card: HomeCard) {
@@ -202,6 +259,7 @@ class HomeViewModel(
     }
 
     private fun load(initial: Boolean) {
+        if (_state.value.exitDialog?.signingOut == true) return
         job?.cancel()
         _state.update { it.copy(error = null, loading = it.rows.isEmpty() && !it.libraryEmpty) }
         job = viewModelScope.launch {

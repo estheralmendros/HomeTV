@@ -2,7 +2,6 @@ package com.hometv.tv.ui
 
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.assert
-import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.hometv.tv.core.api.FilmDetail
@@ -31,8 +30,6 @@ import org.junit.runner.RunWith
 class RatingPromptHostTest : UiTestBase() {
     private val dunePrompt = RatingPrompt("film", 12, "Dune")
     private val film13 = RatingPrompt("film", 13, "Film 13")
-
-    private fun absent(tag: String) = rule.onAllNodes(hasTestTag(tag), useUnmergedTree = true).fetchSemanticsNodes().isEmpty()
 
     private fun dismissals() = api.calls.filter { it.endsWith("/dismiss-prompt") }
 
@@ -211,4 +208,36 @@ class RatingPromptHostTest : UiTestBase() {
 
     private fun androidx.compose.ui.test.SemanticsNodeInteraction.performClickCompat() =
         performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+
+    @Test
+    fun noPromptOverTheExitDialogThenItOpensAfterCancelar() {
+        useLibrary()
+        launch()
+        assertFocused("card_continue:film:12")
+        back()
+        assertFocused("confirm_dialog_confirm")
+        rule.runOnUiThread { container.ratingPrompts.offer(5, dunePrompt) }
+        settle()
+        assertTrue(absent("rating_dialog"))
+        assertFocused("confirm_dialog_confirm")
+        press(Key.DirectionRight)
+        press(Key.DirectionCenter)
+        assertTrue(absent("confirm_dialog"))
+        node("rating_dialog").assertExists()
+        assertFocused("rating_stars")
+    }
+
+    @Test
+    fun salirDropsAHeldPrompt() {
+        useLibrary()
+        launch()
+        back()
+        rule.runOnUiThread { container.ratingPrompts.offer(5, dunePrompt) }
+        settle()
+        press(Key.DirectionCenter)
+        assertTrue(exited)
+        assertTrue(absent("rating_dialog"))
+        assertNull(container.ratingPrompts.pending.value)
+        assertTrue(dismissals().isEmpty())
+    }
 }

@@ -19,18 +19,12 @@ import org.junit.runner.RunWith
 /** [Cambiar servidor] for admin profiles only, behind the admin PIN (asked every time). */
 @RunWith(AndroidJUnit4::class)
 class ServerChangePinTest : UiTestBase() {
-    private companion object {
-        const val DIALOG_WINDOW_INSETS = 80f
-    }
-
     private fun openSettings() {
         // Inicio → Películas → Series → Mi lista → Actividad → Ajustes (Search is the lens left of Inicio).
         press(Key.DirectionUp)
         press(Key.DirectionRight, times = 5)
         press(Key.DirectionCenter)
     }
-
-    private fun absent(tag: String) = rule.onAllNodes(androidx.compose.ui.test.hasTestTag(tag), useUnmergedTree = true).fetchSemanticsNodes().isEmpty()
 
     private fun signInAsAdmin() {
         api.onMe = { Profile(5, "Esther", "avatar-05", is_admin = true) }
@@ -114,8 +108,7 @@ class ServerChangePinTest : UiTestBase() {
         val density = dialog.layoutInfo.density.density
         val height = dialog.size.height / density
         val screen = rule.onAllNodes(androidx.compose.ui.test.isRoot()).fetchSemanticsNodes().first().size.height / density
-        // Robolectric does not model a TV's dialog-window insets (they added ~77 dp on the emulator), so
-        // the content must leave that much room inside the 27 dp vertical safe area.
+        // Robolectric does not model a TV's dialog-window insets: see DIALOG_WINDOW_INSETS.
         val room = screen - 2 * com.hometv.tv.ui.theme.HomeTvDimens.SafeVertical.value - DIALOG_WINDOW_INSETS
         assertTrue("the PIN dialog is $height dp tall; it must stay within $room dp", height <= room)
     }

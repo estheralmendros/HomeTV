@@ -60,8 +60,6 @@ class DetailRatingsFocusTest : UiTestBase() {
         assertFocused("button_RESUME")
     }
 
-    private fun absent(tag: String) = rule.onAllNodes(hasTestTag(tag), useUnmergedTree = true).fetchSemanticsNodes().isEmpty()
-
     private fun assertText(tag: String, text: String) {
         rule.onNode(hasText(text) and hasAnyAncestor(hasTestTag(tag)), useUnmergedTree = true).assertExists()
     }

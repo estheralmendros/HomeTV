@@ -17,6 +17,7 @@ class AppNavigator(
         is NavRequest.Play -> play(request.request)
         is NavRequest.Browse -> openTab(if (request.library == Library.FILMS) NavTab.FILMS else NavTab.SHOWS)
         is NavRequest.Person -> openPerson(request.id)
+        NavRequest.Exit -> exit()
     }
 
     /** (10) Person; Back pops it (default NavHost handling, like the detail screens). */

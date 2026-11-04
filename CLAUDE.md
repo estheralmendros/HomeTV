@@ -288,7 +288,9 @@ is a contract shared by the web and TV clients: change it deliberately and updat
   (app in the tailscale sidecar's netns, `HOMETV_HOST=127.0.0.1`, media `:ro`, no ports),
   `tailscale/serve.json`, `.env.example`, `README.md` (setup steps + "Configuration reference", the only tracked list of `HOMETV_*`
   settings).
-- `docs/`: user guides: `server-installation-linux.md`, `server-installation-windows.md` (Docker
+- `docs/`: user guides: `server-installation-linux.md`, `server-automation-linux.md` (systemd
+  unit for `docker compose up -d` at boot, 02:00 shutdown timer + `rtcwake` alarm for 15:00),
+  `server-installation-windows.md` (Docker
   Desktop + WSL 2; no native Windows: HLS throttling uses SIGSTOP/SIGCONT), `tv-app-installation.md`,
   `ipad-installation.md` (the web app in Safari over Tailscale; there is no iOS app).
 - `tv/`: Android TV app, Gradle 8.14 wrapper, AGP 8.13, Kotlin 2.2, compile/target SDK 35,
@@ -298,8 +300,12 @@ is a contract shared by the web and TV clients: change it deliberately and updat
   - `core/` (pure Kotlin/JVM, package `com.hometv.tv.core`): `api/` (`HomeTvApi` Retrofit,
     `ApiModels` DTOs, `ApiException`/`apiCall`, `ApiClients` (API / stream / validation OkHttp),
     `AuthInterceptor` Bearer for the server host only), `data/` (`SessionStore` StateFlow +
-    `InMemorySessionStore`, `SessionGuard` single-flight `renew` → Renewed|ProfileGone|Unreachable, `currentProfileId()`,
-    `withRenewal(Origin.Foreground|Background)`, repositories, `AppEvents`, `NextEpisodeResolver`
+    `InMemorySessionStore`; `signOut()` (keeps the server URL), conditional `saveRenewedSession(profileId, …)` /
+    `clearToken(profileId)`: Boolean (only while that profile is still stored), `SessionGuard` single-flight
+    `renew(failedToken, failedProfileId)` (`renew()`: one snapshot of the stored session) → Renewed|ProfileGone|NoSession|Unreachable (`NoSession`: no / another
+    profile stored, or the save was refused: no request retried, no event), `currentProfileId()`,
+    `withRenewal(Origin.Foreground|Background)` (a tokenless 401 is rethrown; the retry only while the sending profile
+    is still stored), repositories, `AppEvents`, `NextEpisodeResolver`
     (skips the playing multi-episode file), `CatalogRepository.person(id)` (`GET /api/people/{id}`, drops non film/show appearances),
     `ProfileRepository.verifyAdminPin` → `PinCheck` (the only PIN on the TV: server change; an
     expired token renews once, `invalid_pin` never renews), `PlaybackRepository` (`preparing` loop as a `Flow<PlaybackProgress>`, POSTs in
@@ -329,13 +335,18 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     (manual DI: store, `clients()` rebuilt per server URL, `guard`, repositories, `events`,
     `sessionExpired`, `appScope`, `codecs`, `playerLaunches`, `homeRefresh`, `detailRefresh`,
     `watchlist` + `watchlistMemory` (Mi lista sort for the app session; the type filter lives in the ViewModel and resets when the screen is left, like the Browse filters),
-    `ratings` + `ratingPrompts` (every `ratings.changes` marks `homeRefresh` stale), `avatars` (`account.info`
+    `ratings` + `ratingPrompts` (every `ratings.changes` marks `homeRefresh` stale), `signOut` (declared after
+    what it resets), `avatars` (`account.info`
     colours for other profiles), `zone` seam (default `ZoneId::systemDefault`: Actividad times, Person ages), one shared Coil cache base for the per-server `ImageLoader`s, one factory per
     ViewModel), `data/` (`ProfileAvatar` (pure `initial(name)`/`color(avatarId, avatars)`), `RatingPrompts` (`pending` `PendingPrompt(profileId, prompt)`, `offer(profileId?,
     prompt)` (null profile / handled key ignored, newer replaces untaken), `take(currentProfileId)` (another
     profile's prompt dropped, not handled; taken = handled for the process), `clear()` on a real
-    (serverUrl, profileId) change and in `AppNavigator.authExpired`, never on switchProfile/changeServer),
-    (`DataStoreSessionStore`, `HomeCache` (write IOExceptions are logged and swallowed),
+    (serverUrl, profileId) change and in `AppNavigator.authExpired`, never on switchProfile/changeServer;
+    `held`/`setHeld` (UI hold while Home's exit dialog is open, untouched by `clear()`)), `SignOut` (Home's "Salir":
+    prompts, `AccountState`, `BrowseSortMemory.reset`/`WatchlistMemory.reset`, then `store.signOut()` under
+    `NonCancellable`, IOException logged),
+    (`DataStoreSessionStore` (`signOut` clears memory first; conditional writes via `editIfProfile`, file then
+    memory, true only when both applied), `HomeCache` (write IOExceptions are logged and swallowed),
     `HomeRefresh`, `DetailRefresh` (generation counter marked by `AppNavigator.play`; Film/Show
     detail and Person `onVisible()` on `ON_RESUME` refetch in place), `PlayerLaunches`),
     `playback/` (`AndroidCodecInventory`, `PlayerFactory` (`AUDIO_ATTRIBUTES` shared with the
@@ -344,21 +355,25 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     private; `attach/detach(PlayerView)`; owns a Media3 `MediaSession` over `RemoteCommandPlayer`
     while attached), `ExoTrackMapper`), `ui/`
     (`HomeTvRoot` NavHost + `ratings/RatingPromptHost` after it (the one root prompt: takes a pending prompt
-    for the current profile when the current entry is RESUMED and not Player/Setup/Profiles, one at a time;
+    for the current profile when the current entry is RESUMED and not Player/Setup/Profiles and not `held`, one at a time;
     leaving for Profiles/Setup `detach`es it with no dismissal; `RatingEditor.hostCloses`: 404 → close +
     `AppEvent.ItemGone`, ProfileGone → close, a 401 after renewal → FAILED), `navigation/` (`Route` incl.
     `Route.Person(id)`, `Route.Watchlist` and `Route.Activity`,
-    `NavRequest.Person`, `AppNavigator.openPerson`, `openTab(NavTab.WATCHLIST)` above Home), `text/`
+    `NavRequest.Person`, `NavRequest.Exit` (→ `exit()`), `AppNavigator.openPerson`, `openTab(NavTab.WATCHLIST)` above Home), `text/`
     (`UiText`, `UiFormat` (`Stars` → "4,5", `RelativeTime` → catalog; top-level `starsText(Stars?)` "4,5
     estrellas"/"1 estrella"/"Sin puntuación"), `StringResolver`), `components/` (`TopNav` (also `AvatarUi.initial/color/of`, delegating to the one avatar initial + colour rule in `data/ProfileAvatar`) tabs = `NavTab` order: Search,
     Inicio, Películas, Series, `WATCHLIST` "Mi lista", `ACTIVITY` "Actividad", Ajustes (admins);
     `PosterCard(…, subtitle, subtitleTestTag, myRating)` one muted line + bottom-left star badge `rating_badge`
     ("tu puntuación: 4,5 estrellas", raised above the progress strip; `PosterItem`/Home `ItemCard.myRating`),
-    `ActionButton(contentDescription=)`,
+    `ActionButton(contentDescription=)`, `ConfirmDialog(title, confirmLabel, cancelLabel, onConfirm, onDismiss)`
+    (520 dp, centred title + one centred [confirm] [cancel] row, focus on confirm, Back = dismiss; tags `confirm_dialog`/`_confirm`/`_cancel`),
     `TextDialog` (scrollable read-only
     text, Up/Down scroll ¾ viewport, Back closes), `Artwork(placeholder=)`), `common/ScreenError`
     (`PersonGone` → "Esta persona no está disponible." [Volver], no `AppEvent`), theme
-    `HomeTvDimens.WIDE_FOCUSED_SCALE` (1.02, wide blocks), one package per screen; `detail/` ratings
+    `HomeTvDimens.WIDE_FOCUSED_SCALE` (1.02, wide blocks), one package per screen; `home/HomeViewModel` exit dialog
+    (`HomeUiState.exitDialog: ExitDialogUi(signingOut)`; `onBack()`: deep focus/top nav → first card, else (first card,
+    no cards, error screen) the dialog + `holdPrompts(true)`; `onExitConfirmed` single-flight: cancels the load `job`,
+    `signOut` (a non-cancellation failure is logged, the app still exits), then `NavRequest.Exit`; `onExitDismissed` / `onCleared` release the hold; `load()` ignored while signing out); `detail/` ratings
     (`DetailRatings` helper per VM (`showsContent`: never republishes over Error/Loading, like `DetailWatchlistToggle`; callback `publishScreen`): optimistic save/remove, rollback, `rating_error_line` after a failed
     removal, a refetch while writing keeps the shown value, `ratings.changes` of its title → `mine` + silent
     refetch (`refetchPending`: a change during an active load fetches once more after it; the VMs expose
@@ -416,8 +431,10 @@ is a contract shared by the web and TV clients: change it deliberately and updat
   - Tests: `app/src/test` (ViewModel/glue tests, JUnit 5; `ui/player/PlayerSessionStateTest` covers
     the player session table with `FakePlayerController`; `TestRepos(appScope =)` gives the real
     repositories incl. `watchlist`, `ratings` and `ratingPrompts`, pass a scope on the test dispatcher for
-    virtual time; `ActivityViewModelTest`, `RatingEditorTest`, `DetailRatingsTest`, `PlayerRatingPromptTest`), `app/src/sharedTest` (Compose focus/navigation
-    tests on Robolectric via `UiTestBase` (`assertFullyVisible`/`assertInsideSafeArea`, overridable
+    virtual time; `ActivityViewModelTest`, `RatingEditorTest`, `DetailRatingsTest`, `PlayerRatingPromptTest`, `data/SignOutTest`;
+    core `SessionStoreTest` + gated `SessionGuardTest` races: `CountDownLatch` route + `CompletableDeferred` arrival), `app/src/sharedTest` (Compose focus/navigation
+    tests on Robolectric via `UiTestBase` (`assertFullyVisible`/`assertInsideSafeArea`, `absent(tag)`, dialog fit helpers `dpBounds(tag)` +
+    `DIALOG_PADDING`/`DIALOG_WINDOW_INSETS`, overridable
     `clock` passed to `testContainer`, e.g. a fixed date for age texts; `testContainer(zone = clock.zone)`, so times never depend on the host zone) +
     `testContainer` + `ScriptedApi` (`onPerson` seam, 404 by default; `PersonFocusTest`;
     `onWatchlist(type, sort, page, pageSize, watched)` (empty page by default) / `onWatchlistWrite(segment, id, inList)` seams, gate a write
@@ -425,7 +442,7 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     stars?)` (null = DELETE), `onRatingDismiss`, `onActivity` (empty page by default), `onProgressPrompt(body)`
     (the `rating_prompt` added to `onProgress`'s `Progress`); `RatingDialogFocusTest`/`FitTest` (dialog nodes
     sit in the dialog window: check them against `rating_dialog`, not the screen), `RatingPromptHostTest`,
-    `DetailRatingsFocusTest`/`FitTest`, `ActivityFocusTest`); also compiled into `androidTest`
+    `DetailRatingsFocusTest`/`FitTest`, `ActivityFocusTest`; `HomeExitFocusTest`, `HomeExitDialogFitTest`); also compiled into `androidTest`
     (`UiTestPlatform.declareTelevision()` instead of Robolectric shadows in shared code).
 
 ## Commands

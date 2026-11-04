@@ -60,7 +60,7 @@ class NavigationFocusTest : UiTestBase() {
     }
 
     @Test
-    fun homeBackFromADeepRowReturnsToTheFirstCardThenExits() {
+    fun homeBackFromADeepRowReturnsToTheFirstCardThenAsksToExit() {
         useLibrary()
         launch()
         press(Key.DirectionDown, times = 2)
@@ -69,6 +69,9 @@ class NavigationFocusTest : UiTestBase() {
         assertFocused("card_continue:film:12")
         assertTrue(!exited)
         back()
+        node("confirm_dialog").assertExists()
+        assertTrue(!exited)
+        press(Key.DirectionCenter)
         assertTrue(exited)
     }
 

@@ -38,6 +38,7 @@ import com.hometv.tv.data.DetailRefresh
 import com.hometv.tv.data.HomeRefresh
 import com.hometv.tv.data.PlayerLaunches
 import com.hometv.tv.data.RatingPrompts
+import com.hometv.tv.data.SignOut
 import com.hometv.tv.playback.AndroidCodecInventory
 import com.hometv.tv.playback.CodecSource
 import com.hometv.tv.playback.ExoPlayerController
@@ -95,6 +96,7 @@ data class AppConfig(
  * (`SupervisorJob() + Dispatchers.IO`, process lifetime: final progress PUT, HLS DELETE, [watchlist] and [ratings] writes),
  * [codecs] + [capsForFile] (capability hook), [playerLaunches], [homeRefresh], [detailRefresh],
  * [watchlistMemory], [account], [ratings] + [ratingPrompts] (every rating change marks Home stale),
+ * [signOut] (Home's "Salir": prompts, account, sort memories and the stored profile),
  * [imageLoader] and one factory function per ViewModel.
  */
 class AppContainer(
@@ -149,6 +151,12 @@ class AppContainer(
     val browseSorts = BrowseSortMemory()
     val watchlistMemory = WatchlistMemory()
     val playerLaunches = PlayerLaunches()
+
+    /** "Salir" on Home: forgets the profile on this device (declared after everything it resets). */
+    val signOut = SignOut(
+        store, ratingPrompts, account, browseSorts, watchlistMemory,
+        log = { e -> runCatching { android.util.Log.w("HomeTvSession", "sign-out write failed", e) } },
+    )
 
     private val _sessionExpired = MutableStateFlow(false)
 
@@ -248,7 +256,7 @@ class AppContainer(
 
     fun profilesViewModel(expired: Boolean) = ProfilesViewModel(profiles, store, account::signedIn, expired)
 
-    fun homeViewModel() = HomeViewModel(catalog, homeCache, store, events.events, homeRefresh, account::ensureLoaded)
+    fun homeViewModel() = HomeViewModel(catalog, homeCache, store, events.events, homeRefresh, account::ensureLoaded, signOut::invoke, ratingPrompts::setHeld)
 
     fun browseViewModel(library: Library) = BrowseViewModel(library, catalog, store, browseSorts)
 

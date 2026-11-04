@@ -12,14 +12,17 @@ import com.hometv.tv.ui.navigation.Route
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotSame
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertSame
@@ -129,4 +132,39 @@ class AppContainerTest {
         advanceUntilIdle()
         assertTrue(container.homeRefresh.consumeStale())
     }
+
+    @Test
+    fun `after signOut the start destination is the picker`() = runTest(dispatcher) {
+        val container = testContainer(api, scope)
+        assertEquals(Route.Home, container.startDestination())
+        container.signOut()
+        assertEquals(Session(serverUrl = TestRepos.SERVER), container.store.session.value)
+        assertEquals(Route.Profiles(), container.startDestination())
+    }
+
+    private fun renewalAnsweredAfterSignOut(answer: suspend (Long) -> com.hometv.tv.core.api.SessionResponse) = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        api.onCreateSession = { id -> gate.await(); answer(id) }
+        val container = testContainer(api, scope, Session(TestRepos.SERVER, 5, "tok", now.plusSeconds(3_600)), clock)
+        val renewal = container.onActivityStart()
+        runCurrent()
+        assertEquals(listOf("POST /api/profiles/5/session"), api.calls)
+
+        container.signOut()
+        gate.complete(Unit)
+        renewal.join()
+        advanceUntilIdle()
+
+        assertEquals(Session(serverUrl = TestRepos.SERVER), container.store.session.value)
+        assertEquals(Route.Profiles(), container.startDestination())
+        assertFalse(container.sessionExpired.value)
+    }
+
+    @Test
+    fun `a renewal started by onActivityStart and answered after signOut leaves the picker without the expired banner`() =
+        renewalAnsweredAfterSignOut { id -> com.hometv.tv.core.data.FakeHomeTvApi.session("tok-$id", id) }
+
+    @Test
+    fun `a renewal 404 answered after signOut shows no expired banner`() =
+        renewalAnsweredAfterSignOut { throw com.hometv.tv.core.data.FakeHomeTvApi.httpError(404, "profile_not_found") }
 }

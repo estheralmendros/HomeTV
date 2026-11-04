@@ -1,5 +1,6 @@
 package com.hometv.tv.ui.home
 
+import androidx.lifecycle.ViewModelStore
 import com.hometv.tv.R
 import com.hometv.tv.core.api.ApiJson
 import com.hometv.tv.core.api.EpisodeSummary
@@ -26,7 +27,9 @@ import com.hometv.tv.ui.navigation.PlayRequest
 import com.hometv.tv.ui.text.UiText
 import java.net.UnknownHostException
 import java.nio.file.Files
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.advanceTimeBy
@@ -58,7 +61,11 @@ class HomeViewModelTest {
         repos.api.onShows = { p, s, _, _ -> Page(listOf(office), p, s, 1) }
     }
 
-    private fun vm() = HomeViewModel(repos.catalog, cache, repos.store, repos.events.events, refresh)
+    /** `holdPrompts` calls, in order. */
+    private val holds = mutableListOf<Boolean>()
+
+    private fun vm(onFreshLoad: suspend () -> Unit = {}, signOut: suspend () -> Unit = {}) =
+        HomeViewModel(repos.catalog, cache, repos.store, repos.events.events, refresh, onFreshLoad, signOut, holdPrompts = { holds += it })
 
     private fun HomeUiState.row(id: HomeRowId) = rows.first { it.id == id }
 
@@ -298,16 +305,178 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun `Back from a deep card returns to the first card, then exits`() = runTest(main.dispatcher) {
+    fun `Back from a deep card returns to the first card, then opens the exit dialog`() = runTest(main.dispatcher) {
         val vm = vm()
         advanceUntilIdle()
         vm.onCardFocused(vm.state.value.row(HomeRowId.SHOWS).cards[0] as ItemCard)
-        assertTrue(vm.onBack())
+        vm.onBack()
         assertEquals("continue:film:12", vm.state.value.focus!!.key)
+        assertNull(vm.state.value.exitDialog)
+        assertEquals(emptyList<Boolean>(), holds)
         vm.onCardFocused(vm.state.value.row(HomeRowId.CONTINUE).cards[0] as ItemCard)
-        assertFalse(vm.onBack())
+        vm.onBack()
+        assertEquals(ExitDialogUi(), vm.state.value.exitDialog)
+        assertEquals(listOf(true), holds)
+    }
+
+    @Test
+    fun `Back on the top nav returns to the first card`() = runTest(main.dispatcher) {
+        val vm = vm()
+        advanceUntilIdle()
         vm.onNavFocused()
-        assertTrue(vm.onBack(), "focus on the top nav: back to the first card")
+        val before = vm.state.value.focus!!.version
+        vm.onBack()
+        assertEquals("continue:film:12", vm.state.value.focus!!.key)
+        assertTrue(vm.state.value.focus!!.version > before)
+        assertNull(vm.state.value.exitDialog)
+    }
+
+    @Test
+    fun `Back while loading opens the exit dialog`() = runTest(main.dispatcher) {
+        val gate = CompletableDeferred<HomeResponse>()
+        repos.api.onHome = { gate.await() }
+        val vm = vm()
+        runCurrent()
+        assertTrue(vm.state.value.loading)
+        vm.onBack()
+        assertEquals(ExitDialogUi(), vm.state.value.exitDialog)
+        gate.complete(home)
+    }
+
+    @Test
+    fun `Back with an empty library opens the exit dialog`() = runTest(main.dispatcher) {
+        repos.api.onHome = { HomeResponse(library = LibraryCounts(empty = true)) }
+        repos.api.onFilms = { p, s, _, _ -> Page(emptyList(), p, s, 0) }
+        repos.api.onShows = { p, s, _, _ -> Page(emptyList(), p, s, 0) }
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onBack()
+        assertEquals(ExitDialogUi(), vm.state.value.exitDialog)
+    }
+
+    @Test
+    fun `Back on the error screen opens the exit dialog, also with cached rows behind it`() = runTest(main.dispatcher) {
+        repos.api.onHome = { throw UnknownHostException("hometv") }
+        val plain = vm()
+        advanceUntilIdle()
+        assertTrue(plain.state.value.error != null)
+        plain.onBack()
+        assertEquals(ExitDialogUi(), plain.state.value.exitDialog)
+
+        cache.write(5, HomePayload(home))
+        val cached = vm()
+        advanceUntilIdle()
+        assertTrue(cached.state.value.error != null && cached.state.value.rows.isNotEmpty())
+        val focus = cached.state.value.focus
+        cached.onBack()
+        assertEquals(ExitDialogUi(), cached.state.value.exitDialog)
+        assertEquals(focus, cached.state.value.focus, "no move to an invisible card")
+    }
+
+    @Test
+    fun `Back with the dialog open does nothing and Cancelar closes it and releases the hold`() = runTest(main.dispatcher) {
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onCardFocused(vm.state.value.row(HomeRowId.CONTINUE).cards[0] as ItemCard)
+        vm.onBack()
+        val state = vm.state.value
+        vm.onBack()
+        assertEquals(state, vm.state.value)
+        assertEquals(listOf(true), holds)
+        vm.onExitDismissed()
+        assertNull(vm.state.value.exitDialog)
+        assertEquals(listOf(true, false), holds)
+        assertEquals(state.rows, vm.state.value.rows)
+    }
+
+    @Test
+    fun `Salir awaits the sign-out, then exits once, ignoring presses meanwhile`() = runTest(main.dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        var signOuts = 0
+        val vm = vm(signOut = { signOuts++; gate.await() })
+        val nav = mutableListOf<NavRequest>()
+        backgroundScope.launch { vm.navigation.collect { nav += it } }
+        advanceUntilIdle()
+        vm.onCardFocused(vm.state.value.row(HomeRowId.CONTINUE).cards[0] as ItemCard)
+        vm.onBack()
+
+        vm.onExitConfirmed()
+        runCurrent()
+        assertEquals(ExitDialogUi(signingOut = true), vm.state.value.exitDialog)
+        assertEquals(emptyList<NavRequest>(), nav)
+        vm.onExitConfirmed()
+        vm.onExitDismissed()
+        vm.onBack()
+        runCurrent()
+        assertEquals(1, signOuts)
+        assertEquals(ExitDialogUi(signingOut = true), vm.state.value.exitDialog)
+        assertEquals(emptyList<NavRequest>(), nav)
+
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(listOf<NavRequest>(NavRequest.Exit), nav)
+        assertEquals(1, signOuts)
+    }
+
+    @Test
+    fun `Salir still exits once when the sign-out fails with something other than an IOException`() = runTest(main.dispatcher) {
+        var signOuts = 0
+        val vm = vm(signOut = { signOuts++; throw IllegalStateException("broken store") })
+        val nav = mutableListOf<NavRequest>()
+        backgroundScope.launch { vm.navigation.collect { nav += it } }
+        advanceUntilIdle()
+        vm.onCardFocused(vm.state.value.row(HomeRowId.CONTINUE).cards[0] as ItemCard)
+        vm.onBack()
+
+        vm.onExitConfirmed()
+        advanceUntilIdle()
+        assertEquals(listOf<NavRequest>(NavRequest.Exit), nav)
+        assertEquals(1, signOuts)
+        vm.onExitConfirmed()
+        advanceUntilIdle()
+        assertEquals(1, signOuts)
+    }
+
+    @Test
+    fun `onExitConfirmed without the dialog does nothing`() = runTest(main.dispatcher) {
+        var signOuts = 0
+        val vm = vm(signOut = { signOuts++ })
+        advanceUntilIdle()
+        vm.onExitConfirmed()
+        advanceUntilIdle()
+        assertEquals(0, signOuts)
+    }
+
+    @Test
+    fun `clearing the ViewModel releases the hold`() = runTest(main.dispatcher) {
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onCardFocused(vm.state.value.row(HomeRowId.CONTINUE).cards[0] as ItemCard)
+        vm.onBack()
+        ViewModelStore().apply { put("home", vm) }.clear()
+        assertEquals(false, holds.last())
+    }
+
+    @Test
+    fun `a load in flight at Salir is cancelled`() = runTest(main.dispatcher) {
+        var freshLoads = 0
+        repos.api.onHome = { delay(5_000); home }
+        val vm = vm(onFreshLoad = { freshLoads++ })
+        runCurrent()
+        vm.onBack()
+        assertEquals(ExitDialogUi(), vm.state.value.exitDialog)
+        vm.onExitConfirmed()
+        advanceUntilIdle()
+        assertEquals(0, freshLoads)
+        assertNull(cache.read(5))
+        val homeCalls = repos.api.count("GET /api/home?limit=20")
+        vm.retry()
+        refresh.markStale()
+        vm.onVisible()
+        advanceUntilIdle()
+        assertEquals(homeCalls, repos.api.count("GET /api/home?limit=20"))
+        assertEquals(0, freshLoads)
+        assertNull(cache.read(5))
     }
 
     @Test

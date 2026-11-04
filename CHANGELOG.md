@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.6.0] - Released on 2026-11-04 by Esther Almendros Pérez
+
+### Added
+
+#### TV app
+- Leaving the app from Inicio asks first. Back on Inicio first moves the focus to the first card (or to the first card from the top nav); Back on the first card, or on Inicio's error screen, opens "¿Salir de la aplicación?" with [Salir] and [Cancelar] («Salir» focused). [Cancelar] or Back closes the dialog and leaves Inicio as it was.
+- «Salir» signs the profile out: the next launch shows "¿Quién está viendo?" (the server address is kept, and so are the cached Inicio rows). The "Películas"/"Series" and "Mi lista" sorts go back to their defaults. Leaving with the remote's Home button still keeps the profile signed in.
+- A rating prompt that arrives while the exit dialog is open waits behind it: it opens after [Cancelar], and «Salir» drops it.
+
+### Fixed
+
+#### TV app
+- A session renewal still in flight could undo a profile change: a slow renewal could sign the previous profile back in after "Cambiar de perfil" (or after «Salir»), and a request refused before the switch was retried with the new profile's session. Renewals now only update the session of the profile that started them, and a request is never retried under another profile.
+
+#### Documentation
+- The TV app installation guide explains how to leave the app with «Salir» and how that differs from the Home button.
+
+## [0.5.2] - Released on 2026-11-04 by Esther Almendros Pérez
+
+### Removed
+
+#### TV app
+- The "Buscar por voz" button on the Search screen. It could not be reached with the remote (Right from the search field moves the text cursor instead of the focus). Voice search still starts with the remote's search/microphone key on that screen, when the TV has a speech recognizer.
+
 ## [0.5.1] - Released on 2026-11-02 by Esther Almendros Pérez
 
 ### Added

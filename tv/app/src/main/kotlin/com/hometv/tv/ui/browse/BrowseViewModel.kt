@@ -40,6 +40,11 @@ class BrowseSortMemory {
     fun set(library: Library, sort: BrowseSort) {
         sorts[library] = sort
     }
+
+    /** Back to Título A-Z for every library ("Salir" forgets the viewer's choices). */
+    fun reset() {
+        sorts.clear()
+    }
 }
 
 /** A decade filter: [from]..[to] inclusive; [from] null = "Antes de 1950" (only `year_to`). */
