@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -37,7 +36,6 @@ import androidx.tv.material3.Text
 import com.hometv.tv.R
 import com.hometv.tv.ui.common.PosterItem
 import com.hometv.tv.ui.common.TvTextField
-import com.hometv.tv.ui.components.ActionButton
 import com.hometv.tv.ui.components.AvatarUi
 import com.hometv.tv.ui.components.FocusRequesters
 import com.hometv.tv.ui.components.NavTab
@@ -53,7 +51,7 @@ import com.hometv.tv.ui.text.resolve
 import com.hometv.tv.ui.theme.HomeTvColors
 import com.hometv.tv.ui.theme.HomeTvDimens
 
-/** (6) Search: field (initial focus), mic (hidden without a recognizer; also KEYCODE_SEARCH), Películas / Series rows. */
+/** (6) Search: field (initial focus; the remote's KEYCODE_SEARCH starts voice input when a recognizer exists), Películas / Series rows. */
 @Composable
 fun SearchScreen(vm: SearchViewModel, navigator: AppNavigator, avatar: AvatarUi?, showSettings: Boolean) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -84,15 +82,12 @@ fun SearchScreen(vm: SearchViewModel, navigator: AppNavigator, avatar: AvatarUi?
                 // The keyboard's search (lens) key closes it; results already follow the text.
                 onImeAction = { keyboard?.hide() },
                 modifier = Modifier
-                    .width(640.dp)
+                    .fillMaxWidth()
                     .focusRequester(focus[FIELD])
                     .focusProperties { firstResult?.let { down = focus[it] } }
                     .testTag("search_field")
                     .onFocusChanged { if (it.isFocused) vm.lastFocusedKey = FIELD },
             )
-            if (voice != null) {
-                ActionButton(stringResource(R.string.search_voice), voice::start, Modifier.padding(start = 16.dp).testTag("search_mic"), icon = R.drawable.ic_mic)
-            }
         }
         val error = state.error
         val noResults = state.noResults

@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.6.1] - Released on 2026-11-07 by Esther Almendros Pérez
+
+### Changed
+
+#### TV app
+- The search field on the Search screen now spans the whole width between the screen's safe margins, instead of keeping a fixed width that left an empty gap where the "Buscar por voz" button used to be.
+
+### Fixed
+
+#### TV app
+- The "Buscar por voz" button listed as removed in 0.5.2 was still in the Search screen's code, and since 0.6.0 its missing label stopped the TV app from building. The button is now removed for good. Voice search still starts with the remote's search/microphone key on that screen, when the TV has a speech recognizer.
+
 ## [0.6.0] - Released on 2026-11-04 by Esther Almendros Pérez
 
 ### Added

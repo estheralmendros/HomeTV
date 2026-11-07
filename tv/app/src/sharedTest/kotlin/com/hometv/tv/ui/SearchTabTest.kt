@@ -8,11 +8,13 @@ import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.hometv.tv.testing.UiTestBase
 import com.hometv.tv.testing.UiTestPlatform
+import com.hometv.tv.ui.theme.HomeTvDimens
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -63,6 +65,22 @@ class SearchTabTest : UiTestBase() {
         settle()
         assertFalse("the keyboard's search key closes the keyboard", UiTestPlatform.isSoftKeyboardVisible())
         assertFocused("search_field")
+    }
+
+    @Test
+    fun theSearchFieldSpansTheWidthBetweenTheSafeMargins() {
+        useLibrary()
+        launch()
+        press(Key.DirectionUp)
+        press(Key.DirectionLeft)
+        press(Key.DirectionCenter)
+        assertFocused("search_field")
+        val root = rule.onAllNodes(isRoot()).fetchSemanticsNodes().first()
+        val screenWidth = root.size.width / root.layoutInfo.density.density
+        val margin = HomeTvDimens.SafeHorizontal.value
+        val (left, _, right) = dpBounds("search_field")
+        assertEquals("the field starts at the left safe margin", margin, left, 0.5f)
+        assertEquals("the field ends at the right safe margin of the $screenWidth dp screen", screenWidth - margin, right, 0.5f)
     }
 
     /** The view the system keyboard connects to (the Compose host view while a text field has input). */
