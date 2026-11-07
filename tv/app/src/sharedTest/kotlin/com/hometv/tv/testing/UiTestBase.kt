@@ -1,6 +1,7 @@
 package com.hometv.tv.testing
 
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.nativeKeyCode
 import androidx.compose.ui.test.SemanticsNodeInteraction
@@ -28,8 +29,11 @@ import com.hometv.tv.core.api.ShowDetail
 import com.hometv.tv.core.api.ShowSummary
 import com.hometv.tv.core.data.Session
 import com.hometv.tv.core.playback.F
+import com.hometv.tv.core.playback.PlaybackEngine
+import com.hometv.tv.core.playback.PlayerController
 import com.hometv.tv.di.AppContainer
 import com.hometv.tv.ui.HomeTvRoot
+import com.hometv.tv.ui.player.LocalVideoSurfaceProbe
 import com.hometv.tv.ui.theme.HomeTvDimens
 import java.time.Clock
 import java.time.Instant
@@ -56,6 +60,12 @@ abstract class UiTestBase {
     /** The player of the Player screen (no ExoPlayer in tests); its callbacks must run on the main thread. */
     protected val player = FakePlayerController()
 
+    /** Calls of the container's `player()` factory (the Player builds its controller lazily, at the first attach). */
+    protected var playerBuilds = 0
+
+    /** Every (engine, controller) pair the video surface bound, through `LocalVideoSurfaceProbe`. */
+    protected val surfaceBindings = mutableListOf<Pair<PlaybackEngine?, PlayerController?>>()
+
     /** The activity-level key hook (`MainActivity.dispatchKeyEvent` offers keys to it before Compose focus). */
     protected val keyDispatch = com.hometv.tv.ui.KeyDispatch()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -66,8 +76,15 @@ abstract class UiTestBase {
     protected open val clock: Clock = Clock.systemUTC()
 
     protected fun launch(session: Session = signedIn) {
-        container = testContainer(api, scope, session, clock = clock, cacheIo = Dispatchers.Unconfined, player = { player })
-        rule.setContent { HomeTvRoot(container, onExit = { exited = true }, keyDispatch = keyDispatch) }
+        container = testContainer(api, scope, session, clock = clock, cacheIo = Dispatchers.Unconfined, player = {
+            playerBuilds++
+            player
+        })
+        rule.setContent {
+            CompositionLocalProvider(LocalVideoSurfaceProbe provides { e, c -> surfaceBindings += e to c }) {
+                HomeTvRoot(container, onExit = { exited = true }, keyDispatch = keyDispatch)
+            }
+        }
         settle()
     }
 

@@ -30,6 +30,10 @@ import com.hometv.tv.core.data.WatchRepository
 import com.hometv.tv.core.data.WatchlistRepository
 import com.hometv.tv.core.playback.CapsForFile
 import com.hometv.tv.core.playback.ClientCapsBuilder
+import com.hometv.tv.core.playback.EngineHistory
+import com.hometv.tv.core.playback.EngineInputs
+import com.hometv.tv.core.playback.EngineSelector
+import com.hometv.tv.core.playback.PlaybackEngine
 import com.hometv.tv.core.util.ServerUrl
 import com.hometv.tv.data.AccountState
 import com.hometv.tv.data.DataStoreSessionStore
@@ -46,6 +50,7 @@ import com.hometv.tv.playback.PlayerFactory
 import com.hometv.tv.playback.SubtitleFileCache
 import com.hometv.tv.playback.SubtitleStore
 import com.hometv.tv.core.playback.PlayerController
+import com.hometv.tv.core.playback.VersionCaps
 import com.hometv.tv.ui.player.PlayerDeps
 import com.hometv.tv.ui.player.PlayerViewModel
 import com.hometv.tv.ui.activity.ActivityViewModel
@@ -210,6 +215,15 @@ class AppContainer(
         return CapsForFile { file -> ClientCapsBuilder.build(inventory, route, forFile = file) }
     }
 
+    /**
+     * Exo-first version tiers (Film detail's default version): `exo` = [capsForFile] (today's), `any` = the
+     * engine caps per file (VLC caps for a file only libVLC plays). libVLC is not wired yet, so `exo == any`.
+     */
+    suspend fun versionCaps(): VersionCaps {
+        val inputs = EngineInputs(codecs.inventory(), codecs.audioRoute(), vlcAvailable = false, forceVlc = false)
+        return VersionCaps(exo = capsForFile(), any = EngineSelector.capsForFile(inputs) { EngineHistory() })
+    }
+
     /** The device caps without a file (Settings → Acerca de summary). */
     suspend fun deviceCaps(): ClientCaps = ClientCapsBuilder.build(codecs.inventory(), codecs.audioRoute())
 
@@ -268,7 +282,7 @@ class AppContainer(
     private val avatars: () -> List<Avatar> = { account.info.value?.avatars.orEmpty() }
 
     fun filmDetailViewModel(id: Long) =
-        FilmDetailViewModel(id, catalog, watch, watchlist, ratings, ratingPrompts, store, ::capsForFile, events, homeRefresh, detailRefresh, avatars)
+        FilmDetailViewModel(id, catalog, watch, watchlist, ratings, ratingPrompts, store, ::versionCaps, events, homeRefresh, detailRefresh, avatars)
 
     fun showDetailViewModel(id: Long) = ShowDetailViewModel(id, catalog, watch, watchlist, ratings, ratingPrompts, store, events, homeRefresh, detailRefresh, avatars)
 
@@ -293,7 +307,12 @@ class AppContainer(
             appScope = appScope,
             codecs = codecs,
             serverUrl = { store.session.value.serverUrl },
-            controller = playerControllers(clients().streamClient),
+            // Built lazily at the first attach that uses the engine (never before): libVLC comes in part 2.
+            controllers = { engine ->
+                check(engine == PlaybackEngine.EXO) { "libVLC is not available" }
+                playerControllers(clients().streamClient)
+            },
+            vlcAvailable = false,
             subtitles = subtitleCache,
             ratingPrompts = ratingPrompts,
         ),

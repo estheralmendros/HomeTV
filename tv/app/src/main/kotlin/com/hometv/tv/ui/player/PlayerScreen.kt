@@ -15,8 +15,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -34,6 +36,8 @@ import androidx.media3.ui.PlayerView
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.hometv.tv.R
+import com.hometv.tv.core.playback.PlaybackEngine
+import com.hometv.tv.core.playback.PlayerController
 import com.hometv.tv.playback.ExoPlayerController
 import com.hometv.tv.ui.KeyEventInterceptor
 import com.hometv.tv.ui.components.ActionButton
@@ -79,7 +83,7 @@ fun PlayerScreen(vm: PlayerViewModel, onExit: () -> Unit) {
     KeyEventInterceptor { event -> handlePlayerKey(vm, current, event, consumed) }
 
     Box(Modifier.fillMaxSize().background(Color.Black).testTag("player")) {
-        VideoSurface(vm, state.keepScreenOn)
+        VideoSurface(vm, engine = state.engine, keepScreenOn = state.keepScreenOn)
         when (val screen = state.screen) {
             is PlayerScreenUi.Loading -> PreparingView(state.title, screen, onCancel = vm::onCancelLoading)
             PlayerScreenUi.Video -> PlayerOverlay(state, vm)
@@ -148,8 +152,21 @@ private val SEEK_KEYS = setOf(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_
 
 @OptIn(UnstableApi::class)
 @Composable
-private fun VideoSurface(vm: PlayerViewModel, keepScreenOn: Boolean) {
-    val exo = vm.playerController as? ExoPlayerController
+private fun VideoSurface(vm: PlayerViewModel, engine: PlaybackEngine?, keepScreenOn: Boolean) {
+    val probe = LocalVideoSurfaceProbe.current
+    // The controller is created lazily at the first attach and is not observable: it is read inside a block
+    // keyed on the observable engine, so null → EXO (and every engine switch) recomposes and rebinds the view.
+    // Part 1: both engines use the PlayerView (EXO is the only real engine).
+    key(engine) {
+        val controller = vm.playerController
+        PlayerViewSurface(controller, keepScreenOn) { probe(engine, controller) }
+    }
+}
+
+@OptIn(UnstableApi::class)
+@Composable
+private fun PlayerViewSurface(controller: PlayerController?, keepScreenOn: Boolean, onBind: () -> Unit) {
+    val exo = controller as? ExoPlayerController
     AndroidView(
         factory = { context ->
             PlayerView(context).apply {
@@ -167,6 +184,7 @@ private fun VideoSurface(vm: PlayerViewModel, keepScreenOn: Boolean) {
             }
         },
         update = { view ->
+            onBind()
             exo?.attach(view)
             view.keepScreenOn = keepScreenOn
         },
@@ -176,6 +194,12 @@ private fun VideoSurface(vm: PlayerViewModel, keepScreenOn: Boolean) {
 }
 
 private const val SUBTITLE_BOTTOM_PADDING = 0.08f
+
+/**
+ * Test seam: called from the video surface's `update` with the engine and the controller it binds (the
+ * real `attach` is unchanged). Production never provides it.
+ */
+internal val LocalVideoSurfaceProbe = staticCompositionLocalOf<(PlaybackEngine?, PlayerController?) -> Unit> { { _, _ -> } }
 
 /** Item load / "Preparando el vídeo… quedan unos N min" with [Cancelar] (503 `preparing`). */
 @Composable

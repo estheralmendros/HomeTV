@@ -28,6 +28,9 @@ object PlaybackErrorCodes {
         DECODING_FORMAT_UNSUPPORTED, AUDIO_TRACK_INIT_FAILED, AUDIO_TRACK_WRITE_FAILED,
     )
 
+    /** libVLC `MediaPlayer.Event.EncounteredError` (no detail available). Not a Media3 code: outside every range above. */
+    const val VLC_ERROR = 9001
+
     fun isIo(code: Int): Boolean = code in 2000..2999
 
     fun isParsing(code: Int): Boolean = code in 3000..3999
@@ -51,7 +54,7 @@ enum class UrlKind {
 /** Media3 renderer type, from `ExoPlaybackException.type == TYPE_RENDERER`. */
 enum class RendererType { VIDEO, AUDIO, OTHER }
 
-/** A pure description of an ExoPlayer `PlaybackException`, built by `ExoPlayerController`. */
+/** A pure description of a playback failure: an ExoPlayer `PlaybackException` (built by `ExoPlayerController`) or a libVLC error. */
 data class PlayerFailure(
     val errorCode: Int,
     val rendererType: RendererType? = null,
@@ -62,6 +65,8 @@ data class PlayerFailure(
     val urlKind: UrlKind = UrlKind.OTHER,
     /** `error.code` of the response body's envelope, when present. */
     val bodyCode: String? = null,
+    /** The engine that failed. A VLC failure carries `errorCode = VLC_ERROR` and nothing else. */
+    val engine: PlaybackEngine = PlaybackEngine.EXO,
 )
 
 /** A side-loaded WebVTT file from `SubtitleFileCache` (Media3 `SubtitleConfiguration`). */
@@ -83,6 +88,8 @@ data class MediaItemSpec(
     val audioTrackIndices: List<Int> = emptyList(),
     /** Server ids of the embedded image subtitle tracks in container order (direct mode; matched by ordinal). */
     val imageSubtitleIds: List<String> = emptyList(),
+    /** Server ids of every embedded subtitle track (text and image) in container order: libVLC SPU tracks are matched by ordinal. ExoPlayer ignores it. */
+    val embeddedSubtitleIds: List<String> = emptyList(),
 )
 
 /** Media3 `Player.STATE_*`. */

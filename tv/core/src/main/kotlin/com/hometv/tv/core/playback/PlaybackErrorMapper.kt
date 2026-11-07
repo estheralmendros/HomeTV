@@ -78,6 +78,9 @@ sealed interface PlaybackDecision {
 
     /** Side-loaded subtitle failure: drop it, rebuild without it, Off, toast; no playback request. */
     data object SubtitleUnavailable : PlaybackDecision
+
+    /** ExoPlayer can't play this file (or its remux): the same file on libVLC at the current position, once per file. */
+    data object FallBackToVlc : PlaybackDecision
 }
 
 /** Per-playback history the ViewModel keeps for the playback retry limits. Times in ms. */
@@ -94,6 +97,12 @@ data class FailureContext(
     val lastRenewalAtMs: Long? = null,
     val lastRecoveryAtMs: Long? = null,
     val hasOtherVersion: Boolean = false,
+    /** The engine of the current attachment. */
+    val engine: PlaybackEngine = PlaybackEngine.EXO,
+    /** libVLC can be used for this file (available, and ExoPlayer hasn't already failed on it). */
+    val vlcFallbackAllowed: Boolean = false,
+    /** The one libVLC renew + recovery of this file was used. */
+    val vlcRecovered: Boolean = false,
 )
 
 /** "Preparando el vídeo…" estimate: none, "queda menos de un minuto", or "quedan unos N min". */
@@ -151,10 +160,17 @@ object PlaybackErrorMapper {
         return PlayerError(MessageKey.PLAYBACK_UNSUPPORTED, REASON_KEYS.getValue(reason), args, withOther(hasOtherVersion, PlayerAction.BACK))
     }
 
+    /** Server reasons that mean "this client needs an HLS remux the server can't make"; libVLC plays the file directly. */
+    val REMUX_REASONS: Set<UnsupportedReason> = setOf(UnsupportedReason.HLS_NOT_SUPPORTED, UnsupportedReason.DURATION_UNKNOWN, UnsupportedReason.KEYFRAMES_TOO_SPARSE)
+
+    /** True when an `unsupported` answer to an EXO request should be retried once on libVLC. */
+    fun fallsBackToVlc(reason: UnsupportedReason, vlcFallbackAllowed: Boolean): Boolean =
+        vlcFallbackAllowed && reason in REMUX_REASONS
+
     fun forPreparingTimeout(): PlayerError = PlayerError(MessageKey.PREPARING_TIMEOUT, actions = listOf(PlayerAction.RETRY, PlayerAction.BACK))
 
     /** A failed `POST .../playback` (after the repository's `preparing` loop and the session renewal). */
-    fun forRequestError(e: ApiException, hasOtherVersion: Boolean, audioIndexRetried: Boolean = false): PlaybackDecision {
+    fun forRequestError(e: ApiException, hasOtherVersion: Boolean, audioIndexRetried: Boolean = false, vlcFallbackAllowed: Boolean = false): PlaybackDecision {
         val retry = listOf(PlayerAction.RETRY, PlayerAction.BACK)
         return when (e) {
             is ApiException.ProfileGone -> PlaybackDecision.AuthExpired
@@ -166,6 +182,7 @@ object PlaybackErrorMapper {
                 e.code == "too_many_sessions" -> show(MessageKey.TOO_MANY_SESSIONS, retry)
                 e.code == "hls_disk_full" -> show(MessageKey.HLS_DISK_FULL, retry)
                 e.status == 503 -> show(MessageKey.SERVER_UNAVAILABLE, retry)
+                isKeyframeIndexFailure(e) && vlcFallbackAllowed -> PlaybackDecision.FallBackToVlc
                 isKeyframeIndexFailure(e) -> PlaybackDecision.ShowError(
                     PlayerError(MessageKey.KEYFRAME_INDEX_FAILED, actions = withOther(hasOtherVersion, PlayerAction.BACK)),
                     refuseVersion = true,
@@ -185,6 +202,8 @@ object PlaybackErrorMapper {
 
     /** An ExoPlayer error during playback (`PlayerFailure` from `ExoPlayerController`). */
     fun forPlayerFailure(failure: PlayerFailure, ctx: FailureContext): PlaybackDecision {
+        // libVLC errors are opaque: one renew + recovery per file (no 30 s limit), then the generic screen.
+        if (failure.engine == PlaybackEngine.VLC) return if (!ctx.vlcRecovered) PlaybackDecision.RenewAndRecover else generic(ctx)
         val code = failure.errorCode
         if (failure.urlKind == UrlKind.SUBTITLE && (PlaybackErrorCodes.isParsing(code) || PlaybackErrorCodes.isIo(code))) {
             return PlaybackDecision.SubtitleUnavailable
@@ -199,6 +218,8 @@ object PlaybackErrorMapper {
         }
         val status = failure.httpStatus
         if (status != null && status >= 500 && failure.urlKind == UrlKind.HLS) {
+            // The server conversion failed: libVLC plays the file directly (checked before HLS_FAILED).
+            if (ctx.vlcFallbackAllowed) return PlaybackDecision.FallBackToVlc
             return show(MessageKey.HLS_FAILED, listOf(PlayerAction.RETRY_FROM_HERE, PlayerAction.BACK))
         }
         if (code == PlaybackErrorCodes.IO_NETWORK_CONNECTION_FAILED || code == PlaybackErrorCodes.IO_NETWORK_CONNECTION_TIMEOUT) {
@@ -208,16 +229,17 @@ object PlaybackErrorMapper {
         val containerFailure = code == PlaybackErrorCodes.PARSING_CONTAINER_UNSUPPORTED || code == PlaybackErrorCodes.PARSING_CONTAINER_MALFORMED
         if (containerFailure && failure.urlKind == UrlKind.STREAM && ctx.mode == PlaybackMode.DIRECT) {
             val container = ctx.container
-            return if (!ctx.containerRetried && container != null) PlaybackDecision.RetryExcludingContainer(container) else generic(ctx)
+            return if (!ctx.containerRetried && container != null) PlaybackDecision.RetryExcludingContainer(container) else genericOrVlc(failure, ctx)
         }
-        return generic(ctx)
+        return genericOrVlc(failure, ctx)
     }
 
-    /** `TrackCheck` outcome: handled exactly like a decoder failure of that type; null for NONE. */
-    fun forTrackFailure(failure: TrackFailure, ctx: FailureContext): PlaybackDecision? = when (failure) {
-        TrackFailure.NONE -> null
-        TrackFailure.VIDEO -> forDecoderFailure(RendererType.VIDEO, ctx)
-        TrackFailure.AUDIO -> forDecoderFailure(RendererType.AUDIO, ctx)
+    /** `TrackCheck` outcome: handled exactly like a decoder failure of that type (generic on libVLC); null for NONE. */
+    fun forTrackFailure(failure: TrackFailure, ctx: FailureContext): PlaybackDecision? = when {
+        failure == TrackFailure.NONE -> null
+        ctx.engine == PlaybackEngine.VLC -> generic(ctx)
+        failure == TrackFailure.VIDEO -> forDecoderFailure(RendererType.VIDEO, ctx)
+        else -> forDecoderFailure(RendererType.AUDIO, ctx)
     }
 
     /** Row 40: a failed direct → HLS audio switch is a toast; the direct media keeps playing. */
@@ -234,7 +256,7 @@ object PlaybackErrorMapper {
     fun forSwitchPreparingTimeout(): SwitchFailure = SwitchFailure.Toast(MessageKey.AUDIO_PREPARING_TIMEOUT)
 
     /**
-     * Direct mode: audio → one retry without the current audio codec; video → one retry without the
+     * Direct mode: audio → one retry without the current audio codec; video → libVLC when allowed, else one retry without the
      * file's video codec (the server then answers unsupported). HLS: only an audio failure with
      * `audio_action = copy` retries (the server converts to AAC). Anything else is generic.
      */
@@ -244,11 +266,20 @@ object PlaybackErrorMapper {
         return when {
             kind == RendererType.AUDIO && !ctx.audioRetried && audioCodec != null &&
                 (ctx.mode == PlaybackMode.DIRECT || ctx.audioAction == "copy") -> PlaybackDecision.RetryExcludingAudio(audioCodec)
+            kind == RendererType.VIDEO && ctx.vlcFallbackAllowed -> PlaybackDecision.FallBackToVlc
             kind == RendererType.VIDEO && ctx.mode == PlaybackMode.DIRECT && !ctx.videoRetried && videoCodec != null ->
                 PlaybackDecision.RetryExcludingVideo(videoCodec)
             else -> generic(ctx)
         }
     }
+
+    /** Row 8: a parsing failure (not a subtitle) that would end on the generic screen continues on libVLC when allowed. */
+    private fun genericOrVlc(failure: PlayerFailure, ctx: FailureContext): PlaybackDecision =
+        if (ctx.vlcFallbackAllowed && PlaybackErrorCodes.isParsing(failure.errorCode) && failure.urlKind != UrlKind.SUBTITLE) {
+            PlaybackDecision.FallBackToVlc
+        } else {
+            generic(ctx)
+        }
 
     private fun rendererKind(failure: PlayerFailure): RendererType = when {
         failure.errorCode == PlaybackErrorCodes.AUDIO_TRACK_INIT_FAILED || failure.errorCode == PlaybackErrorCodes.AUDIO_TRACK_WRITE_FAILED -> RendererType.AUDIO

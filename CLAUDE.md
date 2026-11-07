@@ -323,7 +323,17 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     (`rating_prompt`), `setWatched` → `WatchedResult(updated, ratingPrompt)`), `playback/` (pure `ClientCapsBuilder`,
     `VersionSelector`, `TrackRules`, `TrackCheck`, `PlaybackErrorMapper`,
     `PlaybackPlanner`, `SeekAccumulator`, `ProgressReporter`, the `PlayerController` interface (its `Listener.onRemote*` carry
-    media-session commands, no Media3 types in `core`)),
+    media-session commands, no Media3 types in `core`; `PlayerFailure.engine`, `PlaybackErrorCodes.VLC_ERROR` 9001 (outside
+    every Media3 range), `MediaItemSpec.embeddedSubtitleIds`), `EngineSelector.kt` (enum `PlaybackEngine { EXO, VLC }`,
+    pure `VlcCapsBuilder` (every probe container/codec, `hls = false`, 8 channels), `EngineSelector.select(EngineInputs(inventory,
+    route, vlcAvailable, forceVlc), file, EngineHistory(exclusions, exoFailed))` → `EngineChoice(engine, caps)`: EXO + today's
+    `exoCaps` unless libVLC is available and `forceVlc`, or the file has video, no `probe_error` and `exoFailed` or a codec outside
+    the Exo caps (never the container); `capsForFile`/`exoCapsForFile`), `TieredVersions.kt` (`VersionCaps(exo, any)`,
+    Exo-first `defaultChoice`/`select`/`candidates`/`nextPart` over `VersionSelector`; `exo == any` = today's result),
+    `PlaybackErrorMapper` libVLC rules (`FailureContext.engine/vlcFallbackAllowed/vlcRecovered`; `PlaybackDecision.FallBackToVlc`
+    for an EXO video decoder/parsing failure or an HLS 5xx (checked before `HLS_FAILED`); a VLC failure = one
+    `RenewAndRecover` per file, then generic; `REMUX_REASONS` + `fallsBackToVlc`, `forRequestError(…, vlcFallbackAllowed)`
+    for `keyframe_index_failed`)),
     `util/` (`ServerUrl`, `Format` (constant es-ES; `longDate`/`age`/`lifeSpan(birthday, deathday,
     today)` → structured `LifeSpan` Living|Deceased|DeathOnly, invalid dates = unknown; `stars(Stars)` "4,5",
     `shortDay(date, withYear)` "12 oct"), `Stars` (value class, halves 1..10: `of(Double?)` nearest ½,
@@ -333,7 +343,9 @@ is a contract shared by the web and TV clients: change it deliberately and updat
   - `app/` (`com.hometv.tv`): `MainActivity` (offers every key to `KeyDispatch` before Compose
     focus; screens register with `KeyEventInterceptor { event -> Boolean }`), `di/AppContainer`
     (manual DI: store, `clients()` rebuilt per server URL, `guard`, repositories, `events`,
-    `sessionExpired`, `appScope`, `codecs`, `playerLaunches`, `homeRefresh`, `detailRefresh`,
+    `sessionExpired`, `appScope`, `codecs` (+ `capsForFile()`, `versionCaps()` = `VersionCaps(exo = capsForFile(), any =
+    EngineSelector.capsForFile(…))`, passed to `FilmDetailViewModel(versionCaps = ::versionCaps)` so its default version
+    (`TieredVersions.defaultChoice`/`select`) is the Player's), `playerLaunches`, `homeRefresh`, `detailRefresh`,
     `watchlist` + `watchlistMemory` (Mi lista sort for the app session; the type filter lives in the ViewModel and resets when the screen is left, like the Browse filters),
     `ratings` + `ratingPrompts` (every `ratings.changes` marks `homeRefresh` stale), `signOut` (declared after
     what it resets), `avatars` (`account.info`
@@ -421,19 +433,33 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     move; `PersonScreen`: 960×540 dp fit (1-line name, 3-line bio block, 1-line subtitle, note in the
     header), lazy rows use `focusRestorer(<remembered card>)`; Film cast and Person rows restore
     through `ui/components/FocusRestorer.kt` `LazyListState.focusItem` + `rememberFocusedItemKey`); `player/`
-    (`PlayerViewModel` session state machine (rating prompt: `putAndRemember` wraps every progress PUT of
+    (`PlayerViewModel` session state machine (engines: `PlayerDeps.controllers: (PlaybackEngine) -> PlayerController` (built
+    lazily, at most once per engine, at the first attachment that uses it; `AppContainer` passes a lambda that builds the
+    `ExoPlayerController`, EXO only for now), `vlcAvailable` (no default; `false` until libVLC is wired), `forceVlc`; an
+    `EnumMap` of created controllers, `activeEngine` (switched in `attach`: set before the old one `stop()`s, new controller
+    created before `render()`), `EngineListener(engine)` forwards only the active engine's callbacks; `controller` (creating)
+    only from `attach` on, nullable `createdController` for `render()`/`onStop`/`releaseController`/`playerController`;
+    `send()` uses `EngineSelector.select` (a direct audio switch keeps the base's engine), `refreshCaps()` builds the
+    `VersionCaps` used by every version call via `TieredVersions`; `FileHistory.exoFailed/vlcRecovered`; decision 14:
+    `onUnsupported`/`onRequestFailure` re-send once on VLC; on VLC embedded text subtitles are native (`isNative`), only
+    external ones are side-loaded; `PlayerUiState.engine` null until the first controller exists; log line
+    `attach engine=… file=… mode=…`; rating prompt: `putAndRemember` wraps every progress PUT of
     both reporters and `releasedFinalPut`; `sessionPrompt` (latest wins, kept across attachments) is handed
     to `PlayerDeps.ratingPrompts` (no default) once by `exit()`/`onCleared()`, a later answer at once),
     `NextEpisodeResolution` (next-episode state + retry),
-    `HlsSessionOwner` (HLS DELETEs and abandoned-POST orphans in `appScope`), `PlayerScreen` with Media3 `PlayerView`, overlay, track dialog, countdown, error
+    `HlsSessionOwner` (HLS DELETEs and abandoned-POST orphans in `appScope`), `PlayerScreen` with Media3 `PlayerView` (`VideoSurface(vm, engine, keepScreenOn)`
+    reads `vm.playerController` inside `key(engine)`; test seam `LocalVideoSurfaceProbe`), overlay, track dialog, countdown, error
     screen)). `res/values/strings.xml` is the only catalog; the APK keeps only `es` resources
     (`localeFilters`).
   - Tests: `app/src/test` (ViewModel/glue tests, JUnit 5; `ui/player/PlayerSessionStateTest` covers
     the player session table with `FakePlayerController`; `TestRepos(appScope =)` gives the real
     repositories incl. `watchlist`, `ratings` and `ratingPrompts`, pass a scope on the test dispatcher for
     virtual time; `ActivityViewModelTest`, `RatingEditorTest`, `DetailRatingsTest`, `PlayerRatingPromptTest`, `data/SignOutTest`;
+    `ui/player/PlayerEngineTest` (two fakes: `PlayerTestBase.vlcController`, `vlcAvailable`, `forceVlc`, `createdEngines`;
+    without libVLC every test asserts the VLC controller was never built; `FakePlayerController.onStop` hook);
     core `SessionStoreTest` + gated `SessionGuardTest` races: `CountDownLatch` route + `CompletableDeferred` arrival), `app/src/sharedTest` (Compose focus/navigation
-    tests on Robolectric via `UiTestBase` (`assertFullyVisible`/`assertInsideSafeArea`, `absent(tag)`, dialog fit helpers `dpBounds(tag)` +
+    tests on Robolectric via `UiTestBase` (`assertFullyVisible`/`assertInsideSafeArea`, `absent(tag)`, `surfaceBindings` (through
+    `LocalVideoSurfaceProbe`) + `playerBuilds` (`PlayerSurfaceTest`), dialog fit helpers `dpBounds(tag)` +
     `DIALOG_PADDING`/`DIALOG_WINDOW_INSETS`, overridable
     `clock` passed to `testContainer`, e.g. a fixed date for age texts; `testContainer(zone = clock.zone)`, so times never depend on the host zone) +
     `testContainer` + `ScriptedApi` (`onPerson` seam, 404 by default; `PersonFocusTest`;

@@ -32,11 +32,15 @@ import com.hometv.tv.core.data.SessionGuard
 import com.hometv.tv.core.data.SubtitleFetch
 import com.hometv.tv.core.data.WatchRepository
 import com.hometv.tv.core.playback.CapsForFile
-import com.hometv.tv.core.playback.ClientCapsBuilder
+import com.hometv.tv.core.playback.EngineChoice
+import com.hometv.tv.core.playback.EngineHistory
+import com.hometv.tv.core.playback.EngineInputs
+import com.hometv.tv.core.playback.EngineSelector
 import com.hometv.tv.core.playback.FailureContext
 import com.hometv.tv.core.playback.MediaItemSpec
 import com.hometv.tv.core.playback.MessageKey
 import com.hometv.tv.core.playback.PlaybackDecision
+import com.hometv.tv.core.playback.PlaybackEngine
 import com.hometv.tv.core.playback.PlaybackErrorMapper
 import com.hometv.tv.core.playback.PlaybackMode
 import com.hometv.tv.core.playback.PlaybackPlan
@@ -52,10 +56,12 @@ import com.hometv.tv.core.playback.ProgressSnapshot
 import com.hometv.tv.core.playback.SeekAccumulator
 import com.hometv.tv.core.playback.SideloadedSubtitle
 import com.hometv.tv.core.playback.SwitchFailure
+import com.hometv.tv.core.playback.TieredVersions
 import com.hometv.tv.core.playback.TrackCheck
 import com.hometv.tv.core.playback.TrackCheckInput
 import com.hometv.tv.core.playback.TrackRules
 import com.hometv.tv.core.playback.UnsupportedReason
+import com.hometv.tv.core.playback.VersionCaps
 import com.hometv.tv.core.playback.VersionGroup
 import com.hometv.tv.core.playback.VersionSelector
 import com.hometv.tv.core.util.Format
@@ -69,6 +75,7 @@ import com.hometv.tv.ui.navigation.Route
 import com.hometv.tv.ui.text.PreparingText
 import com.hometv.tv.ui.text.UiFormat
 import com.hometv.tv.ui.text.UiText
+import java.util.EnumMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
@@ -87,7 +94,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
-/** What the Player needs from the container (faked in JVM tests: [controller] is a fake, [appScope] a test scope). */
+/** What the Player needs from the container (faked in JVM tests: [controllers] gives fakes, [appScope] is a test scope). */
 class PlayerDeps(
     val catalog: CatalogRepository,
     val playback: PlaybackRepository,
@@ -99,7 +106,15 @@ class PlayerDeps(
     val appScope: CoroutineScope,
     val codecs: CodecSource,
     val serverUrl: () -> String?,
-    val controller: PlayerController,
+    /**
+     * One controller per engine, built on each call (EXO: `ExoPlayerController`; VLC: part 2). The ViewModel
+     * calls it at most once per engine, at the first attachment that uses it, and releases what it got.
+     */
+    val controllers: (PlaybackEngine) -> PlayerController,
+    /** libVLC can play on this device (part 2: `VlcAvailability`); false = today's behaviour for every file. No default. */
+    val vlcAvailable: Boolean,
+    /** The admin debug switch (part 3), read for every playback request. */
+    val forceVlc: () -> Boolean = { false },
     val subtitles: SubtitleStore,
     /** The app's prompt store: the session's last `rating_prompt` is handed to it on exit. No default. */
     val ratingPrompts: RatingPrompts,
@@ -143,7 +158,14 @@ class PlayerViewModel(
     )
 
     /** One attached playback response (`attachmentKey`). */
-    private class Attachment(val key: Long, val file: MediaFile, val plan: PlaybackPlan.Play, val caps: ClientCaps, val startMs: Long) {
+    private class Attachment(
+        val key: Long,
+        val file: MediaFile,
+        val plan: PlaybackPlan.Play,
+        val caps: ClientCaps,
+        val startMs: Long,
+        val engine: PlaybackEngine,
+    ) {
         lateinit var reporter: ProgressReporter
         var putDone = false
 
@@ -175,6 +197,12 @@ class PlayerViewModel(
         var videoRetried = false
         var audioRetried = false
         var containerRetried = false
+
+        /** ExoPlayer failed on this file during this playback: libVLC plays it from now on (never reset for the item). */
+        var exoFailed = false
+
+        /** The one libVLC renew + recovery of this file was used (reset by an explicit retry). */
+        var vlcRecovered = false
     }
 
     private sealed interface NextTarget {
@@ -183,11 +211,24 @@ class PlayerViewModel(
         data class Part(val file: MediaFile) : NextTarget
     }
 
-    private val controller = deps.controller
+    /** The controllers created so far (none before the first attach), one per engine. */
+    private val controllers = EnumMap<PlaybackEngine, PlayerController>(PlaybackEngine::class.java)
+
+    /** The engine of the current attachment; switched in [attach] only. */
+    private var activeEngine = PlaybackEngine.EXO
+
+    /** The active engine's controller, created on first use: only from [attach] onwards (an attachment exists). */
+    private val controller: PlayerController get() = controllerFor(activeEngine)
+
+    /** The active engine's controller if it was created: every read reachable before the first attach or after release. */
+    private val createdController: PlayerController? get() = controllers[activeEngine]
     private val sessions = HlsSessionOwner(deps.appScope) { id -> deps.playback.deleteHlsSession(id) }
 
-    /** The player behind the `PlayerView` (an `ExoPlayerController` in the app, a fake in tests). */
-    val playerController: PlayerController get() = controller
+    /**
+     * The player behind the video surface (an `ExoPlayerController` in the app, a fake in tests); null until
+     * the first attach. Not observable: `PlayerScreen` reads it inside a block keyed on `PlayerUiState.engine`.
+     */
+    val playerController: PlayerController? get() = createdController
     private val _state = MutableStateFlow(PlayerUiState())
     val state: StateFlow<PlayerUiState> = _state.asStateFlow()
     private val _effects = Channel<PlayerEffect>(Channel.BUFFERED)
@@ -211,7 +252,8 @@ class PlayerViewModel(
     private var loadJob: Job? = null
     private var itemJob: Job? = null
     private var inFlight: InFlightPlayback? = null
-    private var capsFF: CapsForFile = CapsForFile { ClientCaps(emptyList(), emptyList(), emptyList(), 6, true, true) }
+    private var engineInputs: EngineInputs? = null
+    private var versionCaps: VersionCaps = CapsForFile { ClientCaps(emptyList(), emptyList(), emptyList(), 6, true, true) }.let { VersionCaps(it, it) }
     private val history = HashMap<Long, FileHistory>()
     private val refused = mutableSetOf<Long>()
     private var lastRenewalAtMs: Long? = null
@@ -281,8 +323,49 @@ class PlayerViewModel(
             // Process death: Navigation restored the route; pop with no request.
             exit()
         } else {
-            controller.setListener(this)
             startItem()
+        }
+    }
+
+    /** Creates [engine]'s controller once (decision 8: never before an attachment uses it). */
+    private fun controllerFor(engine: PlaybackEngine): PlayerController = controllers.getOrPut(engine) {
+        deps.controllers(engine).also { it.setListener(EngineListener(engine)) }
+    }
+
+    /** Forwards one engine's callbacks only while it is the active engine: a stopped engine's late callbacks are dropped. */
+    private inner class EngineListener(private val engine: PlaybackEngine) : PlayerController.Listener {
+        private val active: Boolean get() = engine == activeEngine
+
+        override fun onTracksChanged(check: TrackCheckInput) {
+            if (active) this@PlayerViewModel.onTracksChanged(check)
+        }
+
+        override fun onStateChanged(state: PlayerState) {
+            if (active) this@PlayerViewModel.onStateChanged(state)
+        }
+
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            if (active) this@PlayerViewModel.onIsPlayingChanged(isPlaying)
+        }
+
+        override fun onDurationChanged(durationMs: Long?) {
+            if (active) this@PlayerViewModel.onDurationChanged(durationMs)
+        }
+
+        override fun onFailure(failure: PlayerFailure) {
+            if (active) this@PlayerViewModel.onFailure(failure)
+        }
+
+        override fun onRemotePlay() {
+            if (active) this@PlayerViewModel.onRemotePlay()
+        }
+
+        override fun onRemotePause() {
+            if (active) this@PlayerViewModel.onRemotePause()
+        }
+
+        override fun onRemoteSeek(forward: Boolean) {
+            if (active) this@PlayerViewModel.onRemoteSeek(forward)
         }
     }
 
@@ -369,13 +452,13 @@ class PlayerViewModel(
         val files = item.files
         val chosen = route.mediaFileId?.let { id -> files.firstOrNull { it.id == id } }
         if (item.type == "film") {
-            val choice = if (chosen != null) null else VersionSelector.defaultChoice(files, capsFF, item.progress)
+            val choice = if (chosen != null) null else TieredVersions.defaultChoice(files, versionCaps, item.progress)
             val target = chosen ?: choice?.file ?: return null
             val start = if (choice?.startAtZero == true) com.hometv.tv.core.playback.Start(0.0, false)
             else VersionSelector.startFor(target, files, item.progress, route.fromStart)
             return target to start
         }
-        val target = chosen ?: VersionSelector.select(files, capsFF, item.progress, VersionGroup.Standalone) ?: return null
+        val target = chosen ?: TieredVersions.select(files, versionCaps, item.progress, VersionGroup.Standalone) ?: return null
         return target to VersionSelector.startFor(target, files, item.progress, route.fromStart)
     }
 
@@ -399,16 +482,35 @@ class PlayerViewModel(
 
     // ---- Requests ---------------------------------------------------------------------------
 
-    private suspend fun refreshCaps() {
-        val inventory = deps.codecs.inventory()
-        val route = deps.codecs.audioRoute()
-        capsFF = CapsForFile { f ->
-            val h = history[f.id]
-            ClientCapsBuilder.build(inventory, route, f, h?.video.orEmpty(), h?.audio.orEmpty(), h?.containers.orEmpty())
-        }
+    /** The engine inputs (the audio route is read fresh) and the Exo-first version tiers over the file histories. */
+    private suspend fun refreshCaps(): EngineInputs {
+        val inputs = EngineInputs(deps.codecs.inventory(), deps.codecs.audioRoute(), deps.vlcAvailable, deps.forceVlc())
+        engineInputs = inputs
+        versionCaps = VersionCaps(exo = EngineSelector.exoCapsForFile(inputs, ::engineHistory), any = EngineSelector.capsForFile(inputs, ::engineHistory))
+        return inputs
     }
 
     private fun historyOf(f: MediaFile) = history.getOrPut(f.id) { FileHistory() }
+
+    private fun engineHistory(f: MediaFile): EngineHistory {
+        val h = history[f.id] ?: return EngineHistory()
+        return EngineHistory(h.video.toSet(), h.audio.toSet(), h.containers.toSet(), h.exoFailed)
+    }
+
+    /** libVLC can take over [f] after an EXO failure: available, and ExoPlayer hasn't already failed on it. */
+    private fun vlcFallbackAllowed(engine: PlaybackEngine, f: MediaFile) =
+        deps.vlcAvailable && engine == PlaybackEngine.EXO && history[f.id]?.exoFailed != true
+
+    /** The engine and caps of [spec]'s request; an audio switch of a direct attachment keeps the base's engine. */
+    private fun engineChoice(inputs: EngineInputs, spec: RequestSpec): EngineChoice {
+        val choice = EngineSelector.select(inputs, spec.file, engineHistory(spec.file))
+        val base = switchBase
+        if (spec.kind == Kind.DIRECT_AUDIO_SWITCH && base != null && base.engine != choice.engine) {
+            deps.log("audio switch keeps engine=${base.engine} (selector chose ${choice.engine})", null)
+            return EngineChoice(base.engine, base.caps)
+        }
+        return choice
+    }
 
     /** Sends a `POST .../playback` (through `Loading`): the `preparing` loop, row 33 orphans, attach. */
     private fun send(spec: RequestSpec) {
@@ -430,9 +532,9 @@ class PlayerViewModel(
         render()
         loadJob = viewModelScope.launch {
             sessions.awaitOrphans()
-            refreshCaps() // the audio route is read fresh for every request
-            val caps = capsFF.capsFor(spec.file)
-            val body = PlaybackRequest(caps, spec.audioIndex, spec.startSec, spec.previousSessionId)
+            val inputs = refreshCaps() // the audio route is read fresh for every request
+            val choice = engineChoice(inputs, spec)
+            val body = PlaybackRequest(choice.caps, spec.audioIndex, spec.startSec, spec.previousSessionId)
             val switching = spec.kind == Kind.DIRECT_AUDIO_SWITCH
             // Row 40: the switch is a background caller (a renewal IOException is a toast); row 36: retries at the direct position.
             val origin = if (switching) Origin.Background else Origin.Foreground
@@ -446,10 +548,10 @@ class PlayerViewModel(
                         pending = spec.copy(previousSessionId = null)
                         render()
                     }
-                    is PlaybackProgress.Success -> onResponse(spec, progress.response, caps)
+                    is PlaybackProgress.Success -> onResponse(spec, progress.response, choice)
                     is PlaybackProgress.Failure -> {
                         inFlight = null
-                        onRequestFailure(spec, progress.error)
+                        onRequestFailure(spec, progress.error, choice.engine)
                     }
                     PlaybackProgress.PreparingTimeout -> {
                         inFlight = null
@@ -470,18 +572,26 @@ class PlayerViewModel(
         preparing = null
     }
 
-    private suspend fun onResponse(spec: RequestSpec, response: PlaybackResponse, caps: ClientCaps) {
+    private suspend fun onResponse(spec: RequestSpec, response: PlaybackResponse, choice: EngineChoice) {
         val plan = PlaybackPlanner.plan(response, deps.serverUrl().orEmpty(), spec.file)
         if (plan is PlaybackPlan.Unsupported) {
             inFlight = null
             deps.log("unsupported ${plan.wireReason}: ${plan.detail}", null)
-            onUnsupported(spec, plan)
+            onUnsupported(spec, plan, choice.engine)
             return
         }
-        attach(spec, plan as PlaybackPlan.Play, caps)
+        attach(spec, plan as PlaybackPlan.Play, choice)
     }
 
-    private fun onUnsupported(spec: RequestSpec, plan: PlaybackPlan.Unsupported) {
+    private fun onUnsupported(spec: RequestSpec, plan: PlaybackPlan.Unsupported, engine: PlaybackEngine) {
+        val audioKind = spec.kind == Kind.DIRECT_AUDIO_SWITCH || spec.kind == Kind.HLS_AUDIO_SWITCH || spec.kind == Kind.RELEASED_AUDIO
+        if (!audioKind && PlaybackErrorMapper.fallsBackToVlc(plan.reason, vlcFallbackAllowed(engine, spec.file))) {
+            // Decision 14: the server can't remux this file for ExoPlayer; libVLC plays it directly (once per file).
+            historyOf(spec.file).exoFailed = true
+            deps.log("remux unavailable (${plan.wireReason}): retry on VLC", null)
+            send(spec.copy(previousSessionId = null))
+            return
+        }
         when (spec.kind) {
             Kind.DIRECT_AUDIO_SWITCH -> {
                 spec.audioIndex?.let(unavailableAudio::add)
@@ -521,7 +631,7 @@ class PlayerViewModel(
         }
     }
 
-    private fun onRequestFailure(spec: RequestSpec, e: ApiException) {
+    private fun onRequestFailure(spec: RequestSpec, e: ApiException, engine: PlaybackEngine) {
         deps.log("playback request failed", e)
         if (spec.kind == Kind.DIRECT_AUDIO_SWITCH) {
             when (val failure = PlaybackErrorMapper.forSwitchError(e)) {
@@ -534,8 +644,14 @@ class PlayerViewModel(
             endSwitch()
             return
         }
-        when (val decision = PlaybackErrorMapper.forRequestError(e, hasOtherVersion(spec.file), spec.audioIndexRetried)) {
+        val allowed = vlcFallbackAllowed(engine, spec.file)
+        when (val decision = PlaybackErrorMapper.forRequestError(e, hasOtherVersion(spec.file), spec.audioIndexRetried, allowed)) {
             PlaybackDecision.RetryWithoutAudioIndex -> send(spec.copy(audioIndex = null, audioIndexRetried = true, previousSessionId = null))
+            PlaybackDecision.FallBackToVlc -> {
+                historyOf(spec.file).exoFailed = true
+                deps.log("remux failed: retry on VLC", null)
+                send(spec.copy(previousSessionId = null))
+            }
             PlaybackDecision.AuthExpired -> Unit
             is PlaybackDecision.ShowError -> {
                 if (decision.refuseVersion) refused += spec.file.id
@@ -557,7 +673,8 @@ class PlayerViewModel(
 
     // ---- Attach (row 32) --------------------------------------------------------------------
 
-    private suspend fun attach(spec: RequestSpec, plan: PlaybackPlan.Play, caps: ClientCaps) {
+    private suspend fun attach(spec: RequestSpec, plan: PlaybackPlan.Play, choice: EngineChoice) {
+        val engine = choice.engine
         val base = switchBase
         var play = spec.play
         var startMs = (spec.startSec * 1000).toLong()
@@ -583,8 +700,8 @@ class PlayerViewModel(
             selectedSubtitleId = plan.defaultSubtitleId
         }
         if (selectedSubtitleId != null && plan.subtitles.none { it.track.id == selectedSubtitleId }) selectedSubtitleId = null
-        // The default text subtitle is fetched before prepare() with a 3 s budget.
-        val wanted = plan.subtitles.firstOrNull { it.track.id == selectedSubtitleId && it.track.isText }
+        // The default text subtitle is fetched before prepare() with a 3 s budget (never a track the engine renders natively).
+        val wanted = plan.subtitles.firstOrNull { it.track.id == selectedSubtitleId && it.track.isText && !isNative(engine, plan, it.track.id) }
         val wantedUrl = wanted?.url
         if (justDefaulted && wanted != null && wantedUrl != null && deps.subtitles.get(spec.file.id, wanted.track.id) == null) {
             val result = withTimeoutOrNull(DEFAULT_SUBTITLE_BUDGET_MS) { deps.playback.fetchSubtitle(wantedUrl) }
@@ -600,10 +717,12 @@ class PlayerViewModel(
         }
         switchBase = null
         switchAudioIndex = null
+        selectEngine(engine)
+        deps.log("attach engine=$engine file=${spec.file.id} mode=${plan.mode}", null)
         selectedAudioIndex = plan.audioStreamIndex
         plan.audioStreamIndex?.let(unavailableAudio::remove)
         file = spec.file
-        val a = Attachment(nextKey++, spec.file, plan, caps, startMs)
+        val a = Attachment(nextKey++, spec.file, plan, choice.caps, startMs, engine)
         a.reporter = ProgressReporter(viewModelScope, send = { putAndRemember(it) }, snapshot = { snapshot(a) }, log = { deps.log("progress", it) })
         att = a
         pending = null
@@ -623,8 +742,22 @@ class PlayerViewModel(
         }
         selectedSubtitleId?.let { id ->
             val track = plan.subtitles.firstOrNull { it.track.id == id }
-            if (track != null && track.track.isText && id !in a.itemSubtitles) startSubtitleLoop(id)
+            if (track != null && track.track.isText && !isNative(a, id) && id !in a.itemSubtitles) startSubtitleLoop(id)
         }
+        render()
+    }
+
+    /**
+     * Makes [engine] the active one (decision 8). The active engine changes **before** the old controller
+     * stops, so its stop callbacks are already filtered out; the new controller exists before [render], so
+     * `PlayerUiState.engine` is never published as null once a controller was created.
+     */
+    private fun selectEngine(engine: PlaybackEngine) {
+        if (engine == activeEngine && createdController != null) return
+        val old = controllers[activeEngine]?.takeIf { activeEngine != engine }
+        activeEngine = engine
+        controllerFor(engine)
+        old?.stop()
         render()
     }
 
@@ -635,14 +768,15 @@ class PlayerViewModel(
         a.itemSubtitles += spec.subtitles.map { it.trackId }
         controller.setMediaItem(spec, startMs)
         controller.selectAudio(selectedAudioIndex)
-        controller.selectSubtitle(selectedSubtitleId?.takeIf { it in a.itemSubtitles || isImage(a, it) })
+        controller.selectSubtitle(selectedSubtitleId?.takeIf { it in a.itemSubtitles || isNative(a, it) })
         trackCheckArmed = true
         subtitleRebuild = rebuildForSubtitle
         controller.prepare()
     }
 
     private fun mediaItemSpec(a: Attachment): MediaItemSpec {
-        val cached = a.plan.subtitles.filter { it.track.isText }.mapNotNull { planned ->
+        // libVLC renders embedded text tracks itself: only external text tracks are side-loaded there.
+        val cached = a.plan.subtitles.filter { it.track.isText && !isNative(a, it.track.id) }.mapNotNull { planned ->
             deps.subtitles.get(a.file.id, planned.track.id)?.let { uri ->
                 SideloadedSubtitle(planned.track.id, uri, planned.track.language, planned.track.title, planned.track.forced)
             }
@@ -653,10 +787,16 @@ class PlayerViewModel(
             subtitles = cached,
             audioTrackIndices = a.file.audio_tracks.map { it.index },
             imageSubtitleIds = a.plan.subtitles.filter { it.track.isImage && !it.track.isExternal }.map { it.track.id },
+            embeddedSubtitleIds = a.plan.subtitles.filter { !it.track.isExternal }.map { it.track.id },
         )
     }
 
-    private fun isImage(a: Attachment, id: String) = a.plan.subtitles.any { it.track.id == id && it.track.isImage }
+    /** Selected natively by the engine (never fetched as a side-loaded VTT): an image track, or an embedded text track on libVLC. */
+    private fun isNative(a: Attachment, id: String) = isNative(a.engine, a.plan, id)
+
+    private fun isNative(engine: PlaybackEngine, plan: PlaybackPlan.Play, id: String) = plan.subtitles.any {
+        it.track.id == id && (it.track.isImage || (engine == PlaybackEngine.VLC && it.track.isText && !it.track.isExternal))
+    }
 
     // ---- Session ownership ------------------------------------------------------------------
 
@@ -687,14 +827,14 @@ class PlayerViewModel(
 
     private fun snapshot(a: Attachment): ProgressSnapshot? {
         if (!::item.isInitialized) return null
-        val position = if (session == SessionState.Released || session == SessionState.Background) savedPositionMs else controller.positionMs
+        val position = if (session == SessionState.Released || session == SessionState.Background) savedPositionMs else createdController?.positionMs ?: 0L
         return ProgressSnapshot(item.type, item.id, a.file.id, position / 1000.0, effectiveDurationMs(a)?.let { it / 1000.0 })
     }
 
     private fun effectiveDurationMs(a: Attachment?): Long? {
         a ?: return null
         a.plan.durationSeconds?.let { return (it * 1000).toLong() }
-        return controller.durationMs
+        return createdController?.durationMs
     }
 
     // ---- Keep-alive and the 30 min pause timer ----------------------------------------------
@@ -834,6 +974,9 @@ class PlayerViewModel(
             lastRenewalAtMs = lastRenewalAtMs,
             lastRecoveryAtMs = lastRecoveryAtMs,
             hasOtherVersion = f != null && hasOtherVersion(f),
+            engine = a?.engine ?: PlaybackEngine.EXO,
+            vlcFallbackAllowed = deps.vlcAvailable && h?.exoFailed != true && a?.engine == PlaybackEngine.EXO,
+            vlcRecovered = h?.vlcRecovered == true,
         )
     }
 
@@ -848,6 +991,8 @@ class PlayerViewModel(
         val wasPlaying = session == SessionState.Playing
         when (decision) {
             PlaybackDecision.RenewAndRecover -> {
+                // libVLC errors are opaque: the one renew + recovery per file (decision 6) is used here.
+                if (a.engine == PlaybackEngine.VLC) historyOf(f).vlcRecovered = true
                 lastRenewalAtMs = deps.nowMs()
                 val position = recoveryPositionMs()
                 viewModelScope.launch {
@@ -867,6 +1012,8 @@ class PlayerViewModel(
             is PlaybackDecision.RetryExcludingVideo -> retryExcluding(a, wasPlaying) { historyOf(f).apply { video += decision.codec; videoRetried = true } }
             is PlaybackDecision.RetryExcludingAudio -> retryExcluding(a, wasPlaying) { historyOf(f).apply { audio += decision.codec; audioRetried = true } }
             is PlaybackDecision.RetryExcludingContainer -> retryExcluding(a, wasPlaying) { historyOf(f).apply { containers += decision.container; containerRetried = true } }
+            // ExoPlayer can't play this file (decoder, parsing, or the server conversion): libVLC at the recovery position.
+            PlaybackDecision.FallBackToVlc -> retryExcluding(a, wasPlaying) { historyOf(f).exoFailed = true }
             is PlaybackDecision.ShowError -> {
                 if (decision.refuseVersion) refused += f.id
                 if (decision.itemGone) deps.events.emit(AppEvent.ItemGone(item.type, item.id))
@@ -930,7 +1077,7 @@ class PlayerViewModel(
             a.reporter.finish(deps.appScope, atEnd = true)
         }
         if (item.type == "film") {
-            val nextPart = if (VersionSelector.isLastPart(a.file, item.files)) null else VersionSelector.nextPart(item.files, capsFF, a.file)
+            val nextPart = if (VersionSelector.isLastPart(a.file, item.files)) null else TieredVersions.nextPart(item.files, versionCaps, a.file)
             if (nextPart == null) {
                 finishSession(a)
                 exit()
@@ -970,7 +1117,7 @@ class PlayerViewModel(
 
             override suspend fun plan(episode: EpisodeDetail): List<MediaFile> {
                 refreshCaps()
-                return VersionSelector.candidates(episode.media_files, capsFF, VersionGroup.Standalone, episode.progress)
+                return TieredVersions.candidates(episode.media_files, versionCaps, VersionGroup.Standalone, episode.progress)
             }
         }
         nextResolution.start(current, file, keepRetrying = { session == SessionState.EndedResolving }, onResolved = ::onNextResolved)
@@ -1059,7 +1206,7 @@ class PlayerViewModel(
             is NextTarget.Part -> {
                 resetForFile()
                 val group = VersionSelector.groupOf(target.file)
-                val fallbacks = VersionSelector.candidates(item.files, capsFF, group).filter { it.id != target.file.id }
+                val fallbacks = TieredVersions.candidates(item.files, versionCaps, group).filter { it.id != target.file.id }
                 send(RequestSpec(target.file, 0.0, null, previous, Kind.NEXT_PART, play = true, fallbacks = fallbacks))
             }
         }
@@ -1142,10 +1289,13 @@ class PlayerViewModel(
         when (action) {
             PlayerAction.RETRY -> {
                 val spec = errorSpec
+                // An explicit retry gets its own libVLC renew + recovery.
+                (spec?.file ?: file)?.let { history[it.id]?.vlcRecovered = false }
                 if (spec == null || !::item.isInitialized) startItem() else send(spec)
             }
             PlayerAction.RETRY_FROM_HERE -> {
                 val f = file ?: return startItem()
+                history[f.id]?.vlcRecovered = false
                 send(RequestSpec(f, errorPositionSec, selectedAudioIndex, null, Kind.RECOVERY, play = true))
             }
             PlayerAction.TRY_OTHER_VERSION -> openOtherVersions()
@@ -1157,7 +1307,7 @@ class PlayerViewModel(
 
     private fun otherVersionsFor(f: MediaFile): List<MediaFile> {
         if (!::item.isInitialized) return emptyList()
-        return VersionSelector.candidates(item.files, capsFF, VersionSelector.groupOf(f), progressNow(f)).filter { it.id != f.id && it.id !in refused }
+        return TieredVersions.candidates(item.files, versionCaps, VersionSelector.groupOf(f), progressNow(f)).filter { it.id != f.id && it.id !in refused }
     }
 
     private fun progressNow(f: MediaFile) = Progress(position_seconds = errorPositionSec, duration_seconds = f.duration_seconds, media_file_id = f.id)
@@ -1257,11 +1407,11 @@ class PlayerViewModel(
         selectedSubtitleId = trackId
         if (session == SessionState.Released) {
             // Row 9: stored and fetched to the cache; applied by the next recovery.
-            if (planned.track.isText && deps.subtitles.get(a.file.id, trackId) == null) startSubtitleLoop(trackId, attachWhenReady = false)
+            if (planned.track.isText && !isNative(a, trackId) && deps.subtitles.get(a.file.id, trackId) == null) startSubtitleLoop(trackId, attachWhenReady = false)
             return render()
         }
         when {
-            planned.track.isImage -> controller.selectSubtitle(trackId)
+            isNative(a, trackId) -> controller.selectSubtitle(trackId)
             trackId in a.itemSubtitles -> controller.selectSubtitle(trackId)
             deps.subtitles.get(a.file.id, trackId) != null -> rebuildForSubtitle(a, trackId)
             else -> startSubtitleLoop(trackId)
@@ -1320,7 +1470,7 @@ class PlayerViewModel(
         showToast(UiText.Res(R.string.player_subtitles_unavailable))
         if (selectedSubtitleId == trackId) {
             selectedSubtitleId = null
-            controller.selectSubtitle(null)
+            createdController?.selectSubtitle(null)
         }
         render()
     }
@@ -1346,7 +1496,7 @@ class PlayerViewModel(
         if (!allowed) return
         overlay = OverlayMode.HIDDEN
         if (item.type == "film") {
-            val nextPart = VersionSelector.nextPart(item.files, capsFF, a.file) ?: return
+            val nextPart = TieredVersions.nextPart(item.files, versionCaps, a.file) ?: return
             goNext(NextTarget.Part(nextPart))
             return
         }
@@ -1369,7 +1519,7 @@ class PlayerViewModel(
             is NextState.Found -> if (n.plan.isEmpty()) {
                 stopHeldTimers()
                 att?.let(::finishSession)
-                controller.stop()
+                createdController?.stop()
                 showEndScreenUnplayable(n.episode, null, null)
             } else {
                 goNext(NextTarget.Episode(n.episode, n.plan))
@@ -1663,8 +1813,11 @@ class PlayerViewModel(
     private fun releaseController() {
         if (releasedController) return
         releasedController = true
-        controller.setListener(null)
-        controller.release()
+        // Exactly the controllers that were created (none, one or both).
+        controllers.values.forEach {
+            it.setListener(null)
+            it.release()
+        }
     }
 
     /** Activity `ON_STOP` (rows 4, 12, 22, 23, 27, 31). */
@@ -1688,7 +1841,7 @@ class PlayerViewModel(
                 } else {
                     { startItemPaused() }
                 }
-                controller.pause()
+                createdController?.pause()
             }
             SessionState.Countdown -> {
                 countdownJob?.cancel()
@@ -1754,7 +1907,7 @@ class PlayerViewModel(
 
     /** Direct recovery (row 5): new attachment key, `prepare()` + `seekTo(saved)`, paused, no request. */
     private fun recoverDirectPaused(old: Attachment) {
-        val a = Attachment(nextKey++, old.file, old.plan, old.caps, savedPositionMs)
+        val a = Attachment(nextKey++, old.file, old.plan, old.caps, savedPositionMs, old.engine)
         a.reporter = ProgressReporter(viewModelScope, send = { putAndRemember(it) }, snapshot = { snapshot(a) }, log = { deps.log("progress", it) })
         att = a
         session = SessionState.Paused
@@ -1866,16 +2019,18 @@ class PlayerViewModel(
             else -> PlayerScreenUi.Video
         }
         val released = s == SessionState.Released || s == SessionState.Background
+        // Never the creating getter: render() runs before the first attach (no controller exists yet).
+        val player = createdController
         val position = when {
             released -> savedPositionMs
-            a != null -> controller.positionMs
+            a != null -> player?.positionMs ?: 0L
             else -> 0L
         }
         val pendingSeek = seek.pendingTargetMs
         val switchChip = if (switchBase != null) {
             preparing?.let { UiText.Value(PreparingText(it, R.string.player_audio_preparing)) } ?: UiText.Res(R.string.player_audio_switching)
         } else null
-        val basePlaying = controller.isPlaying
+        val basePlaying = player?.isPlaying == true
         _state.value = PlayerUiState(
             session = s,
             screen = screen,
@@ -1884,11 +2039,11 @@ class PlayerViewModel(
             overlay = if (screen == PlayerScreenUi.Video) overlay else OverlayMode.HIDDEN,
             positionMs = position,
             durationMs = effectiveDurationMs(a),
-            bufferedMs = if (released) position else controller.bufferedPositionMs,
+            bufferedMs = if (released) position else player?.bufferedPositionMs ?: 0L,
             pendingSeekMs = pendingSeek,
             playing = s == SessionState.Playing || (switchBase != null && basePlaying),
             spinner = (s == SessionState.Loading && switchBase == null && screen == PlayerScreenUi.Video) ||
-                (s == SessionState.Playing && controller.state == PlayerState.BUFFERING) || s == SessionState.EndedResolving || resolvingForButton,
+                (s == SessionState.Playing && player?.state == PlayerState.BUFFERING) || s == SessionState.EndedResolving || resolvingForButton,
             nextButton = nextButton(),
             chip = pendingSubtitle?.let { UiText.Res(R.string.player_subtitles_preparing) } ?: notice,
             switchChip = switchChip,
@@ -1896,6 +2051,7 @@ class PlayerViewModel(
             dialog = dialog,
             keepScreenOn = s == SessionState.Playing || (s == SessionState.Loading && (switchBase == null || basePlaying)),
             focusPlayPause = focusPlayPause,
+            engine = activeEngine.takeIf { player != null },
         )
     }
 

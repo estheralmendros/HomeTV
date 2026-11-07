@@ -249,4 +249,99 @@ class PlaybackErrorMapperTest {
         assertFalse(error.args.any { "Transcoder" in it })
         assertTrue(error.args.isEmpty())
     }
+
+    /** libVLC fallback rules (FR-2.2 rows 1–10, FR-2.3). */
+    @Nested
+    inner class Engines {
+        private val direct = FailureContext(PlaybackMode.DIRECT, nowMs = 100_000, videoCodec = "mpeg4", audioCodec = "mp3", container = "mkv")
+        private val hls = FailureContext(PlaybackMode.HLS, nowMs = 100_000, videoCodec = "h264", audioCodec = "aac", audioAction = "copy")
+        private val vlcCtx = direct.copy(engine = PlaybackEngine.VLC)
+        private val vlcFailure = PlayerFailure(C.VLC_ERROR, engine = PlaybackEngine.VLC)
+
+        @Test
+        fun `AC-2_1 a VLC failure renews once (no 30 s limit), then the generic screen`() {
+            assertEquals(RenewAndRecover, mapper.forPlayerFailure(vlcFailure, vlcCtx))
+            assertEquals(RenewAndRecover, mapper.forPlayerFailure(vlcFailure, vlcCtx.copy(lastRenewalAtMs = 95_000)))
+            assertEquals(
+                ShowError(PlayerError(MessageKey.PLAYBACK_FAILED, actions = listOf(RETRY_FROM_HERE, TRY_OTHER_VERSION, BACK))),
+                mapper.forPlayerFailure(vlcFailure, vlcCtx.copy(vlcRecovered = true, hasOtherVersion = true)),
+            )
+            assertEquals(
+                ShowError(PlayerError(MessageKey.PLAYBACK_FAILED, actions = listOf(RETRY_FROM_HERE, BACK))),
+                mapper.forPlayerFailure(vlcFailure, vlcCtx.copy(vlcRecovered = true)),
+            )
+        }
+
+        @Test
+        fun `VLC_ERROR lies outside every Media3 range`() {
+            assertFalse(C.isIo(C.VLC_ERROR))
+            assertFalse(C.isParsing(C.VLC_ERROR))
+            assertFalse(C.VLC_ERROR in C.DECODER_ERRORS)
+        }
+
+        @Test
+        fun `AC-2_2 an EXO video decoder failure falls back to VLC in DIRECT and HLS when allowed`() {
+            val video = PlayerFailure(C.DECODING_FAILED, RendererType.VIDEO, "video/mp4v-es")
+            assertEquals(PlaybackDecision.FallBackToVlc, mapper.forPlayerFailure(video, direct.copy(vlcFallbackAllowed = true)))
+            assertEquals(PlaybackDecision.FallBackToVlc, mapper.forPlayerFailure(video, hls.copy(vlcFallbackAllowed = true)))
+            assertEquals(RetryExcludingVideo("mpeg4"), mapper.forPlayerFailure(video, direct))
+            assertEquals(MessageKey.PLAYBACK_FAILED, shown(mapper.forPlayerFailure(video, hls)).message)
+        }
+
+        @Test
+        fun `AC-2_3 a silent video track falls back on EXO, is generic on VLC`() {
+            assertEquals(PlaybackDecision.FallBackToVlc, mapper.forTrackFailure(TrackFailure.VIDEO, direct.copy(vlcFallbackAllowed = true)))
+            assertEquals(MessageKey.PLAYBACK_FAILED, shown(mapper.forTrackFailure(TrackFailure.VIDEO, vlcCtx)!!).message)
+            assertEquals(MessageKey.PLAYBACK_FAILED, shown(mapper.forTrackFailure(TrackFailure.AUDIO, vlcCtx)!!).message)
+            assertEquals(null, mapper.forTrackFailure(TrackFailure.NONE, vlcCtx))
+        }
+
+        @Test
+        fun `AC-2_4 an EXO audio decoder failure still retries without the audio codec`() {
+            val audio = PlayerFailure(C.DECODING_FAILED, RendererType.AUDIO, "audio/mpeg")
+            assertEquals(RetryExcludingAudio("mp3"), mapper.forPlayerFailure(audio, direct.copy(vlcFallbackAllowed = true)))
+            assertEquals(RetryExcludingAudio("mp3"), mapper.forTrackFailure(TrackFailure.AUDIO, direct.copy(vlcFallbackAllowed = true)))
+        }
+
+        @Test
+        fun `AC-2_5 container parsing - the container retry first, then VLC, subtitles unchanged`() {
+            val f = PlayerFailure(C.PARSING_CONTAINER_MALFORMED, urlKind = UrlKind.STREAM)
+            val allowed = direct.copy(vlcFallbackAllowed = true)
+            assertEquals(RetryExcludingContainer("mkv"), mapper.forPlayerFailure(f, allowed))
+            assertEquals(PlaybackDecision.FallBackToVlc, mapper.forPlayerFailure(f, allowed.copy(containerRetried = true)))
+            assertEquals(MessageKey.PLAYBACK_FAILED, shown(mapper.forPlayerFailure(f, direct.copy(containerRetried = true))).message)
+            assertEquals(SubtitleUnavailable, mapper.forPlayerFailure(f.copy(urlKind = UrlKind.SUBTITLE), allowed))
+            // Row 8: any parsing failure that would end on the generic screen.
+            assertEquals(PlaybackDecision.FallBackToVlc, mapper.forPlayerFailure(PlayerFailure(C.PARSING_MANIFEST_MALFORMED, urlKind = UrlKind.HLS), hls.copy(vlcFallbackAllowed = true)))
+            // A non-parsing generic failure stays generic.
+            assertEquals(MessageKey.PLAYBACK_FAILED, shown(mapper.forPlayerFailure(PlayerFailure(1000), allowed)).message)
+        }
+
+        @Test
+        fun `AC-2_7 an HLS 5xx falls back to VLC before today's HLS_FAILED early return`() {
+            val f = PlayerFailure(C.IO_BAD_HTTP_STATUS, httpStatus = 500, urlKind = UrlKind.HLS)
+            assertEquals(PlaybackDecision.FallBackToVlc, mapper.forPlayerFailure(f, hls.copy(vlcFallbackAllowed = true)))
+            assertEquals(PlayerError(MessageKey.HLS_FAILED, actions = listOf(RETRY_FROM_HERE, BACK)), shown(mapper.forPlayerFailure(f, hls)))
+            // A stream 401 keeps its renew rule.
+            assertEquals(RenewAndRecover, mapper.forPlayerFailure(PlayerFailure(C.IO_BAD_HTTP_STATUS, httpStatus = 401, urlKind = UrlKind.STREAM), direct.copy(vlcFallbackAllowed = true)))
+        }
+
+        @Test
+        fun `AC-2_8 only the remux reasons fall back, and only when allowed`() {
+            for (reason in UnsupportedReason.entries) {
+                val remux = reason in setOf(UnsupportedReason.HLS_NOT_SUPPORTED, UnsupportedReason.DURATION_UNKNOWN, UnsupportedReason.KEYFRAMES_TOO_SPARSE)
+                assertEquals(remux, mapper.fallsBackToVlc(reason, vlcFallbackAllowed = true), "$reason")
+                assertFalse(mapper.fallsBackToVlc(reason, vlcFallbackAllowed = false), "$reason")
+            }
+            assertEquals(setOf(UnsupportedReason.HLS_NOT_SUPPORTED, UnsupportedReason.DURATION_UNKNOWN, UnsupportedReason.KEYFRAMES_TOO_SPARSE), mapper.REMUX_REASONS)
+        }
+
+        @Test
+        fun `AC-2_9 a keyframe index failure falls back to VLC when allowed`() {
+            val e = http(500, "transcoder_failed", """{"detail": "keyframe_index_failed: ffprobe exited 1"}""")
+            assertEquals(PlaybackDecision.FallBackToVlc, mapper.forRequestError(e, false, vlcFallbackAllowed = true))
+            assertEquals(ShowError(PlayerError(MessageKey.KEYFRAME_INDEX_FAILED, actions = listOf(BACK)), refuseVersion = true), mapper.forRequestError(e, false, vlcFallbackAllowed = false))
+            assertEquals(MessageKey.PLAYBACK_FAILED, shown(mapper.forRequestError(http(500, "transcoder_failed", """{"detail": "ffmpeg died"}"""), false, vlcFallbackAllowed = true)).message)
+        }
+    }
 }
