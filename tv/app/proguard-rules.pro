@@ -16,3 +16,7 @@
 -dontwarn org.conscrypt.**
 -dontwarn org.bouncycastle.**
 -dontwarn org.openjsse.**
+
+# libVLC: JNI calls back into these classes (events, VLCObject, Dialog, AWindow…) by name. Kept even with the
+# AAR's own consumer rules: a release APK that strips one crashes in LibVLC.<init>.
+-keep class org.videolan.libvlc.** { *; }

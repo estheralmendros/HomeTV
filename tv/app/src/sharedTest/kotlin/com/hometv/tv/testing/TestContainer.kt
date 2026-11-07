@@ -37,7 +37,12 @@ fun testContainer(
     /** The calendar's zone: the [clock]'s by default, so dates never depend on the host's time zone. */
     zone: java.time.ZoneId = clock.zone,
     cacheIo: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.IO,
+    /** The EXO controller of each Player screen. */
     player: () -> com.hometv.tv.core.playback.PlayerController = { FakePlayerController() },
+    /** The VLC controller of each Player screen (built only for files that play on libVLC). */
+    vlcPlayer: () -> com.hometv.tv.core.playback.PlayerController = { FakePlayerController() },
+    /** `AppContainer.vlcAvailability`: false keeps every file on ExoPlayer. */
+    vlcAvailable: Boolean = false,
 ): AppContainer = AppContainer(
     store = InMemorySessionStore(session),
     homeCache = HomeCache(Files.createTempDirectory("home_cache").toFile(), cacheIo),
@@ -48,6 +53,7 @@ fun testContainer(
     codecs = FakeCodecs(),
     clock = clock,
     zone = { zone },
-    playerControllers = { player() },
+    playerControllers = { engine, _ -> if (engine == com.hometv.tv.core.playback.PlaybackEngine.EXO) player() else vlcPlayer() },
+    vlcAvailability = com.hometv.tv.playback.VlcAvailability { vlcAvailable },
     subtitleCache = com.hometv.tv.playback.SubtitleFileCache(Files.createTempDirectory("subtitles").toFile()),
 )

@@ -60,8 +60,17 @@ abstract class UiTestBase {
     /** The player of the Player screen (no ExoPlayer in tests); its callbacks must run on the main thread. */
     protected val player = FakePlayerController()
 
+    /** The libVLC engine's player (a second fake), used only when [vlcAvailable] and a file plays on libVLC. */
+    protected val vlcPlayer = FakePlayerController()
+
+    /** `AppContainer.vlcAvailability` of the launched container (false: every file on ExoPlayer). */
+    protected open val vlcAvailable: Boolean = false
+
     /** Calls of the container's `player()` factory (the Player builds its controller lazily, at the first attach). */
     protected var playerBuilds = 0
+
+    /** Calls of the container's `vlcPlayer()` factory. */
+    protected var vlcPlayerBuilds = 0
 
     /** Every (engine, controller) pair the video surface bound, through `LocalVideoSurfaceProbe`. */
     protected val surfaceBindings = mutableListOf<Pair<PlaybackEngine?, PlayerController?>>()
@@ -76,10 +85,18 @@ abstract class UiTestBase {
     protected open val clock: Clock = Clock.systemUTC()
 
     protected fun launch(session: Session = signedIn) {
-        container = testContainer(api, scope, session, clock = clock, cacheIo = Dispatchers.Unconfined, player = {
-            playerBuilds++
-            player
-        })
+        container = testContainer(
+            api, scope, session, clock = clock, cacheIo = Dispatchers.Unconfined,
+            player = {
+                playerBuilds++
+                player
+            },
+            vlcPlayer = {
+                vlcPlayerBuilds++
+                vlcPlayer
+            },
+            vlcAvailable = vlcAvailable,
+        )
         rule.setContent {
             CompositionLocalProvider(LocalVideoSurfaceProbe provides { e, c -> surfaceBindings += e to c }) {
                 HomeTvRoot(container, onExit = { exited = true }, keyDispatch = keyDispatch)
@@ -114,6 +131,12 @@ abstract class UiTestBase {
     /** Runs a player callback (READY, ENDED, a failure) on the main thread, as ExoPlayer does. */
     protected fun onPlayer(block: FakePlayerController.() -> Unit) {
         rule.runOnUiThread { player.block() }
+        settle()
+    }
+
+    /** [onPlayer] for the libVLC engine's fake. */
+    protected fun onVlcPlayer(block: FakePlayerController.() -> Unit) {
+        rule.runOnUiThread { vlcPlayer.block() }
         settle()
     }
 

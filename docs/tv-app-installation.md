@@ -54,7 +54,10 @@ key is kept forever.
 ```bash
 make tv-build
 ```
-The APK is `tv/app/build/outputs/apk/release/app-release.apk` (about 3 MB). Its version comes from
+The APK is `tv/app/build/outputs/apk/release/app-release.apk` (about 95 MB: it bundles libVLC, the
+fallback player for files ExoPlayer can't decode, for ARM devices only (`armeabi-v7a` and `arm64-v8a`,
+which covers Chromecast with Google TV and Google TV Streamer); it doesn't install on an x86 emulator
+without ARM translation). Its version comes from
 the repo-root `version.txt` (`MAJOR.MINOR.PATCH`, version code `M*10000 + m*100 + p`), so bump
 `version.txt` before building a new release. A build with a lower version code than the installed
 app is refused by `adb install -r`.

@@ -15,6 +15,7 @@ import com.hometv.tv.core.data.SubtitleFetch
 import com.hometv.tv.core.data.SubtitleSource
 import com.hometv.tv.core.playback.F
 import com.hometv.tv.core.playback.PlaybackEngine
+import com.hometv.tv.core.playback.PlayerController
 import com.hometv.tv.data.PlayerLaunches
 import com.hometv.tv.playback.SubtitleFileCache
 import com.hometv.tv.testing.FakeCodecs
@@ -48,8 +49,14 @@ abstract class PlayerTestBase {
     /** The libVLC engine's controller (a second fake); untouched while [vlcAvailable] is false. */
     protected val vlcController = FakePlayerController()
 
-    /** `PlayerDeps.vlcAvailable` for the ViewModels created after it is set. */
+    /** What `deps.controllers(VLC)` returns: [vlcController] unless a test overrides it (e.g. a real `VlcPlayerController`). */
+    protected open fun vlcControllerFor(): PlayerController = vlcController
+
+    /** libVLC is usable in this test (the default of [vlcAvailability], and the AC-3.1 end-of-test check). */
     protected var vlcAvailable = false
+
+    /** `PlayerDeps.vlcAvailable`, read by the ViewModel at every request: [vlcAvailable] unless a test swaps it. */
+    protected var vlcAvailability: () -> Boolean = { vlcAvailable }
 
     /** The admin debug switch, read for every request. */
     protected var forceVlc = false
@@ -128,9 +135,9 @@ abstract class PlayerTestBase {
             serverUrl = { repos.store.session.value.serverUrl },
             controllers = { engine ->
                 createdEngines += engine
-                if (engine == PlaybackEngine.EXO) controller else vlcController
+                if (engine == PlaybackEngine.EXO) controller else vlcControllerFor()
             },
-            vlcAvailable = vlcAvailable,
+            vlcAvailable = { vlcAvailability() },
             forceVlc = { forceVlc },
             subtitles = subtitles,
             ratingPrompts = repos.ratingPrompts,

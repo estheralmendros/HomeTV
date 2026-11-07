@@ -111,8 +111,12 @@ class PlayerDeps(
      * calls it at most once per engine, at the first attachment that uses it, and releases what it got.
      */
     val controllers: (PlaybackEngine) -> PlayerController,
-    /** libVLC can play on this device (part 2: `VlcAvailability`); false = today's behaviour for every file. No default. */
-    val vlcAvailable: Boolean,
+    /**
+     * libVLC can play on this device (`VlcAvailability.isAvailable`); false = today's behaviour for every file. Read at
+     * every request (and every caps/fallback decision), so a retry after a LibVLC creation failure, which turns it
+     * false for the process, goes to ExoPlayer. No default.
+     */
+    val vlcAvailable: () -> Boolean,
     /** The admin debug switch (part 3), read for every playback request. */
     val forceVlc: () -> Boolean = { false },
     val subtitles: SubtitleStore,
@@ -484,7 +488,7 @@ class PlayerViewModel(
 
     /** The engine inputs (the audio route is read fresh) and the Exo-first version tiers over the file histories. */
     private suspend fun refreshCaps(): EngineInputs {
-        val inputs = EngineInputs(deps.codecs.inventory(), deps.codecs.audioRoute(), deps.vlcAvailable, deps.forceVlc())
+        val inputs = EngineInputs(deps.codecs.inventory(), deps.codecs.audioRoute(), deps.vlcAvailable(), deps.forceVlc())
         engineInputs = inputs
         versionCaps = VersionCaps(exo = EngineSelector.exoCapsForFile(inputs, ::engineHistory), any = EngineSelector.capsForFile(inputs, ::engineHistory))
         return inputs
@@ -499,7 +503,7 @@ class PlayerViewModel(
 
     /** libVLC can take over [f] after an EXO failure: available, and ExoPlayer hasn't already failed on it. */
     private fun vlcFallbackAllowed(engine: PlaybackEngine, f: MediaFile) =
-        deps.vlcAvailable && engine == PlaybackEngine.EXO && history[f.id]?.exoFailed != true
+        deps.vlcAvailable() && engine == PlaybackEngine.EXO && history[f.id]?.exoFailed != true
 
     /** The engine and caps of [spec]'s request; an audio switch of a direct attachment keeps the base's engine. */
     private fun engineChoice(inputs: EngineInputs, spec: RequestSpec): EngineChoice {
@@ -975,7 +979,7 @@ class PlayerViewModel(
             lastRecoveryAtMs = lastRecoveryAtMs,
             hasOtherVersion = f != null && hasOtherVersion(f),
             engine = a?.engine ?: PlaybackEngine.EXO,
-            vlcFallbackAllowed = deps.vlcAvailable && h?.exoFailed != true && a?.engine == PlaybackEngine.EXO,
+            vlcFallbackAllowed = deps.vlcAvailable() && h?.exoFailed != true && a?.engine == PlaybackEngine.EXO,
             vlcRecovered = h?.vlcRecovered == true,
         )
     }

@@ -16,11 +16,19 @@ import com.hometv.tv.core.playback.PlayerState
 import com.hometv.tv.core.playback.RendererType
 import com.hometv.tv.core.playback.UrlKind
 import com.hometv.tv.core.playback.VlcCapsBuilder
+import com.hometv.tv.R
 import com.hometv.tv.data.PendingPrompt
+import com.hometv.tv.playback.LibVlcProvider
+import com.hometv.tv.playback.VlcPlayerController
+import com.hometv.tv.playback.VlcPlayerPort
+import com.hometv.tv.playback.VlcUnavailableException
+import com.hometv.tv.ui.text.UiText
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -477,5 +485,61 @@ class PlayerEngineTest : PlayerTestBase() {
         runCurrent()
         assertFalse(bodies().last().isVlc())
         assertEquals(EXO, vm.state.value.engine)
+    }
+
+    // ---- prd2: a real VlcPlayerController whose LibVLC can't be created --------------------------------
+
+    /** The VLC controller of this test when set (a real [VlcPlayerController]); else the base's fake. */
+    private var realVlc: VlcPlayerController? = null
+
+    override fun vlcControllerFor(): PlayerController = realVlc ?: vlcController
+
+    /** A real controller over a failing port factory; its `post` launches on the test dispatcher. */
+    private fun TestScope.failingVlc(factory: () -> VlcPlayerPort) = VlcPlayerController(
+        portFactory = factory,
+        token = { repos.store.session.value.token },
+        post = { block -> launch { block() } },
+    ).also { realVlc = it }
+
+    @Test
+    fun `AC-8_1e a LibVLC creation failure renews once, then the error screen, never a stuck spinner`() = playerTest {
+        vlcAvailable = true
+        failingVlc { throw VlcUnavailableException(UnsatisfiedLinkError("no libvlc.so")) }
+        film(xvid)
+        answerWith(direct())
+        val vm = vm()
+        runCurrent()
+        advance(1_000)
+        assertTrue(bodies().single().isVlc())
+        assertEquals(1, renewals().size)
+        val screen = error(vm)
+        assertEquals(UiText.Res(R.string.player_playback_failed), screen.message)
+        assertEquals(listOf(PlayerAction.RETRY_FROM_HERE, PlayerAction.BACK), screen.actions)
+        assertEquals(SessionState.Error, vm.session)
+        assertEquals(listOf(VLC), createdEngines, "no ExoPlayer for a file only libVLC plays")
+    }
+
+    @Test
+    fun `after a LibVLC creation failure Reintentar desde aqui plays on ExoPlayer`() = playerTest {
+        vlcAvailable = true
+        val provider = LibVlcProvider<Any>(listOf("arm64-v8a"), { throw UnsatisfiedLinkError("no libvlc.so") }) { _, _ -> }
+        vlcAvailability = provider.availability::isAvailable
+        failingVlc { error("never returns: ${provider.get()}") }
+        film(xvid)
+        answerWith(direct())
+        val vm = vm()
+        runCurrent()
+        advance(1_000)
+        assertEquals(listOf(PlayerAction.RETRY_FROM_HERE, PlayerAction.BACK), error(vm).actions)
+        assertFalse(provider.availability.isAvailable(), "the failure turned libVLC off for the process")
+
+        vm.onErrorAction(PlayerAction.RETRY_FROM_HERE)
+        runCurrent()
+        assertFalse(bodies().last().isVlc(), "the retry asks for the ExoPlayer caps")
+        assertTrue(bodies().last().client_caps.hls)
+        assertEquals(listOf(VLC, EXO), createdEngines)
+        assertTrue(controller.log.any { it.startsWith("setMediaItem") }, "${controller.log}")
+        assertEquals(EXO, vm.state.value.engine)
+        assertEquals(1, renewals().size, "no renewal for the retry itself")
     }
 }

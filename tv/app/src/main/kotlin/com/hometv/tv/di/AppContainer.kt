@@ -2,6 +2,9 @@ package com.hometv.tv.di
 
 import android.content.Context
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
 import coil.ImageLoader
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
@@ -46,6 +49,11 @@ import com.hometv.tv.data.SignOut
 import com.hometv.tv.playback.AndroidCodecInventory
 import com.hometv.tv.playback.CodecSource
 import com.hometv.tv.playback.ExoPlayerController
+import com.hometv.tv.playback.LibVlcPort
+import com.hometv.tv.playback.LibVlcProvider
+import com.hometv.tv.playback.VlcAvailability
+import com.hometv.tv.playback.VlcOptions
+import com.hometv.tv.playback.VlcPlayerController
 import com.hometv.tv.playback.PlayerFactory
 import com.hometv.tv.playback.SubtitleFileCache
 import com.hometv.tv.playback.SubtitleStore
@@ -83,6 +91,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
+import org.videolan.libvlc.LibVLC
 
 data class AppConfig(
     val versionName: String,
@@ -115,8 +124,10 @@ class AppContainer(
     private val clock: Clock = Clock.systemUTC(),
     /** The calendar's time zone (Actividad's relative times, ages on the Person screen): the device's, read each time; tests pin it. */
     private val zone: () -> ZoneId = ZoneId::systemDefault,
-    /** One player per Player screen, on the stream client of the current server (an ExoPlayer in the app, a fake in tests). */
-    private val playerControllers: (streamClient: OkHttpClient) -> PlayerController = { error("No player in this container") },
+    /** One controller per engine and Player screen, on the stream client of the current server (fakes in tests). */
+    private val playerControllers: (engine: PlaybackEngine, streamClient: OkHttpClient) -> PlayerController = { _, _ -> error("No player in this container") },
+    /** Whether libVLC can run here (never creates LibVLC): read per playback request and by the version tiers. */
+    val vlcAvailability: VlcAvailability = VlcAvailability { false },
     /** `cacheDir/subtitles` (side-loaded WebVTT files). */
     val subtitleCache: SubtitleStore = SubtitleFileCache(File(System.getProperty("java.io.tmpdir"), "hometv-subtitles")),
 ) {
@@ -217,10 +228,10 @@ class AppContainer(
 
     /**
      * Exo-first version tiers (Film detail's default version): `exo` = [capsForFile] (today's), `any` = the
-     * engine caps per file (VLC caps for a file only libVLC plays). libVLC is not wired yet, so `exo == any`.
+     * engine caps per file (VLC caps for a file only libVLC plays); without libVLC `exo == any`.
      */
     suspend fun versionCaps(): VersionCaps {
-        val inputs = EngineInputs(codecs.inventory(), codecs.audioRoute(), vlcAvailable = false, forceVlc = false)
+        val inputs = EngineInputs(codecs.inventory(), codecs.audioRoute(), vlcAvailable = vlcAvailability.isAvailable(), forceVlc = false)
         return VersionCaps(exo = capsForFile(), any = EngineSelector.capsForFile(inputs) { EngineHistory() })
     }
 
@@ -307,12 +318,10 @@ class AppContainer(
             appScope = appScope,
             codecs = codecs,
             serverUrl = { store.session.value.serverUrl },
-            // Built lazily at the first attach that uses the engine (never before): libVLC comes in part 2.
-            controllers = { engine ->
-                check(engine == PlaybackEngine.EXO) { "libVLC is not available" }
-                playerControllers(clients().streamClient)
-            },
-            vlcAvailable = false,
+            // Built lazily at the first attach that uses the engine (never before): an ExoPlayer-only screen never
+            // builds a libVLC MediaPlayer (nor LibVLC), a VLC-only one never builds an ExoPlayer.
+            controllers = { engine -> playerControllers(engine, clients().streamClient) },
+            vlcAvailable = vlcAvailability::isAvailable,
             subtitles = subtitleCache,
             ratingPrompts = ratingPrompts,
         ),
@@ -329,6 +338,11 @@ class AppContainer(
             val base = OkHttpClient()
             val subtitles = SubtitleFileCache(File(app.cacheDir, "subtitles"))
             appScope.launch { subtitles.clear() } // nothing survives a process
+            val playerLog: (String, Throwable?) -> Unit = { msg, e -> runCatching { Log.i("HomeTvPlayer", msg, e) } }
+            // Nothing is created here: LibVLC loads its native code at the first VLC open (prd2 FR-5).
+            val heightPx = app.resources.displayMetrics.heightPixels
+            val libVlc = LibVlcProvider(Build.SUPPORTED_ABIS.toList(), { LibVLC(app, VlcOptions.libVlc(heightPx)) }, playerLog)
+            val mainHandler = Handler(Looper.getMainLooper())
             return AppContainer(
                 store = store,
                 homeCache = HomeCache(File(app.filesDir, "home_cache")),
@@ -337,7 +351,18 @@ class AppContainer(
                 clientsFactory = { url -> ApiClientFactory.create(url, token = { store.session.value.token }, userAgent = userAgent, base = base) },
                 validationClient = ApiClientFactory.validationClient(userAgent, base),
                 codecs = AndroidCodecInventory(app, appScope),
-                playerControllers = { streamClient -> ExoPlayerController(PlayerFactory.create(app, streamClient)) },
+                playerControllers = { engine, streamClient ->
+                    when (engine) {
+                        PlaybackEngine.EXO -> ExoPlayerController(PlayerFactory.create(app, streamClient))
+                        PlaybackEngine.VLC -> VlcPlayerController(
+                            portFactory = { LibVlcPort(libVlc.get()) },
+                            token = { store.session.value.token },
+                            log = playerLog,
+                            post = { block -> mainHandler.post(block) },
+                        )
+                    }
+                },
+                vlcAvailability = libVlc.availability,
                 subtitleCache = subtitles,
             )
         }
