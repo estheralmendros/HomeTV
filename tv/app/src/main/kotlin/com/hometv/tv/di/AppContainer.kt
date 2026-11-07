@@ -9,6 +9,7 @@ import coil.ImageLoader
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.hometv.tv.BuildConfig
+import com.hometv.tv.R
 import com.hometv.tv.core.api.ApiClientFactory
 import com.hometv.tv.core.api.ApiClients
 import com.hometv.tv.core.api.Avatar
@@ -39,10 +40,13 @@ import com.hometv.tv.core.playback.EngineSelector
 import com.hometv.tv.core.playback.PlaybackEngine
 import com.hometv.tv.core.util.ServerUrl
 import com.hometv.tv.data.AccountState
+import com.hometv.tv.data.DataStoreEnginePrefs
 import com.hometv.tv.data.DataStoreSessionStore
+import com.hometv.tv.data.EnginePrefs
 import com.hometv.tv.data.HomeCache
 import com.hometv.tv.data.DetailRefresh
 import com.hometv.tv.data.HomeRefresh
+import com.hometv.tv.data.InMemoryEnginePrefs
 import com.hometv.tv.data.PlayerLaunches
 import com.hometv.tv.data.RatingPrompts
 import com.hometv.tv.data.SignOut
@@ -90,6 +94,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import org.videolan.libvlc.LibVLC
 
@@ -130,6 +135,10 @@ class AppContainer(
     val vlcAvailability: VlcAvailability = VlcAvailability { false },
     /** `cacheDir/subtitles` (side-loaded WebVTT files). */
     val subtitleCache: SubtitleStore = SubtitleFileCache(File(System.getProperty("java.io.tmpdir"), "hometv-subtitles")),
+    /** Per-device player preferences ("Usar siempre VLC (experimental)"); a separate file, untouched by sign-out and server changes. */
+    val enginePrefs: EnginePrefs = InMemoryEnginePrefs(),
+    /** The third-party licence notice (`res/raw/third_party_notices.txt`, read on IO by [create]'s lambda). */
+    private val notices: suspend () -> String = { "" },
 ) {
     val events = AppEvents()
 
@@ -228,10 +237,11 @@ class AppContainer(
 
     /**
      * Exo-first version tiers (Film detail's default version): `exo` = [capsForFile] (today's), `any` = the
-     * engine caps per file (VLC caps for a file only libVLC plays); without libVLC `exo == any`.
+     * engine caps per file (VLC caps for a file only libVLC plays, or for every file while the device preference
+     * "Usar siempre VLC" is on, as in the Player); without libVLC `exo == any`.
      */
     suspend fun versionCaps(): VersionCaps {
-        val inputs = EngineInputs(codecs.inventory(), codecs.audioRoute(), vlcAvailable = vlcAvailability.isAvailable(), forceVlc = false)
+        val inputs = EngineInputs(codecs.inventory(), codecs.audioRoute(), vlcAvailable = vlcAvailability.isAvailable(), forceVlc = enginePrefs.forceVlc.value)
         return VersionCaps(exo = capsForFile(), any = EngineSelector.capsForFile(inputs) { EngineHistory() })
     }
 
@@ -303,7 +313,12 @@ class AppContainer(
     /** The actor screen; "today" (ages) is the [clock]'s date in the [zone]. */
     fun personViewModel(id: Long) = PersonViewModel(id, catalog, store, detailRefresh, today = { LocalDate.now(clock.withZone(zone())) })
 
-    fun settingsViewModel() = SettingsViewModel(store, account, profiles, ::deviceCaps, config.versionName)
+    fun settingsViewModel() = SettingsViewModel(
+        store, account, profiles, ::deviceCaps, config.versionName,
+        enginePrefs = enginePrefs,
+        vlcAvailable = vlcAvailability.isAvailable(),
+        notices = notices,
+    )
 
     fun playerViewModel(route: Route.Player) = PlayerViewModel(
         route,
@@ -322,6 +337,8 @@ class AppContainer(
             // builds a libVLC MediaPlayer (nor LibVLC), a VLC-only one never builds an ExoPlayer.
             controllers = { engine -> playerControllers(engine, clients().streamClient) },
             vlcAvailable = vlcAvailability::isAvailable,
+            // Read at every playback request: a change in Ajustes applies to the next one.
+            forceVlc = { enginePrefs.forceVlc.value },
             subtitles = subtitleCache,
             ratingPrompts = ratingPrompts,
         ),
@@ -333,7 +350,8 @@ class AppContainer(
             val app = context.applicationContext
             val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
             val dataStore = DataStoreSessionStore.dataStore(File(app.filesDir, "datastore/session.preferences_pb"), appScope)
-            val store = runBlocking(Dispatchers.IO) { DataStoreSessionStore.load(dataStore) }
+            val deviceStore = DataStoreEnginePrefs.dataStore(File(app.filesDir, "datastore/device.preferences_pb"), appScope)
+            val (store, enginePrefs) = runBlocking(Dispatchers.IO) { DataStoreSessionStore.load(dataStore) to DataStoreEnginePrefs.load(deviceStore) }
             val userAgent = "HomeTV-Android/${BuildConfig.VERSION_NAME} (Android ${Build.VERSION.SDK_INT}; ${Build.MODEL})"
             val base = OkHttpClient()
             val subtitles = SubtitleFileCache(File(app.cacheDir, "subtitles"))
@@ -364,6 +382,8 @@ class AppContainer(
                 },
                 vlcAvailability = libVlc.availability,
                 subtitleCache = subtitles,
+                enginePrefs = enginePrefs,
+                notices = { withContext(Dispatchers.IO) { app.resources.openRawResource(R.raw.third_party_notices).bufferedReader().use { it.readText() } } },
             )
         }
     }

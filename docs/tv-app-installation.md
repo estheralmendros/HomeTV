@@ -157,6 +157,21 @@ Tailscale's official Android app supports Android TV (Android 8.0+).
 If you see "No se puede conectar con tu servidor HomeTV", open the Tailscale app on the TV
 (the **Abrir Tailscale** button does this) and check that it says *Connected*.
 
+## Playback
+HomeTV plays with the TV's own decoders (ExoPlayer). For formats the TV can't decode (e.g. Xvid/DivX
+AVI films) it switches automatically to the built-in VLC engine (libVLC 3.7.2), which plays the file
+straight from the server with no conversion. Nothing to choose: the player screen looks the same with
+both engines.
+
+- **Ajustes → Reproducción → "Usar siempre VLC (experimental)"** (admins only, shown when VLC is
+  available) plays every video with VLC, for testing. It applies from the next playback, to every
+  profile on that TV, and survives restarts and "Salir". If VLC crashes on every video while it is on,
+  an admin turns it off there (Ajustes never starts VLC).
+- The APK is ARM-only (`armeabi-v7a` + `arm64-v8a`): it doesn't install on an x86 emulator without ARM
+  translation.
+- The licence notice (libVLC is LGPL v2.1 or later; the other libraries are Apache 2.0) is in
+  **Ajustes → Acerca de → Licencias de código abierto**.
+
 ## Updating the app
 After changing the code (the server is updated separately: `git pull && docker compose up -d
 --build` in `deploy/` on the server, see the server installation guide). When a change touches the

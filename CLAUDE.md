@@ -347,14 +347,17 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     focus; screens register with `KeyEventInterceptor { event -> Boolean }`), `di/AppContainer`
     (manual DI: store, `clients()` rebuilt per server URL, `guard`, repositories, `events`,
     `sessionExpired`, `appScope`, `codecs` (+ `capsForFile()`, `versionCaps()` = `VersionCaps(exo = capsForFile(), any =
-    EngineSelector.capsForFile(…))` with `vlcAvailability.isAvailable()`, passed to `FilmDetailViewModel(versionCaps = ::versionCaps)` so its default version
+    EngineSelector.capsForFile(…))` with `vlcAvailability.isAvailable()` and `enginePrefs.forceVlc.value`, passed to `FilmDetailViewModel(versionCaps = ::versionCaps)` so its default version
     (`TieredVersions.defaultChoice`/`select`) is the Player's), `playerLaunches`, `homeRefresh`, `detailRefresh`,
     `watchlist` + `watchlistMemory` (Mi lista sort for the app session; the type filter lives in the ViewModel and resets when the screen is left, like the Browse filters),
     `ratings` + `ratingPrompts` (every `ratings.changes` marks `homeRefresh` stale), `signOut` (declared after
     what it resets), `playerControllers: (engine, streamClient)` (`create()`: EXO → `ExoPlayerController`, VLC →
     `VlcPlayerController(portFactory = { LibVlcPort(libVlc.get()) }, token, log, post = mainHandler::post)`),
     `vlcAvailability` (default false; `create()` builds a `LibVlcProvider(Build.SUPPORTED_ABIS, { LibVLC(app,
-    VlcOptions.libVlc(displayHeightPx)) }, log)`, nothing created until the first VLC open), `avatars` (`account.info`
+    VlcOptions.libVlc(displayHeightPx)) }, log)`, nothing created until the first VLC open), `enginePrefs` (default
+    `InMemoryEnginePrefs()`; `create()` loads `DataStoreEnginePrefs` in the session store's `runBlocking(Dispatchers.IO)`;
+    `PlayerDeps.forceVlc = { enginePrefs.forceVlc.value }`, read per request), `notices` (`suspend () -> String`, default
+    `""`; `create()` reads `R.raw.third_party_notices` on IO), `avatars` (`account.info`
     colours for other profiles), `zone` seam (default `ZoneId::systemDefault`: Actividad times, Person ages), one shared Coil cache base for the per-server `ImageLoader`s, one factory per
     ViewModel), `data/` (`ProfileAvatar` (pure `initial(name)`/`color(avatarId, avatars)`), `RatingPrompts` (`pending` `PendingPrompt(profileId, prompt)`, `offer(profileId?,
     prompt)` (null profile / handled key ignored, newer replaces untaken), `take(currentProfileId)` (another
@@ -362,7 +365,10 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     (serverUrl, profileId) change and in `AppNavigator.authExpired`, never on switchProfile/changeServer;
     `held`/`setHeld` (UI hold while Home's exit dialog is open, untouched by `clear()`)), `SignOut` (Home's "Salir":
     prompts, `AccountState`, `BrowseSortMemory.reset`/`WatchlistMemory.reset`, then `store.signOut()` under
-    `NonCancellable`, IOException logged),
+    `NonCancellable`, IOException logged), `EnginePrefs` (per device, not per profile/server: `forceVlc: StateFlow`,
+    `setForceVlc`; `DataStoreEnginePrefs` = its own file `datastore/device.preferences_pb`, key `force_vlc`, untouched by
+    sign-out/server changes; `ReplaceFileCorruptionHandler`, `load(store, log)` = an IOException reads as off, logged;
+    writes under `NonCancellable`, memory after the file, IOException logged; `InMemoryEnginePrefs`),
     (`DataStoreSessionStore` (`signOut` clears memory first; conditional writes via `editIfProfile`, file then
     memory, true only when both applied), `HomeCache` (write IOExceptions are logged and swallowed),
     `HomeRefresh`, `DetailRefresh` (generation counter marked by `AppNavigator.play`; Film/Show
@@ -406,7 +412,13 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     `HomeTvDimens.WIDE_FOCUSED_SCALE` (1.02, wide blocks), one package per screen; `home/HomeViewModel` exit dialog
     (`HomeUiState.exitDialog: ExitDialogUi(signingOut)`; `onBack()`: deep focus/top nav → first card, else (first card,
     no cards, error screen) the dialog + `holdPrompts(true)`; `onExitConfirmed` single-flight: cancels the load `job`,
-    `signOut` (a non-cancellation failure is logged, the app still exits), then `NavRequest.Exit`; `onExitDismissed` / `onCleared` release the hold; `load()` ignored while signing out); `detail/` ratings
+    `signOut` (a non-cancellation failure is logged, the app still exits), then `NavRequest.Exit`; `onExitDismissed` / `onCleared` release the hold; `load()` ignored while signing out);
+    `settings/` (`SettingsViewModel(…, enginePrefs, vlcAvailable, notices, log)`: `showForceVlc` = admin && `vlcAvailability.isAvailable()`,
+    `forceVlc` collected from `enginePrefs`, `onToggleForceVlc` (no PIN; ignored unless shown or while a write is in flight),
+    `onOpenLicenses` (a `notices()` failure is logged, opens nothing)/`onCloseLicenses`; `SettingsScreen`: "Reproducción"
+    section (`Section(title, hint)` = row + muted hint) with `settings_force_vlc` (`ic_check` when on) + `settings_force_vlc_value`
+    "Activado"/"Desactivado", then Acerca de's `settings_licenses` → `TextDialog(textTestTag = "licenses_text")`, focus back
+    on the button on close; the scroll viewport stops at the bottom safe area); `detail/` ratings
     (`DetailRatings` helper per VM (`showsContent`: never republishes over Error/Loading, like `DetailWatchlistToggle`; callback `publishScreen`): optimistic save/remove, rollback, `rating_error_line` after a failed
     removal, a refetch while writing keeps the shown value, `ratings.changes` of its title → `mine` + silent
     refetch (`refetchPending`: a change during an active load fetches once more after it; the VMs expose
@@ -481,6 +493,10 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     the player session table with `FakePlayerController`; `TestRepos(appScope =)` gives the real
     repositories incl. `watchlist`, `ratings` and `ratingPrompts`, pass a scope on the test dispatcher for
     virtual time; `ActivityViewModelTest`, `RatingEditorTest`, `DetailRatingsTest`, `PlayerRatingPromptTest`, `data/SignOutTest`;
+    `data/EnginePrefsTest` (temp-dir file + in-memory `DataStore` delegates; the garbage-file case rewrites an existing
+    file, so it hits the Windows DataStore rename failure like `DataStoreSessionStoreTest`), `legal/ThirdPartyNoticesTest`
+    (reads `src/main/res/raw/third_party_notices.txt` + `../gradle/libs.versions.toml` by path: the pinned libvlc version,
+    the full LGPL v2.1, no `vlc-android`, < 50 KB);
     `ui/player/PlayerEngineTest` (two fakes: `PlayerTestBase.vlcController` (`open fun vlcControllerFor()` swaps in a real
     `VlcPlayerController`), `vlcAvailable` + `vlcAvailability` provider, `forceVlc`, `createdEngines`;
     without libVLC every test asserts the VLC controller was never built; `FakePlayerController.onStop` hook);
@@ -490,7 +506,9 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     core `SessionStoreTest` + gated `SessionGuardTest` races: `CountDownLatch` route + `CompletableDeferred` arrival), `app/src/sharedTest` (Compose focus/navigation
     tests on Robolectric via `UiTestBase` (`assertFullyVisible`/`assertInsideSafeArea`, `absent(tag)`, `surfaceBindings` (through
     `LocalVideoSurfaceProbe`) + `playerBuilds`/`vlcPlayerBuilds`, `vlcPlayer` fake + `onVlcPlayer {}`, `open val vlcAvailable`
-    (forwarded to `testContainer(player =, vlcPlayer =, vlcAvailable =)`; `PlayerSurfaceTest`, `PlayerFocusTest`), dialog fit helpers `dpBounds(tag)` +
+    (forwarded to `testContainer(player =, vlcPlayer =, vlcAvailable =)`; `PlayerSurfaceTest`, `PlayerFocusTest`), `open val
+    enginePrefs`/`notices` (→ `testContainer(enginePrefs =, notices =)`, default "THIRD PARTY NOTICES"; `SettingsEngineFocusTest`,
+    `ForceVlcPlaybackTest`), dialog fit helpers `dpBounds(tag)` +
     `DIALOG_PADDING`/`DIALOG_WINDOW_INSETS`, overridable
     `clock` passed to `testContainer`, e.g. a fixed date for age texts; `testContainer(zone = clock.zone)`, so times never depend on the host zone) +
     `testContainer` + `ScriptedApi` (`onPerson` seam, 404 by default; `PersonFocusTest`;
@@ -653,4 +671,6 @@ is a contract shared by the web and TV clients: change it deliberately and updat
   stay runnable without an emulator. The app JVM suite runs with Robolectric **native graphics**
   (`robolectric.graphicsMode=NATIVE` in `app/build.gradle.kts`): real text metrics, so layout and focus
   bugs that only show on a device fail here too. Drive the player through `FakePlayerController`; never touch
-  ExoPlayer outside `ExoPlayerController`, nor libVLC's `MediaPlayer`/`Media` outside `LibVlcPort`.
+  ExoPlayer outside `ExoPlayerController`, nor libVLC's `MediaPlayer`/`Media` outside `LibVlcPort`: libVLC types live
+  only in `app/…/playback/` (`LibVlcPort`, the `LibVlcProvider` factory), `AppContainer.create` and `PlayerScreen.VlcSurface`.
+  JVM tests use `FakeVlcPort` (libVLC's native code can't load on Robolectric).

@@ -43,6 +43,10 @@ fun testContainer(
     vlcPlayer: () -> com.hometv.tv.core.playback.PlayerController = { FakePlayerController() },
     /** `AppContainer.vlcAvailability`: false keeps every file on ExoPlayer. */
     vlcAvailable: Boolean = false,
+    /** `AppContainer.enginePrefs` (the device preference "Usar siempre VLC (experimental)"). */
+    enginePrefs: com.hometv.tv.data.EnginePrefs = com.hometv.tv.data.InMemoryEnginePrefs(),
+    /** The licence notice text (production: `res/raw/third_party_notices.txt`). */
+    notices: String = "THIRD PARTY NOTICES",
 ): AppContainer = AppContainer(
     store = InMemorySessionStore(session),
     homeCache = HomeCache(Files.createTempDirectory("home_cache").toFile(), cacheIo),
@@ -56,4 +60,6 @@ fun testContainer(
     playerControllers = { engine, _ -> if (engine == com.hometv.tv.core.playback.PlaybackEngine.EXO) player() else vlcPlayer() },
     vlcAvailability = com.hometv.tv.playback.VlcAvailability { vlcAvailable },
     subtitleCache = com.hometv.tv.playback.SubtitleFileCache(Files.createTempDirectory("subtitles").toFile()),
+    enginePrefs = enginePrefs,
+    notices = { notices },
 )

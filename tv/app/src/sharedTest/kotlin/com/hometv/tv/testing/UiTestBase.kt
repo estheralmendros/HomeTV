@@ -31,6 +31,8 @@ import com.hometv.tv.core.data.Session
 import com.hometv.tv.core.playback.F
 import com.hometv.tv.core.playback.PlaybackEngine
 import com.hometv.tv.core.playback.PlayerController
+import com.hometv.tv.data.EnginePrefs
+import com.hometv.tv.data.InMemoryEnginePrefs
 import com.hometv.tv.di.AppContainer
 import com.hometv.tv.ui.HomeTvRoot
 import com.hometv.tv.ui.player.LocalVideoSurfaceProbe
@@ -66,6 +68,12 @@ abstract class UiTestBase {
     /** `AppContainer.vlcAvailability` of the launched container (false: every file on ExoPlayer). */
     protected open val vlcAvailable: Boolean = false
 
+    /** `AppContainer.enginePrefs` of the launched container (the device preference "Usar siempre VLC (experimental)"). */
+    protected open val enginePrefs: EnginePrefs = InMemoryEnginePrefs()
+
+    /** The licence notice of the launched container (Ajustes → "Licencias de código abierto"). */
+    protected open val notices: String = "THIRD PARTY NOTICES"
+
     /** Calls of the container's `player()` factory (the Player builds its controller lazily, at the first attach). */
     protected var playerBuilds = 0
 
@@ -96,6 +104,8 @@ abstract class UiTestBase {
                 vlcPlayer
             },
             vlcAvailable = vlcAvailable,
+            enginePrefs = enginePrefs,
+            notices = notices,
         )
         rule.setContent {
             CompositionLocalProvider(LocalVideoSurfaceProbe provides { e, c -> surfaceBindings += e to c }) {
