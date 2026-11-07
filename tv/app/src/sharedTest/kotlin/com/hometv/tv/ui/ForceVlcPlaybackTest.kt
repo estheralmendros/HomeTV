@@ -19,9 +19,10 @@ import org.junit.runner.RunWith
 class ForceVlcPlaybackTest : UiTestBase() {
     override val vlcAvailable: Boolean = true
 
+    /** From a Home card: Up → Inicio, five tabs right → Ajustes, OK, two rows down → the switch, OK, Back → the Ajustes tab. */
     private fun toggleForceVlcInSettings() {
-        // Home → Inicio → … → Ajustes.
         press(Key.DirectionUp)
+        assertFocused("tab_HOME")
         press(Key.DirectionRight, times = 5)
         assertFocused("tab_SETTINGS")
         press(Key.DirectionCenter)
@@ -33,19 +34,22 @@ class ForceVlcPlaybackTest : UiTestBase() {
         assertFocused("tab_SETTINGS")
     }
 
-    /** Home → "Seguir viendo" Dune (an H.264 MKV, the first card) → Player. */
+    /**
+     * From the Ajustes tab: Down lands on the "Seguir viendo" card under it (the episode), one Left → Dune (an
+     * H.264 MKV, the first card), OK → Player.
+     */
     private fun playDune() {
         press(Key.DirectionDown)
-        var tries = 0
-        while (focusedTags().none { it.startsWith("card_continue:film:12") } && tries++ < 3) press(Key.DirectionLeft)
+        assertFocused("card_continue:episode:203")
+        press(Key.DirectionLeft)
         assertFocused("card_continue:film:12")
         press(Key.DirectionCenter)
         node("player").assertIsDisplayed()
     }
 
+    /** One Back leaves the Player, focus back on Dune's card. */
     private fun leavePlayer() {
-        var tries = 0
-        while (!absent("player") && tries++ < 3) back()
+        back()
         assertTrue(absent("player"))
         assertFocused("card_continue:film:12")
     }
@@ -70,9 +74,7 @@ class ForceVlcPlaybackTest : UiTestBase() {
         assertEquals(0, playerBuilds)
 
         leavePlayer()
-        press(Key.DirectionUp)
-        // Home's Back/Up focus lands on the tab bar: walk back to Inicio's row of tabs from wherever it is.
-        toggleForceVlcFromTabs()
+        toggleForceVlcInSettings()
         assertFalse(enginePrefs.forceVlc.value)
         val vlcCalls = vlcPlayer.log.size
         playDune()
@@ -82,18 +84,5 @@ class ForceVlcPlaybackTest : UiTestBase() {
         assertTrue(player.log.any { it.startsWith("setMediaItem") })
         assertTrue("play" in player.log)
         assertEquals("the VLC fake receives nothing new", vlcCalls, vlcPlayer.log.size)
-    }
-
-    /** From a focused tab: the Ajustes tab is the rightmost one for an admin (before the avatar). */
-    private fun toggleForceVlcFromTabs() {
-        var tries = 0
-        while (focusedTags().none { "tab_SETTINGS" in it } && tries++ < 8) press(Key.DirectionRight)
-        assertFocused("tab_SETTINGS")
-        press(Key.DirectionCenter)
-        press(Key.DirectionDown, times = 2)
-        assertFocused("settings_force_vlc")
-        press(Key.DirectionCenter)
-        back()
-        assertFocused("tab_SETTINGS")
     }
 }

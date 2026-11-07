@@ -268,4 +268,40 @@ class SettingsViewModelTest {
         assertNull(vm.state.value.licenses)
         assertTrue(logged.single() is java.io.IOException)
     }
+
+    @Test
+    fun `a second open while the notice loads, or while it is shown, reads nothing more`() = runTest(main.dispatcher) {
+        val c = testContainer(ScriptedApi().apply { onMe = { admin } }, backgroundScope)
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var reads = 0
+        val vm = SettingsViewModel(
+            c.store, c.account, c.profiles, c::deviceCaps, "0.1.0",
+            notices = {
+                reads++
+                gate.await()
+                "LGPL text"
+            },
+            log = { _, _ -> },
+        )
+        advanceUntilIdle()
+
+        vm.onOpenLicenses()
+        runCurrent()
+        vm.onOpenLicenses()
+        runCurrent()
+        assertEquals(1, reads, "a quick second OK while loading")
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals("LGPL text", vm.state.value.licenses)
+
+        vm.onOpenLicenses()
+        advanceUntilIdle()
+        assertEquals(1, reads, "already shown")
+
+        vm.onCloseLicenses()
+        vm.onOpenLicenses()
+        advanceUntilIdle()
+        assertEquals(2, reads, "a reopen after closing reads again")
+        assertEquals("LGPL text", vm.state.value.licenses)
+    }
 }

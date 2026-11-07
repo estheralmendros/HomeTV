@@ -14,7 +14,10 @@ object VlcUrls {
         return "$base$separator$TOKEN=${URLEncoder.encode(token, Charsets.UTF_8.name())}"
     }
 
-    /** For logs only: the URL with the `token` value replaced by `***`. */
+    /**
+     * For logs only: the URL with the `token` value replaced by `***`. No production log prints a stream URL
+     * today; kept (prd2 FR-7, AC-7.1) as the safe way to add one when diagnosing on a device.
+     */
     fun redacted(url: String): String {
         val query = url.substringAfter('?', "")
         if (query.isEmpty()) return url

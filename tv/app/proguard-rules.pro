@@ -17,6 +17,6 @@
 -dontwarn org.bouncycastle.**
 -dontwarn org.openjsse.**
 
-# libVLC: JNI calls back into these classes (events, VLCObject, Dialog, AWindow…) by name. Kept even with the
-# AAR's own consumer rules: a release APK that strips one crashes in LibVLC.<init>.
+# libVLC: JNI calls back into these classes (events, VLCObject, Dialog, AWindow…) by name. Required: the
+# libvlc-all 3.7.2 AAR ships no consumer rules (no proguard.txt); a release APK that strips one crashes in LibVLC.<init>.
 -keep class org.videolan.libvlc.** { *; }

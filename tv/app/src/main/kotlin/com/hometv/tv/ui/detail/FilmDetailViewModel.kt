@@ -105,7 +105,8 @@ class FilmDetailViewModel(
     val navigation: Flow<NavRequest> = _navigation.receiveAsFlow()
 
     private var film: FilmDetail? = null
-    private var capsForFile: VersionCaps? = null
+    /** The [versionCaps] tiers, read once per ViewModel at the first fetch. */
+    private var tiers: VersionCaps? = null
     private var choice: Choice? = null
     private var entry: Entry? = null
     private var part: Int? = null
@@ -361,12 +362,12 @@ class FilmDetailViewModel(
      */
     private suspend fun fetch(afterPlayback: Boolean = false) {
         val fetched = catalog.film(filmId)
-        val caps = capsForFile ?: versionCaps().also { capsForFile = it }
+        val tiers = this.tiers ?: versionCaps().also { this.tiers = it }
         val detail = fetched.copy(in_watchlist = listToggle.fetched(fetched.in_watchlist, film?.in_watchlist))
         film = detail
         ratingsBlock.fetched(detail.my_rating, detail.ratings, detail.household_average)
         val files = detail.media_files
-        choice = TieredVersions.defaultChoice(files, caps, detail.progress)
+        choice = TieredVersions.defaultChoice(files, tiers, detail.progress)
         val followParts = afterPlayback && entry == Entry.InParts && choice?.group is VersionGroup.Part
         val keep = userChose && currentFile() != null && !followParts
         if (!keep) {
@@ -494,9 +495,9 @@ class FilmDetailViewModel(
     private fun selectPart(number: Int) {
         val f = film ?: return
         part = number
-        val caps = capsForFile ?: return
+        val tiers = this.tiers ?: return
         partFileId = (
-            TieredVersions.select(f.media_files, caps, f.progress, VersionGroup.Part(number))
+            TieredVersions.select(f.media_files, tiers, f.progress, VersionGroup.Part(number))
                 ?: VersionSelector.group(f.media_files).versionsOf(VersionGroup.Part(number)).firstOrNull()
             )?.id
     }

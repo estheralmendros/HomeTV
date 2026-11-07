@@ -25,17 +25,16 @@ sealed interface VlcEvent {
 interface VlcPlayerPort {
     /**
      * `Media(libVlc, Uri)`, [mediaOptions] via `addOption`, `setHWDecoderEnabled(true, false)`, each slave as a
-     * subtitle slave (`file://` URIs), `mediaPlayer.media = media`, `media.release()`, `mediaPlayer.play()`.
-     * The controller calls it only once a video layout is attached.
+     * subtitle slave (`file://` URIs), `mediaPlayer.media = media`, `media.release()` (also when a step throws),
+     * `mediaPlayer.play()`. The controller calls it only once a video layout is attached; it may throw.
      */
     fun open(uri: String, mediaOptions: List<String>, subtitleSlaves: List<String>)
     fun play()
     fun pause()
     fun stop()
     fun release()
-    val timeMs: Long
-    val lengthMs: Long
-    val isPlaying: Boolean
+
+    /** Position, length and the playing state come from [VlcEvent]s, so there are no getters for them. */
     val isSeekable: Boolean
     fun setTime(timeMs: Long)
 

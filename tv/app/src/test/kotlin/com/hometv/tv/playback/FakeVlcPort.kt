@@ -17,15 +17,15 @@ class FakeVlcPort : VlcPlayerPort {
     /** Names the layouts in [calls] (`attachViews <name>`). */
     val layoutNames = mutableMapOf<FrameLayout, String>()
 
-    var currentTime = 0L
-    var length = -1L
-    var playing = false
     var seekable = true
     var audioIds = listOf<Int>()
     var selectedAudio = -1
     var spuIds = listOf<Int>()
     var selectedSpu = -1
     var videoTracks = 1
+
+    /** When set, `open` records the call and then throws it (libVLC failing to build or set the media). */
+    var openThrows: RuntimeException? = null
 
     fun emit(event: VlcEvent) = listener?.invoke(event)
 
@@ -37,6 +37,7 @@ class FakeVlcPort : VlcPlayerPort {
     override fun open(uri: String, mediaOptions: List<String>, subtitleSlaves: List<String>) {
         opens += Open(uri, mediaOptions, subtitleSlaves)
         calls += "open"
+        openThrows?.let { throw it }
     }
 
     override fun play() {
@@ -55,9 +56,6 @@ class FakeVlcPort : VlcPlayerPort {
         calls += "release"
     }
 
-    override val timeMs: Long get() = currentTime.also { calls += "get timeMs" }
-    override val lengthMs: Long get() = length.also { calls += "get lengthMs" }
-    override val isPlaying: Boolean get() = playing.also { calls += "get isPlaying" }
     override val isSeekable: Boolean get() = seekable.also { calls += "get isSeekable" }
 
     override fun setTime(timeMs: Long) {

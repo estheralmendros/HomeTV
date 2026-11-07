@@ -1,5 +1,7 @@
 package com.hometv.tv.ui.player
 
+import android.content.ContextWrapper
+import android.widget.FrameLayout
 import com.hometv.tv.core.api.PlaybackRequest
 import com.hometv.tv.core.api.RatingPrompt
 import com.hometv.tv.core.api.VideoInfo
@@ -18,7 +20,9 @@ import com.hometv.tv.core.playback.UrlKind
 import com.hometv.tv.core.playback.VlcCapsBuilder
 import com.hometv.tv.R
 import com.hometv.tv.data.PendingPrompt
+import com.hometv.tv.playback.FakeVlcPort
 import com.hometv.tv.playback.LibVlcProvider
+import com.hometv.tv.playback.VlcEvent
 import com.hometv.tv.playback.VlcPlayerController
 import com.hometv.tv.playback.VlcPlayerPort
 import com.hometv.tv.playback.VlcUnavailableException
@@ -124,7 +128,7 @@ class PlayerEngineTest : PlayerTestBase() {
         vlcController.fail(vlcFailure)
         runCurrent()
         assertEquals(listOf("POST /api/profiles/5/session"), api.calls)
-        assertEquals(listOf("prepare", "seekTo 900000", "play"), vlcController.log.filter { it == "prepare" || it.startsWith("seekTo") || it == "play" })
+        assertEquals(listOf("play", "prepare", "seekTo 900000"), vlcController.log.filter { it == "prepare" || it.startsWith("seekTo") || it == "play" })
         assertEquals(SessionState.Playing, vm.session)
 
         vlcController.fail(vlcFailure)
@@ -541,5 +545,49 @@ class PlayerEngineTest : PlayerTestBase() {
         assertTrue(controller.log.any { it.startsWith("setMediaItem") }, "${controller.log}")
         assertEquals(EXO, vm.state.value.engine)
         assertEquals(1, renewals().size, "no renewal for the retry itself")
+    }
+
+    // ---- review 1: the play intent reaches a real VlcPlayerController before its open ------------------
+
+    /** A real controller over a [FakeVlcPort] whose layout is already attached, so `prepare()` opens at once. */
+    private fun TestScope.attachedVlc(port: FakeVlcPort) = VlcPlayerController(
+        portFactory = { port },
+        token = { repos.store.session.value.token },
+        post = { block -> launch { block() } },
+    ).also {
+        realVlc = it
+        it.attach(FrameLayout(ContextWrapper(null)))
+    }
+
+    @Test
+    fun `a playing attach sets the play intent before prepare, so the VLC open is not start-paused`() = playerTest {
+        vlcAvailable = true
+        val port = FakeVlcPort()
+        attachedVlc(port)
+        film(xvid)
+        answerWith(direct())
+        vm()
+        runCurrent()
+        assertFalse(":start-paused" in port.opens.single().options, "${port.opens.single().options}")
+    }
+
+    @Test
+    fun `a paused recovery sets the pause intent before prepare, so the VLC reopen is start-paused`() = playerTest {
+        vlcAvailable = true
+        val port = FakeVlcPort().apply { audioIds = listOf(1); selectedAudio = 1 }
+        attachedVlc(port)
+        film(xvid)
+        answerWith(direct())
+        val vm = vm()
+        runCurrent()
+        port.emit(VlcEvent.Playing)
+        runCurrent()
+        vm.onPlayPause()
+        runCurrent()
+        assertEquals(SessionState.Paused, vm.session)
+        port.emit(VlcEvent.EncounteredError) // renew + direct recovery at the position, still paused
+        runCurrent()
+        assertEquals(2, port.opens.size, "${port.calls}")
+        assertTrue(":start-paused" in port.opens.last().options, "${port.opens.last().options}")
     }
 }

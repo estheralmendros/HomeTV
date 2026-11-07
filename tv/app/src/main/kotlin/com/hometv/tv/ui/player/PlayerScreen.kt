@@ -17,10 +17,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -228,12 +226,12 @@ private fun VlcSurface(vlc: VlcPlayerController?, keepScreenOn: Boolean, onBind:
         return
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    var layout by remember { mutableStateOf<VLCVideoLayout?>(null) }
-    DisposableEffect(vlc, layout, lifecycle) {
-        val view = layout
+    // A plain holder, not Compose state: the factory fills it without a second recomposition or an effect re-key.
+    val layoutHolder = remember { arrayOfNulls<VLCVideoLayout>(1) }
+    DisposableEffect(vlc, lifecycle) {
         // addObserver replays ON_START when the screen is already started: harmless, attach is idempotent.
         val observer = LifecycleEventObserver { _, event ->
-            if (view == null) return@LifecycleEventObserver
+            val view = layoutHolder[0] ?: return@LifecycleEventObserver
             when (event) {
                 Lifecycle.Event.ON_STOP -> vlc.detach(view)
                 Lifecycle.Event.ON_START -> vlc.attach(view)
@@ -250,7 +248,7 @@ private fun VlcSurface(vlc: VlcPlayerController?, keepScreenOn: Boolean, onBind:
                 isFocusable = false
                 isFocusableInTouchMode = false
                 descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
-            }.also { layout = it }
+            }.also { layoutHolder[0] = it }
         },
         update = { view ->
             onBind()
@@ -258,7 +256,10 @@ private fun VlcSurface(vlc: VlcPlayerController?, keepScreenOn: Boolean, onBind:
             if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) vlc.attach(view)
             view.keepScreenOn = keepScreenOn
         },
-        onRelease = { view -> vlc.detach(view) },
+        onRelease = { view ->
+            vlc.detach(view)
+            if (layoutHolder[0] === view) layoutHolder[0] = null
+        },
         modifier = Modifier.fillMaxSize().testTag("player_video"),
     )
 }

@@ -178,6 +178,37 @@ class VlcPlayerControllerTest {
     }
 
     @Test
+    fun `AC-8_1c-style an open that throws closes the media, is IDLE and posts the failure, nothing inline`() {
+        vlc.attach(layout)
+        vlc.setMediaItem(spec(), 0)
+        port.openThrows = IllegalStateException("libVLC refused the media")
+        vlc.prepare()
+        assertEquals(1, port.opens.size)
+        assertEquals(PlayerState.IDLE, vlc.state)
+        assertFalse(vlc.isPlaying)
+        assertEquals(emptyList<String>(), events, "nothing inline")
+        assertTrue(logs.single().startsWith("libVLC open failed"), "$logs")
+        drain()
+        assertEquals(failurePair, events)
+
+        // The media is closed: a late event of the failed open is dropped and commands make no port call.
+        events.clear()
+        port.clear()
+        port.emit(VlcEvent.Playing)
+        vlc.play()
+        vlc.pause()
+        drain()
+        assertEquals(emptyList<String>(), port.commands())
+        assertEquals(emptyList<String>(), events)
+
+        // Not a failed controller: the recovery's prepare opens again.
+        port.openThrows = null
+        vlc.prepare()
+        assertEquals(2, port.opens.size)
+        assertEquals(1, factoryCalls)
+    }
+
+    @Test
     fun `AC-8_1d background and return, attach first`() {
         playing(startMs = 100_000)
         port.clear()

@@ -301,6 +301,11 @@ class VlcPlayerController(
         closeMedia()
         currentState = PlayerState.IDLE
         playing = false
+        reportFailure()
+    }
+
+    /** `onIsPlayingChanged(false)` when playing was reported, then `onStateChanged(IDLE)` + `onFailure(VLC_ERROR)`. */
+    private fun reportFailure() {
         if (reportedPlaying) {
             reportedPlaying = false
             listener?.onIsPlayingChanged(false)
@@ -357,15 +362,10 @@ class VlcPlayerController(
         }
     }
 
-    /** `onStateChanged(IDLE)` + `onFailure(VLC_ERROR)` through [post], dropped when it runs after [release]. */
+    /** [reportFailure] through [post], dropped when it runs after [release]. */
     private fun postFailure() {
         post {
-            if (!released) {
-                reportedState = PlayerState.IDLE
-                reportedPlaying = false
-                listener?.onStateChanged(PlayerState.IDLE)
-                listener?.onFailure(VlcEventMapper.failure())
-            }
+            if (!released) reportFailure()
         }
     }
 

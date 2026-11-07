@@ -18,11 +18,14 @@ class LibVlcPort(private val libVlc: LibVLC) : VlcPlayerPort {
     override fun open(uri: String, mediaOptions: List<String>, subtitleSlaves: List<String>) {
         // The Uri constructor: Media(LibVLC, String) takes a local file path and would fail on an http URL.
         val media = Media(libVlc, uri.toUri())
-        mediaOptions.forEach(media::addOption)
-        media.setHWDecoderEnabled(true, false)
-        subtitleSlaves.forEach { media.addSlave(IMedia.Slave(IMedia.Slave.Type.Subtitle, 4, it)) }
-        player.media = media
-        media.release() // the player holds its own reference
+        try {
+            mediaOptions.forEach(media::addOption)
+            media.setHWDecoderEnabled(true, false)
+            subtitleSlaves.forEach { media.addSlave(IMedia.Slave(IMedia.Slave.Type.Subtitle, 4, it)) }
+            player.media = media
+        } finally {
+            media.release() // the player holds its own reference; also frees the native Media when a step throws
+        }
         player.play()
     }
 
@@ -34,9 +37,6 @@ class LibVlcPort(private val libVlc: LibVLC) : VlcPlayerPort {
 
     override fun release() = player.release()
 
-    override val timeMs: Long get() = player.time
-    override val lengthMs: Long get() = player.length
-    override val isPlaying: Boolean get() = player.isPlaying
     override val isSeekable: Boolean get() = player.isSeekable
 
     override fun setTime(timeMs: Long) {

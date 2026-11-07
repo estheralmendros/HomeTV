@@ -113,4 +113,57 @@ class TieredVersionsTest {
         assertEquals(4L, tv.nextPart(vlcOnly, tiers, p1)?.id)
         assertNull(tv.nextPart(files, tiers, files[2]))
     }
+
+    // ---- review 1: a resume point on a libVLC-only version is kept ----------------------------------
+
+    private val h264Film = file(1, duration = 7200.0)
+    private val aviFilm = file(2, video = mpeg4, container = "avi", duration = 5400.0)
+    private val resumeFiles = listOf(h264Film, aviFilm)
+
+    @Test
+    fun `progress on a libVLC-only version with no matching Exo version resumes it`() {
+        val p = progress(2, 1200.0, 5400.0)
+        val choice = tv.defaultChoice(resumeFiles, tiers, p)
+        assertEquals(Choice(Standalone, aviFilm, startAtZero = false), choice)
+        assertEquals(Start(1200.0, differentVersionNotice = false), vs.startFor(choice!!.file, resumeFiles, p))
+        assertEquals(2L, tv.select(resumeFiles, tiers, p, Standalone)?.id)
+        assertEquals(listOf(2L, 1L), ids(tv.candidates(resumeFiles, tiers, Standalone, p)), "next-episode plan starts with the same file")
+    }
+
+    @Test
+    fun `no progress, or progress on the Exo-playable version, keeps the Exo-first choice`() {
+        for (p in listOf(null, progress(1, 1200.0, 7200.0))) {
+            assertEquals(1L, tv.defaultChoice(resumeFiles, tiers, p)?.file?.id, "$p")
+            assertEquals(1L, tv.select(resumeFiles, tiers, p, Standalone)?.id, "$p")
+            assertEquals(listOf(1L, 2L), ids(tv.candidates(resumeFiles, tiers, Standalone, p)), "$p")
+        }
+    }
+
+    @Test
+    fun `progress on a libVLC-only version with no resume point keeps the Exo-first choice`() {
+        // Watched (starts over) or under the 30 s resume floor: nothing to keep.
+        for (p in listOf(progress(2, 1200.0, 5400.0, watched = true), progress(2, 10.0, 5400.0))) {
+            assertEquals(1L, tv.defaultChoice(resumeFiles, tiers, p)?.file?.id, "$p")
+            assertEquals(1L, tv.select(resumeFiles, tiers, p, Standalone)?.id, "$p")
+        }
+    }
+
+    @Test
+    fun `progress on a libVLC-only version with a matching Exo version takes the Exo one at the same point`() {
+        val files = listOf(file(1, duration = 5410.0), aviFilm)
+        val p = progress(2, 1200.0, 5400.0)
+        val choice = tv.defaultChoice(files, tiers, p)
+        assertEquals(1L, choice?.file?.id)
+        assertEquals(Start(1200.0, differentVersionNotice = false), vs.startFor(choice!!.file, files, p))
+        assertEquals(1L, tv.select(files, tiers, p, Standalone)?.id)
+    }
+
+    @Test
+    fun `a resume point on a libVLC-only part is kept within its group only`() {
+        val files = listOf(part(1, 1), part(2, 1, video = mpeg4, duration = 2000.0), part(3, 2))
+        val p = progress(2, 600.0, 2000.0)
+        assertEquals(2L, tv.defaultChoice(files, tiers, p)?.file?.id)
+        assertEquals(2L, tv.select(files, tiers, p, Part(1))?.id)
+        assertEquals(3L, tv.select(files, tiers, p, Part(2))?.id)
+    }
 }

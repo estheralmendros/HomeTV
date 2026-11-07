@@ -249,7 +249,7 @@ class PlayerSessionStateTest : PlayerTestBase() {
         val vm = startHls()
         clearCalls()
         controller.clearLog()
-        controller.remotePause()
+        vm.onRemotePause()
         runCurrent()
         assertEquals(SessionState.Paused, vm.session)
         assertEquals(listOf("pause"), controller.log)
@@ -257,7 +257,7 @@ class PlayerSessionStateTest : PlayerTestBase() {
         assertEquals(OverlayMode.FULL, vm.state.value.overlay)
         advance(30_000)
         assertEquals(listOf("POST /api/hls/S1/keepalive"), keepAlives())
-        controller.remotePlay()
+        vm.onRemotePlay()
         runCurrent()
         assertEquals(SessionState.Playing, vm.session)
         assertTrue(controller.playWhenReady)
@@ -271,7 +271,7 @@ class PlayerSessionStateTest : PlayerTestBase() {
     fun `a media-session play while released runs the recovery (row 6)`() = playerTest {
         val vm = released()
         answerWith(hls("S2"))
-        controller.remotePlay()
+        vm.onRemotePlay()
         runCurrent()
         assertEquals(600.0, bodies().single().start_position_seconds)
         assertEquals(SessionState.Playing, vm.session)
@@ -281,11 +281,11 @@ class PlayerSessionStateTest : PlayerTestBase() {
     fun `a media-session play while playing and a pause while paused change nothing`() = playerTest {
         val vm = startDirect()
         controller.clearLog()
-        controller.remotePlay()
+        vm.onRemotePlay()
         runCurrent()
         assertEquals(SessionState.Playing, vm.session)
-        controller.remotePause()
-        controller.remotePause()
+        vm.onRemotePause()
+        vm.onRemotePause()
         runCurrent()
         assertEquals(SessionState.Paused, vm.session)
         assertEquals(listOf("pause"), controller.log)
@@ -295,20 +295,20 @@ class PlayerSessionStateTest : PlayerTestBase() {
     fun `a media-session seek forward is the 10 s step of the overlay button`() = playerTest {
         val vm = startDirect()
         controller.positionMs = 100_000
-        controller.remoteSeek(forward = true)
+        vm.onRemoteSeek(forward = true)
         advance(600)
         assertEquals(110_000, controller.positionMs)
         assertEquals(SessionState.Playing, vm.session)
     }
 
-    /** Every media-session command, then the 600 ms seek commit: nothing may reach the player or the API. */
-    private fun TestScope.allRemoteCommands() {
+    /** Every media-session command (`ControllerSessionPlayer` calls the ViewModel), then the 600 ms seek commit: nothing may reach the player or the API. */
+    private fun TestScope.allRemoteCommands(vm: PlayerViewModel) {
         controller.clearLog()
         clearCalls()
-        controller.remotePlay()
-        controller.remoteSeek(forward = true)
-        controller.remoteSeek(forward = false)
-        controller.remotePause()
+        vm.onRemotePlay()
+        vm.onRemoteSeek(forward = true)
+        vm.onRemoteSeek(forward = false)
+        vm.onRemotePause()
         runCurrent()
         advance(600)
     }
@@ -324,7 +324,7 @@ class PlayerSessionStateTest : PlayerTestBase() {
         vm.onStop()
         runCurrent()
         assertEquals(SessionState.Background, vm.session)
-        allRemoteCommands()
+        allRemoteCommands(vm)
         assertNoPlaybackCommand()
         assertEquals(emptyList<String>(), api.calls)
         assertEquals(SessionState.Background, vm.session)
@@ -337,7 +337,7 @@ class PlayerSessionStateTest : PlayerTestBase() {
         controller.end()
         runCurrent()
         assertEquals(SessionState.Countdown, vm.session)
-        allRemoteCommands()
+        allRemoteCommands(vm)
         assertNoPlaybackCommand()
         assertEquals(emptyList<String>(), api.calls.filter { !it.endsWith("/keepalive") })
         assertEquals(SessionState.Countdown, vm.session)
@@ -352,7 +352,7 @@ class PlayerSessionStateTest : PlayerTestBase() {
         runCurrent()
         assertTrue(vm.state.value.screen is PlayerScreenUi.Error)
         val session = vm.session
-        allRemoteCommands()
+        allRemoteCommands(vm)
         assertNoPlaybackCommand()
         assertEquals(emptyList<String>(), api.calls)
         assertEquals(session, vm.session)

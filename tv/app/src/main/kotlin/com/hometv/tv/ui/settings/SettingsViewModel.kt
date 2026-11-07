@@ -129,9 +129,16 @@ class SettingsViewModel(
         toggleJob = viewModelScope.launch { enginePrefs.setForceVlc(!s.forceVlc) }
     }
 
-    /** [Licencias de código abierto]: loads the notice into the dialog; a load failure is logged and opens nothing. */
+    /** The notice read in flight: a second OK before it lands is ignored. */
+    private var licensesJob: Job? = null
+
+    /**
+     * [Licencias de código abierto]: loads the notice into the dialog; a load failure is logged and opens nothing.
+     * Ignored while a load is in flight or the dialog is already shown.
+     */
     fun onOpenLicenses() {
-        viewModelScope.launch {
+        if (licensesJob?.isActive == true || _state.value.licenses != null) return
+        licensesJob = viewModelScope.launch {
             val text = try {
                 notices()
             } catch (e: CancellationException) {

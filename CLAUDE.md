@@ -332,7 +332,8 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     route, vlcAvailable, forceVlc), file, EngineHistory(exclusions, exoFailed))` → `EngineChoice(engine, caps)`: EXO + today's
     `exoCaps` unless libVLC is available and `forceVlc`, or the file has video, no `probe_error` and `exoFailed` or a codec outside
     the Exo caps (never the container); `capsForFile`/`exoCapsForFile`), `TieredVersions.kt` (`VersionCaps(exo, any)`,
-    Exo-first `defaultChoice`/`select`/`candidates`/`nextPart` over `VersionSelector`; `exo == any` = today's result),
+    Exo-first `defaultChoice`/`select`/`candidates`/`nextPart` over `VersionSelector`, except a resumable last-played file
+    only `any` plays with no Exo-playable matching version: chosen (first candidate) so the resume point is kept; `exo == any` = today's result),
     `PlaybackErrorMapper` libVLC rules (`FailureContext.engine/vlcFallbackAllowed/vlcRecovered`; `PlaybackDecision.FallBackToVlc`
     for an EXO video decoder/parsing failure or an HLS 5xx (checked before `HLS_FAILED`); a VLC failure = one
     `RenewAndRecover` per file, then generic; `REMUX_REASONS` + `fallsBackToVlc`, `forRequestError(…, vlcFallbackAllowed)`
@@ -352,10 +353,10 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     `watchlist` + `watchlistMemory` (Mi lista sort for the app session; the type filter lives in the ViewModel and resets when the screen is left, like the Browse filters),
     `ratings` + `ratingPrompts` (every `ratings.changes` marks `homeRefresh` stale), `signOut` (declared after
     what it resets), `playerControllers: (engine, streamClient)` (`create()`: EXO → `ExoPlayerController`, VLC →
-    `VlcPlayerController(portFactory = { LibVlcPort(libVlc.get()) }, token, log, post = mainHandler::post)`),
-    `vlcAvailability` (default false; `create()` builds a `LibVlcProvider(Build.SUPPORTED_ABIS, { LibVLC(app,
+    `VlcPlayerController(portFactory = { LibVlcPort(libVlc.get()) }, token, log, post = { mainHandler.post(it) })`),
+    `vlcAvailability` (default false; `create()` builds a `LibVlcProvider(Build.SUPPORTED_ABIS.toList(), { LibVLC(app,
     VlcOptions.libVlc(displayHeightPx)) }, log)`, nothing created until the first VLC open), `enginePrefs` (default
-    `InMemoryEnginePrefs()`; `create()` loads `DataStoreEnginePrefs` in the session store's `runBlocking(Dispatchers.IO)`;
+    `InMemoryEnginePrefs()`; `create()` loads `DataStoreEnginePrefs` in parallel (`async`) with the session store in one `runBlocking(Dispatchers.IO)`;
     `PlayerDeps.forceVlc = { enginePrefs.forceVlc.value }`, read per request), `notices` (`suspend () -> String`, default
     `""`; `create()` reads `R.raw.third_party_notices` on IO), `avatars` (`account.info`
     colours for other profiles), `zone` seam (default `ZoneId::systemDefault`: Actividad times, Person ages), one shared Coil cache base for the per-server `ImageLoader`s, one factory per
@@ -380,7 +381,7 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     `PlayerScreen`'s VLC surface): `VlcAvailability` + `LibVlcProvider<T>` (`availability`: ARM ABI and no failed
     `get()`, never creates; `get()` lazy on the main thread, a failure logged once, final, `VlcUnavailableException`),
     `VlcPlayerPort` seam (`VlcEvent`s; `LibVlcPort` = the one pass-through over `MediaPlayer`/`Media(LibVLC, Uri)`,
-    null track arrays → empty), pure `VlcUrls` (`withToken` `?token=`, `redacted`), `VlcOptions` (`libVlc(heightPx)`:
+    null track arrays → empty; `open` releases the `Media` in a `finally`; no time/length/playing getters: events only), pure `VlcUrls` (`withToken` `?token=`, `redacted` kept for diagnostics, unused in production), `VlcOptions` (`libVlc(heightPx)`:
     `--verbose=-1` (quiet), `--http-reconnect`, freetype style, `--sub-margin` 8 %; `media(startMs, startPaused)`:
     `:network-caching=1500`, `:input-fast-seek`, `:start-time=s.mmm`, `:start-paused`), `VlcTrackMapper` (ordinals,
     count guard → null/-1), `VlcEventMapper` (`state`, `failure()` = `VLC_ERROR`/VLC, `isEarlyEnd` 30 s);
@@ -471,7 +472,7 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     `playerControllers(engine, clients().streamClient)`), `vlcAvailable: () -> Boolean` (no default; read at every
     request/caps/fallback decision, so [Reintentar desde aquí] after a LibVLC creation failure goes to EXO), `forceVlc`; an
     `EnumMap` of created controllers, `activeEngine` (switched in `attach`: set before the old one `stop()`s, new controller
-    created before `render()`), `EngineListener(engine)` forwards only the active engine's callbacks; `controller` (creating)
+    created before `render()`), `EngineListener(engine)` forwards only the active engine's callbacks (no `onRemote*`: `ControllerSessionPlayer` calls the ViewModel); `loadMedia(…, play)` sets the play intent before `prepare()` (libVLC reads it at the open: `:start-paused`); `controller` (creating)
     only from `attach` on, nullable `createdController` for `render()`/`onStop`/`releaseController`/`playerController`;
     `send()` uses `EngineSelector.select` (a direct audio switch keeps the base's engine), `refreshCaps()` builds the
     `VersionCaps` used by every version call via `TieredVersions`; `FileHistory.exoFailed/vlcRecovered`; decision 14:
@@ -494,13 +495,13 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     repositories incl. `watchlist`, `ratings` and `ratingPrompts`, pass a scope on the test dispatcher for
     virtual time; `ActivityViewModelTest`, `RatingEditorTest`, `DetailRatingsTest`, `PlayerRatingPromptTest`, `data/SignOutTest`;
     `data/EnginePrefsTest` (temp-dir file + in-memory `DataStore` delegates; the garbage-file case rewrites an existing
-    file, so it hits the Windows DataStore rename failure like `DataStoreSessionStoreTest`), `legal/ThirdPartyNoticesTest`
+    file: `@DisabledOnOs(OS.WINDOWS)` with `WINDOWS_DATASTORE_RENAME`, like the 12 `DataStoreSessionStoreTest` cases that replace a file), `legal/ThirdPartyNoticesTest`
     (reads `src/main/res/raw/third_party_notices.txt` + `../gradle/libs.versions.toml` by path: the pinned libvlc version,
     the full LGPL v2.1, no `vlc-android`, < 50 KB);
     `ui/player/PlayerEngineTest` (two fakes: `PlayerTestBase.vlcController` (`open fun vlcControllerFor()` swaps in a real
     `VlcPlayerController`), `vlcAvailable` + `vlcAvailability` provider, `forceVlc`, `createdEngines`;
     without libVLC every test asserts the VLC controller was never built; `FakePlayerController.onStop` hook);
-    `playback/`: `VlcPlayerControllerTest` over `FakeVlcPort` (`post` queued, drained by the test; layouts are
+    `playback/`: `VlcPlayerControllerTest` over `FakeVlcPort` (`post` queued, drained by the test; `openThrows`; layouts are
     `FrameLayout(ContextWrapper(null))` on the plain JVM), `LibVlcProviderTest` (`T = Any`), `Vlc*Test` pure tables,
     `ControllerSessionPlayerTest`/`PlayerMediaSessionTest` (Robolectric); no JVM test loads libVLC native code;
     core `SessionStoreTest` + gated `SessionGuardTest` races: `CountDownLatch` route + `CompletableDeferred` arrival), `app/src/sharedTest` (Compose focus/navigation

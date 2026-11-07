@@ -27,6 +27,14 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import org.junit.jupiter.api.condition.DisabledOnOs
+import org.junit.jupiter.api.condition.OS
+
+/**
+ * Every case whose write replaces an existing DataStore file (also used by `EnginePrefsTest`): Windows refuses
+ * DataStore's rename of the `.tmp` file over it. They run on macOS/Linux.
+ */
+internal const val WINDOWS_DATASTORE_RENAME = "DataStore can't rename its .tmp over an existing file on Windows"
 
 /** Preferences DataStore keys `server_url`, `profile_id`, `token`, `token_expires_at`. */
 class DataStoreSessionStoreTest {
@@ -99,6 +107,7 @@ class DataStoreSessionStoreTest {
     }
 
     @Test
+    @DisabledOnOs(OS.WINDOWS, disabledReason = WINDOWS_DATASTORE_RENAME)
     fun `session values persist across restarts`() = runBlocking {
         val store = open()
         assertTrue(store.setServerUrl("https://hometv.tail1234.ts.net"))
@@ -109,6 +118,7 @@ class DataStoreSessionStoreTest {
     }
 
     @Test
+    @DisabledOnOs(OS.WINDOWS, disabledReason = WINDOWS_DATASTORE_RENAME)
     fun `a different server URL clears token, profile and expiry and the same URL keeps them`() = runBlocking {
         val store = open()
         store.setServerUrl("https://a.ts.net")
@@ -121,6 +131,7 @@ class DataStoreSessionStoreTest {
     }
 
     @Test
+    @DisabledOnOs(OS.WINDOWS, disabledReason = WINDOWS_DATASTORE_RENAME)
     fun `clearToken keeps the server and the last profile for the Picker focus`() = runBlocking {
         val store = open()
         store.setServerUrl("https://a.ts.net")
@@ -131,6 +142,7 @@ class DataStoreSessionStoreTest {
     }
 
     @Test
+    @DisabledOnOs(OS.WINDOWS, disabledReason = WINDOWS_DATASTORE_RENAME)
     fun `signOut keeps only the server URL, also after reopen`() = runBlocking {
         val store = signedIn()
 
@@ -157,6 +169,7 @@ class DataStoreSessionStoreTest {
     }
 
     @Test
+    @DisabledOnOs(OS.WINDOWS, disabledReason = WINDOWS_DATASTORE_RENAME)
     fun `saveRenewedSession replaces token and expiry for the same profile`() = runBlocking {
         val store = signedIn()
 
@@ -167,6 +180,7 @@ class DataStoreSessionStoreTest {
     }
 
     @Test
+    @DisabledOnOs(OS.WINDOWS, disabledReason = WINDOWS_DATASTORE_RENAME)
     fun `saveRenewedSession refuses another profile`() = runBlocking {
         val store = signedIn().apply { saveSession(7, "tok7", expires) }
 
@@ -177,6 +191,7 @@ class DataStoreSessionStoreTest {
     }
 
     @Test
+    @DisabledOnOs(OS.WINDOWS, disabledReason = WINDOWS_DATASTORE_RENAME)
     fun `saveRenewedSession refuses a signed-out store`() = runBlocking {
         val store = signedIn().apply { signOut() }
 
@@ -187,6 +202,7 @@ class DataStoreSessionStoreTest {
     }
 
     @Test
+    @DisabledOnOs(OS.WINDOWS, disabledReason = WINDOWS_DATASTORE_RENAME)
     fun `clearToken refuses another profile and a signed-out store`() = runBlocking {
         val store = signedIn().apply { saveSession(7, "tok7", expires) }
         assertFalse(store.clearToken(5))
@@ -217,6 +233,7 @@ class DataStoreSessionStoreTest {
     }
 
     @Test
+    @DisabledOnOs(OS.WINDOWS, disabledReason = WINDOWS_DATASTORE_RENAME)
     fun `a late memory update after signOut leaves the store signed out`() = runBlocking {
         val (saved, store) = lateContinuation({ saveRenewedSession(5, "new", later) }, { signOut() })
 
@@ -226,6 +243,7 @@ class DataStoreSessionStoreTest {
     }
 
     @Test
+    @DisabledOnOs(OS.WINDOWS, disabledReason = WINDOWS_DATASTORE_RENAME)
     fun `a late memory update after a profile switch keeps the new profile`() = runBlocking {
         val (saved, store) = lateContinuation({ saveRenewedSession(5, "new", later) }, { saveSession(7, "tok7", expires) })
 
@@ -234,6 +252,7 @@ class DataStoreSessionStoreTest {
     }
 
     @Test
+    @DisabledOnOs(OS.WINDOWS, disabledReason = WINDOWS_DATASTORE_RENAME)
     fun `a late clearToken after signOut leaves the store signed out`() = runBlocking {
         val (cleared, store) = lateContinuation({ clearToken(5) }, { signOut() })
 
@@ -243,6 +262,7 @@ class DataStoreSessionStoreTest {
     }
 
     @Test
+    @DisabledOnOs(OS.WINDOWS, disabledReason = WINDOWS_DATASTORE_RENAME)
     fun `a late clearToken after a profile switch keeps the new profile`() = runBlocking {
         val (cleared, store) = lateContinuation({ clearToken(5) }, { saveSession(7, "tok7", expires) })
 

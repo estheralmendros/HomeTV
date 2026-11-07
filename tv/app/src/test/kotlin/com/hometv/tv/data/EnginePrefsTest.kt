@@ -27,6 +27,8 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.condition.DisabledOnOs
+import org.junit.jupiter.api.condition.OS
 
 /** The device file `device.preferences_pb`, key `force_vlc`: "Usar siempre VLC (experimental)". */
 class EnginePrefsTest {
@@ -84,16 +86,19 @@ class EnginePrefsTest {
     }
 
     @Test
-    fun `AC-12_2 signing out and changing the server keep the device preference`() = runTest {
-        val prefs = runBlocking { DataStoreEnginePrefs.load(fileStore(), log) }
+    fun `AC-12_2 signing out and changing the server keep the device preference`() {
+        // The file part runs outside runTest: only the container work uses virtual time.
+        val prefs = open()
         runBlocking { prefs.setForceVlc(true) }
-        val container = testContainer(ScriptedApi(), backgroundScope, enginePrefs = prefs)
+        runTest {
+            val container = testContainer(ScriptedApi(), backgroundScope, enginePrefs = prefs)
 
-        container.signOut()
-        container.store.setServerUrl("https://other.tail1234.ts.net")
-        container.onServerChanged()
+            container.signOut()
+            container.store.setServerUrl("https://other.tail1234.ts.net")
+            container.onServerChanged()
 
-        assertTrue(container.enginePrefs.forceVlc.value)
+            assertTrue(container.enginePrefs.forceVlc.value)
+        }
         assertTrue(reopen().forceVlc.value)
     }
 
@@ -109,6 +114,7 @@ class EnginePrefsTest {
     }
 
     @Test
+    @DisabledOnOs(OS.WINDOWS, disabledReason = WINDOWS_DATASTORE_RENAME)
     fun `AC-12_4 a file of garbage bytes loads as off and a later write replaces it`() = runBlocking {
         file.writeBytes(byteArrayOf(0x7f, 0x00, 0x13, 0x37, 0x42, 0x0a, 0x01, 0x02, 0x03))
 

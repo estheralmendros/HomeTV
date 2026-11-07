@@ -89,6 +89,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -351,7 +352,12 @@ class AppContainer(
             val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
             val dataStore = DataStoreSessionStore.dataStore(File(app.filesDir, "datastore/session.preferences_pb"), appScope)
             val deviceStore = DataStoreEnginePrefs.dataStore(File(app.filesDir, "datastore/device.preferences_pb"), appScope)
-            val (store, enginePrefs) = runBlocking(Dispatchers.IO) { DataStoreSessionStore.load(dataStore) to DataStoreEnginePrefs.load(deviceStore) }
+            // Both files load in parallel: the device file adds no start-up latency.
+            val (store, enginePrefs) = runBlocking(Dispatchers.IO) {
+                val session = async { DataStoreSessionStore.load(dataStore) }
+                val prefs = async { DataStoreEnginePrefs.load(deviceStore) }
+                session.await() to prefs.await()
+            }
             val userAgent = "HomeTV-Android/${BuildConfig.VERSION_NAME} (Android ${Build.VERSION.SDK_INT}; ${Build.MODEL})"
             val base = OkHttpClient()
             val subtitles = SubtitleFileCache(File(app.cacheDir, "subtitles"))

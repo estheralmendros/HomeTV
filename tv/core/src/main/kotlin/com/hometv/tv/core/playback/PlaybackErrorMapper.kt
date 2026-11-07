@@ -200,7 +200,11 @@ object PlaybackErrorMapper {
         }
     }
 
-    /** An ExoPlayer error during playback (`PlayerFailure` from `ExoPlayerController`). */
+    /**
+     * A playback error from either engine (`PlayerFailure` from `ExoPlayerController` or `VlcPlayerController`).
+     * A libVLC failure (`engine = VLC`) is opaque: one renew + recovery per file, then generic (rows 1/2); an
+     * ExoPlayer failure goes through the subtitle, HTTP, HLS, network, decoder and parsing rows.
+     */
     fun forPlayerFailure(failure: PlayerFailure, ctx: FailureContext): PlaybackDecision {
         // libVLC errors are opaque: one renew + recovery per file (no 30 s limit), then the generic screen.
         if (failure.engine == PlaybackEngine.VLC) return if (!ctx.vlcRecovered) PlaybackDecision.RenewAndRecover else generic(ctx)
@@ -235,11 +239,13 @@ object PlaybackErrorMapper {
     }
 
     /** `TrackCheck` outcome: handled exactly like a decoder failure of that type (generic on libVLC); null for NONE. */
-    fun forTrackFailure(failure: TrackFailure, ctx: FailureContext): PlaybackDecision? = when {
-        failure == TrackFailure.NONE -> null
-        ctx.engine == PlaybackEngine.VLC -> generic(ctx)
-        failure == TrackFailure.VIDEO -> forDecoderFailure(RendererType.VIDEO, ctx)
-        else -> forDecoderFailure(RendererType.AUDIO, ctx)
+    fun forTrackFailure(failure: TrackFailure, ctx: FailureContext): PlaybackDecision? {
+        if (failure != TrackFailure.NONE && ctx.engine == PlaybackEngine.VLC) return generic(ctx)
+        return when (failure) {
+            TrackFailure.NONE -> null
+            TrackFailure.VIDEO -> forDecoderFailure(RendererType.VIDEO, ctx)
+            TrackFailure.AUDIO -> forDecoderFailure(RendererType.AUDIO, ctx)
+        }
     }
 
     /** Row 40: a failed direct → HLS audio switch is a toast; the direct media keeps playing. */
@@ -256,9 +262,9 @@ object PlaybackErrorMapper {
     fun forSwitchPreparingTimeout(): SwitchFailure = SwitchFailure.Toast(MessageKey.AUDIO_PREPARING_TIMEOUT)
 
     /**
-     * Direct mode: audio → one retry without the current audio codec; video → libVLC when allowed, else one retry without the
-     * file's video codec (the server then answers unsupported). HLS: only an audio failure with
-     * `audio_action = copy` retries (the server converts to AAC). Anything else is generic.
+     * Video → libVLC when allowed (DIRECT or HLS, row 4), else in direct mode one retry without the file's video
+     * codec (the server then answers unsupported). Audio → one retry without the current audio codec in direct
+     * mode, or in HLS only with `audio_action = copy` (the server converts to AAC). Anything else is generic.
      */
     private fun forDecoderFailure(kind: RendererType, ctx: FailureContext): PlaybackDecision {
         val audioCodec = ctx.audioCodec
@@ -275,7 +281,8 @@ object PlaybackErrorMapper {
 
     /** Row 8: a parsing failure (not a subtitle) that would end on the generic screen continues on libVLC when allowed. */
     private fun genericOrVlc(failure: PlayerFailure, ctx: FailureContext): PlaybackDecision =
-        if (ctx.vlcFallbackAllowed && PlaybackErrorCodes.isParsing(failure.errorCode) && failure.urlKind != UrlKind.SUBTITLE) {
+        // Subtitle parsing failures already returned SubtitleUnavailable in forPlayerFailure.
+        if (ctx.vlcFallbackAllowed && PlaybackErrorCodes.isParsing(failure.errorCode)) {
             PlaybackDecision.FallBackToVlc
         } else {
             generic(ctx)

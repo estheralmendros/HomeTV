@@ -359,18 +359,7 @@ class PlayerViewModel(
         override fun onFailure(failure: PlayerFailure) {
             if (active) this@PlayerViewModel.onFailure(failure)
         }
-
-        override fun onRemotePlay() {
-            if (active) this@PlayerViewModel.onRemotePlay()
-        }
-
-        override fun onRemotePause() {
-            if (active) this@PlayerViewModel.onRemotePause()
-        }
-
-        override fun onRemoteSeek(forward: Boolean) {
-            if (active) this@PlayerViewModel.onRemoteSeek(forward)
-        }
+        // No onRemote* overrides: remote commands come from ControllerSessionPlayer, whose listener is the ViewModel.
     }
 
     // ---- Item load and the first request ----------------------------------------------------
@@ -733,9 +722,8 @@ class PlayerViewModel(
         preparing = null
         resumeOnStart = null
         releasePutPositionMs = null
-        loadMedia(a, startMs)
-        if (play) controller.play() else controller.pause()
-        session = if (play) SessionState.Playing else SessionState.Paused
+        loadMedia(a, startMs, play = play)
+        session =if (play) SessionState.Playing else SessionState.Paused
         if (play) {
             startTicker()
             scheduleOverlayHide()
@@ -765,8 +753,12 @@ class PlayerViewModel(
         render()
     }
 
-    /** setMediaItem + overrides + prepare (the overrides are re-applied once the new `Tracks` arrive, rule 5). */
-    private fun loadMedia(a: Attachment, startMs: Long, rebuildForSubtitle: Boolean = false) {
+    /**
+     * setMediaItem + overrides + the play intent ([play]; null keeps the current one) + prepare (the overrides are
+     * re-applied once the new `Tracks` arrive, rule 5). The intent comes before `prepare()`: libVLC opens at once
+     * when its surface is attached and reads it then (`:start-paused`).
+     */
+    private fun loadMedia(a: Attachment, startMs: Long, rebuildForSubtitle: Boolean = false, play: Boolean? = null) {
         val spec = mediaItemSpec(a)
         a.itemSubtitles.clear()
         a.itemSubtitles += spec.subtitles.map { it.trackId }
@@ -775,7 +767,12 @@ class PlayerViewModel(
         controller.selectSubtitle(selectedSubtitleId?.takeIf { it in a.itemSubtitles || isNative(a, it) })
         trackCheckArmed = true
         subtitleRebuild = rebuildForSubtitle
+        play?.let(::setPlayIntent)
         controller.prepare()
+    }
+
+    private fun setPlayIntent(play: Boolean) {
+        if (play) controller.play() else controller.pause()
     }
 
     private fun mediaItemSpec(a: Attachment): MediaItemSpec {
@@ -979,7 +976,7 @@ class PlayerViewModel(
             lastRecoveryAtMs = lastRecoveryAtMs,
             hasOtherVersion = f != null && hasOtherVersion(f),
             engine = a?.engine ?: PlaybackEngine.EXO,
-            vlcFallbackAllowed = deps.vlcAvailable() && h?.exoFailed != true && a?.engine == PlaybackEngine.EXO,
+            vlcFallbackAllowed = a != null && vlcFallbackAllowed(a.engine, a.file),
             vlcRecovered = h?.vlcRecovered == true,
         )
     }
@@ -1047,9 +1044,9 @@ class PlayerViewModel(
     /** Recovery at [positionMs] with the same file, `selectedAudioIndex` and subtitle selection. */
     private fun recover(a: Attachment, positionMs: Long, play: Boolean) {
         if (a.mode == PlaybackMode.DIRECT && !a.putDone) {
+            setPlayIntent(play) // before prepare(): libVLC reads it at the open
             controller.prepare()
             controller.seekTo(positionMs)
-            if (play) controller.play()
             return
         }
         stopHeldTimers()
@@ -1485,8 +1482,7 @@ class PlayerViewModel(
         val trackId = selectedSubtitleId ?: a.itemSubtitles.firstOrNull() ?: return
         val position = controller.positionMs
         subtitleUnavailable(a.file.id, trackId)
-        loadMedia(a, position)
-        if (session == SessionState.Playing) controller.play()
+        loadMedia(a, position, play = if (session == SessionState.Playing) true else null)
         render()
     }
 
@@ -1915,9 +1911,8 @@ class PlayerViewModel(
         a.reporter = ProgressReporter(viewModelScope, send = { putAndRemember(it) }, snapshot = { snapshot(a) }, log = { deps.log("progress", it) })
         att = a
         session = SessionState.Paused
-        loadMedia(a, savedPositionMs)
+        loadMedia(a, savedPositionMs, play = false)
         controller.seekTo(savedPositionMs)
-        controller.pause()
         overlay = OverlayMode.FULL
         focusPlayPause++
         render()
