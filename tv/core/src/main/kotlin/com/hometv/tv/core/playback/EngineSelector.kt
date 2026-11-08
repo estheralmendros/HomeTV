@@ -70,10 +70,20 @@ object EngineSelector {
         ClientCapsBuilder.build(inputs.inventory, inputs.route, file, history.excludeVideo, history.excludeAudio, history.excludeContainers)
 
     /**
+     * Containers ExoPlayer can't read and the server remuxes poorly (`server/hometv/probe.py` `_container` names):
+     * with libVLC they go to VLC up front (prd.md FR-1.4). M2TS/TS, MKV, MP4 and WebM stay on EXO.
+     */
+    val LEGACY_CONTAINERS: Set<String> = setOf("avi", "asf", "flv", "rm", "mpeg")
+
+    /** ffprobe video codecs that go to VLC up front even when the device reports a decoder (FR-1.4). */
+    val LEGACY_VIDEO_CODECS: Set<String> =
+        setOf("mpeg4", "msmpeg4v1", "msmpeg4v2", "msmpeg4v3", "wmv1", "wmv2", "wmv3", "h263", "flv1", "rv30", "rv40")
+
+    /**
      * EXO with [exoCaps] unless libVLC is available and one of: [EngineInputs.forceVlc]; the file has a video
-     * stream and no `probe_error`, and [EngineHistory.exoFailed] or its `video.codec` is not in
-     * `exoCaps(…).video_codecs` (case-insensitive). Then VLC with `VlcCapsBuilder.build()`. Never looks at the
-     * container: AVI or M2TS with H.264 stays on EXO (the server remuxes it).
+     * stream and no `probe_error`, and [EngineHistory.exoFailed], or it is [isLegacy] (a legacy container or video
+     * codec, FR-1.4), or its `video.codec` is not in `exoCaps(…).video_codecs` (case-insensitive). Then VLC with
+     * `VlcCapsBuilder.build()`. H.264 in M2TS stays on EXO (the server remuxes it).
      */
     fun select(inputs: EngineInputs, file: MediaFile, history: EngineHistory = EngineHistory()): EngineChoice {
         val exo = exoCaps(inputs, file, history)
@@ -81,9 +91,13 @@ object EngineSelector {
         if (inputs.forceVlc) return vlc()
         val codec = file.video?.codec
         if (codec == null || file.probe_error != null) return EngineChoice(PlaybackEngine.EXO, exo)
-        if (history.exoFailed || exo.video_codecs.none { it.equals(codec, ignoreCase = true) }) return vlc()
+        if (history.exoFailed || isLegacy(file) || exo.video_codecs.none { it.equals(codec, ignoreCase = true) }) return vlc()
         return EngineChoice(PlaybackEngine.EXO, exo)
     }
+
+    /** A [LEGACY_CONTAINERS] container or a [LEGACY_VIDEO_CODECS] video codec (case-insensitive). */
+    fun isLegacy(file: MediaFile): Boolean =
+        file.container?.lowercase() in LEGACY_CONTAINERS || file.video?.codec?.lowercase() in LEGACY_VIDEO_CODECS
 
     private fun vlc() = EngineChoice(PlaybackEngine.VLC, VlcCapsBuilder.build())
 
@@ -91,7 +105,19 @@ object EngineSelector {
     fun capsForFile(inputs: EngineInputs, history: (MediaFile) -> EngineHistory): CapsForFile =
         CapsForFile { select(inputs, it, history(it)).caps }
 
-    /** `CapsForFile` for the ExoPlayer tier: `exoCaps(…)` (exactly today's per-file caps). */
+    /**
+     * `CapsForFile` for the ExoPlayer tier: `exoCaps(…)` (today's per-file caps), except that with libVLC available
+     * an [isLegacy] file's video codec is left out, so that file is a libVLC-tier version (FR-1.4): Film detail and
+     * the Player prefer an Exo-playable version over it.
+     */
     fun exoCapsForFile(inputs: EngineInputs, history: (MediaFile) -> EngineHistory): CapsForFile =
-        CapsForFile { exoCaps(inputs, it, history(it)) }
+        CapsForFile { file ->
+            val caps = exoCaps(inputs, file, history(file))
+            val codec = file.video?.codec
+            if (inputs.vlcAvailable && codec != null && isLegacy(file)) {
+                caps.copy(video_codecs = caps.video_codecs.filterNot { it.equals(codec, ignoreCase = true) })
+            } else {
+                caps
+            }
+        }
 }

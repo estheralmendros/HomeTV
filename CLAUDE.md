@@ -285,7 +285,7 @@ is a contract shared by the web and TV clients: change it deliberately and updat
   python:3.12-slim-bookworm + Debian ffmpeg 5.1 + `web/dist` in `/app/web/dist`, user `hometv`
   1000, healthcheck, CMD `hometv`; build context = repo root, `Dockerfile.dockerignore`
   whitelists `server/` and `web/` minus node_modules/dist), `docker-compose.yml`
-  (app in the tailscale sidecar's netns, `HOMETV_HOST=127.0.0.1`, media `:ro`, no ports),
+  (app in the tailscale sidecar's netns, `HOMETV_HOST=127.0.0.1`, media read-only bind with `propagation: ${MEDIA_PROPAGATION:-rslave}` (disks mounted later under `MEDIA_DIR` appear without a restart; `rprivate` on Docker Desktop), no ports),
   `tailscale/serve.json`, `.env.example`, `README.md` (setup steps + "Configuration reference", the only tracked list of `HOMETV_*`
   settings).
 - `docs/`: user guides: `server-installation-linux.md`, `server-automation-linux.md` (systemd

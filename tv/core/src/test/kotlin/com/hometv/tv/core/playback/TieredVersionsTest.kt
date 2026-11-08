@@ -166,4 +166,28 @@ class TieredVersionsTest {
         assertEquals(2L, tv.select(files, tiers, p, Part(1))?.id)
         assertEquals(3L, tv.select(files, tiers, p, Part(2))?.id)
     }
+
+    @Test
+    fun `AC-1_19 with the selector's tiers a legacy version (AVI, mpeg4 on an MPEG-4 capable TV) comes after the Exo ones`() {
+        val inventory = CodecInventory(
+            video = listOf(Mimes.VIDEO_H264, Mimes.VIDEO_MP4V).map { VideoDecoder(it, hardware = true, maxWidth = 1920, maxHeight = 1080) },
+            audioDecoderMimes = emptySet(),
+        )
+        val on = EngineInputs(inventory, AudioRouteCaps(emptySet(), 2), vlcAvailable = true)
+        fun tiersOf(inputs: EngineInputs) =
+            VersionCaps(EngineSelector.exoCapsForFile(inputs) { EngineHistory() }, EngineSelector.capsForFile(inputs) { EngineHistory() })
+        val xvid = file(1, video = mpeg4.copy(width = 1920, height = 1080), container = "avi", fileName = "film.avi", label = "1080p Xvid")
+        val h264Avi = file(2, container = "avi", fileName = "film2.avi", label = "1080p AVI")
+        val mkv = file(3, video = VideoInfo("h264", 1280, 720), label = "720p MKV")
+        val files = listOf(xvid, h264Avi, mkv)
+        assertEquals(3L, tv.defaultChoice(files, tiersOf(on), null)?.file?.id)
+        assertEquals(listOf(3L, 1L, 2L), ids(tv.candidates(files, tiersOf(on))))
+        // Only legacy versions: the default is one of them, played on VLC.
+        val legacyOnly = listOf(xvid, h264Avi)
+        val chosen = tv.defaultChoice(legacyOnly, tiersOf(on), null)!!.file
+        assertEquals(PlaybackEngine.VLC, EngineSelector.select(on, chosen).engine)
+        // Without libVLC: today's VersionSelector result over today's caps.
+        val off = on.copy(vlcAvailable = false)
+        assertEquals(vs.defaultChoice(files, CapsForFile { EngineSelector.exoCaps(off, it) }, null), tv.defaultChoice(files, tiersOf(off), null))
+    }
 }

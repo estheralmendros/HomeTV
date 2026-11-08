@@ -237,13 +237,14 @@ class AppContainer(
     }
 
     /**
-     * Exo-first version tiers (Film detail's default version): `exo` = [capsForFile] (today's), `any` = the
-     * engine caps per file (VLC caps for a file only libVLC plays, or for every file while the device preference
-     * "Usar siempre VLC" is on, as in the Player); without libVLC `exo == any`.
+     * Exo-first version tiers (Film detail's default version), the Player's rules (`PlayerViewModel.refreshCaps`):
+     * `exo` = `EngineSelector.exoCapsForFile` (today's caps, minus a legacy file's codec when libVLC is available),
+     * `any` = the engine caps per file (VLC caps for a file libVLC plays, or for every file while the device
+     * preference "Usar siempre VLC" is on); without libVLC `exo == any`.
      */
     suspend fun versionCaps(): VersionCaps {
         val inputs = EngineInputs(codecs.inventory(), codecs.audioRoute(), vlcAvailable = vlcAvailability.isAvailable(), forceVlc = enginePrefs.forceVlc.value)
-        return VersionCaps(exo = capsForFile(), any = EngineSelector.capsForFile(inputs) { EngineHistory() })
+        return VersionCaps(exo = EngineSelector.exoCapsForFile(inputs) { EngineHistory() }, any = EngineSelector.capsForFile(inputs) { EngineHistory() })
     }
 
     /** The device caps without a file (Settings → Acerca de summary). */

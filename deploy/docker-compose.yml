@@ -28,7 +28,17 @@ services:
       HOMETV_TMDB_API_KEY: ${TMDB_API_KEY}
       HOMETV_TMDB_LANGUAGE: es-ES
     volumes:
-      - ${MEDIA_DIR}:/media:ro                   # one broad parent; more disks: /srv/disk2:/media/disk2:ro
+      # MEDIA_DIR (one broad parent) read-only at /media. `rslave`: a disk mounted or re-mounted under
+      # MEDIA_DIR after the container started (USB disk at boot, after a reset) shows up inside it without a
+      # restart. Docker Desktop (Windows) doesn't support it: set MEDIA_PROPAGATION=rprivate in .env there.
+      # More disks: mount them under MEDIA_DIR (e.g. /srv/media/HD02), or add another bind such as
+      #   - { type: bind, source: /srv/disk2, target: /media/disk2, read_only: true, bind: { propagation: rslave } }
+      - type: bind
+        source: ${MEDIA_DIR}
+        target: /media
+        read_only: true
+        bind:
+          propagation: ${MEDIA_PROPAGATION:-rslave}
       - hometv-data:/data
     restart: unless-stopped
 volumes: { tailscale-state: {}, hometv-data: {} }

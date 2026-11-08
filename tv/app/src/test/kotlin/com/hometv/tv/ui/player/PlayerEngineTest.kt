@@ -7,6 +7,7 @@ import com.hometv.tv.core.api.RatingPrompt
 import com.hometv.tv.core.api.VideoInfo
 import com.hometv.tv.core.data.FakeHomeTvApi.Companion.httpError
 import com.hometv.tv.core.playback.F
+import com.hometv.tv.core.playback.Mimes
 import com.hometv.tv.core.playback.PlaybackEngine
 import com.hometv.tv.core.playback.PlaybackEngine.EXO
 import com.hometv.tv.core.playback.PlaybackEngine.VLC
@@ -17,6 +18,7 @@ import com.hometv.tv.core.playback.PlayerFailure
 import com.hometv.tv.core.playback.PlayerState
 import com.hometv.tv.core.playback.RendererType
 import com.hometv.tv.core.playback.UrlKind
+import com.hometv.tv.core.playback.VideoDecoder
 import com.hometv.tv.core.playback.VlcCapsBuilder
 import com.hometv.tv.R
 import com.hometv.tv.data.PendingPrompt
@@ -46,7 +48,8 @@ import org.junit.jupiter.api.Test
 class PlayerEngineTest : PlayerTestBase() {
     private val mpeg4 = VideoInfo("mpeg4", 720, 400)
     private val xvid = F.file(1, video = mpeg4, container = "avi", fileName = "film.avi")
-    private val h264Avi = F.file(1, container = "avi", fileName = "film.avi")
+    /** H.264 in Blu-ray M2TS: stays on EXO with an HLS remux (FR-1.4 sends AVI to VLC up front), so it exercises decision 14. */
+    private val h264M2ts = F.file(1, container = "ts", fileName = "film.m2ts")
     private val vlcFailure = PlayerFailure(PlaybackErrorCodes.VLC_ERROR, engine = VLC)
     private val dune = RatingPrompt("film", 12, "Dune")
 
@@ -72,6 +75,23 @@ class PlayerEngineTest : PlayerTestBase() {
         assertTrue("play" in vlcController.log)
         assertEquals(VLC, vm.state.value.engine)
         assertTrue(controller.log.none { it.startsWith("setMediaItem") || it == "play" }, "${controller.log}")
+        assertEquals(listOf(VLC), createdEngines)
+    }
+
+    @Test
+    fun `AC-1_20 a mpeg4 AVI on a TV with a hardware MPEG-4 decoder plays directly on VLC, no HLS request`() = playerTest {
+        // Production 2026-11-08 ("Annie (1982).avi": mpeg4 + 2× ac3): it used to go to EXO and an HLS remux that failed.
+        vlcAvailable = true
+        codecs.inventory = codecs.inventory.copy(video = codecs.inventory.video + VideoDecoder(Mimes.VIDEO_MP4V, true, 1920, 1080))
+        film(F.file(1, video = mpeg4, container = "avi", fileName = "Annie (1982).avi", audio = listOf(F.audio(1, codec = "ac3", channels = 2), F.audio(2, codec = "ac3", channels = 2))))
+        answerWith(direct())
+        val vm = vm()
+        runCurrent()
+        val body = bodies().single()
+        assertEquals(VlcCapsBuilder.build(), body.client_caps)
+        assertFalse(body.client_caps.hls)
+        assertEquals(VLC, vm.state.value.engine)
+        assertTrue(vlcController.item!!.url.endsWith("/api/media-files/1/stream"))
         assertEquals(listOf(VLC), createdEngines)
     }
 
@@ -209,7 +229,8 @@ class PlayerEngineTest : PlayerTestBase() {
         val small = F.file(3, video = F.H264.copy(height = 720), label = "720p H264")
         val avi = F.file(2, video = mpeg4.copy(height = 1080), container = "avi", label = "1080p MPEG4")
         val vm = startFilm(direct(), main, avi, small)
-        controller.fail(PlayerFailure(1000))
+        // An error screen that keeps [Probar otra versión] with libVLC available (a generic one now tries VLC first).
+        controller.fail(PlayerFailure(PlaybackErrorCodes.IO_BAD_HTTP_STATUS, httpStatus = 404, urlKind = UrlKind.STREAM))
         runCurrent()
         vm.onErrorAction(PlayerAction.TRY_OTHER_VERSION)
         assertEquals(PlayerDialog.Versions(listOf("720p H264", "1080p MPEG4")), vm.state.value.dialog)
@@ -417,7 +438,7 @@ class PlayerEngineTest : PlayerTestBase() {
     @Test
     fun `AC-2_10 an unsupported remux is retried once on VLC at the same position`() = playerTest {
         vlcAvailable = true
-        film(h264Avi, progress = F.progress(1, position = 1000.0))
+        film(h264M2ts, progress = F.progress(1, position = 1000.0))
         answerWith(unsupported("keyframes_too_sparse"), direct())
         val vm = vm()
         runCurrent()
@@ -434,7 +455,7 @@ class PlayerEngineTest : PlayerTestBase() {
     @Test
     fun `AC-2_10 a VLC request that is also unsupported shows today's error, no third request`() = playerTest {
         vlcAvailable = true
-        film(h264Avi)
+        film(h264M2ts)
         answerWith(unsupported("duration_unknown"), unsupported("hls_not_supported"))
         val vm = vm()
         runCurrent()
@@ -445,7 +466,7 @@ class PlayerEngineTest : PlayerTestBase() {
 
     @Test
     fun `AC-2_11 without libVLC an unsupported remux shows today's error after one request`() = playerTest {
-        film(h264Avi)
+        film(h264M2ts)
         answerWith(unsupported("keyframes_too_sparse"))
         val vm = vm()
         runCurrent()
@@ -456,7 +477,7 @@ class PlayerEngineTest : PlayerTestBase() {
     @Test
     fun `AC-2_9 a keyframe index failure is retried once on VLC`() = playerTest {
         vlcAvailable = true
-        film(h264Avi)
+        film(h264M2ts)
         answer({ throw httpError(500, "transcoder_failed", """{"detail": "keyframe_index_failed: x"}""") }, { direct() })
         val vm = vm()
         runCurrent()
@@ -466,9 +487,9 @@ class PlayerEngineTest : PlayerTestBase() {
     }
 
     @Test
-    fun `AC-2_12 an HLS 500 while playing an H264 AVI on EXO continues on VLC at the recovery position`() = playerTest {
+    fun `AC-2_12 an HLS 500 while playing an H264 M2TS on EXO continues on VLC at the recovery position`() = playerTest {
         vlcAvailable = true
-        val vm = startFilm(hls(), h264Avi)
+        val vm = startFilm(hls(), h264M2ts)
         assertFalse(bodies().single().isVlc())
         controller.positionMs = 600_000
         answerWith(direct())
@@ -478,6 +499,38 @@ class PlayerEngineTest : PlayerTestBase() {
         assertEquals(600.0, bodies().last().start_position_seconds)
         assertEquals(VLC, vm.state.value.engine)
         assertTrue(deletes().isNotEmpty(), "the failed HLS session is finished")
+    }
+
+    @Test
+    fun `AC-2_17 the server conversion dies before READY and the failure has no HLS load record - VLC, no error screen`() = playerTest {
+        // Production 2026-11-08 ("Annie (1982).avi"): every [Reintentar desde aquí] created another HLS session on EXO.
+        vlcAvailable = true
+        film(h264M2ts, progress = F.progress(1, position = 1200.0))
+        answerWith(hls())
+        val vm = vm()
+        runCurrent()
+        assertFalse(bodies().single().isVlc())
+        answerWith(direct())
+        controller.fail(PlayerFailure(PlaybackErrorCodes.IO_BAD_HTTP_STATUS, httpStatus = 500, urlKind = UrlKind.OTHER))
+        runCurrent()
+        assertEquals(2, bodies().size)
+        assertTrue(bodies().last().isVlc())
+        assertEquals(1200.0, bodies().last().start_position_seconds, "the start position: the failure came before READY")
+        assertEquals(VLC, vm.state.value.engine)
+        assertFalse(vm.state.value.screen is PlayerScreenUi.Error)
+    }
+
+    @Test
+    fun `AC-2_17 a server 5xx answer to the EXO request retries once on VLC`() = playerTest {
+        vlcAvailable = true
+        film(h264M2ts)
+        answer({ throw httpError(500, "transcoder_failed", """{"detail": "ffmpeg died"}""") })
+        val vm = vm()
+        runCurrent()
+        assertEquals(2, bodies().size)
+        assertFalse(bodies()[0].isVlc())
+        assertTrue(bodies()[1].isVlc())
+        assertTrue(vm.state.value.screen is PlayerScreenUi.Error, "the VLC request failed the same way: no third request")
     }
 
     @Test

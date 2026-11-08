@@ -183,6 +183,8 @@ object PlaybackErrorMapper {
                 e.code == "hls_disk_full" -> show(MessageKey.HLS_DISK_FULL, retry)
                 e.status == 503 -> show(MessageKey.SERVER_UNAVAILABLE, retry)
                 isKeyframeIndexFailure(e) && vlcFallbackAllowed -> PlaybackDecision.FallBackToVlc
+                // FR-2.4: any other server failure (5xx; 503 is handled above) → libVLC plays the file directly.
+                e.status >= 500 && vlcFallbackAllowed -> PlaybackDecision.FallBackToVlc
                 isKeyframeIndexFailure(e) -> PlaybackDecision.ShowError(
                     PlayerError(MessageKey.KEYFRAME_INDEX_FAILED, actions = withOther(hasOtherVersion, PlayerAction.BACK)),
                     refuseVersion = true,
@@ -203,7 +205,8 @@ object PlaybackErrorMapper {
     /**
      * A playback error from either engine (`PlayerFailure` from `ExoPlayerController` or `VlcPlayerController`).
      * A libVLC failure (`engine = VLC`) is opaque: one renew + recovery per file, then generic (rows 1/2); an
-     * ExoPlayer failure goes through the subtitle, HTTP, HLS, network, decoder and parsing rows.
+     * ExoPlayer failure goes through the subtitle, HTTP, HLS, network, decoder and parsing rows; one that would
+     * still end on the generic screen continues on libVLC when `ctx.vlcFallbackAllowed` (FR-2.4).
      */
     fun forPlayerFailure(failure: PlayerFailure, ctx: FailureContext): PlaybackDecision {
         // libVLC errors are opaque: one renew + recovery per file (no 30 s limit), then the generic screen.
@@ -264,7 +267,8 @@ object PlaybackErrorMapper {
     /**
      * Video → libVLC when allowed (DIRECT or HLS, row 4), else in direct mode one retry without the file's video
      * codec (the server then answers unsupported). Audio → one retry without the current audio codec in direct
-     * mode, or in HLS only with `audio_action = copy` (the server converts to AAC). Anything else is generic.
+     * mode, or in HLS only with `audio_action = copy` (the server converts to AAC). Anything else tries libVLC once
+     * when allowed (FR-2.4, e.g. the second audio failure), else is generic.
      */
     private fun forDecoderFailure(kind: RendererType, ctx: FailureContext): PlaybackDecision {
         val audioCodec = ctx.audioCodec
@@ -275,18 +279,21 @@ object PlaybackErrorMapper {
             kind == RendererType.VIDEO && ctx.vlcFallbackAllowed -> PlaybackDecision.FallBackToVlc
             kind == RendererType.VIDEO && ctx.mode == PlaybackMode.DIRECT && !ctx.videoRetried && videoCodec != null ->
                 PlaybackDecision.RetryExcludingVideo(videoCodec)
-            else -> generic(ctx)
+            else -> lastResort(ctx)
         }
     }
 
-    /** Row 8: a parsing failure (not a subtitle) that would end on the generic screen continues on libVLC when allowed. */
+    /**
+     * Rows 8/8b: a failure (not a subtitle load) that would end on the generic screen continues on libVLC when
+     * allowed, whatever its code: an IO, unspecified or timeout error, or an HLS 5xx whose load wasn't recorded.
+     */
     private fun genericOrVlc(failure: PlayerFailure, ctx: FailureContext): PlaybackDecision =
-        // Subtitle parsing failures already returned SubtitleUnavailable in forPlayerFailure.
-        if (ctx.vlcFallbackAllowed && PlaybackErrorCodes.isParsing(failure.errorCode)) {
-            PlaybackDecision.FallBackToVlc
-        } else {
-            generic(ctx)
-        }
+        // Subtitle parsing/IO failures already returned SubtitleUnavailable in forPlayerFailure.
+        if (failure.urlKind != UrlKind.SUBTITLE) lastResort(ctx) else generic(ctx)
+
+    /** FR-2.4: libVLC once (when allowed) before the generic screen of an EXO attachment. */
+    private fun lastResort(ctx: FailureContext): PlaybackDecision =
+        if (ctx.vlcFallbackAllowed) PlaybackDecision.FallBackToVlc else generic(ctx)
 
     private fun rendererKind(failure: PlayerFailure): RendererType = when {
         failure.errorCode == PlaybackErrorCodes.AUDIO_TRACK_INIT_FAILED || failure.errorCode == PlaybackErrorCodes.AUDIO_TRACK_WRITE_FAILED -> RendererType.AUDIO
