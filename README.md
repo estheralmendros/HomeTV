@@ -173,7 +173,8 @@ library).
 `adb install -r`; see the [TV app guide](docs/tv-app-installation.md).
 
 Contributor conventions (strict TDD, DB write rules, test layout) are in [`CLAUDE.md`](CLAUDE.md).
-The release version lives in [`version.txt`](version.txt); changes are listed in
+The release version lives in [`version.txt`](version.txt), the only file a version bump changes (the
+server, the Docker image and the TV app read it); changes are listed in
 [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Configuration

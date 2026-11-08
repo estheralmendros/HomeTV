@@ -27,6 +27,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
 COPY server/hometv ./hometv
 COPY server/alembic.ini ./alembic.ini
+# The release version: pyproject.toml reads ../version.txt ([tool.hatch.version]) when the project is built.
+COPY version.txt /version.txt
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 

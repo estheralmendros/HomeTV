@@ -546,10 +546,14 @@ is a contract shared by the web and TV clients: change it deliberately and updat
   `cd web && npx vitest run src/player/versions.test.ts -t "nextPart"`;
   `cd tv && ./gradlew :core:test --tests '*VersionSelectorTest*'`.
 
-- Release version: `version.txt` (repo root). The TV app reads it in `tv/app/build.gradle.kts`
-  (`versionCode` = M×10000 + m×100 + p); a bump also edits `server/pyproject.toml` (+ `uv lock`;
-  `hometv.__version__` comes from the package metadata, shown in "Acerca de") and `web/package.json`
-  (`npm version X --no-git-tag-version`); `server/tests/unit/test_version.py` guards both.
+- Release version: `version.txt` (repo root) is the only file a bump edits: no other file and no
+  command is part of a version bump. The TV app reads it in `tv/app/build.gradle.kts` (`versionCode` =
+  M×10000 + m×100 + p); the server package takes it at build time (`server/pyproject.toml`
+  `dynamic = ["version"]` + `[tool.hatch.version] path = "../version.txt"`; `[tool.uv] cache-keys` makes
+  the next `uv sync`/`uv run` reinstall, so `hometv.__version__`, shown in "Acerca de", follows; `uv.lock`
+  holds no version; the image copies `version.txt` to `/version.txt` before the project install); the web
+  package has no version. `server/tests/unit/test_version.py` guards all three (no `version` in
+  `pyproject.toml` `[project]`, `package.json` or `package-lock.json`).
 
 ## Conventions
 

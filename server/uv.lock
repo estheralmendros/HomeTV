@@ -193,7 +193,6 @@ wheels = [
 
 [[package]]
 name = "hometv"
-version = "0.7.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
