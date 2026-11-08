@@ -17,9 +17,10 @@ import com.hometv.tv.core.data.WatchRepository
 import com.hometv.tv.core.data.WatchTarget
 import com.hometv.tv.core.data.WatchlistKind
 import com.hometv.tv.core.data.WatchlistRepository
-import com.hometv.tv.core.playback.CapsForFile
 import com.hometv.tv.core.playback.Choice
 import com.hometv.tv.core.playback.Grouping
+import com.hometv.tv.core.playback.TieredVersions
+import com.hometv.tv.core.playback.VersionCaps
 import com.hometv.tv.core.playback.VersionGroup
 import com.hometv.tv.core.playback.VersionSelector
 import com.hometv.tv.core.util.Format
@@ -84,7 +85,8 @@ class FilmDetailViewModel(
     ratings: RatingsRepository,
     private val ratingPrompts: RatingPrompts,
     private val store: SessionStore,
-    private val caps: suspend () -> CapsForFile,
+    /** Exo-first version tiers (`AppContainer.versionCaps`): the default version is the one the Player would choose. */
+    private val versionCaps: suspend () -> VersionCaps,
     private val events: AppEventSink,
     private val refresh: HomeRefresh,
     private val detailRefresh: DetailRefresh,
@@ -103,7 +105,8 @@ class FilmDetailViewModel(
     val navigation: Flow<NavRequest> = _navigation.receiveAsFlow()
 
     private var film: FilmDetail? = null
-    private var capsForFile: CapsForFile? = null
+    /** The [versionCaps] tiers, read once per ViewModel at the first fetch. */
+    private var tiers: VersionCaps? = null
     private var choice: Choice? = null
     private var entry: Entry? = null
     private var part: Int? = null
@@ -359,12 +362,12 @@ class FilmDetailViewModel(
      */
     private suspend fun fetch(afterPlayback: Boolean = false) {
         val fetched = catalog.film(filmId)
-        val caps = capsForFile ?: caps().also { capsForFile = it }
+        val tiers = this.tiers ?: versionCaps().also { this.tiers = it }
         val detail = fetched.copy(in_watchlist = listToggle.fetched(fetched.in_watchlist, film?.in_watchlist))
         film = detail
         ratingsBlock.fetched(detail.my_rating, detail.ratings, detail.household_average)
         val files = detail.media_files
-        choice = VersionSelector.defaultChoice(files, caps, detail.progress)
+        choice = TieredVersions.defaultChoice(files, tiers, detail.progress)
         val followParts = afterPlayback && entry == Entry.InParts && choice?.group is VersionGroup.Part
         val keep = userChose && currentFile() != null && !followParts
         if (!keep) {
@@ -492,9 +495,9 @@ class FilmDetailViewModel(
     private fun selectPart(number: Int) {
         val f = film ?: return
         part = number
-        val caps = capsForFile ?: return
+        val tiers = this.tiers ?: return
         partFileId = (
-            VersionSelector.select(f.media_files, caps, f.progress, VersionGroup.Part(number))
+            TieredVersions.select(f.media_files, tiers, f.progress, VersionGroup.Part(number))
                 ?: VersionSelector.group(f.media_files).versionsOf(VersionGroup.Part(number)).firstOrNull()
             )?.id
     }

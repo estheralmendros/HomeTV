@@ -243,7 +243,7 @@ class PlayerViewModelTest : PlayerTestBase() {
         controller.fail(PlayerFailure(PlaybackErrorCodes.IO_BAD_HTTP_STATUS, httpStatus = 401, urlKind = UrlKind.STREAM))
         runCurrent()
         assertEquals(listOf("POST /api/profiles/5/session"), api.calls)
-        assertEquals(listOf("prepare", "seekTo 900000", "play"), controller.log.filter { it == "prepare" || it.startsWith("seekTo") || it == "play" })
+        assertEquals(listOf("play", "prepare", "seekTo 900000"), controller.log.filter { it == "prepare" || it.startsWith("seekTo") || it == "play" })
         assertEquals(SessionState.Playing, vm.session)
         // A second 401 within 30 s is a generic error (no renewal loop).
         controller.fail(PlayerFailure(PlaybackErrorCodes.IO_BAD_HTTP_STATUS, httpStatus = 401, urlKind = UrlKind.STREAM))

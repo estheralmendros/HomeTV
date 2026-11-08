@@ -113,6 +113,18 @@ class AppContainerTest {
     }
 
     @Test
+    fun `the version tiers follow the device preference force VLC`() = runTest(dispatcher) {
+        val prefs = com.hometv.tv.data.InMemoryEnginePrefs()
+        val container = testContainer(api, scope, vlcAvailable = true, enginePrefs = prefs)
+        val h264 = F.file(1, video = F.H264)
+        assertTrue(container.versionCaps().any.capsFor(h264).hls, "off: an H.264 file stays on ExoPlayer's caps")
+
+        prefs.setForceVlc(true)
+
+        assertFalse(container.versionCaps().any.capsFor(h264).hls, "on: VLC caps for every file")
+    }
+
+    @Test
     fun `player launches are registered in memory and unknown ids are not active`() {
         val container = testContainer(api, scope)
         val id = container.playerLaunches.register(null)

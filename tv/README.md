@@ -4,7 +4,10 @@ Viewer-only Android TV / Google TV client of HomeTV.
 
 - `core/`: pure Kotlin/JVM module (API client, session renewal, repositories, version/track/caps
   rules, error mapping, progress reporting). Tested with JUnit 5, MockWebServer and coroutines-test.
-- `app/`: Android application (Compose for TV, Media3).
+- `app/`: Android application (Compose for TV, Media3 ExoPlayer, and libVLC 3.7.2 as the fallback player for
+  formats the TV can't decode). libVLC's native code makes the APK ARM-only (`armeabi-v7a` + `arm64-v8a`, one
+  APK of about 95 MB). Its LGPL notice is `app/src/main/res/raw/third_party_notices.txt` (Ajustes → Acerca de →
+  Licencias de código abierto); a libVLC bump must update it (`ThirdPartyNoticesTest` checks the version).
 
 ## Requirements
 

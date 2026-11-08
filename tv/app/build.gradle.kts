@@ -29,6 +29,9 @@ android {
         versionCode = releaseVersionCode
         versionName = releaseVersion
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // libVLC ships native code: keep only the ABIs of the household devices (Chromecast with Google TV is
+        // armeabi-v7a userland; Google TV Streamer and newer boxes arm64-v8a). One universal APK, no splits.
+        ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
     }
 
     signingConfigs {
@@ -140,6 +143,7 @@ dependencies {
     implementation(libs.media3.datasource.okhttp)
     implementation(libs.media3.ui)
     implementation(libs.media3.session)
+    implementation(libs.libvlc.all)
     implementation(libs.coil.compose)
 
     testImplementation(testFixtures(project(":core")))

@@ -54,7 +54,10 @@ key is kept forever.
 ```bash
 make tv-build
 ```
-The APK is `tv/app/build/outputs/apk/release/app-release.apk` (about 3 MB). Its version comes from
+The APK is `tv/app/build/outputs/apk/release/app-release.apk` (about 95 MB: it bundles libVLC, the
+fallback player for files ExoPlayer can't decode, for ARM devices only (`armeabi-v7a` and `arm64-v8a`,
+which covers Chromecast with Google TV and Google TV Streamer); it doesn't install on an x86 emulator
+without ARM translation). Its version comes from
 the repo-root `version.txt` (`MAJOR.MINOR.PATCH`, version code `M*10000 + m*100 + p`), so bump
 `version.txt` before building a new release. A build with a lower version code than the installed
 app is refused by `adb install -r`.
@@ -153,6 +156,21 @@ Tailscale's official Android app supports Android TV (Android 8.0+).
 
 If you see "No se puede conectar con tu servidor HomeTV", open the Tailscale app on the TV
 (the **Abrir Tailscale** button does this) and check that it says *Connected*.
+
+## Playback
+HomeTV plays with the TV's own decoders (ExoPlayer). For formats the TV can't decode (e.g. Xvid/DivX
+AVI films) it switches automatically to the built-in VLC engine (libVLC 3.7.2), which plays the file
+straight from the server with no conversion. Nothing to choose: the player screen looks the same with
+both engines.
+
+- **Ajustes → Reproducción → "Usar siempre VLC (experimental)"** (admins only, shown when VLC is
+  available) plays every video with VLC, for testing. It applies from the next playback, to every
+  profile on that TV, and survives restarts and "Salir". If VLC crashes on every video while it is on,
+  an admin turns it off there (Ajustes never starts VLC).
+- The APK is ARM-only (`armeabi-v7a` + `arm64-v8a`): it doesn't install on an x86 emulator without ARM
+  translation.
+- The licence notice (libVLC is LGPL v2.1 or later; the other libraries are Apache 2.0) is in
+  **Ajustes → Acerca de → Licencias de código abierto**.
 
 ## Updating the app
 After changing the code (the server is updated separately: `git pull && docker compose up -d

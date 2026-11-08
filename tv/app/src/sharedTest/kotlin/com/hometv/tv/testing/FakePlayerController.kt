@@ -22,6 +22,9 @@ class FakePlayerController : PlayerController {
     var stopped = false
     var playWhenReady = false
 
+    /** Runs at the end of [stop] (e.g. a real player's late `onIsPlayingChanged(false)` / `onStateChanged(IDLE)`). */
+    var onStop: (() -> Unit)? = null
+
     override var positionMs: Long = 0
     override var durationMs: Long? = null
     override var bufferedPositionMs: Long = 0
@@ -67,6 +70,7 @@ class FakePlayerController : PlayerController {
         state = PlayerState.IDLE
         log += "stop"
         updatePlaying(false)
+        onStop?.invoke()
     }
 
     override fun release() {
@@ -116,13 +120,6 @@ class FakePlayerController : PlayerController {
         updatePlaying(false)
         listener?.onFailure(failure)
     }
-
-    /** A play / pause / seek command from the media session (Bluetooth headphones, any media controller). */
-    fun remotePlay() = listener?.onRemotePlay()
-
-    fun remotePause() = listener?.onRemotePause()
-
-    fun remoteSeek(forward: Boolean) = listener?.onRemoteSeek(forward)
 
     fun clearLog() = log.clear()
 }

@@ -2,10 +2,14 @@ package com.hometv.tv.di
 
 import android.content.Context
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
 import coil.ImageLoader
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.hometv.tv.BuildConfig
+import com.hometv.tv.R
 import com.hometv.tv.core.api.ApiClientFactory
 import com.hometv.tv.core.api.ApiClients
 import com.hometv.tv.core.api.Avatar
@@ -30,22 +34,35 @@ import com.hometv.tv.core.data.WatchRepository
 import com.hometv.tv.core.data.WatchlistRepository
 import com.hometv.tv.core.playback.CapsForFile
 import com.hometv.tv.core.playback.ClientCapsBuilder
+import com.hometv.tv.core.playback.EngineHistory
+import com.hometv.tv.core.playback.EngineInputs
+import com.hometv.tv.core.playback.EngineSelector
+import com.hometv.tv.core.playback.PlaybackEngine
 import com.hometv.tv.core.util.ServerUrl
 import com.hometv.tv.data.AccountState
+import com.hometv.tv.data.DataStoreEnginePrefs
 import com.hometv.tv.data.DataStoreSessionStore
+import com.hometv.tv.data.EnginePrefs
 import com.hometv.tv.data.HomeCache
 import com.hometv.tv.data.DetailRefresh
 import com.hometv.tv.data.HomeRefresh
+import com.hometv.tv.data.InMemoryEnginePrefs
 import com.hometv.tv.data.PlayerLaunches
 import com.hometv.tv.data.RatingPrompts
 import com.hometv.tv.data.SignOut
 import com.hometv.tv.playback.AndroidCodecInventory
 import com.hometv.tv.playback.CodecSource
 import com.hometv.tv.playback.ExoPlayerController
+import com.hometv.tv.playback.LibVlcPort
+import com.hometv.tv.playback.LibVlcProvider
+import com.hometv.tv.playback.VlcAvailability
+import com.hometv.tv.playback.VlcOptions
+import com.hometv.tv.playback.VlcPlayerController
 import com.hometv.tv.playback.PlayerFactory
 import com.hometv.tv.playback.SubtitleFileCache
 import com.hometv.tv.playback.SubtitleStore
 import com.hometv.tv.core.playback.PlayerController
+import com.hometv.tv.core.playback.VersionCaps
 import com.hometv.tv.ui.player.PlayerDeps
 import com.hometv.tv.ui.player.PlayerViewModel
 import com.hometv.tv.ui.activity.ActivityViewModel
@@ -72,12 +89,15 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import org.videolan.libvlc.LibVLC
 
 data class AppConfig(
     val versionName: String,
@@ -110,10 +130,16 @@ class AppContainer(
     private val clock: Clock = Clock.systemUTC(),
     /** The calendar's time zone (Actividad's relative times, ages on the Person screen): the device's, read each time; tests pin it. */
     private val zone: () -> ZoneId = ZoneId::systemDefault,
-    /** One player per Player screen, on the stream client of the current server (an ExoPlayer in the app, a fake in tests). */
-    private val playerControllers: (streamClient: OkHttpClient) -> PlayerController = { error("No player in this container") },
+    /** One controller per engine and Player screen, on the stream client of the current server (fakes in tests). */
+    private val playerControllers: (engine: PlaybackEngine, streamClient: OkHttpClient) -> PlayerController = { _, _ -> error("No player in this container") },
+    /** Whether libVLC can run here (never creates LibVLC): read per playback request and by the version tiers. */
+    val vlcAvailability: VlcAvailability = VlcAvailability { false },
     /** `cacheDir/subtitles` (side-loaded WebVTT files). */
     val subtitleCache: SubtitleStore = SubtitleFileCache(File(System.getProperty("java.io.tmpdir"), "hometv-subtitles")),
+    /** Per-device player preferences ("Usar siempre VLC (experimental)"); a separate file, untouched by sign-out and server changes. */
+    val enginePrefs: EnginePrefs = InMemoryEnginePrefs(),
+    /** The third-party licence notice (`res/raw/third_party_notices.txt`, read on IO by [create]'s lambda). */
+    private val notices: suspend () -> String = { "" },
 ) {
     val events = AppEvents()
 
@@ -210,6 +236,17 @@ class AppContainer(
         return CapsForFile { file -> ClientCapsBuilder.build(inventory, route, forFile = file) }
     }
 
+    /**
+     * Exo-first version tiers (Film detail's default version), the Player's rules (`PlayerViewModel.refreshCaps`):
+     * `exo` = `EngineSelector.exoCapsForFile` (today's caps, minus a legacy file's codec when libVLC is available),
+     * `any` = the engine caps per file (VLC caps for a file libVLC plays, or for every file while the device
+     * preference "Usar siempre VLC" is on); without libVLC `exo == any`.
+     */
+    suspend fun versionCaps(): VersionCaps {
+        val inputs = EngineInputs(codecs.inventory(), codecs.audioRoute(), vlcAvailable = vlcAvailability.isAvailable(), forceVlc = enginePrefs.forceVlc.value)
+        return VersionCaps(exo = EngineSelector.exoCapsForFile(inputs) { EngineHistory() }, any = EngineSelector.capsForFile(inputs) { EngineHistory() })
+    }
+
     /** The device caps without a file (Settings → Acerca de summary). */
     suspend fun deviceCaps(): ClientCaps = ClientCapsBuilder.build(codecs.inventory(), codecs.audioRoute())
 
@@ -268,7 +305,7 @@ class AppContainer(
     private val avatars: () -> List<Avatar> = { account.info.value?.avatars.orEmpty() }
 
     fun filmDetailViewModel(id: Long) =
-        FilmDetailViewModel(id, catalog, watch, watchlist, ratings, ratingPrompts, store, ::capsForFile, events, homeRefresh, detailRefresh, avatars)
+        FilmDetailViewModel(id, catalog, watch, watchlist, ratings, ratingPrompts, store, ::versionCaps, events, homeRefresh, detailRefresh, avatars)
 
     fun showDetailViewModel(id: Long) = ShowDetailViewModel(id, catalog, watch, watchlist, ratings, ratingPrompts, store, events, homeRefresh, detailRefresh, avatars)
 
@@ -278,7 +315,12 @@ class AppContainer(
     /** The actor screen; "today" (ages) is the [clock]'s date in the [zone]. */
     fun personViewModel(id: Long) = PersonViewModel(id, catalog, store, detailRefresh, today = { LocalDate.now(clock.withZone(zone())) })
 
-    fun settingsViewModel() = SettingsViewModel(store, account, profiles, ::deviceCaps, config.versionName)
+    fun settingsViewModel() = SettingsViewModel(
+        store, account, profiles, ::deviceCaps, config.versionName,
+        enginePrefs = enginePrefs,
+        vlcAvailable = vlcAvailability.isAvailable(),
+        notices = notices,
+    )
 
     fun playerViewModel(route: Route.Player) = PlayerViewModel(
         route,
@@ -293,7 +335,12 @@ class AppContainer(
             appScope = appScope,
             codecs = codecs,
             serverUrl = { store.session.value.serverUrl },
-            controller = playerControllers(clients().streamClient),
+            // Built lazily at the first attach that uses the engine (never before): an ExoPlayer-only screen never
+            // builds a libVLC MediaPlayer (nor LibVLC), a VLC-only one never builds an ExoPlayer.
+            controllers = { engine -> playerControllers(engine, clients().streamClient) },
+            vlcAvailable = vlcAvailability::isAvailable,
+            // Read at every playback request: a change in Ajustes applies to the next one.
+            forceVlc = { enginePrefs.forceVlc.value },
             subtitles = subtitleCache,
             ratingPrompts = ratingPrompts,
         ),
@@ -305,11 +352,22 @@ class AppContainer(
             val app = context.applicationContext
             val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
             val dataStore = DataStoreSessionStore.dataStore(File(app.filesDir, "datastore/session.preferences_pb"), appScope)
-            val store = runBlocking(Dispatchers.IO) { DataStoreSessionStore.load(dataStore) }
+            val deviceStore = DataStoreEnginePrefs.dataStore(File(app.filesDir, "datastore/device.preferences_pb"), appScope)
+            // Both files load in parallel: the device file adds no start-up latency.
+            val (store, enginePrefs) = runBlocking(Dispatchers.IO) {
+                val session = async { DataStoreSessionStore.load(dataStore) }
+                val prefs = async { DataStoreEnginePrefs.load(deviceStore) }
+                session.await() to prefs.await()
+            }
             val userAgent = "HomeTV-Android/${BuildConfig.VERSION_NAME} (Android ${Build.VERSION.SDK_INT}; ${Build.MODEL})"
             val base = OkHttpClient()
             val subtitles = SubtitleFileCache(File(app.cacheDir, "subtitles"))
             appScope.launch { subtitles.clear() } // nothing survives a process
+            val playerLog: (String, Throwable?) -> Unit = { msg, e -> runCatching { Log.i("HomeTvPlayer", msg, e) } }
+            // Nothing is created here: LibVLC loads its native code at the first VLC open (prd2 FR-5).
+            val heightPx = app.resources.displayMetrics.heightPixels
+            val libVlc = LibVlcProvider(Build.SUPPORTED_ABIS.toList(), { LibVLC(app, VlcOptions.libVlc(heightPx)) }, playerLog)
+            val mainHandler = Handler(Looper.getMainLooper())
             return AppContainer(
                 store = store,
                 homeCache = HomeCache(File(app.filesDir, "home_cache")),
@@ -318,8 +376,21 @@ class AppContainer(
                 clientsFactory = { url -> ApiClientFactory.create(url, token = { store.session.value.token }, userAgent = userAgent, base = base) },
                 validationClient = ApiClientFactory.validationClient(userAgent, base),
                 codecs = AndroidCodecInventory(app, appScope),
-                playerControllers = { streamClient -> ExoPlayerController(PlayerFactory.create(app, streamClient)) },
+                playerControllers = { engine, streamClient ->
+                    when (engine) {
+                        PlaybackEngine.EXO -> ExoPlayerController(PlayerFactory.create(app, streamClient))
+                        PlaybackEngine.VLC -> VlcPlayerController(
+                            portFactory = { LibVlcPort(libVlc.get()) },
+                            token = { store.session.value.token },
+                            log = playerLog,
+                            post = { block -> mainHandler.post(block) },
+                        )
+                    }
+                },
+                vlcAvailability = libVlc.availability,
                 subtitleCache = subtitles,
+                enginePrefs = enginePrefs,
+                notices = { withContext(Dispatchers.IO) { app.resources.openRawResource(R.raw.third_party_notices).bufferedReader().use { it.readText() } } },
             )
         }
     }

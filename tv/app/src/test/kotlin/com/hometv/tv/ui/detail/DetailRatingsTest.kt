@@ -17,6 +17,7 @@ import com.hometv.tv.core.data.FakeHomeTvApi.Companion.httpError
 import com.hometv.tv.core.data.RatingKind
 import com.hometv.tv.core.playback.CapsForFile
 import com.hometv.tv.core.playback.F
+import com.hometv.tv.core.playback.VersionCaps
 import com.hometv.tv.core.util.Stars
 import com.hometv.tv.data.DetailRefresh
 import com.hometv.tv.data.HomeRefresh
@@ -70,7 +71,7 @@ class DetailRatingsTest {
     }
 
     private fun filmVm() = FilmDetailViewModel(
-        12, repos.catalog, repos.watch, repos.watchlist, repos.ratings, repos.ratingPrompts, repos.store, { CapsForFile.of(F.caps) },
+        12, repos.catalog, repos.watch, repos.watchlist, repos.ratings, repos.ratingPrompts, repos.store, { CapsForFile.of(F.caps).let { c -> VersionCaps(c, c) } },
         repos.events, HomeRefresh(), DetailRefresh(), avatars = { avatars },
     )
 
@@ -225,7 +226,7 @@ class DetailRatingsTest {
     fun `a refetch while a write is in flight keeps the shown value`() = runTest(main.dispatcher) {
         val open = gate()
         val detailRefresh = DetailRefresh()
-        val vm = FilmDetailViewModel(12, repos.catalog, repos.watch, repos.watchlist, repos.ratings, repos.ratingPrompts, repos.store, { CapsForFile.of(F.caps) }, repos.events, HomeRefresh(), detailRefresh)
+        val vm = FilmDetailViewModel(12, repos.catalog, repos.watch, repos.watchlist, repos.ratings, repos.ratingPrompts, repos.store, { CapsForFile.of(F.caps).let { c -> VersionCaps(c, c) } }, repos.events, HomeRefresh(), detailRefresh)
         advanceUntilIdle()
         vm.onRatingMine()
         vm.onRatingStep(1)
@@ -273,7 +274,7 @@ class DetailRatingsTest {
     fun `a change during an in-flight film load refetches once more after it`() = runTest(main.dispatcher) {
         val refresh = DetailRefresh()
         val vm = FilmDetailViewModel(
-            12, repos.catalog, repos.watch, repos.watchlist, repos.ratings, repos.ratingPrompts, repos.store, { CapsForFile.of(F.caps) },
+            12, repos.catalog, repos.watch, repos.watchlist, repos.ratings, repos.ratingPrompts, repos.store, { CapsForFile.of(F.caps).let { c -> VersionCaps(c, c) } },
             repos.events, HomeRefresh(), refresh, avatars = { avatars },
         )
         advanceUntilIdle()
@@ -324,7 +325,7 @@ class DetailRatingsTest {
     fun `a write from the root prompt keeps the film's Error screen`() = runTest(main.dispatcher) {
         val refresh = DetailRefresh()
         val vm = FilmDetailViewModel(
-            12, repos.catalog, repos.watch, repos.watchlist, repos.ratings, repos.ratingPrompts, repos.store, { CapsForFile.of(F.caps) },
+            12, repos.catalog, repos.watch, repos.watchlist, repos.ratings, repos.ratingPrompts, repos.store, { CapsForFile.of(F.caps).let { c -> VersionCaps(c, c) } },
             repos.events, HomeRefresh(), refresh, avatars = { avatars },
         )
         advanceUntilIdle()

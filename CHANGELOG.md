@@ -4,6 +4,31 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.7.0] - Released on 2026-11-08 by Esther Almendros Pérez
+
+### Added
+
+#### TV app
+- A built-in VLC player (libVLC 3.7.2) for videos the TV can't play by itself. Old-format films and episodes (Xvid/DivX and other AVI, WMV/ASF, FLV, RealMedia, MPEG-PS files) and codecs the TV has no decoder for (e.g. HEVC in 4K on a 1080p TV) now play directly from the server with VLC, with no conversion and nothing to choose: the player screen, controls, tracks, subtitles and resume point work the same with both players.
+- When the TV's own player fails on a video (a decoding error, or the server can't convert the file for it), playback continues with VLC at the same point instead of showing an error. Each video gets this second chance once per playback.
+- When a film has several versions, the one the TV plays by itself is still preferred. A version that only VLC can play is chosen when there is no other, and keeps its resume point.
+- Ajustes → Reproducción → "Usar siempre VLC (experimental)" (admins only, shown when VLC is available) plays every video with VLC, for testing. It applies from the next playback, to every profile on that TV, and survives restarts and «Salir».
+- Ajustes → Acerca de → "Licencias de código abierto" shows the open-source notices of the libraries the app includes, among them VLC's (LGPL).
+- The remote's and headset's play/pause and seek keys also work while VLC is playing.
+
+#### Documentation
+- A new guide, `docs/server-automation-linux.md`, starts HomeTV at every boot once the media disk is mounted, and sets a daily power schedule (shut down at 02:00, power on at 15:00).
+- The Linux installation guide and the deploy README explain how to mount external USB/NTFS disks for HomeTV: one `/etc/fstab` line per disk (read-only, the server still boots without the disk), making Docker wait for the disks at boot, and the fix for USB enclosures that keep disconnecting. A troubleshooting entry covers "Falta el archivo… en el disco del servidor".
+- The TV app installation guide describes the VLC player, the "Usar siempre VLC" setting and the licence notices.
+
+### Changed
+
+#### TV app
+- The APK is larger (about 95 MB, was about 3 MB) because it includes VLC, and it only installs on ARM devices (such as Chromecast with Google TV and Google TV Streamer); x86 emulators without ARM translation are not supported.
+
+#### Server
+- Disks mounted inside the media folder (`MEDIA_DIR`) after HomeTV started, such as a USB disk that is late at boot or reconnects after a reset, are now visible to HomeTV without restarting it. On Docker Desktop (Windows) add `MEDIA_PROPAGATION=rprivate` to `deploy/.env`, as the Windows installation guide explains.
+
 ## [0.6.1] - Released on 2026-11-07 by Esther Almendros Pérez
 
 ### Changed

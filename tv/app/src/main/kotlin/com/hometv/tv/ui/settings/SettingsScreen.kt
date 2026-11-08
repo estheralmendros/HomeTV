@@ -16,6 +16,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
@@ -30,6 +33,7 @@ import com.hometv.tv.R
 import com.hometv.tv.ui.components.ActionButton
 import com.hometv.tv.ui.components.AvatarUi
 import com.hometv.tv.ui.components.NavTab
+import com.hometv.tv.ui.components.TextDialog
 import com.hometv.tv.ui.components.TopNav
 import com.hometv.tv.ui.components.rememberFocusRequesters
 import com.hometv.tv.ui.components.requestFocusWhenReady
@@ -38,7 +42,10 @@ import com.hometv.tv.ui.text.resolve
 import com.hometv.tv.ui.theme.HomeTvColors
 import com.hometv.tv.ui.theme.HomeTvDimens
 
-/** Settings / About. The only admin feature: the server change, admins only, behind the PIN. */
+/**
+ * Settings / About (admins only): the server change behind the PIN, the profile switch, "Reproducción" (the device
+ * switch "Usar siempre VLC (experimental)", only with libVLC) and Acerca de with [Licencias de código abierto].
+ */
 @Composable
 fun SettingsScreen(vm: SettingsViewModel, navigator: AppNavigator, avatar: AvatarUi?, showSettings: Boolean) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -54,7 +61,9 @@ fun SettingsScreen(vm: SettingsViewModel, navigator: AppNavigator, avatar: Avata
     LaunchedEffect(state.canChangeServer) { focus[if (state.canChangeServer) "server" else "profile"].requestFocusWhenReady() }
     Column(Modifier.fillMaxSize().background(HomeTvColors.Background)) {
         TopNav(NavTab.SETTINGS, navigator::openTab, avatar, navigator::switchProfile, tabs, showSettings)
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = HomeTvDimens.SafeHorizontal, vertical = 16.dp)) {
+        // The viewport stops at the bottom safe area, so a focused item scrolled into view (the last one,
+        // [Licencias de código abierto]) stays inside it.
+        Column(Modifier.fillMaxWidth().padding(bottom = HomeTvDimens.SafeVertical).verticalScroll(rememberScrollState()).padding(horizontal = HomeTvDimens.SafeHorizontal, vertical = 16.dp)) {
             Section(stringResource(R.string.settings_server)) {
                 Text(state.serverUrl, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(520.dp))
                 if (state.canChangeServer) {
@@ -65,6 +74,20 @@ fun SettingsScreen(vm: SettingsViewModel, navigator: AppNavigator, avatar: Avata
                 Text(state.profileName.orEmpty(), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(520.dp))
                 ActionButton(stringResource(R.string.settings_switch_profile), navigator::switchProfile, Modifier.focusRequester(focus["profile"]).testTag("settings_switch_profile"))
             }
+            // Admins with libVLC only (a device without it would ignore the switch). No PIN: it only changes how this TV decodes.
+            if (state.showForceVlc) {
+                val value = stringResource(if (state.forceVlc) R.string.settings_on else R.string.settings_off)
+                Section(stringResource(R.string.settings_playback), hint = stringResource(R.string.settings_force_vlc_hint)) {
+                    ActionButton(
+                        stringResource(R.string.settings_force_vlc),
+                        vm::onToggleForceVlc,
+                        Modifier.focusRequester(focus["vlc"]).testTag("settings_force_vlc"),
+                        icon = if (state.forceVlc) R.drawable.ic_check else null,
+                        contentDescription = stringResource(R.string.settings_force_vlc_description, value),
+                    )
+                    Text(value, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 16.dp).testTag("settings_force_vlc_value"))
+                }
+            }
             Text(stringResource(R.string.settings_about), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 24.dp, bottom = 8.dp))
             Text(state.appVersion.resolve(), style = MaterialTheme.typography.bodyMedium)
             state.serverVersion?.let { Text(it.resolve(), style = MaterialTheme.typography.bodyMedium) }
@@ -72,13 +95,28 @@ fun SettingsScreen(vm: SettingsViewModel, navigator: AppNavigator, avatar: Avata
             Spacer(Modifier.height(16.dp))
             Image(painterResource(R.drawable.tmdb_logo), contentDescription = stringResource(R.string.tmdb_logo), modifier = Modifier.width(154.dp))
             state.tmdbAttribution?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = HomeTvColors.Muted, modifier = Modifier.padding(top = 8.dp).testTag("tmdb_attribution")) }
+            // Every Settings viewer: libVLC ships in every APK, available or not.
+            ActionButton(stringResource(R.string.settings_licenses), vm::onOpenLicenses, Modifier.padding(top = 16.dp).focusRequester(focus["licenses"]).testTag("settings_licenses"))
         }
     }
     state.pin?.let { pin -> PinDialog(pin, vm::onPinDigit, vm::onPinDelete, vm::onPinDismiss) }
+    // Raw legal text (English, verbatim), not catalog UI text.
+    state.licenses?.let { TextDialog(stringResource(R.string.licenses_title), it, vm::onCloseLicenses, textTestTag = "licenses_text") }
+    // Closing the licence dialog gives focus back to [Licencias de código abierto].
+    val licensesOpen = state.licenses != null
+    var licensesWereOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(licensesOpen) {
+        if (!licensesOpen && licensesWereOpen) focus["licenses"].requestFocusWhenReady()
+        licensesWereOpen = licensesOpen
+    }
 }
 
+/** A titled row of content; an optional muted [hint] line below the row. */
 @Composable
-private fun Section(title: String, content: @Composable () -> Unit) {
+private fun Section(title: String, hint: String? = null, content: @Composable () -> Unit) {
     Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp))
-    Row(verticalAlignment = Alignment.CenterVertically) { content() }
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) { content() }
+        hint?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = HomeTvColors.Muted, modifier = Modifier.padding(top = 8.dp)) }
+    }
 }

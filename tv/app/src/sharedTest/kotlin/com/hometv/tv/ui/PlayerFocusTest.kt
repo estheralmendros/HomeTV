@@ -28,6 +28,10 @@ import org.junit.runner.RunWith
 class PlayerFocusTest : UiTestBase() {
     private fun text(value: String) = rule.onNodeWithText(value, useUnmergedTree = true)
 
+    private var vlc = false
+
+    override val vlcAvailable: Boolean get() = vlc
+
     private val twoAudio = F.file(1, audio = listOf(F.audio(1, codec = "aac", default = true), F.audio(2, codec = "ac3", channels = 6, language = "spa")))
 
     /** Home → OK on the "Seguir viendo" film card (Dune) → Player, READY and playing. */
@@ -59,6 +63,31 @@ class PlayerFocusTest : UiTestBase() {
         assertFocused("player_rewind")
         press(Key.DirectionUp)
         assertFocused("player_progress")
+    }
+
+    @Test
+    fun aFilmOnLibVlcShowsTheSameSurfaceAndOverlay() {
+        vlc = true
+        useLibrary()
+        val xvid = F.file(1, video = com.hometv.tv.core.api.VideoInfo("mpeg4", 720, 400), container = "avi", fileName = "dune.avi")
+        api.onFilm = { id -> com.hometv.tv.core.api.FilmDetail(id = id, title = "Dune", media_files = listOf(xvid)) }
+        api.onPlayback = { _, _ -> PlaybackResponse("direct", url = "/api/media-files/1/stream", audio_stream_index = 1, duration_seconds = 9360.0) }
+        launch()
+        press(Key.DirectionCenter)
+        onVlcPlayer { ready() }
+        assertEquals("only the VLC fake is built", 0, playerBuilds)
+        assertTrue(vlcPlayer.playWhenReady)
+        // Both fakes: the VLC surface is a plain Box (no VLCVideoLayout on Robolectric).
+        node("player_video").assertExists()
+        press(Key.DirectionUp)
+        assertFocused("player_play_pause")
+        text("Dune").assertIsDisplayed()
+        press(Key.DirectionRight)
+        assertFocused("player_forward")
+        press(Key.DirectionLeft)
+        press(Key.DirectionCenter)
+        assertFalse("OK on play/pause pauses libVLC too", vlcPlayer.playWhenReady)
+        assertFocused("player_play_pause")
     }
 
     @Test
