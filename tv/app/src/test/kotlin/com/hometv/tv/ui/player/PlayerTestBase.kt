@@ -14,6 +14,8 @@ import com.hometv.tv.core.data.PlaybackRepository
 import com.hometv.tv.core.data.SubtitleFetch
 import com.hometv.tv.core.data.SubtitleSource
 import com.hometv.tv.core.playback.F
+import com.hometv.tv.core.playback.PlaybackEngine
+import com.hometv.tv.core.playback.PlayerController
 import com.hometv.tv.data.PlayerLaunches
 import com.hometv.tv.playback.SubtitleFileCache
 import com.hometv.tv.testing.FakeCodecs
@@ -29,6 +31,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.extension.RegisterExtension
 
 /**
@@ -42,6 +45,24 @@ abstract class PlayerTestBase {
     protected val repos = TestRepos()
     protected val api get() = repos.api
     protected val controller = FakePlayerController()
+
+    /** The libVLC engine's controller (a second fake); untouched while [vlcAvailable] is false. */
+    protected val vlcController = FakePlayerController()
+
+    /** What `deps.controllers(VLC)` returns: [vlcController] unless a test overrides it (e.g. a real `VlcPlayerController`). */
+    protected open fun vlcControllerFor(): PlayerController = vlcController
+
+    /** libVLC is usable in this test (the default of [vlcAvailability], and the AC-3.1 end-of-test check). */
+    protected var vlcAvailable = false
+
+    /** `PlayerDeps.vlcAvailable`, read by the ViewModel at every request: [vlcAvailable] unless a test swaps it. */
+    protected var vlcAvailability: () -> Boolean = { vlcAvailable }
+
+    /** The admin debug switch, read for every request. */
+    protected var forceVlc = false
+
+    /** Every `deps.controllers(engine)` call, in order (lazy creation). */
+    protected val createdEngines = mutableListOf<PlaybackEngine>()
     protected val launches = PlayerLaunches()
     protected val subtitleDir = Files.createTempDirectory("subtitles").toFile()
     protected val subtitles = SubtitleFileCache(subtitleDir)
@@ -62,6 +83,8 @@ abstract class PlayerTestBase {
         } finally {
             created.filter { it !in clearedVms }.forEach(::clear)
         }
+        // AC-3.1: without libVLC (and without the debug switch) the VLC controller is never built, so it gets no call.
+        if (!vlcAvailable) assertTrue(PlaybackEngine.VLC !in createdEngines && vlcController.log.isEmpty(), "VLC used: $createdEngines")
     }
 
     /** Playback answers in order; the last one repeats. */
@@ -110,7 +133,12 @@ abstract class PlayerTestBase {
             appScope = backgroundScope,
             codecs = codecs,
             serverUrl = { repos.store.session.value.serverUrl },
-            controller = controller,
+            controllers = { engine ->
+                createdEngines += engine
+                if (engine == PlaybackEngine.EXO) controller else vlcControllerFor()
+            },
+            vlcAvailable = { vlcAvailability() },
+            forceVlc = { forceVlc },
             subtitles = subtitles,
             ratingPrompts = repos.ratingPrompts,
             nowMs = { testScheduler.currentTime },

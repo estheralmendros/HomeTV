@@ -38,7 +38,10 @@ allowed by your ACL, at `https://hometv.<tailnet>.ts.net`.
    - `TS_AUTHKEY`: the key from step 3;
    - `TMDB_API_KEY`: TMDB v3 key or v4 read token (empty = no metadata, items stay `pending`);
    - `MEDIA_DIR`: host folder with your media, one broad parent (e.g. a whole disk). It is mounted
-     read-only at `/media`; folder names such as `Films`/`TV` are not required.
+     read-only at `/media`; folder names such as `Films`/`TV` are not required. Disks belong under it
+     (see "USB / NTFS media disks");
+   - `MEDIA_PROPAGATION` (optional, default `rslave`): `rprivate` on Docker Desktop, which doesn't
+     support mount propagation.
 5. **Start**: `docker compose up -d --build` (run in `deploy/`).
 6. **First use**: open `https://hometv.<tailnet>.ts.net`, create the first admin profile (4-digit
    PIN), then open **Administración → Bibliotecas**: add the folders under `/media` that hold
@@ -60,8 +63,11 @@ allowed by your ACL, at `https://hometv.<tailnet>.ts.net`.
   several folders, or none.
   - The folder browser explores `/media` (`HOMETV_MEDIA_BROWSE_ROOT`); typing a full path works
     everywhere.
-  - A folder on a new host disk still needs a volume line in `docker-compose.yml` (e.g.
-    `/srv/disk2:/media/disk2:ro`) and `docker compose up -d`; then add it in Bibliotecas.
+  - A new host disk: mount it under `MEDIA_DIR` (e.g. `/srv/media/HD02`, see "USB / NTFS media
+    disks" below) and add its folders in Bibliotecas, with no restart. `MEDIA_DIR` is bound with
+    `propagation: rslave` (`MEDIA_PROPAGATION`), so mounts made after the container started (a disk
+    plugged in later, re-mounted after a USB reset) are visible inside it. A disk mounted elsewhere
+    needs its own bind in `docker-compose.yml` (example in the comment there) and `docker compose up -d`.
   - Series layout: the Series folder is the one that holds one subfolder per show (episode files
     may also sit directly in it, named with the show and `S01E01`). Choose exactly that folder,
     not its parent or a show's subfolder. Changing it later re-reads the episodes from the new
@@ -123,6 +129,54 @@ allowed by your ACL, at `https://hometv.<tailnet>.ts.net`.
   you bind-mount a host directory at `/data` instead, `chown 1000:1000` it first.
 - Exactly one uvicorn worker (`WEB_CONCURRENCY` other than 1 aborts startup): SQLite writes and
   HLS sessions live in one process.
+
+## USB / NTFS media disks
+
+External disks formatted on Windows (NTFS) work read-only. Mount them by `/etc/fstab` under
+`MEDIA_DIR`, not through the desktop file manager: its mounts (`/run/media/<user>/…`) exist only while
+that user is logged in, and its kernel `ntfs3` driver refuses a volume marked dirty (unplugged without
+"Safely remove", Windows Fast Startup).
+
+1. Find each disk's UUID with `sudo blkid` and create its mount point (`sudo mkdir -p /srv/media/HD01`).
+2. Add one line per disk to `/etc/fstab` (one line each, `ntfs-3g` tolerates a dirty flag; `nofail`
+   keeps the boot going when the disk is unplugged):
+
+   ```
+   UUID=<uuid>  /srv/media/HD01  ntfs-3g  ro,uid=1000,gid=1000,nofail,x-systemd.device-timeout=10  0  0
+   ```
+
+   Install it with `sudo apt install ntfs-3g`, then `sudo systemctl daemon-reload && sudo mount -a`.
+   Check with `sudo findmnt --verify` (a "kernel doesn't support ntfs-3g" warning is expected: it is a
+   FUSE driver).
+3. Make Docker start after the disks, so the container never starts with empty mount points.
+   The unit names come from the mount paths (`systemd-escape -p --suffix=mount /srv/media/HD01` →
+   `srv-media-HD01.mount`):
+
+   ```bash
+   sudo mkdir -p /etc/systemd/system/docker.service.d
+   printf '[Unit]\nWants=srv-media-HD01.mount\nAfter=srv-media-HD01.mount\n' \
+     | sudo tee /etc/systemd/system/docker.service.d/wait-for-media.conf
+   sudo systemctl daemon-reload
+   ```
+
+   List every disk on both lines. `Wants=` (not `Requires=`) still starts Docker when a disk is missing.
+4. A USB enclosure that keeps resetting (`dmesg` shows `uas_eh_abort_handler` and `reset SuperSpeed USB
+   device`, then `I/O error` on its disk) usually doesn't work well with the UAS driver. Use plain
+   usb-storage for that enclosure only (`lsusb` shows its `ID VID:PID`, e.g. `0bc2:2312`; several are
+   comma-separated):
+
+   ```bash
+   echo "options usb-storage quirks=0bc2:2312:u" | sudo tee /etc/modprobe.d/disable-uas.conf
+   sudo update-initramfs -u && sudo reboot
+   ```
+
+   After the reboot `dmesg | grep -i "uas is ignored"` confirms it. If resets continue, suspect power
+   or the cable (a port on the computer itself, or a powered hub).
+
+Symptoms of a disk the container can't see: "Falta el archivo de este título en el disco del servidor"
+on play, `root_unavailable` in the scan card, or `docker compose exec app ls /media/HD01` empty while
+the host lists it. With the default propagation it fixes itself once the disk is mounted again; with
+`MEDIA_PROPAGATION=rprivate`, run `docker compose up -d --force-recreate app`.
 
 ## Configuration reference
 

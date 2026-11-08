@@ -104,7 +104,7 @@ On a phone, the same web app switches to a bottom tab bar:
 | **Scanner** | Walks the library folders, parses file names (guessit), probes them with ffprobe and links them to films, shows and episodes. On Linux, inotify triggers a scan of just the changed folder. |
 | **Metadata** | Matches titles on TMDB (Spanish first, with fallbacks), caches posters, backdrops, cast and biographies locally. |
 | **Playback** | Each client reports what it can decode. The server answers "play the original file" (byte-range streaming) or starts an HLS session: ffmpeg remuxes the video into fMP4 segments cut at keyframes and converts the audio only when needed. |
-| **Clients** | The web app (React + hls.js) and the Android TV app (Compose for TV + Media3 ExoPlayer) share the same REST API. |
+| **Clients** | The web app (React + hls.js) and the Android TV app (Compose for TV + Media3 ExoPlayer, with libVLC as the fallback player for formats the TV can't decode) share the same REST API. |
 
 ## Getting started
 
@@ -173,7 +173,8 @@ library).
 `adb install -r`; see the [TV app guide](docs/tv-app-installation.md).
 
 Contributor conventions (strict TDD, DB write rules, test layout) are in [`CLAUDE.md`](CLAUDE.md).
-The release version lives in [`version.txt`](version.txt); changes are listed in
+The release version lives in [`version.txt`](version.txt), the only file a version bump changes (the
+server, the Docker image and the TV app read it); changes are listed in
 [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Configuration
@@ -202,7 +203,7 @@ seed them, then ignored. Full list: the
 | --- | --- |
 | [`server/`](server) | The HomeTV server: Python 3.12, FastAPI, SQLAlchemy + SQLite, Alembic, ffmpeg. REST API under `/api` (OpenAPI docs at `/api/docs`); also serves the web app. |
 | [`web/`](web) | The web app: React 18 + TypeScript + Vite, TanStack Query, hls.js. Built into `web/dist`. |
-| [`tv/`](tv) | The Android TV / Google TV app: Kotlin, Compose for TV, Media3 ExoPlayer. Viewer-only. See [`tv/README.md`](tv/README.md). |
+| [`tv/`](tv) | The Android TV / Google TV app: Kotlin, Compose for TV, Media3 ExoPlayer + libVLC (ARM-only APK). Viewer-only. See [`tv/README.md`](tv/README.md). |
 | [`deploy/`](deploy) | Docker image and Compose stack (the server plus a Tailscale sidecar). |
 | [`docs/`](docs) | User guides and the screenshots in this README. |
 | [`scripts/`](scripts) | `create-environment.sh`: local demo environment. |
@@ -224,8 +225,13 @@ Built on [FastAPI](https://fastapi.tiangolo.com/), [SQLAlchemy](https://www.sqla
 [guessit](https://github.com/guessit-io/guessit), [FFmpeg](https://ffmpeg.org/),
 [React](https://react.dev/), [TanStack Query](https://tanstack.com/query),
 [hls.js](https://github.com/video-dev/hls.js), [Jetpack Compose for TV](https://developer.android.com/training/tv/playback/compose),
-[Media3 ExoPlayer](https://developer.android.com/media/media3/exoplayer) and
-[Tailscale](https://tailscale.com/).
+[Media3 ExoPlayer](https://developer.android.com/media/media3/exoplayer),
+[libVLC](https://www.videolan.org/vlc/libvlc.html) and [Tailscale](https://tailscale.com/).
+
+The TV app bundles libVLC for Android (`org.videolan.android:libvlc-all`, © VideoLAN and VLC authors),
+unmodified and dynamically linked, under the GNU LGPL v2.1 or later. Its notice, source links and the
+licence text ship in the app: Ajustes → Acerca de → Licencias de código abierto
+(`tv/app/src/main/res/raw/third_party_notices.txt`).
 
 <a href="https://www.themoviedb.org/"><img src="web/src/assets/tmdb-logo.svg" height="14" alt="TMDB"></a>
 This product uses the TMDB API but is not endorsed or certified by TMDB. Posters, artwork and

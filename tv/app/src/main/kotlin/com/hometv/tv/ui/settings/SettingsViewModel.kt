@@ -1,5 +1,6 @@
 package com.hometv.tv.ui.settings
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.hometv.tv.R
@@ -9,6 +10,8 @@ import com.hometv.tv.core.data.ProfileRepository
 import com.hometv.tv.core.data.SessionStore
 import com.hometv.tv.core.util.Format
 import com.hometv.tv.data.AccountState
+import com.hometv.tv.data.EnginePrefs
+import com.hometv.tv.data.InMemoryEnginePrefs
 import com.hometv.tv.ui.text.UiText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -39,6 +42,11 @@ data class SettingsUiState(
     val canChangeServer: Boolean = false,
     /** The admin PIN dialog, when open. */
     val pin: PinUi? = null,
+    /** "Usar siempre VLC (experimental)" is offered (admin and libVLC available). */
+    val showForceVlc: Boolean = false,
+    val forceVlc: Boolean = false,
+    /** The licence dialog text (raw legal text, not catalog UI text), null while closed. */
+    val licenses: String? = null,
 )
 
 /** The PIN dialog: how many digits are entered, the message under the dots, and the lockout. */
@@ -54,6 +62,10 @@ class SettingsViewModel(
     private val profiles: ProfileRepository,
     private val caps: suspend () -> ClientCaps,
     versionName: String,
+    private val enginePrefs: EnginePrefs = InMemoryEnginePrefs(),
+    private val vlcAvailable: Boolean = false,
+    private val notices: suspend () -> String = { "" },
+    private val log: (String, Throwable?) -> Unit = { msg, e -> runCatching { Log.w("HomeTvSettings", msg, e) } },
 ) : ViewModel() {
     private val _state = MutableStateFlow(
         SettingsUiState(serverUrl = store.session.value.serverUrl.orEmpty(), appVersion = UiText.Res(R.string.settings_app_version, listOf(versionName))),
@@ -104,6 +116,45 @@ class SettingsViewModel(
         _state.update { it.copy(pin = null) }
     }
 
+    /** The force-VLC write in flight: a second press before it lands is ignored (it would write the same value). */
+    private var toggleJob: Job? = null
+
+    /**
+     * [Usar siempre VLC (experimental)]: flips the device preference (admins with libVLC only, no PIN: it only
+     * changes how this TV decodes). Applies to the next playback request.
+     */
+    fun onToggleForceVlc() {
+        val s = _state.value
+        if (!s.showForceVlc || toggleJob?.isActive == true) return
+        toggleJob = viewModelScope.launch { enginePrefs.setForceVlc(!s.forceVlc) }
+    }
+
+    /** The notice read in flight: a second OK before it lands is ignored. */
+    private var licensesJob: Job? = null
+
+    /**
+     * [Licencias de código abierto]: loads the notice into the dialog; a load failure is logged and opens nothing.
+     * Ignored while a load is in flight or the dialog is already shown.
+     */
+    fun onOpenLicenses() {
+        if (licensesJob?.isActive == true || _state.value.licenses != null) return
+        licensesJob = viewModelScope.launch {
+            val text = try {
+                notices()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log("Licence notice unreadable", e)
+                return@launch
+            }
+            _state.update { it.copy(licenses = text) }
+        }
+    }
+
+    fun onCloseLicenses() {
+        _state.update { it.copy(licenses = null) }
+    }
+
     private fun submit(pin: String) {
         submitJob = viewModelScope.launch {
             val result = profiles.verifyAdminPin(pin)
@@ -145,12 +196,14 @@ class SettingsViewModel(
                     it.copy(
                         profileName = profile?.name,
                         canChangeServer = profile?.is_admin == true,
+                        showForceVlc = profile?.is_admin == true && vlcAvailable,
                         serverVersion = info?.let { i -> UiText.Res(R.string.settings_server_version, listOf(i.name, i.version.orEmpty())) },
                         tmdbAttribution = info?.tmdb_attribution,
                     )
                 }
             }
         }
+        viewModelScope.launch { enginePrefs.forceVlc.collect { on -> _state.update { it.copy(forceVlc = on) } } }
         viewModelScope.launch { account.refresh() }
         viewModelScope.launch {
             // A codec scan failure (MediaCodecList) only hides the caps line; cancellation still propagates.

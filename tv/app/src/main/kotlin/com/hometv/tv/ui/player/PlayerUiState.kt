@@ -1,5 +1,6 @@
 package com.hometv.tv.ui.player
 
+import com.hometv.tv.core.playback.PlaybackEngine
 import com.hometv.tv.core.playback.PlayerAction
 import com.hometv.tv.core.playback.PreparingEstimate
 import com.hometv.tv.core.util.EpisodeCode
@@ -92,6 +93,11 @@ data class PlayerUiState(
     val keepScreenOn: Boolean = false,
     /** Bumped whenever the overlay should put focus on the play/pause button. */
     val focusPlayPause: Int = 0,
+    /**
+     * The engine of the active controller: null until the first attach creates one, then changes only on an
+     * engine switch. The video surface is keyed on it; no visible text depends on it (the choice is invisible).
+     */
+    val engine: PlaybackEngine? = null,
 )
 
 /** One-off effects for the screen. */

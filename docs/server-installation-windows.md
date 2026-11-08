@@ -105,6 +105,9 @@ Set:
 - `MEDIA_DIR`: the broad media folder **with forward slashes**, e.g. `MEDIA_DIR=D:/Media`
   (mounted read-only at `/media`). Media on another drive: add a line such as
   `- E:/Series:/media/disk2:ro` to the `app` service's `volumes:` in `docker-compose.yml`.
+- `MEDIA_PROPAGATION=rprivate`: add this line. Docker Desktop doesn't support the mount
+  propagation the Linux setup uses (`rslave`), and without this line `docker compose up` can
+  fail with "not a shared or slave mount".
 
 Save the file. Keep it private: it holds your keys.
 

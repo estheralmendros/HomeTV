@@ -94,6 +94,61 @@ everyone or by uid/gid 1000:
 sudo chmod -R a+rX /srv/media          # readable, folders listable; nothing becomes writable
 ```
 
+### USB or NTFS disks
+
+If your videos are on external disks (often formatted on Windows, NTFS), mount each one inside
+the media folder, e.g. `/srv/media/HD01`, and let the system do it at every boot. Don't rely on
+opening the disk in the desktop's file manager: that mount disappears when you log out, and it
+refuses a disk that was unplugged without "Safely remove".
+
+1. Install the NTFS driver and find each disk's UUID:
+
+   ```bash
+   sudo apt install ntfs-3g
+   sudo blkid                           # e.g. /dev/sdb1: LABEL="HD01" UUID="3A92EBC392EB822D" TYPE="ntfs"
+   sudo mkdir -p /srv/media/HD01
+   ```
+
+2. Add one line per disk at the end of `/etc/fstab`. Each entry must stay on **one line**, so add
+   it from the terminal rather than pasting into an editor:
+
+   ```bash
+   echo 'UUID=3A92EBC392EB822D /srv/media/HD01 ntfs-3g ro,uid=1000,gid=1000,nofail,x-systemd.device-timeout=10 0 0' | sudo tee -a /etc/fstab
+   sudo findmnt --verify                # 0 errors; warnings about ntfs-3g are normal
+   sudo systemctl daemon-reload && sudo mount -a
+   ls /srv/media/HD01
+   ```
+
+   `ro` mounts it read-only (HomeTV only reads, and a power cut can't mark the disk dirty), and
+   `nofail` lets the server boot without the disk. The disk's files are owned by uid 1000, so
+   step 2's `chmod` isn't needed for them.
+
+3. Make Docker wait for the disks at boot. The names are the mount paths with `/` replaced by `-`
+   and `.mount` added (`systemd-escape -p --suffix=mount /srv/media/HD01` prints it). List every disk:
+
+   ```bash
+   sudo mkdir -p /etc/systemd/system/docker.service.d
+   printf '[Unit]\nWants=srv-media-HD01.mount\nAfter=srv-media-HD01.mount\n' \
+     | sudo tee /etc/systemd/system/docker.service.d/wait-for-media.conf
+   sudo systemctl daemon-reload
+   ```
+
+4. If a USB disk keeps disconnecting (`sudo dmesg` shows `uas_eh_abort_handler`, `reset
+   SuperSpeed USB device` and `I/O error`), its enclosure doesn't get along with the UAS driver.
+   Turn UAS off for that enclosure only. `lsusb` shows its `ID`, e.g. `0bc2:2312` for a Seagate
+   Expansion:
+
+   ```bash
+   echo "options usb-storage quirks=0bc2:2312:u" | sudo tee /etc/modprobe.d/disable-uas.conf
+   sudo update-initramfs -u && sudo reboot
+   ```
+
+   After the reboot, `sudo dmesg | grep -i "uas is ignored"` confirms it. If it still resets, try
+   another cable, a port on the computer itself or a powered hub.
+
+All of this is permanent: it survives reboots and updates. You only repeat steps 1–3 for a new disk
+(and step 4 for a new enclosure model).
+
 ## 3. Get HomeTV
 
 ```bash
@@ -150,8 +205,11 @@ Set:
 - `TS_AUTHKEY`: the key from step 4.
 - `TMDB_API_KEY`: the key from step 5, or leave it empty.
 - `MEDIA_DIR`: the broad parent folder from step 2, e.g. `/srv/media` (mounted read-only at
-  `/media`). Media on a second disk: mount it once more under `/media` by adding a line such as
-  `- /srv/disk2:/media/disk2:ro` to the `app` service's `volumes:` in `docker-compose.yml`.
+  `/media`). Media on more disks: mount each disk inside it (e.g. `/srv/media/HD01`,
+  `/srv/media/HD02`), as explained in [USB or NTFS disks](#usb-or-ntfs-disks). A disk mounted
+  there later, even while HomeTV runs, shows up inside `/media` without a restart. A disk you
+  can't mount inside `MEDIA_DIR` needs its own line in the `app` service's `volumes:` in
+  `docker-compose.yml` (there is an example in the comment).
 
 `.env` holds secrets: keep it private (`chmod 600 .env`) and never commit it.
 
@@ -208,8 +266,8 @@ cambios**, and the screen asks for confirmation before any save that has consequ
 - Moving a folder between Películas and Series deletes the watch history of its titles.
 - Changing the Series folder re-reads its episodes from the new folder; shows whose name changes
   lose their watch history.
-- A folder on a new disk needs its `docker-compose.yml` volume line first (step 6), then
-  `docker compose up -d`, then add it in Bibliotecas.
+- A folder on a new disk: mount the disk inside `MEDIA_DIR` first ([USB or NTFS
+  disks](#usb-or-ntfs-disks)), then add the folder in Bibliotecas. No restart is needed.
 
 **Upgrading from an older HomeTV**: the folders you had (`HOMETV_FILMS_PATHS` /
 `HOMETV_SHOWS_PATHS`, or the files already indexed) are kept automatically on the first start.
@@ -268,6 +326,11 @@ in `docker-compose.yml`; see [`deploy/README.md`](../deploy/README.md).
   A **No encontrada** chip means the path is not mounted (check `MEDIA_DIR` and the volume
   lines); **Sin permiso** means it is not readable by uid 1000 (step 2). The scan card in
   *Administración → Escaneo* lists errors.
+- **"Falta el archivo de este título en el disco del servidor" when playing**, or a folder that
+  is suddenly **No encontrada**: the disk isn't mounted. Compare `findmnt -l | grep srv/media` on
+  the server with `docker compose exec app ls /media/HD01`. Mount it again (`sudo mount -a`) and
+  check `sudo dmesg` for USB resets ([USB or NTFS disks](#usb-or-ntfs-disks), step 4). HomeTV keeps
+  the titles while a disk is missing.
 - **"La carpeta no existe en el servidor" for a folder with accents** (e.g. `/media/películas`)
   that does exist: pick it with the folder browser instead of typing it. The name on disk may
   use another Unicode form (e.g. copied from a Mac).

@@ -3,6 +3,8 @@ package com.hometv.tv.ui.settings
 import com.hometv.tv.R
 import com.hometv.tv.core.api.Profile
 import com.hometv.tv.core.api.ServerInfo
+import com.hometv.tv.data.EnginePrefs
+import com.hometv.tv.data.InMemoryEnginePrefs
 import com.hometv.tv.testing.MainDispatcherExtension
 import com.hometv.tv.testing.ScriptedApi
 import com.hometv.tv.testing.testContainer
@@ -153,5 +155,153 @@ class SettingsViewModelTest {
         advanceUntilIdle()
         assertTrue(emissions.isEmpty(), "a cancelled check never opens Setup")
         assertEquals(PinUi(entered = 2), vm.state.value.pin, "no late result lands on the new dialog")
+    }
+    // ---- "Reproducción" (force VLC) and the licence notice ------------------------------------
+
+    private fun kotlinx.coroutines.test.TestScope.engineSettings(
+        profile: Profile,
+        vlcAvailable: Boolean = true,
+        prefs: EnginePrefs = InMemoryEnginePrefs(),
+        notices: String = "THIRD PARTY NOTICES",
+    ): SettingsViewModel {
+        val api = ScriptedApi().apply { onMe = { profile } }
+        val vm = testContainer(api, backgroundScope, vlcAvailable = vlcAvailable, enginePrefs = prefs, notices = notices).settingsViewModel()
+        advanceUntilIdle()
+        return vm
+    }
+
+    /** Counts writes; [gate] parks them until completed. */
+    private class RecordingPrefs : EnginePrefs {
+        private val state = kotlinx.coroutines.flow.MutableStateFlow(false)
+        override val forceVlc: kotlinx.coroutines.flow.StateFlow<Boolean> = state
+        val writes = mutableListOf<Boolean>()
+        var gate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
+        override suspend fun setForceVlc(on: Boolean) {
+            writes += on
+            gate?.await()
+            state.value = on
+        }
+    }
+
+    @Test
+    fun `AC-13_1 an admin with libVLC is offered force VLC, and toggling twice writes on then off`() = runTest(main.dispatcher) {
+        val prefs = InMemoryEnginePrefs()
+        val vm = engineSettings(admin, prefs = prefs)
+        assertTrue(vm.state.value.showForceVlc)
+        assertFalse(vm.state.value.forceVlc)
+
+        vm.onToggleForceVlc()
+        advanceUntilIdle()
+        assertTrue(prefs.forceVlc.value)
+        assertTrue(vm.state.value.forceVlc)
+
+        vm.onToggleForceVlc()
+        advanceUntilIdle()
+        assertFalse(prefs.forceVlc.value)
+        assertFalse(vm.state.value.forceVlc)
+    }
+
+    @Test
+    fun `AC-13_1 a viewer, or a device without libVLC, is not offered force VLC and the toggle writes nothing`() = runTest(main.dispatcher) {
+        for ((profile, vlc) in listOf(viewer to true, admin to false)) {
+            val prefs = RecordingPrefs()
+            val vm = engineSettings(profile, vlcAvailable = vlc, prefs = prefs)
+            assertFalse(vm.state.value.showForceVlc, "$profile vlc=$vlc")
+            vm.onToggleForceVlc()
+            advanceUntilIdle()
+            assertTrue(prefs.writes.isEmpty(), "$profile vlc=$vlc")
+        }
+    }
+
+    @Test
+    fun `a second press while the write is pending is ignored`() = runTest(main.dispatcher) {
+        val prefs = RecordingPrefs().apply { gate = kotlinx.coroutines.CompletableDeferred() }
+        val vm = engineSettings(admin, prefs = prefs)
+
+        vm.onToggleForceVlc()
+        runCurrent()
+        vm.onToggleForceVlc()
+        runCurrent()
+        assertEquals(listOf(true), prefs.writes)
+
+        prefs.gate!!.complete(Unit)
+        advanceUntilIdle()
+        assertTrue(vm.state.value.forceVlc)
+        prefs.gate = null
+        vm.onToggleForceVlc()
+        advanceUntilIdle()
+        assertEquals(listOf(true, false), prefs.writes)
+    }
+
+    @Test
+    fun `the stored preference is shown`() = runTest(main.dispatcher) {
+        assertTrue(engineSettings(admin, prefs = InMemoryEnginePrefs(initial = true)).state.value.forceVlc)
+    }
+
+    @Test
+    fun `the licence notice opens with the notice text and closes`() = runTest(main.dispatcher) {
+        val vm = engineSettings(viewer, vlcAvailable = false, notices = "LGPL text")
+        assertNull(vm.state.value.licenses)
+
+        vm.onOpenLicenses()
+        advanceUntilIdle()
+        assertEquals("LGPL text", vm.state.value.licenses)
+
+        vm.onCloseLicenses()
+        assertNull(vm.state.value.licenses)
+    }
+
+    @Test
+    fun `a notice that cannot be read is logged and opens nothing`() = runTest(main.dispatcher) {
+        val c = testContainer(ScriptedApi().apply { onMe = { admin } }, backgroundScope)
+        val logged = mutableListOf<Throwable?>()
+        val vm = SettingsViewModel(
+            c.store, c.account, c.profiles, c::deviceCaps, "0.1.0",
+            notices = { throw java.io.IOException("missing raw resource") },
+            log = { _, e -> logged += e },
+        )
+        advanceUntilIdle()
+
+        vm.onOpenLicenses()
+        advanceUntilIdle()
+
+        assertNull(vm.state.value.licenses)
+        assertTrue(logged.single() is java.io.IOException)
+    }
+
+    @Test
+    fun `a second open while the notice loads, or while it is shown, reads nothing more`() = runTest(main.dispatcher) {
+        val c = testContainer(ScriptedApi().apply { onMe = { admin } }, backgroundScope)
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var reads = 0
+        val vm = SettingsViewModel(
+            c.store, c.account, c.profiles, c::deviceCaps, "0.1.0",
+            notices = {
+                reads++
+                gate.await()
+                "LGPL text"
+            },
+            log = { _, _ -> },
+        )
+        advanceUntilIdle()
+
+        vm.onOpenLicenses()
+        runCurrent()
+        vm.onOpenLicenses()
+        runCurrent()
+        assertEquals(1, reads, "a quick second OK while loading")
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals("LGPL text", vm.state.value.licenses)
+
+        vm.onOpenLicenses()
+        advanceUntilIdle()
+        assertEquals(1, reads, "already shown")
+
+        vm.onCloseLicenses()
+        vm.onOpenLicenses()
+        advanceUntilIdle()
+        assertEquals(2, reads, "a reopen after closing reads again")
+        assertEquals("LGPL text", vm.state.value.licenses)
     }
 }

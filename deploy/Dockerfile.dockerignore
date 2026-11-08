@@ -1,5 +1,6 @@
 # Build context is the repo root (compose: context ..). Send only what the Dockerfile copies.
 *
+!version.txt
 !server/pyproject.toml
 !server/uv.lock
 !server/.python-version

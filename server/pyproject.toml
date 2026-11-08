@@ -1,6 +1,7 @@
 [project]
 name = "hometv"
-version = "0.6.1"
+# The release version is the repo-root version.txt (the only place a bump edits): see [tool.hatch.version].
+dynamic = ["version"]
 description = "HomeTV server: self-hosted media catalog and playback"
 requires-python = ">=3.12"
 dependencies = [
@@ -36,6 +37,14 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["hometv"]
+
+[tool.hatch.version]
+path = "../version.txt"
+pattern = "(?P<version>\\S+)"
+
+[tool.uv]
+# Rebuild the project (new package metadata, hence hometv.__version__) when version.txt changes.
+cache-keys = [{ file = "pyproject.toml" }, { file = "../version.txt" }]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

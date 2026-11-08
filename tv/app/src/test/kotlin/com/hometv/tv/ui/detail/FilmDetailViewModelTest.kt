@@ -6,11 +6,22 @@ import com.hometv.tv.core.api.FilmDetail
 import com.hometv.tv.core.api.Genre
 import com.hometv.tv.core.api.MediaFile
 import com.hometv.tv.core.api.Progress
+import com.hometv.tv.core.api.VideoInfo
 import com.hometv.tv.core.api.WatchedRequest
 import com.hometv.tv.core.api.WatchedResponse
 import com.hometv.tv.core.data.AppEvent
+import com.hometv.tv.core.playback.AudioRouteCaps
 import com.hometv.tv.core.playback.CapsForFile
+import com.hometv.tv.core.playback.CodecInventory
+import com.hometv.tv.core.playback.EngineHistory
+import com.hometv.tv.core.playback.EngineInputs
+import com.hometv.tv.core.playback.EngineSelector
 import com.hometv.tv.core.playback.F
+import com.hometv.tv.core.playback.Mimes
+import com.hometv.tv.core.playback.TieredVersions
+import com.hometv.tv.core.playback.VersionCaps
+import com.hometv.tv.core.playback.VersionSelector
+import com.hometv.tv.core.playback.VideoDecoder
 import com.hometv.tv.core.util.Runtime
 import com.hometv.tv.data.DetailRefresh
 import com.hometv.tv.data.HomeRefresh
@@ -43,13 +54,16 @@ class FilmDetailViewModelTest {
     private val refresh = HomeRefresh()
     private val detailRefresh = DetailRefresh()
     private var caps = CapsForFile.of(F.caps)
+
+    /** The libVLC tiers (null = libVLC unavailable: `exo == any == caps`). */
+    private var versionCaps: VersionCaps? = null
     private var film = FilmDetail(id = 12, title = "Dune", match_status = "matched")
 
     init {
         repos.api.onFilm = { film }
     }
 
-    private fun vm() = FilmDetailViewModel(12, repos.catalog, repos.watch, repos.watchlist, repos.ratings, repos.ratingPrompts, repos.store, { caps }, repos.events, refresh, detailRefresh)
+    private fun vm() = FilmDetailViewModel(12, repos.catalog, repos.watch, repos.watchlist, repos.ratings, repos.ratingPrompts, repos.store, { versionCaps ?: VersionCaps(caps, caps) }, repos.events, refresh, detailRefresh)
 
     private fun FilmDetailViewModel.content() = state.value as FilmDetailUiState.Content
 
@@ -781,5 +795,44 @@ class FilmDetailViewModelTest {
         gates.single().complete(Unit)
         advanceUntilIdle()
         assertFalse(repos.watchlist.writing.value, "the write completed")
+    }
+
+    // ---- Exo-first version tiers (libVLC available) ------------------------------------------
+
+    /** A device without hardware HEVC, libVLC available: the tiers `AppContainer.versionCaps()` builds. */
+    private fun vlcTiers(): VersionCaps {
+        val inputs = EngineInputs(
+            CodecInventory(listOf(VideoDecoder(Mimes.VIDEO_H264, true, 1920, 1080)), emptySet()),
+            AudioRouteCaps(emptySet(), 2),
+            vlcAvailable = true,
+        )
+        return VersionCaps(EngineSelector.exoCapsForFile(inputs) { EngineHistory() }, EngineSelector.capsForFile(inputs) { EngineHistory() })
+    }
+
+    @Test
+    fun `AC-1_12 an Exo-playable H264 720p version wins over a libVLC-only HEVC 2160p one`() = runTest(main.dispatcher) {
+        versionCaps = vlcTiers()
+        withFiles(F.file(1, video = F.HEVC), F.file(2, video = F.H264.copy(height = 720)))
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onButton(ButtonId.PLAY)
+        assertEquals(NavRequest.Play(PlayRequest("film", 12, mediaFileId = 2)), vm.navigation.first())
+    }
+
+    @Test
+    fun `AC-1_13 with no Exo-playable version the default is the libVLC tier's choice`() = runTest(main.dispatcher) {
+        val tiers = vlcTiers()
+        versionCaps = tiers
+        val files = listOf(F.file(1, video = VideoInfo("mpeg4", 720, 576), container = "avi", fileName = "film.avi"), F.file(2, video = F.HEVC))
+        // Last played on libVLC: the Exo tier alone would fall back to the first readable file (the HEVC one).
+        val progress = F.progress(1, position = 1000.0)
+        withFiles(*files.toTypedArray(), progress = progress)
+        val expected = TieredVersions.defaultChoice(files, tiers, progress)!!.file.id
+        assertEquals(1L, expected)
+        assertEquals(2L, VersionSelector.defaultChoice(files, tiers.exo, progress)?.file?.id)
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onButton(ButtonId.RESUME)
+        assertEquals(NavRequest.Play(PlayRequest("film", 12, mediaFileId = expected)), vm.navigation.first())
     }
 }
