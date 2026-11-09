@@ -366,7 +366,8 @@ is a contract shared by the web and TV clients: change it deliberately and updat
   Robolectric). libVLC's native code limits the APK to `ndk.abiFilters` armeabi-v7a + arm64-v8a (one universal
   APK, ≈ 95 MB, `.so` stored uncompressed; no x86); `proguard-rules.pro` keeps `org.videolan.libvlc.**` (JNI; the
   AAR has no consumer rules). `local.properties` (sdk.dir) and `keystore.properties` are gitignored.
-  - `core/` (pure Kotlin/JVM, package `com.hometv.tv.core`): `api/` (`HomeTvApi` Retrofit,
+  - `core/` (pure Kotlin/JVM, package `com.hometv.tv.core`): `api/` (`HomeTvApi` Retrofit (`me(): Me`,
+    `putTrackChoice(segment, id, TrackChoice)`, `putSubtitleStyle(SubtitleStyle)`),
     `ApiModels` DTOs (incl. `AudioChoice`/`SubtitleChoice`/`TrackChoice`, `SubtitleStyle`, `Me` +
     `toProfile()`; `track_choice: TrackChoice? = null` on `FilmDetail`/`EpisodeDetail`/`EpisodeSummary`), `ApiException`/`apiCall`, `ApiClients` (API / stream / validation OkHttp),
     `AuthInterceptor` Bearer for the server host only), `data/` (`SessionStore` StateFlow +
@@ -378,7 +379,11 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     is still stored), repositories, `AppEvents`, `NextEpisodeResolver`
     (skips the playing multi-episode file), `CatalogRepository.person(id)` (`GET /api/people/{id}`, drops non film/show appearances),
     `ProfileRepository.verifyAdminPin` → `PinCheck` (the only PIN on the TV: server change; an
-    expired token renews once, `invalid_pin` never renews), `PlaybackRepository` (`preparing` loop as a `Flow<PlaybackProgress>`, POSTs in
+    expired token renews once, `invalid_pin` never renews), `ProfileRepository.me(origin)` → `Me`, `saveSubtitleStyle(style)`
+    (`Origin.Background`, throws `ApiException`), `TrackChoiceRepository(api, guard, store, appScope, log)` (`save(RatingKind, id,
+    TrackChoice)` → `Deferred<Boolean>`, never throws: per-title worker in `appScope`, one PUT in flight, the queued wish replaced by
+    the latest (its `Deferred` completes with the next result), a wish whose recorded profile is no longer stored is dropped
+    (`false`), `Origin.Background` renewal, failures logged; `awaitIdle`), `PlaybackRepository` (`preparing` loop as a `Flow<PlaybackProgress>`, POSTs in
     `appScope`; `subtitleLoop`, keep-alive, DELETE), `WatchlistRepository` ("Mi lista": `list(type,
     sort, page, pageSize = 50, watched: Boolean? = null)` drops non film/show items; `write(kind, id, inList)` → `Deferred<Boolean>`,
     a per-title worker in `appScope` (latest wish wins, one request in flight, plain-lock map, the
@@ -390,10 +395,19 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     write for a title in `writing` (`RatingKey`) joins the in-flight one; `changes: SharedFlow<RatingChange>`
     on every successful write; `dismiss` fire-and-forget (`Origin.Background`, logged); `activity(page)`
     drops non film/show; `RatingKind(wire, segment)`), `WatchRepository.putProgress` → `ProgressReport`
-    (`rating_prompt`), `setWatched` → `WatchedResult(updated, ratingPrompt)`), `playback/` (pure `ClientCapsBuilder`,
+    (`rating_prompt`), `setWatched` → `WatchedResult(updated, ratingPrompt)`), `playback/` (pure `TrackChoiceRules` (the matching
+    rule of `specs/subtitles-improvements/prd.md` FR-3..FR-5a: own `languageKey` (`und` = `und`, region dropped), `matchAudio`,
+    `matchSubtitle(choice, tracks, mode, audioLanguage)` (no part = `TrackRules.defaultSubtitle`), `match` → `TrackMatch`,
+    `audioChoiceOf`/`subtitleChoiceOf`, `withAudio`/`withSubtitles`, `sameAudioChoice`, part-wise `effective(fetched, session)`;
+    `TrackChoiceRulesTest` runs `shared/track-choice-cases.json`, path from the `hometv.trackChoiceCases` system property +
+    task input in `core/build.gradle.kts`, `expected_tv` overrides, ≥ 24 cases), `SubtitleStyles.kt` (enums with wire/renderer
+    values `SubtitleSize`/`Color`/`Edge`/`EdgeColor`/`Position`, `SubtitleLook` (`effectiveEdgeColor` = the Clash rule, `toWire`,
+    `of` (unknown wire → that row's default), `DEFAULT`), `StyleRow`, `SubtitleStyleEditor` (`isEnabled`/`isDisabled`/`step`
+    (clash skipped, ends stop, edge on from none with white/white → black)/`canStep`/`normalized`/`values`/`value`)), `ClientCapsBuilder`,
     `VersionSelector`, `TrackRules`, `TrackCheck`, `PlaybackErrorMapper`,
     `PlaybackPlanner`, `SeekAccumulator`, `ProgressReporter`, the `PlayerController` interface (its `Listener.onRemote*` carry
-    media-session commands, no Media3 types in `core`; `PlayerFailure.engine`, `PlaybackErrorCodes.VLC_ERROR` 9001 (outside
+    media-session commands, no Media3 types in `core`; `reloadSubtitleStyle(): Boolean = true` (a look the engine can't apply
+    live; false = not applied); `PlayerFailure.engine`, `PlaybackErrorCodes.VLC_ERROR` 9001 (outside
     every Media3 range), `MediaItemSpec.embeddedSubtitleIds`), `EngineSelector.kt` (enum `PlaybackEngine { EXO, VLC }`,
     pure `VlcCapsBuilder` (every probe container/codec, `hls = false`, 8 channels), `EngineSelector.select(EngineInputs(inventory,
     route, vlcAvailable, forceVlc), file, EngineHistory(exclusions, exoFailed))` → `EngineChoice(engine, caps)`: EXO + today's
@@ -414,25 +428,37 @@ is a contract shared by the web and TV clients: change it deliberately and updat
   - `app/` (`com.hometv.tv`): `MainActivity` (offers every key to `KeyDispatch` before Compose
     focus; screens register with `KeyEventInterceptor { event -> Boolean }`), `di/AppContainer`
     (manual DI: store, `clients()` rebuilt per server URL, `guard`, repositories, `events`,
-    `sessionExpired`, `appScope`, `codecs` (+ `capsForFile()`, `versionCaps()` = `VersionCaps(exo = capsForFile(), any =
+    `sessionExpired`, `appScope`, `account` (`AccountState(profiles, store, appScope)`) + `subtitleStyles`, `trackChoices` +
+    `trackChoiceMemory`, `codecs` (+ `capsForFile()`, `versionCaps()` = `VersionCaps(exo = capsForFile(), any =
     EngineSelector.capsForFile(…))` with `vlcAvailability.isAvailable()` and `enginePrefs.forceVlc.value`, passed to `FilmDetailViewModel(versionCaps = ::versionCaps)` so its default version
     (`TieredVersions.defaultChoice`/`select`) is the Player's), `playerLaunches`, `homeRefresh`, `detailRefresh`,
     `watchlist` + `watchlistMemory` (Mi lista sort for the app session; the type filter lives in the ViewModel and resets when the screen is left, like the Browse filters),
     `ratings` + `ratingPrompts` (every `ratings.changes` marks `homeRefresh` stale), `signOut` (declared after
-    what it resets), `playerControllers: (engine, streamClient)` (`create()`: EXO → `ExoPlayerController`, VLC →
-    `VlcPlayerController(portFactory = { LibVlcPort(libVlc.get()) }, token, log, post = { mainHandler.post(it) })`),
-    `vlcAvailability` (default false; `create()` builds a `LibVlcProvider(Build.SUPPORTED_ABIS.toList(), { LibVLC(app,
-    VlcOptions.libVlc(displayHeightPx)) }, log)`, nothing created until the first VLC open), `enginePrefs` (default
+    what it resets), `playerControllers: (engine, streamClient, look: () -> SubtitleLook)` (the instance passes
+    `{ account.subtitleStyle.value }`; `create()`: EXO → `ExoPlayerController`, VLC → `VlcPlayerController(portFactory = { l ->
+    libVlc.getOrOld(VlcOptions.libVlc(heightPx, l)).let { (lib, applied) -> LibVlcPort(lib) to applied } }, token, log, post =
+    { mainHandler.post(it) }, look)`), `vlcAvailability` (default false; `create()` builds a `LibVlcProvider<LibVLC>(
+    Build.SUPPORTED_ABIS.toList(), { opts -> LibVLC(app, ArrayList(opts)) }, { it.release() }, log)`, nothing created until the
+    first VLC open), `enginePrefs` (default
     `InMemoryEnginePrefs()`; `create()` loads `DataStoreEnginePrefs` in parallel (`async`) with the session store in one `runBlocking(Dispatchers.IO)`;
     `PlayerDeps.forceVlc = { enginePrefs.forceVlc.value }`, read per request), `notices` (`suspend () -> String`, default
     `""`; `create()` reads `R.raw.third_party_notices` on IO), `avatars` (`account.info`
     colours for other profiles), `zone` seam (default `ZoneId::systemDefault`: Actividad times, Person ages), one shared Coil cache base for the per-server `ImageLoader`s, one factory per
-    ViewModel), `data/` (`ProfileAvatar` (pure `initial(name)`/`color(avatarId, avatars)`), `RatingPrompts` (`pending` `PendingPrompt(profileId, prompt)`, `offer(profileId?,
+    ViewModel), `data/` (`ProfileAvatar` (pure `initial(name)`/`color(avatarId, avatars)`), `AccountState` (profile, info and
+    `subtitleStyle: StateFlow<SubtitleLook>` (default until `/api/me`) + `setSubtitleStyle`; late-`Me` rule: a `Me` applies only
+    when its id is `store.session.value.profileId` when it lands, its style only when no local set happened since the request
+    started (style seq); `signedIn` with another id resets the style and launches `refresh()` in `appScope`; `clear()` resets;
+    `ensureLoaded` also refreshes while the style is not loaded), `SubtitleStyleStore(account, profiles, store, appScope)`
+    (`style` = the account's; `save(look)` applies at once then PUTs: latest-wins single flight under one lock, every `Deferred`
+    of a run completes with its last result, a queued look of a profile no longer stored is dropped), `TrackChoiceMemory(session,
+    scope)` (this device's picks per (profile, title), process lifetime, one lock: `get`/`put` → seq/`ticket()`/`markConfirmed(…,
+    seq)` (ignored unless the latest)/`fetched(…, requestTicket)` (drops a confirmed entry only for a request after the
+    confirmation)/`clear()` (a real (serverUrl, profileId) change, `SignOut`, `AppNavigator.authExpired`)), `RatingPrompts` (`pending` `PendingPrompt(profileId, prompt)`, `offer(profileId?,
     prompt)` (null profile / handled key ignored, newer replaces untaken), `take(currentProfileId)` (another
     profile's prompt dropped, not handled; taken = handled for the process), `clear()` on a real
     (serverUrl, profileId) change and in `AppNavigator.authExpired`, never on switchProfile/changeServer;
     `held`/`setHeld` (UI hold while Home's exit dialog is open, untouched by `clear()`)), `SignOut` (Home's "Salir":
-    prompts, `AccountState`, `BrowseSortMemory.reset`/`WatchlistMemory.reset`, then `store.signOut()` under
+    prompts, `TrackChoiceMemory`, `AccountState`, `BrowseSortMemory.reset`/`WatchlistMemory.reset`, then `store.signOut()` under
     `NonCancellable`, IOException logged), `EnginePrefs` (per device, not per profile/server: `forceVlc: StateFlow`,
     `setForceVlc`; `DataStoreEnginePrefs` = its own file `datastore/device.preferences_pb`, key `force_vlc`, untouched by
     sign-out/server changes; `ReplaceFileCorruptionHandler`, `load(store, log)` = an IOException reads as off, logged;
@@ -442,17 +468,29 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     `HomeRefresh`, `DetailRefresh` (generation counter marked by `AppNavigator.play`; Film/Show
     detail and Person `onVisible()` on `ON_RESUME` refetch in place), `PlayerLaunches`),
     `playback/` (`AndroidCodecInventory`, `PlayerFactory` (`AUDIO_ATTRIBUTES` shared with the
-    passthrough query), `HomeTvLoadErrorHandlingPolicy`, `MediaItemBuilder`, `SubtitleFileCache`
+    passthrough query), `HomeTvLoadErrorHandlingPolicy`, `MediaItemBuilder`, pure `ExoSubtitleStyle.of(look)` →
+    `ExoCaptionSpec` (+ top-level `toCaptionStyle()`: opaque colours, `EDGE_TYPE_*`, effective edge colour,
+    `DEFAULT_TEXT_SIZE_FRACTION` × factor, position fraction; transparent background/window), `SubtitleFileCache`
     (`get` answers from an in-memory index, no disk I/O), `ExoPlayerController` (the ExoPlayer is
     private; `attach/detach(PlayerView)` only set `view.player`), `ExoTrackMapper`; libVLC (types only here and in
-    `PlayerScreen`'s VLC surface): `VlcAvailability` + `LibVlcProvider<T>` (`availability`: ARM ABI and no failed
-    `get()`, never creates; `get()` lazy on the main thread, a failure logged once, final, `VlcUnavailableException`),
+    `PlayerScreen`'s VLC surface): `VlcAvailability` + `LibVlcProvider<T>(abis, factory: (List<String>) -> T, release, log)`
+    (`availability`: ARM ABI and no failed first creation, never creates; `get(options)`/`getOrOld(options)` → `(T, applied)` lazy
+    on the main thread: equal options reuse the instance, other options build a new one then `release(old)`; a first-creation
+    failure is logged once, final, `VlcUnavailableException`; a failed rebuild keeps the old instance (`false`) and remembers
+    that option list (asked again: the current instance at once, no second creation) until a success),
     `VlcPlayerPort` seam (`VlcEvent`s; `LibVlcPort` = the one pass-through over `MediaPlayer`/`Media(LibVLC, Uri)`,
-    null track arrays → empty; `open` releases the `Media` in a `finally`; no time/length/playing getters: events only), pure `VlcUrls` (`withToken` `?token=`, `redacted` kept for diagnostics, unused in production), `VlcOptions` (`libVlc(heightPx)`:
-    `--verbose=-1` (quiet), `--http-reconnect`, freetype style, `--sub-margin` 8 %; `media(startMs, startPaused)`:
+    null track arrays → empty; `open` releases the `Media` in a `finally`; no time/length/playing getters: events only), pure `VlcUrls` (`withToken` `?token=`, `redacted` kept for diagnostics, unused in production), `VlcOptions` (`libVlc(heightPx, look)`:
+    `--verbose=-1` (quiet), `--http-reconnect`, `--freetype-color`, `--freetype-rel-fontsize` 24/19/15, outline / shadow / none
+    per prd.md FR-6 (always an explicit `--freetype-shadow-opacity`), `--sub-margin` = position fraction × height; `media(startMs, startPaused)`:
     `:network-caching=1500`, `:input-fast-seek`, `:start-time=s.mmm`, `:start-paused`), `VlcTrackMapper` (ordinals,
     count guard → null/-1), `VlcEventMapper` (`state`, `failure()` = `VLC_ERROR`/VLC, `isEarlyEnd` 30 s);
-    `VlcPlayerController(portFactory, token, log, post)` (deferred open: `prepare()` opens only once a layout is
+    `VlcPlayerController(portFactory: (SubtitleLook) -> Pair<VlcPlayerPort, Boolean>, token, log, post, look)` (port-look rule:
+    `portForOpen()` (the only port source of `prepare()`, the `seekTo` reopen at ENDED and `attach()`'s deferred open) rebuilds the
+    port when no media is open (or ENDED) and `look()` ≠ `portLook` (the requested look, also on `applied = false`), releasing
+    the old one (`setEventListener(null)`, `detachViews()`, `release()`) and attaching the layout to the new one before `open`;
+    `reloadSubtitleStyle()`: nothing playing (no port / not opened / ENDED / failed) → only drops the port; else reopens at the
+    same position and play intent on a new port (old events dropped, BUFFERING never IDLE, selection re-applied at the first
+    `Playing`/`Paused`, the open waits for the next `attach` without a layout), returns the factory's `applied`; deferred open: `prepare()` opens only once a layout is
     `attach`ed (idempotent per layout); a factory failure = failed controller, the IDLE + failure pair posted at once and
     on every `prepare()`; command-caused state changes posted (dropped after `release()`), libVLC events inline;
     one generation per open/stop/error drops stale events; `:start-paused` + first `Playing`/`Paused` reconciles the
@@ -547,14 +585,35 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     external ones are side-loaded; `PlayerUiState.engine` null until the first controller exists; log line
     `attach engine=… file=… mode=…`; rating prompt: `putAndRemember` wraps every progress PUT of
     both reporters and `releasedFinalPut`; `sessionPrompt` (latest wins, kept across attachments) is handed
-    to `PlayerDeps.ratingPrompts` (no default) once by `exit()`/`onCleared()`, a later answer at once),
+    to `PlayerDeps.ratingPrompts` (no default) once by `exit()`/`onCleared()`, a later answer at once; remembered track choice
+    (`PlayerDeps.trackChoices`/`trackChoiceMemory`, no defaults): `Item.titleKey` (film, or the episode's show) + `trackChoice`
+    (film/episode detail (a `ticket()` before each detail request, `fetched()` on its answer), launch payload, the resolver's
+    next episode), `choiceFor(item)` = `effective(fetched, memory)`, every new item/file request (START, NEXT_EPISODE + fallbacks,
+    NEXT_PART, another version) sends `matchAudio` with `RequestSpec.audioFromChoice`; a refused remembered index
+    (`invalid_audio_stream`; `unsupported` after the decision-14 VLC fallback, before `when (spec.kind)`) is re-sent once with the
+    default (shared `audioIndexRetried`), silently; the first decision of each file selects `matchSubtitle`; manual picks
+    `remember()` (memory `put`, then `save` awaited in `appScope` → `markConfirmed`), audio saved first unless it re-picks the
+    target (`switchAudioIndex` else `selectedAudioIndex`) with the same part; no profile → nothing saved; subtitle style
+    (`PlayerDeps.subtitleStyles`, no default): `onOpenSubtitleStyle` (draft = the Clash-normalized look, `openedWith` = the look;
+    overlay hidden, media keys/commands never bring it back), `onStyleStep`, every close through `commitStyleDraft(userClose)`
+    (Back/`onBack`/`onDialogDismiss` = user closes; `onEnded`/`showError`/`onStop` (after `controller.stop()`)/`exit`/`onCleared`
+    = teardowns): a changed draft is saved, only a user close with libVLC active and playing/paused calls `reloadSubtitleStyle()`
+    (`reloading` keeps progress transitions from `ProgressReporter`); a failed save or reload = one toast;
+    `PlayerUiState.subtitleLook` = draft else the store's style, re-rendered on every store emission),
     `NextEpisodeResolution` (next-episode state + retry),
     `HlsSessionOwner` (HLS DELETEs and abandoned-POST orphans in `appScope`), `PlayerScreen` (`VideoSurface(vm, engine, keepScreenOn)`
     reads `vm.playerController` inside `key(engine)`: null → plain `Box`, EXO → `ExoSurface` (Media3 `PlayerView`), VLC →
     `VlcSurface` (`VLCVideoLayout` captured in state from `factory`, a lifecycle observer keyed on controller + layout:
     `ON_STOP` → `detach`, `ON_START` → `attach`; `update` attaches only while STARTED; a plain `Box` with a fake); test
-    seam `LocalVideoSurfaceProbe`; owns the screen's `ControllerSessionPlayer` + `PlayerMediaSession`, refreshed on
-    every `vm.state` emission), overlay, track dialog, countdown, error
+    seams `LocalVideoSurfaceProbe`, `LocalExoViewProbe` (the `PlayerView`); `ExoSurface` applies `PlayerUiState.subtitleLook`
+    (`ExoSubtitleStyle`, never the device caption settings) at every update, bottom padding = max(position, `overlayClearance`:
+    `PlayerOverlay`'s bottom block top via `onPlaced` + 16 dp, rounded to 0.01, 0 when hidden or gone); owns the screen's
+    `ControllerSessionPlayer` + `PlayerMediaSession`, refreshed on every `vm.state` emission), overlay, track dialog
+    (`TrackSelectionDialog`: columns in a `weight(1f, fill = false)` row, `heightIn(max = 406.dp)`, full-width "Formato de los
+    subtítulos" `track_style` (Down from either column's last item, Up back to the item it came from)), `SubtitleStyleDialog` (+
+    `SubtitleSample`; no dim, a full-window box aligned top-centre under the 27 dp safe top, 640 dp, rows `style_row_*` (32 dp,
+    Left/Right `onStyleStep`, "Color del contorno" unfocusable at 0.4 alpha with "Sin contorno", chevrons
+    `ic_chevron_left/right`), `style_sample`; Back = `onStyleDialogClosed`), countdown, error
     screen)). `res/values/strings.xml` is the only catalog; the APK keeps only `es` resources
     (`localeFilters`).
   - Tests: `app/src/test` (ViewModel/glue tests, JUnit 5; `ui/player/PlayerSessionStateTest` covers
@@ -565,11 +624,16 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     file: `@DisabledOnOs(OS.WINDOWS)` with `WINDOWS_DATASTORE_RENAME`, like the 12 `DataStoreSessionStoreTest` cases that replace a file), `legal/ThirdPartyNoticesTest`
     (reads `src/main/res/raw/third_party_notices.txt` + `../gradle/libs.versions.toml` by path: the pinned libvlc version,
     the full LGPL v2.1, no `vlc-android`, < 50 KB);
+    `ui/player/PlayerTrackChoiceTest` (one case per send call site, refused remembered audio, first subtitle, saves, session
+    precedence, payload start, re-pick rules), `PlayerSubtitleStyleTest` (draft, every close path, VLC reload only for user
+    closes); `data/AccountStateTest`, `SubtitleStyleStoreTest`, `TrackChoiceMemoryTest` (thread races with `CountDownLatch`);
+    `PlayerTestBase.account`/`subtitleStyles` (over `repos.appScope`); `TestRepos.trackChoices`/`trackChoiceMemory`;
     `ui/player/PlayerEngineTest` (two fakes: `PlayerTestBase.vlcController` (`open fun vlcControllerFor()` swaps in a real
     `VlcPlayerController`), `vlcAvailable` + `vlcAvailability` provider, `forceVlc`, `createdEngines`;
     without libVLC every test asserts the VLC controller was never built; `FakePlayerController.onStop` hook);
     `playback/`: `VlcPlayerControllerTest` over `FakeVlcPort` (`post` queued, drained by the test; `openThrows`; layouts are
-    `FrameLayout(ContextWrapper(null))` on the plain JVM), `LibVlcProviderTest` (`T = Any`), `Vlc*Test` pure tables,
+    `FrameLayout(ContextWrapper(null))` on the plain JVM; nested `SubtitleStyle`: reload, port-look rule, T-AC-18/18b),
+    `LibVlcProviderTest` (option-keyed instances, release order, failed-rebuild memory), `Vlc*Test` pure tables, `ExoSubtitleStyleTest`,
     `ControllerSessionPlayerTest`/`PlayerMediaSessionTest` (Robolectric); no JVM test loads libVLC native code;
     core `SessionStoreTest` + gated `SessionGuardTest` races: `CountDownLatch` route + `CompletableDeferred` arrival), `app/src/sharedTest` (Compose focus/navigation
     tests on Robolectric via `UiTestBase` (`assertFullyVisible`/`assertInsideSafeArea`, `absent(tag)`, `surfaceBindings` (through
@@ -579,7 +643,10 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     `ForceVlcPlaybackTest`), dialog fit helpers `dpBounds(tag)` +
     `DIALOG_PADDING`/`DIALOG_WINDOW_INSETS`, overridable
     `clock` passed to `testContainer`, e.g. a fixed date for age texts; `testContainer(zone = clock.zone)`, so times never depend on the host zone) +
-    `testContainer` + `ScriptedApi` (`onPerson` seam, 404 by default; `PersonFocusTest`;
+    `testContainer` + `ScriptedApi` (`onPerson` seam, 404 by default; `PersonFocusTest`; `onMe` returns `Me` (`Profile.toMe(style)`
+    helper); `onTrackChoiceWrite(segment, id, body)` + `trackChoiceBodies`, `onSubtitleStyleWrite(body)` + `subtitleStyleBodies`
+    (204 by default, suspend to gate); `FakePlayerController.reloadCalls`/`reloadResult`/`onReload`; `UiTestBase.exoView`;
+    `SubtitleStyleFocusTest`, `SubtitleStyleDialogFitTest` (bottom ≤ 324 dp at Mediano and Grande), `TrackSelectionDialogFitTest`;
     `onWatchlist(type, sort, page, pageSize, watched)` (empty page by default) / `onWatchlistWrite(segment, id, inList)` seams, gate a write
     by suspending in it; `WatchlistFocusTest`, `DetailWatchlistTest`; ratings: `onRatingWrite(segment, id,
     stars?)` (null = DELETE), `onRatingDismiss`, `onActivity` (empty page by default), `onProgressPrompt(body)`

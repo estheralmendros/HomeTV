@@ -190,14 +190,16 @@ class PlayerViewModelTest : PlayerTestBase() {
     @Test
     fun `a local audio switch (direct, within caps) sends no request and pins the track`() = playerTest {
         val vm = startFilm(direct(), F.file(1, audio = listOf(F.audio(1), F.audio(2, codec = "ac3", channels = 6))))
-        val before = api.calls.size
+        // The manual pick is saved (`PUT /api/track-choices/...`, prd3 FR-T6); no playback request is sent.
+        fun playbackCalls() = api.calls.count { !it.startsWith("PUT /api/track-choices/") }
+        val before = playbackCalls()
         vm.onOpenTracks()
         val dialog = (vm.state.value.dialog as PlayerDialog.Tracks).tracks
         assertEquals(listOf("1", "2"), dialog.audio.map { it.key })
         assertTrue(dialog.audio.first().selected)
         assertEquals(listOf(PlayerViewModel.OFF_KEY), dialog.subtitles.map { it.key })
         vm.onSelectAudio(2)
-        assertEquals(before, api.calls.size)
+        assertEquals(before, playbackCalls())
         assertEquals(2, controller.audio)
         assertNull(vm.state.value.dialog)
     }

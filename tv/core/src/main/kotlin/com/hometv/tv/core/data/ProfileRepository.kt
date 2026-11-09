@@ -2,9 +2,11 @@ package com.hometv.tv.core.data
 
 import com.hometv.tv.core.api.ApiException
 import com.hometv.tv.core.api.HomeTvApi
+import com.hometv.tv.core.api.Me
 import com.hometv.tv.core.api.Profile
 import com.hometv.tv.core.api.ServerInfo
 import com.hometv.tv.core.api.SessionResponse
+import com.hometv.tv.core.api.SubtitleStyle
 import com.hometv.tv.core.api.UnlockRequest
 import com.hometv.tv.core.api.apiCall
 import java.time.Instant
@@ -31,7 +33,13 @@ class ProfileRepository(
         return response
     }
 
-    suspend fun me(origin: Origin = Origin.Foreground): Profile = guard.withRenewal(origin) { apiCall { api().me() } }
+    /** `GET /api/me`: the profile and its subtitle style. */
+    suspend fun me(origin: Origin = Origin.Foreground): Me = guard.withRenewal(origin) { apiCall { api().me() } }
+
+    /** `PUT /api/me/subtitle-style` (every key), renewed as [Origin.Background]; throws [ApiException]. */
+    suspend fun saveSubtitleStyle(style: SubtitleStyle) {
+        guard.withRenewal(Origin.Background) { apiCall { api().putSubtitleStyle(style) } }
+    }
 
     /**
      * Checks an admin PIN with `POST /api/admin/unlock` and the current profile token.

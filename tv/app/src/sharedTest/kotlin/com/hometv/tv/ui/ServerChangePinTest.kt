@@ -7,7 +7,6 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.hometv.tv.core.api.Profile
 import com.hometv.tv.core.api.UnlockResponse
 import com.hometv.tv.core.data.FakeHomeTvApi.Companion.httpError
 import com.hometv.tv.testing.UiTestBase
@@ -27,7 +26,7 @@ class ServerChangePinTest : UiTestBase() {
     }
 
     private fun signInAsAdmin() {
-        api.onMe = { Profile(5, "Esther", "avatar-05", is_admin = true) }
+        api.onMe = { com.hometv.tv.core.api.Me(5, "Esther", "avatar-05", is_admin = true) }
     }
 
     @Test
@@ -49,7 +48,7 @@ class ServerChangePinTest : UiTestBase() {
         signInAsAdmin()
         launch()
         // Demoted on the server: the `/api/me` refresh of Settings answers a viewer.
-        api.onMe = { Profile(5, "Esther", "avatar-05") }
+        api.onMe = { com.hometv.tv.core.api.Me(5, "Esther", "avatar-05") }
         openSettings()
         assertTrue("a viewer has no Settings screen", absent("settings_switch_profile"))
         assertTrue("no Ajustes tab any more", absent("tab_SETTINGS"))

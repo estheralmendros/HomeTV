@@ -70,6 +70,10 @@ abstract class PlayerTestBase {
     protected val subtitleUrls: MutableList<String> = Collections.synchronizedList(mutableListOf())
     protected var onSubtitle: suspend (String) -> SubtitleFetch = { SubtitleFetch.Ready("WEBVTT\n".toByteArray()) }
     protected val exits = mutableListOf<PlayerEffect>()
+
+    /** The profile's style state and its store, over [repos] (their `appScope`: PUTs run at once). */
+    protected val account = com.hometv.tv.data.AccountState(repos.profiles, repos.store, repos.appScope)
+    protected val subtitleStyles = com.hometv.tv.data.SubtitleStyleStore(account, repos.profiles, repos.store, repos.appScope)
     private val created = mutableListOf<PlayerViewModel>()
     private val clearedVms = mutableSetOf<PlayerViewModel>()
 
@@ -141,6 +145,9 @@ abstract class PlayerTestBase {
             forceVlc = { forceVlc },
             subtitles = subtitles,
             ratingPrompts = repos.ratingPrompts,
+            trackChoices = repos.trackChoices,
+            trackChoiceMemory = repos.trackChoiceMemory,
+            subtitleStyles = subtitleStyles,
             nowMs = { testScheduler.currentTime },
             io = main.dispatcher,
             log = { _, _ -> },

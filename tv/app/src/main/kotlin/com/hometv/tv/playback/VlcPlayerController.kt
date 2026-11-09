@@ -4,6 +4,7 @@ import android.widget.FrameLayout
 import com.hometv.tv.core.playback.MediaItemSpec
 import com.hometv.tv.core.playback.PlayerController
 import com.hometv.tv.core.playback.PlayerState
+import com.hometv.tv.core.playback.SubtitleLook
 import kotlin.math.abs
 
 /**
@@ -23,18 +24,36 @@ import kotlin.math.abs
  * - **One generation per open**: each open (and [stop], and an error) starts a new generation; events of a
  *   replaced or stopped media are dropped.
  * - `isPlaying` = the last event was `Playing` && play intent && READY (false while buffering, as with Exo).
+ * - **Subtitle style** (prd3 FR-T9): the style is in the LibVLC instance options, so the port is built for a
+ *   look ([portLook], the look requested from [portFactory], whether it was applied or not). Port-look rule:
+ *   whenever a media is about to open while none is open (never opened, after [stop], `EndReached` or an error)
+ *   and [look] differs from [portLook], the port is released and rebuilt ([portForOpen], the only way the open
+ *   paths get their port), with the attached layout re-attached before the open. [reloadSubtitleStyle] reopens
+ *   a playing or paused media at the same position with a port for the new look.
  */
 class VlcPlayerController(
-    /** Creates the port at the first open or attach (production: `{ LibVlcPort(libVlc.get()) }`). May throw `VlcUnavailableException`. */
-    private val portFactory: () -> VlcPlayerPort,
+    /**
+     * Creates the port for a look at the first open or attach, and at a restyle (production: `LibVlcProvider.getOrOld`
+     * for `VlcOptions.libVlc(h, look)`); `false` = the previous look was kept (its LibVLC could not be built).
+     * May throw `VlcUnavailableException`.
+     */
+    private val portFactory: (SubtitleLook) -> Pair<VlcPlayerPort, Boolean>,
     private val token: () -> String?,
     /** Log seam (production: `Log.i("HomeTvPlayer", …)`); never receives a URL or the token. */
     private val log: (String, Throwable?) -> Unit = { _, _ -> },
     /** Main-thread post seam (production: `Handler(Looper.getMainLooper())::post`). */
     private val post: (() -> Unit) -> Unit,
+    /** The profile's subtitle style, read when a port is built (production: `AccountState.subtitleStyle.value`). */
+    private val look: () -> SubtitleLook = { SubtitleLook.DEFAULT },
 ) : PlayerController {
     private var listener: PlayerController.Listener? = null
     private var port: VlcPlayerPort? = null
+
+    /** The look [port] was requested with (null while there is no port, or after a factory exception). */
+    private var portLook: SubtitleLook? = null
+
+    /** The factory's `applied` answer for the current [port]. */
+    private var portApplied = true
 
     /** The port factory threw: every later port call is skipped and the factory is never called again. */
     private var failed = false
@@ -86,7 +105,7 @@ class VlcPlayerController(
     /** Shows the video in [layout] (the Player screen's `VLCVideoLayout`). Idempotent for the same layout. */
     fun attach(layout: FrameLayout) {
         if (released || failed || layout === this.layout) return
-        val p = ensurePort() ?: return
+        val p = (if (openPending) portForOpen() else ensurePort()) ?: return
         if (this.layout != null) p.detachViews()
         p.attachViews(layout)
         this.layout = layout
@@ -116,7 +135,7 @@ class VlcPlayerController(
             postFailure()
             return
         }
-        val p = ensurePort() ?: return
+        val p = portForOpen() ?: return
         openPending = true
         update(PlayerState.BUFFERING, inline = false)
         if (layout != null) open(p)
@@ -140,18 +159,20 @@ class VlcPlayerController(
         if (released || failed) return
         val p = port
         when {
+            currentState == PlayerState.ENDED && spec != null -> {
+                // libVLC can't seek an ended media: reopen at the target, on a port for the current look (a
+                // restyle at the end may have dropped the port).
+                pendingStartMs = positionMs
+                position = positionMs
+                val q = portForOpen() ?: return
+                openPending = true
+                update(PlayerState.BUFFERING, inline = false)
+                if (layout != null) open(q)
+            }
             p == null || !opened || !started -> {
                 // Applied as the next open's start-time, or at the first `Playing` of this one.
                 pendingStartMs = positionMs
                 position = positionMs
-            }
-            currentState == PlayerState.ENDED -> {
-                // libVLC can't seek an ended media: reopen at the target.
-                pendingStartMs = positionMs
-                position = positionMs
-                openPending = true
-                update(PlayerState.BUFFERING, inline = false)
-                if (layout != null) open(p)
             }
             !p.isSeekable -> Unit // e.g. an AVI without an index: ignored, the position is kept
             else -> {
@@ -178,6 +199,7 @@ class VlcPlayerController(
             p.release()
         }
         port = null
+        portLook = null
         layout = null
         opened = false
         currentState = PlayerState.IDLE
@@ -194,13 +216,80 @@ class VlcPlayerController(
         applySelection()
     }
 
+    /**
+     * A new subtitle look (prd3 FR-T9). With no playing media (no port, nothing opened or only a deferred open,
+     * `EndReached`, a failed controller) the port is only dropped: the next open builds one for the new look and
+     * an ended media is never reopened. Else the media is reopened at the same position and play intent on a new
+     * port, the old player's events dropped, BUFFERING reported (never IDLE); the wanted audio and subtitle are
+     * re-selected at the first `Playing`/`Paused`. With no layout attached the open waits for the next [attach].
+     * False when the new look could not be built (the reopen then uses the old LibVLC and look).
+     */
+    override fun reloadSubtitleStyle(): Boolean {
+        if (released || failed) return true
+        val p = port ?: return true
+        if (!opened || currentState == PlayerState.ENDED) {
+            dropPort(p)
+            return true
+        }
+        val resumeAt = position
+        val keptLayout = layout
+        closeMedia()
+        p.setEventListener(null)
+        if (keptLayout != null) p.detachViews()
+        layout = null
+        p.stop()
+        p.release()
+        port = null
+        portLook = null
+        pendingStartMs = resumeAt
+        position = resumeAt
+        openPending = true
+        update(PlayerState.BUFFERING, inline = false)
+        val q = ensurePort() ?: return true
+        if (keptLayout != null) {
+            q.attachViews(keptLayout)
+            layout = keptLayout
+            open(q)
+        }
+        return portApplied
+    }
+
     // ---- Internals ---------------------------------------------------------------------------
+
+    /**
+     * The port for the next open (the port-look rule): with no media open and a changed [look], the old port is
+     * released and a new one built, attached to the current layout before the caller opens. A port built while a
+     * layout is attached (after a restyle dropped the previous one) is attached here too.
+     */
+    private fun portForOpen(): VlcPlayerPort? {
+        val current = port
+        if (current != null && (!opened || currentState == PlayerState.ENDED) && look() != portLook) dropPort(current)
+        val fresh = port == null
+        val p = ensurePort() ?: return null
+        if (fresh) layout?.let { p.attachViews(it) }
+        return p
+    }
+
+    /** Releases the port as [release] does (listener, views, player); the layout stays recorded for the next port. */
+    private fun dropPort(p: VlcPlayerPort) {
+        if (opened) closeMedia()
+        p.setEventListener(null)
+        if (layout != null) p.detachViews()
+        p.release()
+        port = null
+        portLook = null
+    }
 
     private fun ensurePort(): VlcPlayerPort? {
         if (failed || released) return null
         port?.let { return it }
+        val requested = look()
         return try {
-            portFactory().also { port = it }
+            val (p, applied) = portFactory(requested)
+            port = p
+            portLook = requested
+            portApplied = applied
+            p
         } catch (e: Throwable) {
             log("libVLC player unavailable", e)
             failed = true

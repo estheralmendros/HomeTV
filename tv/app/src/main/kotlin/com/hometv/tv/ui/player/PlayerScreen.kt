@@ -17,6 +17,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -41,6 +43,10 @@ import org.videolan.libvlc.util.VLCVideoLayout
 import com.hometv.tv.R
 import com.hometv.tv.core.playback.PlaybackEngine
 import com.hometv.tv.core.playback.PlayerController
+import com.hometv.tv.core.playback.SubtitleLook
+import com.hometv.tv.playback.ExoSubtitleStyle
+import com.hometv.tv.playback.toCaptionStyle
+import kotlin.math.max
 import com.hometv.tv.playback.ControllerSessionPlayer
 import com.hometv.tv.playback.ExoPlayerController
 import com.hometv.tv.playback.PlayerMediaSession
@@ -98,11 +104,13 @@ fun PlayerScreen(vm: PlayerViewModel, onExit: () -> Unit) {
     val current by rememberUpdatedState(state)
     KeyEventInterceptor { event -> handlePlayerKey(vm, current, event, consumed) }
 
+    // The fraction of the screen the overlay's bottom block covers (0 while it is hidden or gone): Exo subtitles sit above it.
+    var overlayClearance by remember { mutableFloatStateOf(0f) }
     Box(Modifier.fillMaxSize().background(Color.Black).testTag("player")) {
-        VideoSurface(vm, engine = state.engine, keepScreenOn = state.keepScreenOn)
+        VideoSurface(vm, engine = state.engine, keepScreenOn = state.keepScreenOn, look = state.subtitleLook, overlayClearance = overlayClearance)
         when (val screen = state.screen) {
             is PlayerScreenUi.Loading -> PreparingView(state.title, screen, onCancel = vm::onCancelLoading)
-            PlayerScreenUi.Video -> PlayerOverlay(state, vm)
+            PlayerScreenUi.Video -> PlayerOverlay(state, vm, onClearance = { overlayClearance = it })
             is PlayerScreenUi.Countdown -> NextEpisodeCountdown(screen.next, onPlayNow = vm::onPlayNow, onCancel = vm::onBack)
             is PlayerScreenUi.EndScreen -> PlayerEndScreen(screen, onRetry = vm::onEndScreenRetry, onBack = vm::onBack)
             is PlayerScreenUi.Error -> PlayerErrorScreen(screen, onAction = vm::onErrorAction)
@@ -115,8 +123,10 @@ fun PlayerScreen(vm: PlayerViewModel, onExit: () -> Unit) {
             dialog.tracks,
             onAudio = { vm.onSelectAudio(it.toInt()) },
             onSubtitle = { vm.onSelectSubtitle(it.takeUnless { key -> key == PlayerViewModel.OFF_KEY }) },
+            onStyle = vm::onOpenSubtitleStyle,
             onDismiss = vm::onDialogDismiss,
         )
+        is PlayerDialog.SubtitleStyle -> SubtitleStyleDialog(dialog.ui, onStep = vm::onStyleStep, onClose = vm::onStyleDialogClosed)
         // None of the alternatives is the current version: no check mark (focus starts on the first).
         is PlayerDialog.Versions -> ListDialog(stringResource(R.string.detail_versions_title), dialog.labels, -1, vm::onVersionChosen, vm::onDialogDismiss)
         null -> Unit
@@ -167,7 +177,7 @@ internal fun handlePlayerKey(vm: PlayerViewModel, state: PlayerUiState, event: K
 private val SEEK_KEYS = setOf(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_REWIND, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD)
 
 @Composable
-private fun VideoSurface(vm: PlayerViewModel, engine: PlaybackEngine?, keepScreenOn: Boolean) {
+private fun VideoSurface(vm: PlayerViewModel, engine: PlaybackEngine?, keepScreenOn: Boolean, look: SubtitleLook, overlayClearance: Float) {
     val probe = LocalVideoSurfaceProbe.current
     // The controller is created lazily at the first attach and is not observable: it is read inside a block
     // keyed on the observable engine, so null → engine (and every engine switch) disposes the old view and
@@ -176,16 +186,22 @@ private fun VideoSurface(vm: PlayerViewModel, engine: PlaybackEngine?, keepScree
         val controller = vm.playerController
         when (engine) {
             null -> Box(Modifier.fillMaxSize().testTag("player_video")) // no controller yet
-            PlaybackEngine.EXO -> ExoSurface(controller as? ExoPlayerController, keepScreenOn) { probe(engine, controller) }
+            PlaybackEngine.EXO -> ExoSurface(controller as? ExoPlayerController, keepScreenOn, look, overlayClearance) { probe(engine, controller) }
             PlaybackEngine.VLC -> VlcSurface(controller as? VlcPlayerController, keepScreenOn) { probe(engine, controller) }
         }
     }
 }
 
-/** ExoPlayer's `PlayerView` (own controller disabled, `SubtitleView` styled like the system captions). */
+/**
+ * ExoPlayer's `PlayerView` (own controller disabled). Its `SubtitleView` always draws the profile's [look]
+ * (`ExoSubtitleStyle`; the device caption settings are ignored), re-applied at every update (cheap): a draft
+ * change restyles live; the bottom padding is the look's position, raised above the overlay's bottom block while
+ * it shows ([overlayClearance]).
+ */
 @OptIn(UnstableApi::class)
 @Composable
-private fun ExoSurface(exo: ExoPlayerController?, keepScreenOn: Boolean, onBind: () -> Unit) {
+private fun ExoSurface(exo: ExoPlayerController?, keepScreenOn: Boolean, look: SubtitleLook, overlayClearance: Float, onBind: () -> Unit) {
+    val viewProbe = LocalExoViewProbe.current
     AndroidView(
         factory = { context ->
             PlayerView(context).apply {
@@ -195,17 +211,19 @@ private fun ExoSurface(exo: ExoPlayerController?, keepScreenOn: Boolean, onBind:
                 isFocusableInTouchMode = false
                 descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
                 setKeepContentOnPlayerReset(true)
-                subtitleView?.apply {
-                    setUserDefaultStyle()
-                    setUserDefaultTextSize()
-                    setBottomPaddingFraction(SUBTITLE_BOTTOM_PADDING)
-                }
             }
         },
         update = { view ->
             onBind()
             exo?.attach(view)
             view.keepScreenOn = keepScreenOn
+            val spec = ExoSubtitleStyle.of(look)
+            view.subtitleView?.apply {
+                setStyle(spec.toCaptionStyle())
+                setFractionalTextSize(spec.textSizeFraction)
+                setBottomPaddingFraction(max(spec.bottomPaddingFraction, overlayClearance))
+            }
+            viewProbe(view)
         },
         onRelease = { view -> exo?.detach(view) },
         modifier = Modifier.fillMaxSize().testTag("player_video"),
@@ -264,13 +282,14 @@ private fun VlcSurface(vlc: VlcPlayerController?, keepScreenOn: Boolean, onBind:
     )
 }
 
-private const val SUBTITLE_BOTTOM_PADDING = 0.08f
-
 /**
  * Test seam: called from the video surface's `update` (the fake-only `Box` of the VLC surface: a `SideEffect`)
  * with the engine and the controller it binds (the real `attach` is unchanged). Production never provides it.
  */
 internal val LocalVideoSurfaceProbe = staticCompositionLocalOf<(PlaybackEngine?, PlayerController?) -> Unit> { { _, _ -> } }
+
+/** Test seam: the Exo `PlayerView` after each `update` (its `SubtitleView` carries the applied look). Production never provides it. */
+internal val LocalExoViewProbe = staticCompositionLocalOf<(PlayerView) -> Unit> { {} }
 
 /** Item load / "Preparando el vídeo… quedan unos N min" with [Cancelar] (503 `preparing`). */
 @Composable

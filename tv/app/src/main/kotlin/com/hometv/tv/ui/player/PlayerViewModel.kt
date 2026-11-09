@@ -18,6 +18,8 @@ import com.hometv.tv.core.api.Progress
 import com.hometv.tv.core.api.ProgressReport
 import com.hometv.tv.core.api.ProgressRequest
 import com.hometv.tv.core.api.RatingPrompt
+import com.hometv.tv.core.api.SubtitleTrack
+import com.hometv.tv.core.api.TrackChoice
 import com.hometv.tv.core.data.AppEvent
 import com.hometv.tv.core.data.AppEventSink
 import com.hometv.tv.core.data.CatalogRepository
@@ -27,9 +29,11 @@ import com.hometv.tv.core.data.NextEpisodeResolver
 import com.hometv.tv.core.data.Origin
 import com.hometv.tv.core.data.PlaybackProgress
 import com.hometv.tv.core.data.PlaybackRepository
+import com.hometv.tv.core.data.RatingKind
 import com.hometv.tv.core.data.RenewOutcome
 import com.hometv.tv.core.data.SessionGuard
 import com.hometv.tv.core.data.SubtitleFetch
+import com.hometv.tv.core.data.TrackChoiceRepository
 import com.hometv.tv.core.data.WatchRepository
 import com.hometv.tv.core.playback.CapsForFile
 import com.hometv.tv.core.playback.EngineChoice
@@ -55,10 +59,13 @@ import com.hometv.tv.core.playback.ProgressReporter
 import com.hometv.tv.core.playback.ProgressSnapshot
 import com.hometv.tv.core.playback.SeekAccumulator
 import com.hometv.tv.core.playback.SideloadedSubtitle
+import com.hometv.tv.core.playback.StyleRow
+import com.hometv.tv.core.playback.SubtitleStyleEditor
 import com.hometv.tv.core.playback.SwitchFailure
 import com.hometv.tv.core.playback.TieredVersions
 import com.hometv.tv.core.playback.TrackCheck
 import com.hometv.tv.core.playback.TrackCheckInput
+import com.hometv.tv.core.playback.TrackChoiceRules
 import com.hometv.tv.core.playback.TrackRules
 import com.hometv.tv.core.playback.UnsupportedReason
 import com.hometv.tv.core.playback.VersionCaps
@@ -68,6 +75,8 @@ import com.hometv.tv.core.util.Format
 import com.hometv.tv.core.util.ServerUrl
 import com.hometv.tv.data.PlayerLaunches
 import com.hometv.tv.data.RatingPrompts
+import com.hometv.tv.data.SubtitleStyleStore
+import com.hometv.tv.data.TrackChoiceMemory
 import com.hometv.tv.playback.CodecSource
 import com.hometv.tv.playback.SubtitleStore
 import com.hometv.tv.ui.common.ScreenError
@@ -122,6 +131,12 @@ class PlayerDeps(
     val subtitles: SubtitleStore,
     /** The app's prompt store: the session's last `rating_prompt` is handed to it on exit. No default. */
     val ratingPrompts: RatingPrompts,
+    /** The remembered audio/subtitle choice writes (manual picks, fire-and-forget, latest wins per title). No default. */
+    val trackChoices: TrackChoiceRepository,
+    /** This device's picks for the process (they win over fetched choices until confirmed and refetched). No default. */
+    val trackChoiceMemory: TrackChoiceMemory,
+    /** The profile's subtitle style (the Exo look, the style dialog's save). No default. */
+    val subtitleStyles: SubtitleStyleStore,
     val nowMs: () -> Long = { SystemClock.uptimeMillis() },
     val io: CoroutineDispatcher = Dispatchers.IO,
     val log: (String, Throwable?) -> Unit = { msg, e -> runCatching { Log.w("HomeTvPlayer", msg, e) } },
@@ -159,6 +174,8 @@ class PlayerViewModel(
         val nextEpisode: EpisodeDetail? = null,
         /** Keep the last frame with a spinner instead of the full-screen loading UI. */
         val keepFrame: Boolean = false,
+        /** [audioIndex] is the remembered choice's match (prd3 FR-T4.3: refused once → the file default, silently). */
+        val audioFromChoice: Boolean = false,
     )
 
     /** One attached playback response (`attachmentKey`). */
@@ -183,7 +200,18 @@ class PlayerViewModel(
         val holdsSession: Boolean get() = plan.sessionId != null && !released
     }
 
-    private class Item(val type: String, val id: Long, var files: List<MediaFile>, var progress: Progress?) {
+    /**
+     * [titleKey] = the title whose remembered choice applies (the film, or the episode's show; known on every
+     * source, so a payload start can save before any detail arrives); [trackChoice] = the fetched choice.
+     */
+    private class Item(
+        val type: String,
+        val id: Long,
+        var files: List<MediaFile>,
+        var progress: Progress?,
+        val titleKey: Pair<RatingKind, Long>,
+        var trackChoice: TrackChoice?,
+    ) {
         var film: FilmDetail? = null
         var showTitle: String? = null
         var season = 0
@@ -320,6 +348,9 @@ class PlayerViewModel(
     private val profileId: Long? = deps.guard.currentProfileId()
     private var releasedController = false
     private var cleared = false
+
+    /** A libVLC restyle reopen is running: its state/playing transitions are not progress (prd3 FR-T9 step 4). */
+    private var reloading = false
     private var otherVersions: List<MediaFile> = emptyList()
 
     init {
@@ -329,6 +360,8 @@ class PlayerViewModel(
         } else {
             startItem()
         }
+        // The profile's style (a late `/api/me`, a save) restyles the Exo surface live; render() reads it.
+        viewModelScope.launch { deps.subtitleStyles.style.collect { render() } }
     }
 
     /** Creates [engine]'s controller once (decision 8: never before an attachment uses it). */
@@ -387,31 +420,41 @@ class PlayerViewModel(
             noticePending = choice.second.differentVersionNotice
             val play = !startPaused
             startPaused = false
-            send(RequestSpec(choice.first, choice.second.positionSeconds, null, null, Kind.START, play = play))
+            val audio = rememberedAudio(choice.first, loaded)
+            send(RequestSpec(choice.first, choice.second.positionSeconds, audio, null, Kind.START, play = play, audioFromChoice = audio != null))
         }
     }
 
     private suspend fun loadItem(): Item {
         if (route.itemType == "film") {
+            val ticket = deps.trackChoiceMemory.ticket()
             val film = deps.catalog.film(route.itemId)
-            return Item("film", film.id, film.media_files, film.progress).apply {
+            fetched(RatingKind.FILM, film.id, ticket)
+            return Item("film", film.id, film.media_files, film.progress, RatingKind.FILM to film.id, film.track_choice).apply {
                 this.film = film
                 detailLoaded = true
             }
         }
         val payload = launches.payload(route.launchId)?.takeIf { it.id == route.itemId && it.media_files.isNotEmpty() }
         if (payload != null) {
-            val item = Item("episode", payload.id, payload.media_files, payload.progress).also { it.fill(payload) }
+            // The payload (from `/api/home`) carries the show's choice: the start never waits for the episode detail.
+            val item = Item("episode", payload.id, payload.media_files, payload.progress, RatingKind.SHOW to payload.show_id, payload.track_choice)
+                .also { it.fill(payload) }
             // `GET /api/episodes/{id}` (for `next_episode_id`) runs in parallel and does not delay the start.
             viewModelScope.launch { loadEpisodeDetail(item) }
             return item
         }
+        val ticket = deps.trackChoiceMemory.ticket()
         val episode = deps.catalog.episode(route.itemId)
-        return Item("episode", episode.id, episode.media_files, episode.progress).also { it.fill(episode) }
+        fetched(RatingKind.SHOW, episode.show_id, ticket)
+        return Item("episode", episode.id, episode.media_files, episode.progress, RatingKind.SHOW to episode.show_id, episode.track_choice)
+            .also { it.fill(episode) }
     }
 
     private suspend fun loadEpisodeDetail(target: Item): Boolean = try {
+        val ticket = deps.trackChoiceMemory.ticket()
         val detail = deps.catalog.episode(target.id, Origin.Background)
+        fetched(RatingKind.SHOW, detail.show_id, ticket)
         target.fill(detail)
         render()
         true
@@ -435,9 +478,60 @@ class PlayerViewModel(
         episode = detail.episode_number
         episodeTitle = detail.title
         nextEpisodeId = detail.next_episode_id
+        trackChoice = detail.track_choice
         detailLoaded = true
         if (files.isEmpty()) files = detail.media_files
         if (progress == null) progress = detail.progress
+    }
+
+    // ---- Remembered audio/subtitle choice (prd3 FR-T4..FR-T6) -------------------------------
+
+    /** A detail requested at [ticket] answered: a confirmed pick older than the request gives way to the fetched value. */
+    private fun fetched(kind: RatingKind, id: Long, ticket: Long) {
+        profileId?.let { deps.trackChoiceMemory.fetched(it, kind, id, ticket) }
+    }
+
+    /** The choice that applies to [target]: the fetched one, each part replaced by this device's pick. */
+    private fun choiceFor(target: Item): TrackChoice? {
+        val pid = profileId ?: return target.trackChoice
+        return TrackChoiceRules.effective(target.trackChoice, deps.trackChoiceMemory.get(pid, target.titleKey.first, target.titleKey.second))
+    }
+
+    /** The remembered audio's index in [f] for a new item or file's request; null = the file default. */
+    private fun rememberedAudio(f: MediaFile, target: Item = item): Int? = TrackChoiceRules.matchAudio(choiceFor(target)?.audio, f.audio_tracks)
+
+    /** The subtitle a new file starts on: the remembered part matched in this plan, else today's default rule. */
+    private fun firstSubtitle(f: MediaFile, plan: PlaybackPlan.Play): String? {
+        if (!::item.isInitialized) return plan.defaultSubtitleId
+        val audioLanguage = f.audio_tracks.firstOrNull { it.index == plan.audioStreamIndex }?.language
+        return TrackChoiceRules.matchSubtitle(choiceFor(item)?.subtitles, plan.subtitles.map { it.track }, plan.mode, audioLanguage)
+    }
+
+    /**
+     * FR-T6: a manual audio pick saves first, before the switch's early returns: unless it re-picks the track the
+     * player plays or is heading to with the part already remembered (`sameAudioChoice`).
+     */
+    private fun rememberAudioPick(track: AudioTrack) {
+        if (!::item.isInitialized) return
+        val current = choiceFor(item)
+        val pick = TrackChoiceRules.audioChoiceOf(track)
+        val target = if (switchBase != null) switchAudioIndex else selectedAudioIndex
+        if (track.index != target || !TrackChoiceRules.sameAudioChoice(pick, current?.audio)) remember(TrackChoiceRules.withAudio(current, pick))
+    }
+
+    private fun rememberSubtitlePick(track: SubtitleTrack?) {
+        if (!::item.isInitialized) return
+        remember(TrackChoiceRules.withSubtitles(choiceFor(item), TrackChoiceRules.subtitleChoiceOf(track)))
+    }
+
+    /** The memory first (every later start of the title uses it), then the PUT in `appScope`, confirmed there. */
+    private fun remember(next: TrackChoice) {
+        val pid = profileId ?: return // no stored profile: nothing to save it under
+        val (kind, id) = item.titleKey
+        val memory = deps.trackChoiceMemory
+        val seq = memory.put(pid, kind, id, next)
+        val saved = deps.trackChoices.save(kind, id, next)
+        deps.appScope.launch { if (saved.await()) memory.markConfirmed(pid, kind, id, seq) }
     }
 
     /** The file and start position (resume rules); null when no file is readable. */
@@ -585,6 +679,12 @@ class PlayerViewModel(
             send(spec.copy(previousSessionId = null))
             return
         }
+        if (spec.audioFromChoice && spec.audioIndex != null) {
+            // FR-T4.3: the remembered audio track was refused: once more on the file default (no toast, nothing saved).
+            deps.log("remembered audio refused (${plan.wireReason}): retry with the default track", null)
+            send(spec.copy(audioIndex = null, audioFromChoice = false, audioIndexRetried = true, previousSessionId = null))
+            return
+        }
         when (spec.kind) {
             Kind.DIRECT_AUDIO_SWITCH -> {
                 spec.audioIndex?.let(unavailableAudio::add)
@@ -609,7 +709,13 @@ class PlayerViewModel(
                     // The server stopped the old session at the first request whatever its outcome.
                     val start = spec.nextEpisode?.let { VersionSelector.startFor(nextFile, it.media_files, it.progress) }
                     noticePending = start?.differentVersionNotice ?: false
-                    send(spec.copy(file = nextFile, startSec = start?.positionSeconds ?: 0.0, previousSessionId = null, fallbacks = spec.fallbacks.drop(1)))
+                    val audio = rememberedAudio(nextFile)
+                    send(
+                        spec.copy(
+                            file = nextFile, startSec = start?.positionSeconds ?: 0.0, audioIndex = audio, audioFromChoice = audio != null,
+                            audioIndexRetried = false, previousSessionId = null, fallbacks = spec.fallbacks.drop(1),
+                        ),
+                    )
                 } else if (spec.kind == Kind.NEXT_EPISODE && spec.nextEpisode != null) {
                     showEndScreenUnplayable(spec.nextEpisode, plan.reason, spec.file)
                 } else {
@@ -639,7 +745,7 @@ class PlayerViewModel(
         }
         val allowed = vlcFallbackAllowed(engine, spec.file)
         when (val decision = PlaybackErrorMapper.forRequestError(e, hasOtherVersion(spec.file), spec.audioIndexRetried, allowed)) {
-            PlaybackDecision.RetryWithoutAudioIndex -> send(spec.copy(audioIndex = null, audioIndexRetried = true, previousSessionId = null))
+            PlaybackDecision.RetryWithoutAudioIndex -> send(spec.copy(audioIndex = null, audioIndexRetried = true, audioFromChoice = false, previousSessionId = null))
             PlaybackDecision.FallBackToVlc -> {
                 historyOf(spec.file).exoFailed = true
                 deps.log("remux failed: retry on VLC", null)
@@ -690,7 +796,8 @@ class PlayerViewModel(
         val justDefaulted = !subtitleDefaulted
         if (justDefaulted) {
             subtitleDefaulted = true
-            selectedSubtitleId = plan.defaultSubtitleId
+            // FR-T4.4: the remembered subtitle part matched in this file (no part: TrackRules.defaultSubtitle).
+            selectedSubtitleId = firstSubtitle(spec.file, plan)
         }
         if (selectedSubtitleId != null && plan.subtitles.none { it.track.id == selectedSubtitleId }) selectedSubtitleId = null
         // The default text subtitle is fetched before prepare() with a 3 s budget (never a track the engine renders natively).
@@ -904,6 +1011,8 @@ class PlayerViewModel(
     }
 
     override fun onStateChanged(state: PlayerState) {
+        // A restyle reopen ends at its first READY (or an IDLE / ENDED: the reopen failed or ended).
+        if (reloading && state != PlayerState.BUFFERING) reloading = false
         val a = att
         when (state) {
             PlayerState.READY -> if (a != null && !a.reachedReady) {
@@ -927,7 +1036,7 @@ class PlayerViewModel(
 
     override fun onIsPlayingChanged(isPlaying: Boolean) {
         val a = switchBase ?: att
-        if (a != null && !a.putDone) a.reporter.onPlayingChanged(isPlaying)
+        if (a != null && !a.putDone && !reloading) a.reporter.onPlayingChanged(isPlaying)
         render()
     }
 
@@ -937,7 +1046,7 @@ class PlayerViewModel(
     // remote's Play / Pause keys and the overlay's 10 s seek buttons.
     override fun onRemotePlay() {
         onPlay()
-        onShowOverlay()
+        onShowOverlay() // not while the style dialog is open (the overlay stays hidden: live preview at the real height)
     }
 
     override fun onRemotePause() = onPause()
@@ -945,6 +1054,7 @@ class PlayerViewModel(
     override fun onRemoteSeek(forward: Boolean) = onSeekButton(forward)
 
     override fun onFailure(failure: PlayerFailure) {
+        reloading = false
         val attached = session == SessionState.Playing || session == SessionState.Paused || switchBase != null
         if (!attached) return
         if (switchBase != null) abandonSwitch() // row 41
@@ -1071,6 +1181,7 @@ class PlayerViewModel(
         stopTicker()
         stopHeldTimers()
         overlay = OverlayMode.HIDDEN
+        commitStyleDraft(userClose = false)
         dialog = null
         // PUT(end): the final PUT of this attachment; a later finishSession() only DELETEs.
         if (!a.putDone) {
@@ -1197,18 +1308,27 @@ class PlayerViewModel(
         when (target) {
             is NextTarget.Episode -> {
                 val episode = target.episode
-                val nextItem = Item("episode", episode.id, episode.media_files, episode.progress).also { it.fill(episode) }
+                // The resolver's detail carries the show's choice; this device's picks still win (TrackChoiceMemory).
+                val nextItem = Item("episode", episode.id, episode.media_files, episode.progress, RatingKind.SHOW to episode.show_id, episode.track_choice)
+                    .also { it.fill(episode) }
                 beginItem(nextItem)
                 val first = target.plan.first()
                 val start = VersionSelector.startFor(first, episode.media_files, episode.progress)
                 noticePending = start.differentVersionNotice
-                send(RequestSpec(first, start.positionSeconds, null, previous, Kind.NEXT_EPISODE, play = true, fallbacks = target.plan.drop(1), nextEpisode = episode))
+                val audio = rememberedAudio(first)
+                send(
+                    RequestSpec(
+                        first, start.positionSeconds, audio, previous, Kind.NEXT_EPISODE, play = true, fallbacks = target.plan.drop(1),
+                        nextEpisode = episode, audioFromChoice = audio != null,
+                    ),
+                )
             }
             is NextTarget.Part -> {
                 resetForFile()
                 val group = VersionSelector.groupOf(target.file)
                 val fallbacks = TieredVersions.candidates(item.files, versionCaps, group).filter { it.id != target.file.id }
-                send(RequestSpec(target.file, 0.0, null, previous, Kind.NEXT_PART, play = true, fallbacks = fallbacks))
+                val audio = rememberedAudio(target.file)
+                send(RequestSpec(target.file, 0.0, audio, previous, Kind.NEXT_PART, play = true, fallbacks = fallbacks, audioFromChoice = audio != null))
             }
         }
     }
@@ -1271,6 +1391,7 @@ class PlayerViewModel(
         stopHeldTimers()
         errorSpec = retry
         errorPositionSec = positionSec
+        commitStyleDraft(userClose = false)
         dialog = null
         overlay = OverlayMode.HIDDEN
         session = SessionState.Error
@@ -1327,7 +1448,8 @@ class PlayerViewModel(
         dialog = null
         val start = VersionSelector.startFor(chosen, item.files, progressNow(current))
         noticePending = start.differentVersionNotice
-        send(RequestSpec(chosen, start.positionSeconds, null, null, Kind.OTHER_VERSION, play = true))
+        val audio = rememberedAudio(chosen)
+        send(RequestSpec(chosen, start.positionSeconds, audio, null, Kind.OTHER_VERSION, play = true, audioFromChoice = audio != null))
     }
 
     // ---- Audio switch (rows 34–41) ----------------------------------------------------------
@@ -1337,6 +1459,8 @@ class PlayerViewModel(
         val a = att
         val track = (a?.file ?: file)?.audio_tracks?.firstOrNull { it.index == index }
         if (a == null || track == null) return render()
+        // The viewer's wish, saved even when the switch below is then refused or a no-op (FR-T6).
+        rememberAudioPick(track)
         if (session == SessionState.Released) {
             // Row 8: always server-routed, stays paused.
             send(RequestSpec(a.file, savedPositionMs / 1000.0, index, null, Kind.RELEASED_AUDIO, play = false, keepFrame = true))
@@ -1399,12 +1523,14 @@ class PlayerViewModel(
         dialog = null
         val a = att ?: return render()
         if (trackId == null) {
+            rememberSubtitlePick(null)
             selectedSubtitleId = null
             pendingSubtitle = null
             controller.selectSubtitle(null)
             return render()
         }
         val planned = a.plan.subtitles.firstOrNull { it.track.id == trackId } ?: return render()
+        rememberSubtitlePick(planned.track)
         selectedSubtitleId = trackId
         if (session == SessionState.Released) {
             // Row 9: stored and fetched to the cache; applied by the next recovery.
@@ -1598,8 +1724,10 @@ class PlayerViewModel(
         val a = switchBase ?: att ?: return
         controller.pause()
         if (!a.putDone) a.reporter.onPaused()
-        overlay = OverlayMode.FULL
-        focusPlayPause++
+        if (!styleDialogOpen) {
+            overlay = OverlayMode.FULL
+            focusPlayPause++
+        }
         overlayJob?.cancel()
         if (switchBase != null) {
             basePaused = true
@@ -1638,7 +1766,7 @@ class PlayerViewModel(
     }
 
     fun onShowOverlay() {
-        if (!videoVisible()) return
+        if (!videoVisible() || styleDialogOpen) return
         overlay = OverlayMode.FULL
         focusPlayPause++
         touch()
@@ -1673,7 +1801,7 @@ class PlayerViewModel(
         val a = switchBase ?: att ?: return
         val base = if (session == SessionState.Released) savedPositionMs else controller.positionMs
         seek.onKeyDown(forward, repeatCount, deps.nowMs(), base, effectiveDurationMs(a))
-        if (overlay == OverlayMode.HIDDEN) overlay = OverlayMode.PROGRESS
+        if (overlay == OverlayMode.HIDDEN && !styleDialogOpen) overlay = OverlayMode.PROGRESS
         overlayJob?.cancel()
         seekJob?.cancel()
         seekJob = viewModelScope.launch {
@@ -1757,9 +1885,74 @@ class PlayerViewModel(
     }
 
     fun onDialogDismiss() {
+        if (styleDialogOpen) return onStyleDialogClosed()
         dialog = null
         scheduleOverlayHide()
         render()
+    }
+
+    // ---- Subtitle style (prd3 FR-T8..FR-T10) ------------------------------------------------
+
+    private val styleDialogOpen: Boolean get() = dialog is PlayerDialog.SubtitleStyle
+
+    /**
+     * "Formato de los subtítulos": the draft starts on the current look normalized by the Clash rule. The overlay
+     * hides while the dialog is open (live Exo subtitles preview at their real height) and never comes back on keys
+     * or media-session commands until it closes.
+     */
+    fun onOpenSubtitleStyle() {
+        if (!videoVisible()) return
+        val current = deps.subtitleStyles.style.value
+        dialog = PlayerDialog.SubtitleStyle(SubtitleStyleUi(SubtitleStyleEditor.normalized(current), current))
+        overlay = OverlayMode.HIDDEN
+        overlayJob?.cancel()
+        render()
+    }
+
+    /** Left/Right on a row: the next enabled value (clash values skipped, the ends stop). */
+    fun onStyleStep(row: StyleRow, forward: Boolean) {
+        val d = dialog as? PlayerDialog.SubtitleStyle ?: return
+        val next = SubtitleStyleEditor.step(d.ui.draft, row, forward)
+        if (next == d.ui.draft) return
+        dialog = PlayerDialog.SubtitleStyle(d.ui.copy(draft = next))
+        render()
+    }
+
+    /** Back in the dialog (a user close): saves, reloads libVLC when needed, the overlay comes back. */
+    fun onStyleDialogClosed() {
+        if (!styleDialogOpen) return
+        commitStyleDraft(userClose = true)
+        overlay = OverlayMode.FULL
+        scheduleOverlayHide()
+        render()
+    }
+
+    /**
+     * Every close of the style dialog: a changed draft is saved (applied at once, PUT in `appScope`); only a user
+     * close with libVLC active and a media playing or paused reopens it with the new look (teardown closes never
+     * reload: the controller is ended, failed, stopped or released, and its next open picks the look). A failed
+     * save or reload shows one toast.
+     */
+    private fun commitStyleDraft(userClose: Boolean) {
+        val d = dialog as? PlayerDialog.SubtitleStyle ?: return
+        dialog = null
+        val draft = d.ui.draft
+        if (draft == d.ui.openedWith) return
+        val saved = deps.subtitleStyles.save(draft)
+        if (userClose && !reloadStyle()) {
+            showToast(UiText.Res(R.string.subtitle_style_save_failed))
+            return
+        }
+        if (!cleared) viewModelScope.launch { if (!saved.await()) showToast(UiText.Res(R.string.subtitle_style_save_failed)) }
+    }
+
+    /** libVLC can't restyle live: the active VLC controller reopens at the same position (FR-T9). */
+    private fun reloadStyle(): Boolean {
+        val c = createdController ?: return true
+        if (activeEngine != PlaybackEngine.VLC || switchBase != null) return true
+        if (session != SessionState.Playing && session != SessionState.Paused) return true
+        reloading = true
+        return c.reloadSubtitleStyle()
     }
 
     // ---- Back, lifecycle, exit --------------------------------------------------------------
@@ -1767,7 +1960,7 @@ class PlayerViewModel(
     /** Back on the Player: rows 11, 13, 21, 26, 29, 34, 35. */
     fun onBack() {
         when {
-            dialog != null -> onDialogDismiss()
+            dialog != null -> onDialogDismiss() // the style dialog: onStyleDialogClosed (saves)
             switchBase != null -> abandonSwitch() // row 34 (the switch chip is the most specific transient UI)
             (session == SessionState.Playing || session == SessionState.Paused || session == SessionState.Released) && overlay != OverlayMode.HIDDEN -> {
                 overlay = OverlayMode.HIDDEN
@@ -1801,6 +1994,7 @@ class PlayerViewModel(
     }
 
     private fun exit() {
+        commitStyleDraft(userClose = false)
         session = SessionState.Exited
         render()
         handOffPrompt()
@@ -1857,6 +2051,8 @@ class PlayerViewModel(
             }
             else -> Unit
         }
+        // After backgroundAttached()'s controller.stop(): the style is saved, never reloaded (the next open applies it).
+        commitStyleDraft(userClose = false)
         render()
     }
 
@@ -1930,6 +2126,7 @@ class PlayerViewModel(
     }
 
     override fun onCleared() {
+        commitStyleDraft(userClose = false)
         cleared = true
         // Row 30: finishSession() for the current key; in Loading also row 33 for a late response.
         when (session) {
@@ -2051,6 +2248,7 @@ class PlayerViewModel(
             keepScreenOn = s == SessionState.Playing || (s == SessionState.Loading && (switchBase == null || basePlaying)),
             focusPlayPause = focusPlayPause,
             engine = activeEngine.takeIf { player != null },
+            subtitleLook = (dialog as? PlayerDialog.SubtitleStyle)?.ui?.draft ?: deps.subtitleStyles.style.value,
         )
     }
 

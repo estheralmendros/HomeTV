@@ -74,6 +74,49 @@ class RepositoriesTest {
     }
 
     @Test
+    fun `me returns the profile and its subtitle style, a missing style is the default`() = runTest {
+        t.route("GET", "/api/me") {
+            t.json("""{"id": 5, "name": "Esther", "avatar_id": "avatar-05", "is_admin": true, "subtitle_style": {"size": "large", "color": "yellow", "edge": "shadow", "edge_color": "dark_gray", "position": "high"}}""")
+        }
+        val me = profiles.me()
+        assertEquals(com.hometv.tv.core.api.SubtitleStyle("large", "yellow", "shadow", "dark_gray", "high"), me.subtitle_style)
+        assertEquals(com.hometv.tv.core.api.Profile(5, "Esther", "avatar-05", is_admin = true), me.toProfile())
+        t.route("GET", "/api/me") { t.json("""{"id": 5, "name": "Esther", "avatar_id": "avatar-05"}""") }
+        assertEquals(com.hometv.tv.core.api.SubtitleStyle(), profiles.me().subtitle_style)
+    }
+
+    @Test
+    fun `saveSubtitleStyle PUTs every key, renews in the background, throws ApiException`() = runTest {
+        t.route("PUT", "/api/me/subtitle-style") { r ->
+            if (r.getHeader("Authorization") == "Bearer old") t.error(401, "unauthorized") else MockResponse().setResponseCode(204)
+        }
+        t.route("POST", "/api/profiles/5/session") { t.json(t.sessionJson("new")) }
+        profiles.saveSubtitleStyle(com.hometv.tv.core.api.SubtitleStyle(size = "small"))
+        val put = t.requests.last { it.method == "PUT" }
+        assertEquals(
+            Json.parseToJsonElement("""{"size": "small", "color": "white", "edge": "outline", "edge_color": "black", "position": "low"}"""),
+            Json.parseToJsonElement(put.body.readUtf8()),
+        )
+        t.route("PUT", "/api/me/subtitle-style") { t.error(422, "validation_error") }
+        assertThrows<ApiException.Http> { profiles.saveSubtitleStyle(com.hometv.tv.core.api.SubtitleStyle()) }
+    }
+
+    @Test
+    fun `putTrackChoice omits null keys and sends the flags of an off choice`() = runTest {
+        t.route("PUT", "/api/track-choices/shows/7") { MockResponse().setResponseCode(204) }
+        apiCall {
+            t.clients.api.putTrackChoice(
+                "shows", 7,
+                com.hometv.tv.core.api.TrackChoice(com.hometv.tv.core.api.AudioChoice("eng", null, 6), com.hometv.tv.core.api.SubtitleChoice("off")),
+            )
+        }
+        assertEquals(
+            Json.parseToJsonElement("""{"audio": {"language": "eng", "channels": 6}, "subtitles": {"mode": "off", "forced": false, "hearing_impaired": false}}"""),
+            Json.parseToJsonElement(t.requests.single().body.readUtf8()),
+        )
+    }
+
+    @Test
     fun `verifyAdminPin posts the PIN with the profile token and discards the admin token`() = runTest {
         t.route("POST", "/api/admin/unlock") { t.json("""{"admin_token": "adm", "expires_at": "2026-10-23T18:00:00Z"}""") }
         assertEquals(PinCheck.Ok, profiles.verifyAdminPin("1234"))

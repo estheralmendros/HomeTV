@@ -8,6 +8,7 @@ import com.hometv.tv.data.InMemoryEnginePrefs
 import com.hometv.tv.testing.MainDispatcherExtension
 import com.hometv.tv.testing.ScriptedApi
 import com.hometv.tv.testing.testContainer
+import com.hometv.tv.testing.toMe
 import com.hometv.tv.ui.text.UiText
 import com.hometv.tv.core.api.UnlockResponse
 import com.hometv.tv.core.data.FakeHomeTvApi.Companion.httpError
@@ -32,7 +33,7 @@ class SettingsViewModelTest {
     fun `shows the server, the profile, versions, the TMDB notice and the caps summary`() = runTest(main.dispatcher) {
         val api = ScriptedApi().apply {
             onInfo = { ServerInfo(name = "Casa", version = "1.2.0", tmdb_attribution = "Este producto usa la API de TMDB pero no está avalado ni certificado por TMDB.") }
-            onMe = { Profile(5, "Esther", "avatar-05") }
+            onMe = { com.hometv.tv.core.api.Me(5, "Esther", "avatar-05") }
         }
         val container = testContainer(api, backgroundScope)
         val vm = container.settingsViewModel()
@@ -46,12 +47,13 @@ class SettingsViewModelTest {
         assertEquals(UiText.Res(R.string.settings_caps, listOf("h264, hevc", "aac, mp3, pcm_s16le, opus, vorbis, flac, ac3")), s.caps)
     }
 
-    private val admin = Profile(1, "Admin", "avatar-01", is_admin = true)
+    /** The stored profile (5): `AccountState` applies only a `/api/me` of the stored profile. */
+    private val admin = Profile(5, "Admin", "avatar-01", is_admin = true)
     private val viewer = Profile(5, "Invitado", "avatar-05")
 
     private fun kotlinx.coroutines.test.TestScope.settings(profile: Profile, unlock: suspend (String) -> UnlockResponse = { throw httpError(401, "invalid_pin") }): Pair<SettingsViewModel, ScriptedApi> {
         val api = ScriptedApi().apply {
-            onMe = { profile }
+            onMe = { profile.toMe() }
             onUnlock = unlock
         }
         val vm = testContainer(api, backgroundScope).settingsViewModel()
@@ -164,7 +166,7 @@ class SettingsViewModelTest {
         prefs: EnginePrefs = InMemoryEnginePrefs(),
         notices: String = "THIRD PARTY NOTICES",
     ): SettingsViewModel {
-        val api = ScriptedApi().apply { onMe = { profile } }
+        val api = ScriptedApi().apply { onMe = { profile.toMe() } }
         val vm = testContainer(api, backgroundScope, vlcAvailable = vlcAvailable, enginePrefs = prefs, notices = notices).settingsViewModel()
         advanceUntilIdle()
         return vm
@@ -253,7 +255,7 @@ class SettingsViewModelTest {
 
     @Test
     fun `a notice that cannot be read is logged and opens nothing`() = runTest(main.dispatcher) {
-        val c = testContainer(ScriptedApi().apply { onMe = { admin } }, backgroundScope)
+        val c = testContainer(ScriptedApi().apply { onMe = { admin.toMe() } }, backgroundScope)
         val logged = mutableListOf<Throwable?>()
         val vm = SettingsViewModel(
             c.store, c.account, c.profiles, c::deviceCaps, "0.1.0",
@@ -271,7 +273,7 @@ class SettingsViewModelTest {
 
     @Test
     fun `a second open while the notice loads, or while it is shown, reads nothing more`() = runTest(main.dispatcher) {
-        val c = testContainer(ScriptedApi().apply { onMe = { admin } }, backgroundScope)
+        val c = testContainer(ScriptedApi().apply { onMe = { admin.toMe() } }, backgroundScope)
         val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
         var reads = 0
         val vm = SettingsViewModel(

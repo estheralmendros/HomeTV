@@ -147,4 +147,42 @@ class PlayerSurfaceTest : UiTestBase() {
     }
 
     private fun <T> List<T>.dedupeRuns(): List<T> = filterIndexed { i, v -> i == 0 || this[i - 1] != v }
+
+    /** The `SubtitleView`'s applied style, text size fraction and bottom padding (Media3 1.5.1 private fields). */
+    private fun subtitleField(name: String): Any? {
+        val view = checkNotNull(exoView?.subtitleView) { "no Exo SubtitleView bound" }
+        return androidx.media3.ui.SubtitleView::class.java.getDeclaredField(name).apply { isAccessible = true }.get(view)
+    }
+
+    @Test
+    fun theExoSubtitleViewDrawsTheProfileStyleAndADraftChangeRestylesItLive() {
+        val gate = CompletableDeferred<Unit>().apply { complete(Unit) }
+        openFilm(gate)
+        onPlayer { ready() }
+        val default = subtitleField("style") as androidx.media3.ui.CaptionStyleCompat
+        assertEquals(0xFFFFFFFF.toInt(), default.foregroundColor)
+        assertEquals(androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE, default.edgeType)
+        assertEquals(androidx.media3.ui.SubtitleView.DEFAULT_TEXT_SIZE_FRACTION, subtitleField("defaultTextSize") as Float, 1e-4f)
+        // With the overlay hidden the padding is the look's position (Baja: 8 %).
+        assertEquals(0.08f, subtitleField("bottomPaddingFraction") as Float, 1e-4f)
+        // The overlay's bottom block shown: the subtitles sit above it.
+        press(Key.DirectionUp)
+        assertTrue("raised above the overlay: ${subtitleField("bottomPaddingFraction")}", (subtitleField("bottomPaddingFraction") as Float) > 0.08f)
+        press(Key.DirectionRight, times = 2)
+        press(Key.DirectionCenter)
+        press(Key.DirectionDown, times = 2)
+        press(Key.DirectionCenter)
+        assertFocused("style_row_size")
+        // The style dialog hides the overlay: "Posición" previews at its real height.
+        assertEquals(0.08f, subtitleField("bottomPaddingFraction") as Float, 1e-4f)
+        press(Key.DirectionRight)
+        assertEquals(androidx.media3.ui.SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * 1.3f, subtitleField("defaultTextSize") as Float, 1e-4f)
+        press(Key.DirectionDown)
+        press(Key.DirectionRight)
+        assertEquals(0xFFFFFF00.toInt(), (subtitleField("style") as androidx.media3.ui.CaptionStyleCompat).foregroundColor)
+        press(Key.DirectionDown, times = 3)
+        assertFocused("style_row_position")
+        press(Key.DirectionRight, times = 2)
+        assertEquals(0.20f, subtitleField("bottomPaddingFraction") as Float, 1e-4f)
+    }
 }

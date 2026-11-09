@@ -30,6 +30,7 @@ import com.hometv.tv.core.data.Session
 import com.hometv.tv.core.data.SessionGuard
 import com.hometv.tv.core.data.SessionStore
 import com.hometv.tv.core.data.SubtitleSource
+import com.hometv.tv.core.data.TrackChoiceRepository
 import com.hometv.tv.core.data.WatchRepository
 import com.hometv.tv.core.data.WatchlistRepository
 import com.hometv.tv.core.playback.CapsForFile
@@ -38,6 +39,7 @@ import com.hometv.tv.core.playback.EngineHistory
 import com.hometv.tv.core.playback.EngineInputs
 import com.hometv.tv.core.playback.EngineSelector
 import com.hometv.tv.core.playback.PlaybackEngine
+import com.hometv.tv.core.playback.SubtitleLook
 import com.hometv.tv.core.util.ServerUrl
 import com.hometv.tv.data.AccountState
 import com.hometv.tv.data.DataStoreEnginePrefs
@@ -50,6 +52,8 @@ import com.hometv.tv.data.InMemoryEnginePrefs
 import com.hometv.tv.data.PlayerLaunches
 import com.hometv.tv.data.RatingPrompts
 import com.hometv.tv.data.SignOut
+import com.hometv.tv.data.SubtitleStyleStore
+import com.hometv.tv.data.TrackChoiceMemory
 import com.hometv.tv.playback.AndroidCodecInventory
 import com.hometv.tv.playback.CodecSource
 import com.hometv.tv.playback.ExoPlayerController
@@ -115,7 +119,8 @@ data class AppConfig(
  * changes), [api], [guard], the repositories, [events] (global `AppEvent` bus), [appScope]
  * (`SupervisorJob() + Dispatchers.IO`, process lifetime: final progress PUT, HLS DELETE, [watchlist] and [ratings] writes),
  * [codecs] + [capsForFile] (capability hook), [playerLaunches], [homeRefresh], [detailRefresh],
- * [watchlistMemory], [account], [ratings] + [ratingPrompts] (every rating change marks Home stale),
+ * [watchlistMemory], [account] (incl. the subtitle style) + [subtitleStyles], [ratings] + [ratingPrompts] (every
+ * rating change marks Home stale), [trackChoices] + [trackChoiceMemory] (remembered audio/subtitle picks),
  * [signOut] (Home's "Salir": prompts, account, sort memories and the stored profile),
  * [imageLoader] and one factory function per ViewModel.
  */
@@ -130,8 +135,12 @@ class AppContainer(
     private val clock: Clock = Clock.systemUTC(),
     /** The calendar's time zone (Actividad's relative times, ages on the Person screen): the device's, read each time; tests pin it. */
     private val zone: () -> ZoneId = ZoneId::systemDefault,
-    /** One controller per engine and Player screen, on the stream client of the current server (fakes in tests). */
-    private val playerControllers: (engine: PlaybackEngine, streamClient: OkHttpClient) -> PlayerController = { _, _ -> error("No player in this container") },
+    /**
+     * One controller per engine and Player screen, on the stream client of the current server (fakes in tests);
+     * [look] = the profile's subtitle style, read by the VLC controller whenever it builds a port.
+     */
+    private val playerControllers: (engine: PlaybackEngine, streamClient: OkHttpClient, look: () -> SubtitleLook) -> PlayerController =
+        { _, _, _ -> error("No player in this container") },
     /** Whether libVLC can run here (never creates LibVLC): read per playback request and by the version tiers. */
     val vlcAvailability: VlcAvailability = VlcAvailability { false },
     /** `cacheDir/subtitles` (side-loaded WebVTT files). */
@@ -168,10 +177,22 @@ class AppContainer(
 
     /** Rating prompts waiting for the root `RatingPromptHost`. */
     val ratingPrompts = RatingPrompts(store.session, appScope)
+
+    /** The remembered audio/subtitle choice writes (one PUT per title in flight, latest wins). */
+    val trackChoices = TrackChoiceRepository(
+        api, guard, store, appScope,
+        log = { e -> runCatching { android.util.Log.w("HomeTvTrackChoice", "track choice save failed", e) } },
+    )
+
+    /** The picks made on this device in this process (they win over fetched choices until confirmed and refetched). */
+    val trackChoiceMemory = TrackChoiceMemory(store.session, appScope)
     val playback = PlaybackRepository(api, guard, appScope, SubtitleSource { url -> OkHttpSubtitleSource(clients().streamClient).fetch(url) })
     val nextEpisodes = NextEpisodeResolver(fetch = { id -> catalog.episode(id, Origin.Background) })
     val serverRepository = ServerRepository(validationClient)
-    val account = AccountState(profiles)
+    val account = AccountState(profiles, store, appScope)
+
+    /** The profile's subtitle style for the Player (applied at once, PUT latest-wins). */
+    val subtitleStyles = SubtitleStyleStore(account, profiles, store, appScope)
     val homeRefresh = HomeRefresh()
     val detailRefresh = DetailRefresh()
     val browseSorts = BrowseSortMemory()
@@ -180,7 +201,7 @@ class AppContainer(
 
     /** "Salir" on Home: forgets the profile on this device (declared after everything it resets). */
     val signOut = SignOut(
-        store, ratingPrompts, account, browseSorts, watchlistMemory,
+        store, ratingPrompts, trackChoiceMemory, account, browseSorts, watchlistMemory,
         log = { e -> runCatching { android.util.Log.w("HomeTvSession", "sign-out write failed", e) } },
     )
 
@@ -337,12 +358,15 @@ class AppContainer(
             serverUrl = { store.session.value.serverUrl },
             // Built lazily at the first attach that uses the engine (never before): an ExoPlayer-only screen never
             // builds a libVLC MediaPlayer (nor LibVLC), a VLC-only one never builds an ExoPlayer.
-            controllers = { engine -> playerControllers(engine, clients().streamClient) },
+            controllers = { engine -> playerControllers(engine, clients().streamClient) { account.subtitleStyle.value } },
             vlcAvailable = vlcAvailability::isAvailable,
             // Read at every playback request: a change in Ajustes applies to the next one.
             forceVlc = { enginePrefs.forceVlc.value },
             subtitles = subtitleCache,
             ratingPrompts = ratingPrompts,
+            trackChoices = trackChoices,
+            trackChoiceMemory = trackChoiceMemory,
+            subtitleStyles = subtitleStyles,
         ),
     )
 
@@ -366,7 +390,8 @@ class AppContainer(
             val playerLog: (String, Throwable?) -> Unit = { msg, e -> runCatching { Log.i("HomeTvPlayer", msg, e) } }
             // Nothing is created here: LibVLC loads its native code at the first VLC open (prd2 FR-5).
             val heightPx = app.resources.displayMetrics.heightPixels
-            val libVlc = LibVlcProvider(Build.SUPPORTED_ABIS.toList(), { LibVLC(app, VlcOptions.libVlc(heightPx)) }, playerLog)
+            // One LibVLC per option list (the subtitle style is in the instance options); a restyle releases the old one.
+            val libVlc = LibVlcProvider<LibVLC>(Build.SUPPORTED_ABIS.toList(), { opts -> LibVLC(app, ArrayList(opts)) }, { it.release() }, playerLog)
             val mainHandler = Handler(Looper.getMainLooper())
             return AppContainer(
                 store = store,
@@ -376,14 +401,15 @@ class AppContainer(
                 clientsFactory = { url -> ApiClientFactory.create(url, token = { store.session.value.token }, userAgent = userAgent, base = base) },
                 validationClient = ApiClientFactory.validationClient(userAgent, base),
                 codecs = AndroidCodecInventory(app, appScope),
-                playerControllers = { engine, streamClient ->
+                playerControllers = { engine, streamClient, look ->
                     when (engine) {
                         PlaybackEngine.EXO -> ExoPlayerController(PlayerFactory.create(app, streamClient))
                         PlaybackEngine.VLC -> VlcPlayerController(
-                            portFactory = { LibVlcPort(libVlc.get()) },
+                            portFactory = { l -> libVlc.getOrOld(VlcOptions.libVlc(heightPx, l)).let { (lib, applied) -> LibVlcPort(lib) to applied } },
                             token = { store.session.value.token },
                             log = playerLog,
                             post = { block -> mainHandler.post(block) },
+                            look = look,
                         )
                     }
                 },

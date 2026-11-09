@@ -202,7 +202,7 @@ class NavigationFocusTest : UiTestBase() {
     @Test
     fun settingsOpensFromTheNavBarAndBackFocusesItsTab() {
         useLibrary()
-        api.onMe = { Profile(5, "Esther", "avatar-05", is_admin = true) }
+        api.onMe = { com.hometv.tv.core.api.Me(5, "Esther", "avatar-05", is_admin = true) }
         launch()
         press(Key.DirectionUp)
         press(Key.DirectionRight, times = 5)
@@ -224,7 +224,7 @@ class NavigationFocusTest : UiTestBase() {
         assertTrue(rule.onAllNodes(hasTestTag("tab_SETTINGS"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
         // Tailscale is up now: [Reintentar] loads Home, and the admin's profile follows.
         api.onHome = home
-        api.onMe = { Profile(5, "Esther", "avatar-05", is_admin = true) }
+        api.onMe = { com.hometv.tv.core.api.Me(5, "Esther", "avatar-05", is_admin = true) }
         press(Key.DirectionCenter)
         node("card_continue:film:12").assertIsDisplayed()
         node("tab_SETTINGS").assertExists()

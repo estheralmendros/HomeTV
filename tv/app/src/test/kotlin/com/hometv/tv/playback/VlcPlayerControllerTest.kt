@@ -8,6 +8,8 @@ import com.hometv.tv.core.playback.PlayerController
 import com.hometv.tv.core.playback.PlayerFailure
 import com.hometv.tv.core.playback.PlayerState
 import com.hometv.tv.core.playback.SideloadedSubtitle
+import com.hometv.tv.core.playback.SubtitleLook
+import com.hometv.tv.core.playback.SubtitleSize
 import com.hometv.tv.core.playback.TrackCheckInput
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -25,6 +27,11 @@ class VlcPlayerControllerTest {
     private var token: String? = "tok"
     private var factoryCalls = 0
     private var factory: () -> VlcPlayerPort = { port }
+
+    /** The look the controller reads (`look()`), the looks the factory was asked for and its `applied` answer. */
+    private var look = SubtitleLook.DEFAULT
+    private val requestedLooks = mutableListOf<SubtitleLook>()
+    private var applied = true
     private val logs = mutableListOf<String>()
     private val posted = mutableListOf<() -> Unit>()
     private val events = mutableListOf<String>()
@@ -50,10 +57,12 @@ class VlcPlayerControllerTest {
         }
     }
     private val vlc = VlcPlayerController(
-        portFactory = {
+        portFactory = { requested ->
             factoryCalls++
-            factory()
+            requestedLooks += requested
+            factory() to applied
         },
+        look = { look },
         token = { token },
         log = { msg, e -> logs += "$msg ${e ?: ""}" },
         post = { posted += it },
@@ -411,7 +420,7 @@ class VlcPlayerControllerTest {
         assertTrue(logs.any { "early end at 1200 of 5400" in it }, "$logs")
 
         val fresh = FakeVlcPort()
-        val unknownLength = VlcPlayerController({ fresh }, { "tok" }, post = { posted += it })
+        val unknownLength = VlcPlayerController({ fresh to true }, token = { "tok" }, post = { posted += it })
         val seen = mutableListOf<PlayerState>()
         unknownLength.setListener(object : PlayerController.Listener by listener {
             override fun onStateChanged(state: PlayerState) {
@@ -562,6 +571,219 @@ class VlcPlayerControllerTest {
             drain()
             assertEquals(listOf("state READY", "playing true"), events.filterNot { it.startsWith("tracks") })
             assertNull(events.firstOrNull { it == "state BUFFERING" })
+        }
+    }
+
+    /** prd3 FR-T9: the style lives in the LibVLC instance; a restyle reopens, the port-look rule rebuilds at the next open. */
+    @Nested
+    inner class SubtitleStyle {
+        private val large = SubtitleLook.DEFAULT.copy(size = SubtitleSize.LARGE)
+        private val port2 = FakeVlcPort().also { it.layoutNames[layout] = "layout" }
+
+        private fun opensWith(p: FakeVlcPort) = p.commands().filter { it == "open" || it.startsWith("attachViews") }
+
+        @Test
+        fun `T-AC-13 a reload while playing reopens at the same position with a new port, no IDLE, old events dropped`() {
+            vlc.selectAudio(2)
+            port.audioIds = listOf(10, 11)
+            playing(startMs = 0)
+            port.emit(VlcEvent.TimeChanged(120_000))
+            val oldListener = port.listener!!
+            factory = { port2 }
+            port2.audioIds = listOf(20, 21)
+            look = large
+            port.clear()
+            events.clear()
+            assertTrue(vlc.reloadSubtitleStyle())
+            assertEquals(listOf("setEventListener null", "detachViews", "stop", "release"), port.commands())
+            assertEquals(listOf("attachViews layout", "setEventListener", "open"), port2.commands())
+            assertEquals(large, requestedLooks.last())
+            val open = port2.opens.single()
+            assertTrue(":start-time=120.000" in open.options, "${open.options}")
+            assertFalse(":start-paused" in open.options)
+            assertEquals(listOf("file:///cache/subtitles/1/s3.vtt"), open.slaves)
+            drain()
+            assertEquals(listOf("state BUFFERING", "playing false"), events)
+            // The old player's late events are dropped.
+            oldListener(VlcEvent.EndReached)
+            assertEquals(PlayerState.BUFFERING, vlc.state)
+            port2.emit(VlcEvent.Playing)
+            assertEquals(PlayerState.READY, vlc.state)
+            assertTrue(vlc.isPlaying)
+            assertTrue("setAudioTrack 21" in port2.commands(), "${port2.commands()}")
+            assertTrue(events.none { it == "state IDLE" || it.startsWith("failure") || it.startsWith("tracks") }, "$events")
+        }
+
+        @Test
+        fun `T-AC-13 a reload while paused reopens paused`() {
+            playing(startMs = 0)
+            vlc.pause()
+            port.emit(VlcEvent.Paused)
+            port.emit(VlcEvent.TimeChanged(30_000))
+            drain()
+            factory = { port2 }
+            look = large
+            assertTrue(vlc.reloadSubtitleStyle())
+            assertTrue(":start-paused" in port2.opens.single().options)
+            port2.emit(VlcEvent.Paused)
+            assertFalse("play" in port2.commands())
+            assertFalse(vlc.isPlaying)
+        }
+
+        @Test
+        fun `T-AC-13 with nothing opened a reload only drops the port, the next open builds the new look`() {
+            assertTrue(vlc.reloadSubtitleStyle())
+            assertEquals(0, factoryCalls)
+            vlc.setMediaItem(spec(), 0)
+            vlc.prepare() // no layout yet: port built, open deferred
+            assertEquals(1, factoryCalls)
+            factory = { port2 }
+            look = large
+            assertTrue(vlc.reloadSubtitleStyle())
+            assertEquals(listOf("setEventListener null", "release"), port.commands())
+            vlc.attach(layout)
+            assertEquals(listOf("attachViews layout", "open"), opensWith(port2))
+            assertEquals(listOf(SubtitleLook.DEFAULT, large), requestedLooks)
+        }
+
+        @Test
+        fun `T-AC-13 a reload after EndReached drops the port and opens nothing, a seek after the end reopens on a new port`() {
+            playing()
+            port.emit(VlcEvent.EndReached)
+            assertEquals(PlayerState.ENDED, vlc.state)
+            factory = { port2 }
+            look = large
+            events.clear()
+            assertTrue(vlc.reloadSubtitleStyle())
+            assertTrue("release" in port.commands())
+            assertTrue(port2.calls.isEmpty())
+            drain()
+            assertTrue(events.none { it == "state ENDED" || it == "state IDLE" }, "no second EndReached, no IDLE: $events")
+            assertEquals(PlayerState.ENDED, vlc.state)
+            vlc.seekTo(0)
+            assertEquals(listOf("attachViews layout", "open"), opensWith(port2))
+        }
+
+        @Test
+        fun `T-AC-13 with the layout detached the reload opens at the next attach`() {
+            playing()
+            port.emit(VlcEvent.TimeChanged(50_000))
+            vlc.detach(layout)
+            factory = { port2 }
+            look = large
+            assertTrue(vlc.reloadSubtitleStyle())
+            assertTrue(port2.opens.isEmpty())
+            vlc.attach(layout)
+            assertEquals(listOf("attachViews layout", "open"), opensWith(port2))
+            assertTrue(":start-time=50.000" in port2.opens.single().options)
+        }
+
+        @Test
+        fun `T-AC-13 a failed controller reload returns true and does nothing`() {
+            factory = { throw VlcUnavailableException(UnsatisfiedLinkError("no libvlc.so")) }
+            vlc.setMediaItem(spec(), 0)
+            vlc.prepare()
+            drain()
+            assertTrue(vlc.reloadSubtitleStyle())
+            assertEquals(1, factoryCalls)
+        }
+
+        @Test
+        fun `T-AC-18b a restyle whose new instance fails reopens with the old look, returns false, and the next opens reuse that port`() {
+            playing()
+            factory = { port2 }
+            applied = false
+            look = large
+            assertFalse(vlc.reloadSubtitleStyle())
+            assertEquals(1, port2.opens.size)
+            // Next episode with the same (failed) look: no release, no factory call.
+            port2.emit(VlcEvent.Playing)
+            port2.emit(VlcEvent.EndReached)
+            port2.clear()
+            vlc.setMediaItem(spec(), 0)
+            vlc.prepare()
+            assertEquals(2, factoryCalls)
+            assertFalse("release" in port2.commands())
+            assertEquals(listOf("open"), opensWith(port2))
+            // Recovery after stop, and a reopen after the end: still the same port.
+            vlc.stop()
+            vlc.prepare()
+            port2.emit(VlcEvent.Playing)
+            port2.emit(VlcEvent.EndReached)
+            vlc.seekTo(0)
+            assertEquals(2, factoryCalls)
+            assertFalse("release" in port2.commands())
+        }
+
+        @Test
+        fun `T-AC-18 after a look change the next open rebuilds the port and attaches the layout before open, the same look reuses it`() {
+            playing()
+            port.emit(VlcEvent.EndReached)
+            // Same look: the next episode reuses the port.
+            vlc.setMediaItem(spec(), 0)
+            vlc.prepare()
+            assertEquals(1, factoryCalls)
+            assertEquals(2, port.opens.size)
+            // A look saved meanwhile (or a late /api/me): applied at the next open after a stop (recovery).
+            look = large
+            factory = { port2 }
+            port.clear()
+            vlc.stop()
+            vlc.prepare()
+            assertEquals(listOf("stop", "setEventListener null", "detachViews", "release"), port.commands())
+            assertEquals(listOf("attachViews layout", "setEventListener", "open"), port2.commands())
+            assertEquals(2, factoryCalls)
+        }
+
+        @Test
+        fun `T-AC-18 the seekTo reopen of an ended media uses the rebuilt port`() {
+            playing()
+            port.emit(VlcEvent.EndReached)
+            look = large
+            factory = { port2 }
+            vlc.seekTo(10_000)
+            assertEquals(listOf("setEventListener null", "detachViews", "release"), port.commands().takeLast(3))
+            assertEquals(listOf("attachViews layout", "open"), opensWith(port2))
+            assertEquals(1, port.opens.size)
+        }
+
+        @Test
+        fun `T-AC-18 a deferred open with no layout builds the new port and attaches the layout once`() {
+            playing()
+            vlc.stop()
+            vlc.detach(layout)
+            look = large
+            factory = { port2 }
+            vlc.setMediaItem(spec(), 0)
+            vlc.prepare()
+            assertTrue(port2.opens.isEmpty())
+            assertFalse(port2.calls.any { it.startsWith("attachViews") })
+            vlc.attach(layout)
+            assertEquals(listOf("attachViews layout", "open"), opensWith(port2))
+        }
+
+        @Test
+        fun `no port swap while a media is open (another version, the subtitle rebuild)`() {
+            playing()
+            look = large
+            factory = { port2 }
+            vlc.setMediaItem(spec(), 5_000)
+            vlc.prepare()
+            assertEquals(1, factoryCalls)
+            assertEquals(2, port.opens.size)
+        }
+
+        @Test
+        fun `two reloads A to B to A while nothing plays still show the picture at the next open`() {
+            playing()
+            vlc.stop()
+            look = large
+            factory = { port2 }
+            assertTrue(vlc.reloadSubtitleStyle())
+            look = SubtitleLook.DEFAULT
+            assertTrue(vlc.reloadSubtitleStyle())
+            vlc.prepare()
+            assertEquals(listOf("attachViews layout", "open"), opensWith(port2))
         }
     }
 }

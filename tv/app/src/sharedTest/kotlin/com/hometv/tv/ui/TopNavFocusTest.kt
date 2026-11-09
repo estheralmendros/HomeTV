@@ -16,7 +16,6 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.hometv.tv.core.api.Profile
 import com.hometv.tv.testing.UiTestBase
 import com.hometv.tv.ui.components.NavTab
 import com.hometv.tv.ui.theme.HomeTvColors
@@ -35,7 +34,7 @@ class TopNavFocusTest : UiTestBase() {
 
     /** "Ajustes" is an admin-only tab: sign in as an admin so every label is on the bar. */
     private fun signInAsAdmin() {
-        api.onMe = { Profile(5, "Esther", "avatar-05", is_admin = true) }
+        api.onMe = { com.hometv.tv.core.api.Me(5, "Esther", "avatar-05", is_admin = true) }
     }
 
     /** The color the tab's label was laid out with. */

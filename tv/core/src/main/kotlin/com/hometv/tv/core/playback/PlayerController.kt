@@ -133,6 +133,13 @@ interface PlayerController {
     /** Side-loaded text track by server id, a container image track (direct mode), or null for Off. */
     fun selectSubtitle(trackId: String?)
 
+    /**
+     * Applies a changed subtitle style that the engine cannot apply live (libVLC: instance options,
+     * so the media is reopened at the same position). Default: nothing to reload, the look applies.
+     * False only when the new look could not be applied.
+     */
+    fun reloadSubtitleStyle(): Boolean = true
+
     interface Listener {
         /** Once per media item with non-empty tracks, after the overrides are applied. */
         fun onTracksChanged(check: TrackCheckInput)
