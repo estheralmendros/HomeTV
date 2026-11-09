@@ -201,7 +201,9 @@ is a contract shared by the web and TV clients: change it deliberately and updat
   - `src/api/`: `client.ts` (`apiFetch`, 401 hook, `X-Admin-Token`), `errors.ts` (`ApiError`,
     `errorMessage`), `types.ts` (REST shapes, snake_case; `TitleKind` = `RatingKind`/`WatchlistKind`; `Me extends Profile`
     + `SubtitleStyle` (and its value types), `AudioChoice`/`SubtitleChoice`/`TrackChoice`, `track_choice`
-    on `FilmDetail`/`EpisodeDetail`/`HomeEpisode`, `null` in the fixtures), `kind.ts` (`kindSegment(kind)` → `films|shows`), one module per area,
+    on `FilmDetail`/`EpisodeDetail`/`HomeEpisode`), `subtitleStyleDefaults.ts` (`DEFAULT_SUBTITLE_STYLE`, no player
+    code: the eager `AuthProvider` seeds `['me']` with it), `trackChoices.ts` (`putTrackChoice(kind, id, choice)`),
+    `profiles.ts` (`getMe` → `Me`, `putSubtitleStyle(style)`), `kind.ts` (`kindSegment(kind)` → `films|shows`), one module per area,
     `queryKeys.ts` (`queryKeys`, `mutationKeys` (`watchlistWrite(kind, id)`, `ratingWrite(kind, id)`), `staleTimes`
     (`activity: 0`), `invalidateAfter(event)`, `title(kind, id)` = the film/show detail key; `['person', id]` /
     `personAll()` and `watchlistAll()` (`['watchlist']`; list key `watchlist({type, sort, watched})`) are
@@ -209,7 +211,9 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     `watchlistChanged {kind, id}` → the film/show detail + `['watchlist']`; `activity()` =
     `['activity', 'list']` / `activityAll()` only by `catalogChanged` and event `ratingChanged {kind, id}` →
     the detail, `['activity']`, that kind's library lists, home, search, person, watchlist (every
-    card showing `my_rating`); watch events never touch `['activity']`, dismissing a prompt invalidates nothing),
+    card showing `my_rating`); watch events never touch `['activity']`, dismissing a prompt invalidates nothing;
+    event `trackChoiceChanged {kind, id}` → film: the film detail; show: `['episode']` + home (never the show key);
+    `['me']` holds `Me` (profile + `subtitle_style`)),
     `queries.ts`, `people.ts` (`getPerson`), `watchlist.ts` (`getWatchlist`/`addToWatchlist`/
     `removeFromWatchlist`, `WATCHLIST_PAGE_SIZE` 50), `ratings.ts` (`setRating(kind, id, stars)`/
     `removeRating`/`dismissRatingPrompt`/`getActivity`, `ACTIVITY_PAGE_SIZE` 50), `watch.ts`
@@ -217,20 +221,41 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     with `rating_prompt`), `paging.ts` (generic `nextPageParam<T>`, shared
     by the library grids, Mi lista and Actividad).
   - `src/auth/`: per-tab session (`AuthProvider`, `session.ts`), `BootGate`/`RequireProfile`/
-    `RequireAdmin`, in-memory `adminUnlock`, `useAdminAction` (keypad + one retry on
+    `RequireAdmin`, in-memory `adminUnlock` (`AuthProvider` also registers `setProfileGetter` in its first render and
+    calls `setActiveProfile` in `signIn`/`endSession`; `signIn` seeds `['me']` = profile + `DEFAULT_SUBTITLE_STYLE`
+    and invalidates it; `ProfilesAdminPage` merges into `['me']`), `useAdminAction` (keypad + one retry on
     `admin_locked`), `AdminPinModal`. `AppProviders` (Query, Toast, Auth, `RatingPromptHost`, AdminPin;
     optional `subscribeLocation` built by `lib/routerLocation.ts` `locationSubscriber(router)` in
     `main.tsx` and the test harness: committed location changes only, as `LocationChange {pathname, previousPathname, action}`; `isSamePageReplace`).
   - `src/player/`: pure `capabilities`, `versions` (`selectVersion`/`startPosition`/`nextPart`),
-    `playerMachine` (reducer), `tracks`, `nextEpisode`, `progressSync`; I/O hooks
+    `playerMachine` (reducer; intents carry `audioFromChoice` (LOAD/PLAY_FILE with a matched index), event
+    `REMEMBERED_AUDIO_REJECTED` in `requesting` = one re-send with `null`), `tracks` (`defaultSubtitle(tracks,
+    {audioLanguage})` (no stored language: `hometv.subtitleLang` is gone, removed on player mount),
+    `liftCues(cues, line, lifted: WeakSet)`, `SUBTITLE_CUE_LINE` = `cueLine('low')`), `trackChoice` (the matching rule
+    of `specs/subtitles-improvements/prd.md` FR-3..FR-5a: `languageKey`, `matchAudio`, `matchSubtitle`,
+    `matchTrackChoice`, `audioChoiceOf`/`subtitleChoiceOf`, `withAudio`/`withSubtitles`, `sameAudioChoice`,
+    `defaultAudio`; `trackChoice.test.ts` runs `shared/track-choice-cases.json`), `subtitleStyle` (`COLOR_HEX`,
+    `EDGE_COLOR_HEX`, `subtitleStyleOf`, `effectiveEdgeColor`, `textShadow`, `cueCss`, `cueLine` -3/-4/-5,
+    `isDisabled`/`step`/`choose`/`edge`), `subtitleStyleDraft` (the panel draft store on `PlayerShellContext`),
+    `trackChoiceSession` (tab-lifetime overrides `pendingChoice`/`rememberPick`/`settlePick`, per-title
+    `enqueueWrite` → `{outcome: ok|failed|superseded|dropped, error?}`, `setProfileGetter`, `setActiveProfile`,
+    `resetTrackChoiceSession`), `nextEpisode`, `progressSync`; I/O hooks `useTrackChoiceSaver` (`base()` = override
+    ?? live source's `track_choice`, `saveAudio`/`saveSubtitles`; `patchTrackChoice` keeps `dataUpdatedAt` and
+    writes only the title's entries; settle after the `trackChoiceChanged` refetch), `useSubtitleStyleSave`
+    (owned by `PlayerPage`: `['me']` updated + `cancelQueries`, latest-wins PUT, failure toast by the "form gone"
+    rule), `SubtitleStylePanel` (`menu = 'style'`: five radiogroups, roving tabindex, clash rule, sample line,
+    saves on unmount when changed and clears the draft),
     `usePlaybackSession` (POST/preparing/attach/keep-alive/recovery/exit), `attachSource`
     (direct, hls.js, native iOS HLS), `useProgressReporter` (`PositionTracker` attach
     generations; `ratingPrompt` state = the latest non-null `rating_prompt` of a non-final report,
     `onFinalPrompt` option read at send time → `registerFinalReport(qc, item, put, onPrompt)` caches
     the `Progress` keys only, then calls `onPrompt`), `subtitleLoader` (Bearer fetch → blob `<track>`), `useMediaSession` (headset/
     lock-screen play/pause/seek handlers + metadata, feature-detected); `PlayerRoute` is the stable
-    shell (fullscreen root + the single `<video>`, `PlayerShellContext`; holds the rating host's
-    `suppress()` while mounted), `PlayerPage` is keyed by
+    shell (fullscreen root + the single `<video>`, `PlayerShellContext` incl. `subtitleStyleDraft`, the
+    `<style data-subtitle-style>` `::cue` rule (draft else saved style), `--video-h`; holds the rating host's
+    `suppress()` while mounted), `usePlayerSubtitles` (takes `choice` (start's effective choice, then
+    `saver.base()` after a PLAY_FILE), `matchSubtitle` at each file's first decision, `onPick` on menu picks,
+    subscribes to the effective position string only, `shownTrack`), `PlayerPage` is keyed by
     `pathname + ?file=` and holds all per-playback state (rating end state: `endedAtLastItem` (waits
     for next-up) → `endedWithRating` (`reporter.ratingPrompt` and not `ratingHandled`) renders the
     inline `RatingForm` in `styles.prompt` instead of "Fin de la reproducción", disables
@@ -304,17 +329,23 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     (`format` (incl. `formatActivityTime(iso, now)`: ahora mismo / hace N minutos|horas (same day) /
     ayer / "12 oct" / "12 oct 2025", local calendar days; `''` for an unparseable timestamp), pure `stars` (`starFills`, `stepStars`,
     `starsFromPointer`, `roundToHalf`), `routerLocation`, `languages`, `chunkReload`, `RouteErrorBoundary`, `lazyRoute`, hooks incl.
+    `useElementHeight(el)` (ResizeObserver, else `clientHeight` on mount/resize),
     `useOverflows(ref, active, content)` (clamped-text overflow, re-measured on `content` change and
     by `ResizeObserver` when present, keeps its value while inactive)), `router.tsx` (lazy `/admin/*` and `/watch/*`).
   - `tests/`: `setup.ts` (MSW `onUnhandledRequest: 'error'`, media/TextTrack stubs, resets),
-    `fixtures.ts` (`f.*` factories), `msw/handlers.ts` (`handlers`, `apiError`),
+    `fixtures.ts` (`f.*` factories; `f.me`/`f.subtitleStyle`/`f.trackChoice`/`f.audioChoice`/`f.subtitleChoice`;
+    `f.sessionResponse` records token → profile for `f.meForToken`; `f.saveTrackChoice`/`savedTrackChoice`: the test
+    server's saved choices, the default of `track_choice` in `filmDetail`/`episodeDetail`/`homeEpisode` and
+    `serveEpisodes`), `msw/handlers.ts` (`handlers`, `apiError`),
     `msw/server.ts` (`recordRequests()`), `renderWithProviders.tsx`, `player.tsx`, `fakeHls.ts`,
     `flush.ts`, `capsEnvs.ts`, `media.ts`, `e2e/smoke.spec.ts` (optional Playwright; also the 360 px
     tab bar + banner "Buscar", 768 px NavBar, 720/959 px (icon, no field, no overflow) and 960 px
     (field ≥ 160 px) layout checks and a Mi lista add/remove round trip). Fixtures `progressReport`,
     `ratingPrompt`, `otherRating`, `activityEntry`; MSW defaults: `PUT /progress` echoes with
     `rating_prompt: null`, `POST /watched` `{updated: 1, rating_prompt: null}`, rating writes 204,
-    `GET /activity` empty.
+    `GET /activity` empty, `GET /me` = the token's profile (`f.meForToken`), `PUT /me/subtitle-style` 204,
+    `PUT /track-choices/*` 204 (recorded). `renderWithProviders` seeds `['me']` with `f.me(profile)` (option
+    `subtitleStyle`); `tests/media.ts` `FakeTextTrack` has `activeCues` + `setActiveCues(el, cues)` (`cuechange`).
 - `deploy/`: `Dockerfile` (multi-stage linux/amd64: `server-build` uv venv, `web-build`
   `node:24-bookworm-slim` on `$BUILDPLATFORM` (`npm ci && npm run build`), `runtime`
   python:3.12-slim-bookworm + Debian ffmpeg 5.1 + `web/dist` in `/app/web/dist`, user `hometv`

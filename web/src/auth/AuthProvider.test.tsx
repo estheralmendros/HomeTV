@@ -9,9 +9,12 @@ import { getMe } from '@/api/profiles';
 import { queryKeys } from '@/api/queryKeys';
 import { putProgress } from '@/api/watch';
 import { AppShell } from '@/components/AppShell';
+import { DEFAULT_SUBTITLE_STYLE } from '@/api/subtitleStyleDefaults';
+import { enqueueWrite, pendingChoice, rememberPick } from '@/player/trackChoiceSession';
 import { reloader } from '@/lib/reload';
 import { adminUnlock } from './adminUnlock';
 import { useAuth } from './AuthProvider';
+import { useMeQuery } from './useCurrentProfile';
 import { SESSION_KEY } from './session';
 
 const ana = f.profile({ id: 1, name: 'Ana' });
@@ -146,5 +149,78 @@ describe('AuthProvider: sign out', () => {
     expect(localStorage.getItem(SESSION_KEY)).toBeNull();
     expect(adminUnlock.getAdminToken()).toBeNull();
     await waitFor(() => expect(currentUrl(router)).toBe('/profiles'));
+  });
+});
+
+describe('AuthProvider: ["me"] and the track choice session', () => {
+  function Account() {
+    const { signIn, signOut } = useAuth();
+    const me = useMeQuery().data;
+    return (
+      <>
+        <p>{me ? `${me.name}:${'subtitle_style' in me ? me.subtitle_style.color : '-'}` : 'none'}</p>
+        <button type="button" onClick={() => signIn(f.sessionResponse(kids))}>
+          kids
+        </button>
+        <button type="button" onClick={signOut}>
+          out
+        </button>
+      </>
+    );
+  }
+
+  it('sign-in seeds ["me"] with the default style, then refetches the real one', async () => {
+    server.use(
+      http.get('/api/me', ({ request }) =>
+        HttpResponse.json({ ...f.meForToken(request.headers.get('authorization')), subtitle_style: f.subtitleStyle({ color: 'yellow' }) }),
+      ),
+    );
+    const { user, queryClient } = renderWithProviders(<Account />, { session: anaSession, profile: ana, path: '/' });
+    await user.click(screen.getByRole('button', { name: 'kids' }));
+    await screen.findByText('Kids:yellow');
+    expect(rec.find('GET', '/api/me').at(-1)?.headers.get('authorization')).toBe('Bearer token-2');
+    expect(queryClient.getQueryData(queryKeys.me())).toMatchObject({ id: 2, subtitle_style: { color: 'yellow' } });
+  });
+
+  it('the seed itself is the profile + DEFAULT_SUBTITLE_STYLE (no observer: no refetch yet)', async () => {
+    function SignInOnly() {
+      const { signIn } = useAuth();
+      return (
+        <button type="button" onClick={() => signIn(f.sessionResponse(kids))}>
+          kids
+        </button>
+      );
+    }
+    const { user, queryClient } = renderWithProviders(<SignInOnly />, { session: anaSession, profile: ana, path: '/' });
+    await user.click(screen.getByRole('button', { name: 'kids' }));
+    expect(queryClient.getQueryData(queryKeys.me())).toEqual({ ...kids, subtitle_style: DEFAULT_SUBTITLE_STYLE });
+    expect(queryClient.getQueryState(queryKeys.me())?.isInvalidated).toBe(true);
+  });
+
+  it('registers the profile getter on the first render with a stored session (no signIn)', async () => {
+    renderWithProviders(<p>page</p>, { session: anaSession, profile: ana, path: '/' });
+    const send = vi.fn(() => Promise.resolve());
+    await expect(enqueueWrite(1, 'film', 12, 1, send)).resolves.toEqual({ outcome: 'ok' });
+    await expect(enqueueWrite(2, 'film', 12, 2, send)).resolves.toEqual({ outcome: 'dropped' });
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('sign-in to another profile and sign-out clear the overrides', async () => {
+    const { user } = renderWithProviders(<Account />, { session: anaSession, profile: ana, path: '/' });
+    rememberPick(1, 'film', 12, f.trackChoice());
+    await user.click(screen.getByRole('button', { name: 'kids' }));
+    expect(pendingChoice(1, 'film', 12)).toBeUndefined();
+    rememberPick(2, 'film', 12, f.trackChoice());
+    await user.click(screen.getByRole('button', { name: 'out' }));
+    expect(pendingChoice(2, 'film', 12)).toBeUndefined();
+  });
+
+  it('a 401 ends the session and clears the overrides', async () => {
+    const { router } = renderWithProviders(<p>page</p>, { session: anaSession, profile: ana, path: '/' });
+    rememberPick(1, 'film', 12, f.trackChoice());
+    server.use(http.get('/api/me', () => apiError(401, 'unauthorized')));
+    await expect(getMe()).rejects.toMatchObject({ code: 'unauthorized' });
+    await waitFor(() => expect(currentUrl(router)).toBe('/profiles?reason=expired'));
+    expect(pendingChoice(1, 'film', 12)).toBeUndefined();
   });
 });

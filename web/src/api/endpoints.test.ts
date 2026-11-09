@@ -11,6 +11,7 @@ import * as playback from './playback';
 import * as profiles from './profiles';
 import * as ratings from './ratings';
 import * as system from './system';
+import * as trackChoices from './trackChoices';
 import * as watch from './watch';
 import * as watchlist from './watchlist';
 
@@ -45,6 +46,12 @@ describe('endpoint modules', () => {
       { method: 'POST', path: '/api/profiles/bootstrap', body: { name: 'E', avatar_id: 'avatar-01', pin: '1234' } }],
     ['createSession', () => profiles.createSession(2), { method: 'POST', path: '/api/profiles/2/session', body: null, bearer: null }],
     ['getMe', () => profiles.getMe(), { method: 'GET', path: '/api/me', bearer: 'Bearer tok', admin: null }],
+    ['putSubtitleStyle', () => profiles.putSubtitleStyle(f.subtitleStyle({ color: 'yellow' })),
+      { method: 'PUT', path: '/api/me/subtitle-style', body: f.subtitleStyle({ color: 'yellow' }), bearer: 'Bearer tok', admin: null }],
+    ['putTrackChoice film', () => trackChoices.putTrackChoice('film', 12, f.trackChoice()),
+      { method: 'PUT', path: '/api/track-choices/films/12', body: f.trackChoice(), bearer: 'Bearer tok', admin: null }],
+    ['putTrackChoice show', () => trackChoices.putTrackChoice('show', 7, f.trackChoice({ audio: null, subtitles: f.subtitleChoice({ mode: 'off', language: null, source: null, kind: null }) })),
+      { method: 'PUT', path: '/api/track-choices/shows/7', bearer: 'Bearer tok' }],
     ['getHome', () => catalog.getHome(), { path: '/api/home', query: { limit: '20' } }],
     ['listFilms', () => catalog.listFilms({ page: 2, page_size: 60, sort: 'year', order: 'desc', q: '' }),
       { path: '/api/films', query: { page: '2', page_size: '60', sort: 'year', order: 'desc' } }],

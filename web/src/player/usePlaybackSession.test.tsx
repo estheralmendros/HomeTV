@@ -258,6 +258,43 @@ describe('requests', () => {
     expect((await postBodies()).map((b) => b.audio_stream_index)).toEqual([3, null]);
   });
 
+  it('a remembered audio index answered unsupported re-sends exactly once with null (no unsupported screen)', async () => {
+    vi.mocked(console.warn).mockClear();
+    answerPlayback(f.playbackUnsupported({ reason: 'audio_codec_unsupported' }), f.playbackDirect({ audio_stream_index: 1 }));
+    const h = setup();
+    h.dispatch({ type: 'LOAD', fileId: 91, startPositionSeconds: 0, audioStreamIndex: 3, audioFromChoice: true });
+    await until(() => expect(h.state().name).toBe('loading'));
+    expect((await postBodies()).map((b) => b.audio_stream_index)).toEqual([3, null]);
+    expect(h.state().unsupported).toBeNull();
+  });
+
+  it('a remembered audio index answered invalid_audio_stream: one re-send with null through the machine', async () => {
+    answerPlayback(() => apiError(422, 'invalid_audio_stream'), f.playbackDirect());
+    const h = setup();
+    h.dispatch({ type: 'LOAD', fileId: 91, startPositionSeconds: 0, audioStreamIndex: 3, audioFromChoice: true });
+    await until(() => expect(h.state().name).toBe('loading'));
+    expect((await postBodies()).map((b) => b.audio_stream_index)).toEqual([3, null]);
+    expect(h.state().lastIntent).toMatchObject({ audioStreamIndex: null, audioFromChoice: false });
+  });
+
+  it('the re-send unsupported too: the unsupported screen as today (two POSTs, never the rejected index again)', async () => {
+    answerPlayback(f.playbackUnsupported());
+    const h = setup();
+    h.dispatch({ type: 'LOAD', fileId: 91, startPositionSeconds: 0, audioStreamIndex: 3, audioFromChoice: true });
+    await until(() => expect(h.state().name).toBe('unsupported'));
+    expect((await postBodies()).map((b) => b.audio_stream_index)).toEqual([3, null]);
+  });
+
+  it('playFile passes the matched audio index of that file', async () => {
+    answerPlayback(f.playbackUnsupported(), f.playbackDirect({ url: '/api/media-files/92/stream' }));
+    const h = setup();
+    h.dispatch({ type: 'LOAD', fileId: 91, startPositionSeconds: 0 });
+    await until(() => expect(h.state().name).toBe('unsupported'));
+    act(() => h.session().playFile(92, 0, 4));
+    await until(() => expect(h.state().name).toBe('loading'));
+    expect((await postBodies()).map((b) => b.audio_stream_index)).toEqual([null, 4]);
+  });
+
   it('busy and keyframe_index_failed errors reach the machine; the raw detail is only logged', async () => {
     const warn = vi.mocked(console.warn);
     answerPlayback(() => apiError(500, 'transcoder_failed', { details: { detail: 'keyframe_index_failed: stalled' } }));

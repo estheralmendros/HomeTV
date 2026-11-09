@@ -29,6 +29,7 @@ const intent = (overrides: Partial<PlaybackIntent> = {}): PlaybackIntent => ({
   startPositionSeconds: 100,
   previousSessionId: null,
   resetPosition: false,
+  audioFromChoice: false,
   ...overrides,
 });
 
@@ -129,6 +130,25 @@ const ROWS: Row[] = [
     check: (s) => {
       expect(s.pendingRequest).toEqual({ origin: 'requesting', intent: intent() });
       expect(s.requestSeq).toBe(1);
+    },
+  },
+  {
+    name: 'idle LOAD with a remembered audio index → requesting with it, audioFromChoice',
+    from: initialPlayerState,
+    event: { type: 'LOAD', fileId: FILE, startPositionSeconds: 100, audioStreamIndex: 2, audioFromChoice: true },
+    to: 'requesting',
+    check: (s) => expect(s.pendingRequest?.intent).toEqual(intent({ audioStreamIndex: 2, audioFromChoice: true })),
+  },
+  {
+    name: 'requesting REMEMBERED_AUDIO_REJECTED → requesting again with the file default (seq bumped)',
+    from: () =>
+      run(initialPlayerState(), { type: 'LOAD', fileId: FILE, startPositionSeconds: 100, audioStreamIndex: 2, audioFromChoice: true }),
+    event: { type: 'REMEMBERED_AUDIO_REJECTED' },
+    to: 'requesting',
+    check: (s, prev) => {
+      expect(s.pendingRequest).toEqual({ origin: 'requesting', intent: intent() });
+      expect(s.lastIntent).toEqual(intent());
+      expect(s.requestSeq).toBe(prev.requestSeq + 1);
     },
   },
   {
@@ -595,6 +615,16 @@ const ROWS: Row[] = [
       ),
   },
   {
+    name: 'unsupported PLAY_FILE with a remembered audio index → requesting with it, audioFromChoice',
+    from: unsupported,
+    event: { type: 'PLAY_FILE', fileId: 92, startPositionSeconds: 0, audioStreamIndex: 3 },
+    to: 'requesting',
+    check: (s) =>
+      expect(s.pendingRequest?.intent).toEqual(
+        intent({ fileId: 92, startPositionSeconds: 0, resetPosition: true, audioStreamIndex: 3, audioFromChoice: true }),
+      ),
+  },
+  {
     name: 'error RETRY → requesting at the saved position',
     from: () => failed(),
     event: { type: 'RETRY', position: 250 },
@@ -686,13 +716,16 @@ const SAMPLE_EVENTS: Record<PlayerEventType, PlayerEvent> = {
   PAUSE_RELEASE: { type: 'PAUSE_RELEASE' },
   RETRY: { type: 'RETRY', position: 10 },
   PLAY_FILE: { type: 'PLAY_FILE', fileId: 92, startPositionSeconds: 0 },
+  REMEMBERED_AUDIO_REJECTED: { type: 'REMEMBERED_AUDIO_REJECTED' },
   NEXT: { type: 'NEXT' },
   NEXT_PART: { type: 'NEXT_PART' },
 };
 
 const LISTED: Record<PlayerStateName, PlayerEventType[]> = {
   idle: ['LOAD', 'ITEM_NOT_FOUND'],
-  requesting: ['DECISION_DIRECT', 'DECISION_HLS', 'DECISION_UNSUPPORTED', 'PREPARING', 'REQUEST_FAILED', 'ITEM_NOT_FOUND'],
+  requesting: [
+    'DECISION_DIRECT', 'DECISION_HLS', 'DECISION_UNSUPPORTED', 'PREPARING', 'REQUEST_FAILED', 'REMEMBERED_AUDIO_REJECTED', 'ITEM_NOT_FOUND',
+  ],
   preparing: ['PREPARE_TICK', 'CANCEL', 'ITEM_NOT_FOUND'],
   loading: ['CAN_PLAY', 'PLAYING', 'PAUSE', 'PLAY_BLOCKED', 'MEDIA_ERROR', 'ITEM_NOT_FOUND'],
   blocked: ['PLAYING', 'PAUSE_RELEASE', 'PLAY', 'MEDIA_ERROR', 'ITEM_NOT_FOUND'],
@@ -873,5 +906,52 @@ describe('context', () => {
       { type: 'DECISION_UNSUPPORTED', response: f.playbackUnsupported() },
     );
     expect(b.notice?.seq).toBeGreaterThan(a.notice?.seq ?? Infinity);
+  });
+});
+
+// --- audioFromChoice: every intent builder (prd2.md FR-W5 step 1) ---------------------------
+
+describe('playerReducer: audioFromChoice per intent builder', () => {
+  const remembered = () =>
+    run(initialPlayerState(), { type: 'LOAD', fileId: FILE, startPositionSeconds: 100, audioStreamIndex: 2, audioFromChoice: true });
+
+  it('LOAD without an index: false', () => {
+    expect(requesting().pendingRequest?.intent.audioFromChoice).toBe(false);
+  });
+
+  it('PLAY_FILE: the passed index, true only with an index', () => {
+    expect(run(unsupported(), { type: 'PLAY_FILE', fileId: 92, startPositionSeconds: 0, audioStreamIndex: null }).pendingRequest?.intent)
+      .toMatchObject({ audioStreamIndex: null, audioFromChoice: false });
+    expect(run(versionFailed(), { type: 'PLAY_FILE', fileId: 92, startPositionSeconds: 0, audioStreamIndex: 4 }).pendingRequest?.intent)
+      .toMatchObject({ audioStreamIndex: 4, audioFromChoice: true });
+  });
+
+  it('an accepted remembered index: recoveries, PLAY after the release and replay send the answered index, false', () => {
+    const accepted = run(remembered(), { type: 'DECISION_HLS', response: f.playbackHls({ audio_stream_index: 2 }) }, { type: 'PLAYING' });
+    const recovery = run(accepted, { type: 'MEDIA_ERROR', now: 0, source: 'hls', kind: 'network', position: 300 });
+    expect(recovery.pendingRequest?.intent).toMatchObject({ audioStreamIndex: 2, audioFromChoice: false });
+    const replay = run(accepted, { type: 'ENDED' }, { type: 'PAUSE_RELEASE' }, { type: 'PLAY', position: 0 });
+    expect(replay.pendingRequest?.intent).toMatchObject({ audioStreamIndex: 2, audioFromChoice: false });
+  });
+
+  it('SWITCH_AUDIO and the HLS restore after a failed switch: false', () => {
+    const accepted = run(remembered(), { type: 'DECISION_HLS', response: f.playbackHls({ audio_stream_index: 2 }) }, { type: 'PLAYING' });
+    const switching = run(accepted, { type: 'SWITCH_AUDIO', audioStreamIndex: 1, t: 50 });
+    expect(switching.pendingRequest?.intent).toMatchObject({ audioStreamIndex: 1, audioFromChoice: false });
+    const restored = run(switching, { type: 'DECISION_UNSUPPORTED', response: f.playbackUnsupported() });
+    expect(restored.pendingRequest?.intent).toMatchObject({ audioStreamIndex: 2, audioFromChoice: false });
+  });
+
+  it('after the rejection, PREPARE_TICK and RETRY re-send null', () => {
+    const rejected = run(remembered(), { type: 'REMEMBERED_AUDIO_REJECTED' });
+    const tick = run(rejected, { type: 'PREPARING', now: 0, estimatedSeconds: null, retryAfterSeconds: 5 }, { type: 'PREPARE_TICK', now: 10 });
+    expect(tick.pendingRequest?.intent).toMatchObject({ audioStreamIndex: null, audioFromChoice: false });
+    const retried = run(rejected, { type: 'REQUEST_FAILED', error: otherError }, { type: 'RETRY', position: 5 });
+    expect(retried.pendingRequest?.intent).toMatchObject({ audioStreamIndex: null, audioFromChoice: false });
+  });
+
+  it('REMEMBERED_AUDIO_REJECTED outside requesting is a no-op', () => {
+    const s = playingHls();
+    expect(playerReducer(s, { type: 'REMEMBERED_AUDIO_REJECTED' })).toBe(s);
   });
 });

@@ -1,8 +1,10 @@
 // Typed factories for every API shape. Each takes `overrides` (shallow merge) and returns a
 // fresh object, so tests can mutate results freely. Defaults are a coherent small library:
 // film 12 "Dune" (2021, file 91), show 7 "The Office" (season 2, episode 345, file 501).
+import { DEFAULT_SUBTITLE_STYLE } from '@/api/subtitleStyleDefaults';
 import type {
   ActivityEntry,
+  AudioChoice,
   AudioTrack,
   Avatar,
   BrowseResponse,
@@ -21,6 +23,7 @@ import type {
   LibrariesResponse,
   LibraryFolder,
   MediaFile,
+  Me,
   OtherRating,
   Page,
   PersonDetail,
@@ -41,8 +44,11 @@ import type {
   ShowDetail,
   ShowSeason,
   ShowSummary,
+  SubtitleChoice,
+  SubtitleStyle,
   SubtitleTrack,
   TmdbSearchResult,
+  TrackChoice,
   TmdbSeasonResponse,
   TmdbSeasonsResponse,
   UnlockResponse,
@@ -92,8 +98,80 @@ export function session(overrides: Partial<StoredSession> = {}): StoredSession {
   return { token: 'token-1', profile_id: 1, expires_at: FUTURE, ...overrides };
 }
 
+/** `GET /api/me`: the profile + its subtitle style (the default unless overridden). */
+export function me(overrides: Partial<Me> = {}): Me {
+  return { ...profile(), subtitle_style: subtitleStyle(), ...overrides };
+}
+
+export function subtitleStyle(overrides: Partial<SubtitleStyle> = {}): SubtitleStyle {
+  return { ...DEFAULT_SUBTITLE_STYLE, ...overrides };
+}
+
+export function audioChoice(overrides: Partial<AudioChoice> = {}): AudioChoice {
+  return { language: 'eng', title: null, channels: 6, ...overrides };
+}
+
+/** A remembered Spanish embedded text track. */
+export function subtitleChoice(overrides: Partial<SubtitleChoice> = {}): SubtitleChoice {
+  return {
+    mode: 'track',
+    language: 'spa',
+    title: null,
+    forced: false,
+    hearing_impaired: false,
+    source: 'embedded',
+    kind: 'text',
+    ...overrides,
+  };
+}
+
+/** An English 5.1 audio part, no subtitle part. */
+export function trackChoice(overrides: Partial<TrackChoice> = {}): TrackChoice {
+  return { audio: audioChoice(), subtitles: null, ...overrides };
+}
+
+/**
+ * Token → profile of every session response built by `sessionResponse` (sign-in handlers), so
+ * the default `GET /api/me` answers the profile the Bearer token was issued for. Reset after
+ * each test (tests/setup.ts). Never call `sessionResponse` at module scope: the reset would
+ * forget it after the first test.
+ */
+const sessionProfiles = new Map<string, Profile>();
+
 export function sessionResponse(p: Profile = profile(), overrides: Partial<SessionResponse> = {}): SessionResponse {
-  return { profile: p, token: `token-${p.id}`, expires_at: FUTURE, ...overrides };
+  const response = { profile: p, token: `token-${p.id}`, expires_at: FUTURE, ...overrides };
+  sessionProfiles.set(response.token, p);
+  return response;
+}
+
+/** The `GET /api/me` answer for an `Authorization` header (unknown or missing: `f.profile()`). */
+export function meForToken(authorization: string | null): Me {
+  const token = authorization?.replace(/^Bearer\s+/i, '') ?? '';
+  return me(sessionProfiles.get(token) ?? profile());
+}
+
+export function resetSessionProfiles(): void {
+  sessionProfiles.clear();
+}
+
+/**
+ * The test server's saved track choices (`PUT /api/track-choices/{films|shows}/{id}`, recorded by
+ * the default handler or `f.saveTrackChoice`), so a refetch after a 204 carries the pick like the
+ * real server. `filmDetail`/`episodeDetail`/`homeEpisode` default `track_choice` to the saved one
+ * (null when none). Reset after each test (tests/setup.ts).
+ */
+const savedTrackChoices = new Map<string, TrackChoice>();
+
+export function saveTrackChoice(kind: 'film' | 'show', id: number, choice: TrackChoice): void {
+  savedTrackChoices.set(`${kind}:${id}`, choice);
+}
+
+export function savedTrackChoice(kind: 'film' | 'show', id: number): TrackChoice | null {
+  return savedTrackChoices.get(`${kind}:${id}`) ?? null;
+}
+
+export function resetSavedTrackChoices(): void {
+  savedTrackChoices.clear();
 }
 
 export function unlockResponse(overrides: Partial<UnlockResponse> = {}): UnlockResponse {
@@ -273,7 +351,8 @@ export function episodeFile(overrides: Partial<MediaFile> = {}): MediaFile {
 }
 
 export function homeEpisode(overrides: Partial<HomeEpisode> = {}): HomeEpisode {
-  return { ...episodeSummary(), media_files: [episodeFile()], track_choice: null, ...overrides };
+  const showId = overrides.show_id ?? 7;
+  return { ...episodeSummary(), media_files: [episodeFile()], track_choice: savedTrackChoice('show', showId), ...overrides };
 }
 
 export function episodeDetail(overrides: Partial<EpisodeDetail> = {}): EpisodeDetail {
@@ -282,7 +361,7 @@ export function episodeDetail(overrides: Partial<EpisodeDetail> = {}): EpisodeDe
     media_files: [episodeFile()],
     previous_episode_id: 344,
     next_episode_id: 346,
-    track_choice: null,
+    track_choice: savedTrackChoice('show', overrides.show_id ?? 7),
     ...overrides,
   };
 }
@@ -347,7 +426,7 @@ export function filmDetail(overrides: Partial<FilmDetail> = {}): FilmDetail {
     my_rating: null,
     ratings: [],
     household_average: null,
-    track_choice: null,
+    track_choice: savedTrackChoice('film', overrides.id ?? 12),
     ...overrides,
   };
 }

@@ -1,6 +1,7 @@
 // Default MSW handlers: every endpoint the web uses, fixture-backed. Tests override single
 // endpoints with `server.use(...)`. Unhandled requests fail the test (tests/setup.ts).
 import { http, HttpResponse, type JsonBodyType } from 'msw';
+import type { TrackChoice } from '@/api/types';
 import * as f from '../fixtures';
 
 /** Path prefix for handlers (relative paths resolve against jsdom's location). */
@@ -28,7 +29,9 @@ export const handlers = [
   http.post(`${API}/profiles/:id/session`, ({ params }) =>
     HttpResponse.json(f.sessionResponse(f.profile({ id: Number(params.id) }))),
   ),
-  http.get(`${API}/me`, () => HttpResponse.json(f.profile())),
+  // The profile the Bearer token was issued for (f.sessionResponse records it), else f.profile().
+  http.get(`${API}/me`, ({ request }) => HttpResponse.json(f.meForToken(request.headers.get('authorization')))),
+  http.put(`${API}/me/subtitle-style`, () => new HttpResponse(null, { status: 204 })),
 
   // Catalog
   http.get(`${API}/home`, () => HttpResponse.json(f.homeResponse())),
@@ -62,6 +65,12 @@ export const handlers = [
   http.delete(`${API}/ratings/:segment/:id`, () => new HttpResponse(null, { status: 204 })),
   http.post(`${API}/ratings/:segment/:id/dismiss-prompt`, () => new HttpResponse(null, { status: 204 })),
   http.get(`${API}/activity`, () => HttpResponse.json(f.page([], { page_size: 50 }))),
+
+  // Remembered audio/subtitle choice
+  http.put(`${API}/track-choices/:segment/:id`, async ({ params, request }) => {
+    f.saveTrackChoice(params.segment === 'films' ? 'film' : 'show', Number(params.id), (await request.json()) as TrackChoice);
+    return new HttpResponse(null, { status: 204 });
+  }),
 
   // Mi lista
   http.get(`${API}/watchlist`, () => HttpResponse.json(f.page([], { page_size: 50 }))),
