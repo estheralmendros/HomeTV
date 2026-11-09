@@ -8,7 +8,7 @@ Conventions:
 """
 
 from datetime import UTC, date, datetime
-from typing import Any, ClassVar, Literal, get_args
+from typing import Any, ClassVar, Final, Literal, get_args
 
 from sqlalchemy import (
     JSON,
@@ -30,6 +30,8 @@ from sqlalchemy import (
 from sqlalchemy.engine import Dialect
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
+
+from hometv import subtitle_style as style
 
 NAMING_CONVENTION = {
     "ix": "ix_%(table_name)s_%(column_0_N_name)s",
@@ -427,12 +429,39 @@ class ShowGenre(Base):
     )
 
 
+def _in_values(column: str, alias: Any) -> str:
+    return f"{column} IN (" + ",".join(f"'{v}'" for v in get_args(alias)) + ")"
+
+
+def _style_col(default: str) -> Any:
+    return mapped_column(
+        String, nullable=False, default=default, server_default=text(f"'{default}'")
+    )
+
+
 class Profile(Base):
     __tablename__ = "profile"
     __table_args__ = (
         CheckConstraint(
             "(is_admin = 1 AND pin_hash IS NOT NULL) OR (is_admin = 0 AND pin_hash IS NULL)",
             name="admin_pin",
+        ),
+        CheckConstraint(
+            _in_values("subtitle_size", style.SubtitleSizeValue), name="subtitle_size_values"
+        ),
+        CheckConstraint(
+            _in_values("subtitle_color", style.SubtitleColorValue), name="subtitle_color_values"
+        ),
+        CheckConstraint(
+            _in_values("subtitle_edge", style.SubtitleEdgeValue), name="subtitle_edge_values"
+        ),
+        CheckConstraint(
+            _in_values("subtitle_edge_color", style.SubtitleEdgeColorValue),
+            name="subtitle_edge_color_values",
+        ),
+        CheckConstraint(
+            _in_values("subtitle_position", style.SubtitlePositionValue),
+            name="subtitle_position_values",
         ),
         {"sqlite_autoincrement": True},
     )
@@ -448,6 +477,12 @@ class Profile(Base):
         Integer, nullable=False, default=1, server_default=text("1")
     )
     created_at: Mapped[datetime] = _now_col()
+    # Subtitle style (``hometv/subtitle_style.py``); plain ADD COLUMN in 0007.
+    subtitle_size: Mapped[str] = _style_col(style.DEFAULT_STYLE.size)
+    subtitle_color: Mapped[str] = _style_col(style.DEFAULT_STYLE.color)
+    subtitle_edge: Mapped[str] = _style_col(style.DEFAULT_STYLE.edge)
+    subtitle_edge_color: Mapped[str] = _style_col(style.DEFAULT_STYLE.edge_color)
+    subtitle_position: Mapped[str] = _style_col(style.DEFAULT_STYLE.position)
 
 
 class PlaybackProgress(Base):
@@ -587,6 +622,105 @@ class RatingDismissal(Base):
     film_id: Mapped[int | None] = _fk("film.id", nullable=True)
     show_id: Mapped[int | None] = _fk("show.id", nullable=True)
     dismissed_at: Mapped[datetime] = _now_col()
+
+
+_NO_SUBTITLE_TRAITS = (
+    "subtitle_language IS NULL AND subtitle_title IS NULL AND subtitle_source IS NULL"
+    " AND subtitle_kind IS NULL AND subtitle_forced = 0 AND subtitle_hearing_impaired = 0"
+)
+
+
+class TrackChoice(Base):
+    """A profile's remembered audio/subtitle pick for a film or a whole show. Two independent
+    parts: audio (``audio_language`` NULL = not remembered) and subtitles (``subtitle_mode`` NULL
+    = not remembered; ``off`` | ``track``)."""
+
+    __tablename__ = "track_choice"
+    __table_args__ = (
+        CheckConstraint(_EXACTLY_ONE_FILM_SHOW, name="exactly_one_target"),
+        CheckConstraint(
+            "subtitle_mode IS NULL OR subtitle_mode IN ('off', 'track')",
+            name="subtitle_mode_values",
+        ),
+        CheckConstraint(
+            "subtitle_source IS NULL OR subtitle_source IN ('embedded', 'external')",
+            name="subtitle_source_values",
+        ),
+        CheckConstraint(
+            "subtitle_kind IS NULL OR subtitle_kind IN ('text', 'image')",
+            name="subtitle_kind_values",
+        ),
+        CheckConstraint(
+            "(subtitle_mode IS 'track') = (subtitle_language IS NOT NULL"
+            " AND subtitle_source IS NOT NULL AND subtitle_kind IS NOT NULL)",
+            name="subtitle_track_fields",
+        ),
+        CheckConstraint(
+            f"subtitle_mode IS NOT 'off' OR ({_NO_SUBTITLE_TRAITS})", name="subtitle_off_shape"
+        ),
+        CheckConstraint(
+            f"subtitle_mode IS NOT NULL OR ({_NO_SUBTITLE_TRAITS})", name="subtitle_none_shape"
+        ),
+        CheckConstraint(
+            "audio_language IS NOT NULL OR (audio_title IS NULL AND audio_channels IS NULL)",
+            name="audio_part_shape",
+        ),
+        CheckConstraint(
+            "audio_channels IS NULL OR audio_channels >= 1", name="audio_channels_positive"
+        ),
+        CheckConstraint(
+            "audio_language IS NOT NULL OR subtitle_mode IS NOT NULL", name="some_part"
+        ),
+        Index(
+            "uq_track_choice_film_id_profile_id",
+            "film_id",
+            "profile_id",
+            unique=True,
+            sqlite_where=text("film_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_track_choice_show_id_profile_id",
+            "show_id",
+            "profile_id",
+            unique=True,
+            sqlite_where=text("show_id IS NOT NULL"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_id: Mapped[int] = _fk("profile.id")
+    film_id: Mapped[int | None] = _fk("film.id", nullable=True)
+    show_id: Mapped[int | None] = _fk("show.id", nullable=True)
+    audio_language: Mapped[str | None]
+    audio_title: Mapped[str | None]
+    audio_channels: Mapped[int | None]
+    subtitle_mode: Mapped[str | None]
+    subtitle_language: Mapped[str | None]
+    subtitle_title: Mapped[str | None]
+    subtitle_forced: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
+    subtitle_hearing_impaired: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
+    subtitle_source: Mapped[str | None]
+    subtitle_kind: Mapped[str | None]
+    updated_at: Mapped[datetime] = _now_col()
+
+
+TRACK_CHOICE_PART_COLUMNS: Final = (
+    "audio_language",
+    "audio_title",
+    "audio_channels",
+    "subtitle_mode",
+    "subtitle_language",
+    "subtitle_title",
+    "subtitle_forced",
+    "subtitle_hearing_impaired",
+    "subtitle_source",
+    "subtitle_kind",
+)
+"""Every part column of ``track_choice`` (the merge copies them; ``choice_columns`` writes them)."""
 
 
 UNMATCHED_REASONS = (

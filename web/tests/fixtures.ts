@@ -273,7 +273,7 @@ export function episodeFile(overrides: Partial<MediaFile> = {}): MediaFile {
 }
 
 export function homeEpisode(overrides: Partial<HomeEpisode> = {}): HomeEpisode {
-  return { ...episodeSummary(), media_files: [episodeFile()], ...overrides };
+  return { ...episodeSummary(), media_files: [episodeFile()], track_choice: null, ...overrides };
 }
 
 export function episodeDetail(overrides: Partial<EpisodeDetail> = {}): EpisodeDetail {
@@ -282,6 +282,7 @@ export function episodeDetail(overrides: Partial<EpisodeDetail> = {}): EpisodeDe
     media_files: [episodeFile()],
     previous_episode_id: 344,
     next_episode_id: 346,
+    track_choice: null,
     ...overrides,
   };
 }
@@ -346,6 +347,7 @@ export function filmDetail(overrides: Partial<FilmDetail> = {}): FilmDetail {
     my_rating: null,
     ratings: [],
     household_average: null,
+    track_choice: null,
     ...overrides,
   };
 }

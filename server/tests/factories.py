@@ -14,16 +14,20 @@
 - ``add_watchlist_entry(s, profile_id, film=/show=, added_at=)`` ("Mi lista", default ``T0``).
 - ``add_rating(s, profile_id, film=/show=, stars_x2=8, rated_at=)`` and
   ``add_rating_dismissal(s, profile_id, film=/show=, dismissed_at=)`` (default ``T0``).
+- ``add_track_choice(s, profile_id, film=/show=, audio=("eng", None, 6), subtitles=None,
+  updated_at=)`` (audio-only by default; ``subtitles`` = ``"off"`` or a dict of track traits).
 """
 
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy.orm import Session
 
+from hometv.api.schemas import AudioChoice, SubtitleChoice, TrackChoice
 from hometv.db import models as m
 from hometv.scanner import ensure_libraries
 from hometv.text import normalize_title, search_text, sort_title
+from hometv.track_choices import choice_columns
 
 T0 = datetime(2026, 1, 1, tzinfo=UTC)
 _WIDTHS = {2160: 3840, 1080: 1920, 720: 1280, 480: 854}
@@ -427,6 +431,44 @@ def add_rating_dismissal(
         film_id=film.id if film is not None else None,
         show_id=show.id if show is not None else None,
         dismissed_at=dismissed_at or T0,
+    )
+    s.add(row)
+    s.flush()
+    return row
+
+
+SubtitlesArg = Literal["off"] | dict[str, Any] | None
+
+
+def add_track_choice(
+    s: Session,
+    profile_id: int,
+    *,
+    film: m.Film | None = None,
+    show: m.Show | None = None,
+    audio: tuple[str, str | None, int | None] | None = ("eng", None, 6),
+    subtitles: SubtitlesArg = None,
+    updated_at: datetime | None = None,
+) -> m.TrackChoice:
+    """``audio`` = ``(language, title, channels)`` or ``None``; ``subtitles`` = ``"off"``, a dict
+    of track traits (``language`` required; ``title`` None, ``forced``/``hearing_impaired`` False,
+    ``source`` "embedded", ``kind`` "text" by default) or ``None`` (no part). Audio-only by
+    default; columns built by ``track_choices.choice_columns``."""
+    sub: SubtitleChoice | None = None
+    if subtitles == "off":
+        sub = SubtitleChoice(mode="off")
+    elif isinstance(subtitles, dict):
+        sub = SubtitleChoice(mode="track", source="embedded", kind="text", **subtitles)
+    choice = TrackChoice(
+        audio=AudioChoice(language=audio[0], title=audio[1], channels=audio[2]) if audio else None,
+        subtitles=sub,
+    )
+    row = m.TrackChoice(
+        profile_id=profile_id,
+        film_id=film.id if film is not None else None,
+        show_id=show.id if show is not None else None,
+        **choice_columns(choice),
+        updated_at=updated_at or T0,
     )
     s.add(row)
     s.flush()

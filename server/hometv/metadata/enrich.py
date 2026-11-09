@@ -256,7 +256,7 @@ def _merge_progress(session: Session, column: Any, loser_id: int, survivor_id: i
     session.flush()
 
 
-def _merge_per_profile[Row: (m.WatchlistEntry, m.Rating, m.RatingDismissal)](
+def _merge_per_profile[Row: (m.WatchlistEntry, m.Rating, m.RatingDismissal, m.TrackChoice)](
     session: Session,
     model: type[Row],
     column: Any,
@@ -296,13 +296,23 @@ def _keep_earlier_dismissal(row: m.RatingDismissal, survivor: m.RatingDismissal)
     survivor.dismissed_at = min(survivor.dismissed_at, row.dismissed_at)
 
 
+def _keep_later_choice(row: m.TrackChoice, survivor: m.TrackChoice) -> None:
+    """Track choices: the later whole choice (``updated_at``; the survivor's on a tie). Parts
+    are never mixed: a choice is one decision."""
+    if row.updated_at > survivor.updated_at:
+        for column in (*m.TRACK_CHOICE_PART_COLUMNS, "updated_at"):
+            setattr(survivor, column, getattr(row, column))
+
+
 def _merge_profile_rows(session: Session, kind: ItemKind, loser_id: int, survivor_id: int) -> None:
-    """Move the loser's "Mi lista" entries, ratings and rating-prompt dismissals."""
+    """Move the loser's "Mi lista" entries, ratings, rating-prompt dismissals and track
+    choices."""
     key = f"{kind}_id"
-    we, r, d = m.WatchlistEntry, m.Rating, m.RatingDismissal
+    we, r, d, tc = m.WatchlistEntry, m.Rating, m.RatingDismissal, m.TrackChoice
     _merge_per_profile(session, we, getattr(we, key), loser_id, survivor_id, _keep_earlier_added)
     _merge_per_profile(session, r, getattr(r, key), loser_id, survivor_id, _keep_later_rating)
     _merge_per_profile(session, d, getattr(d, key), loser_id, survivor_id, _keep_earlier_dismissal)
+    _merge_per_profile(session, tc, getattr(tc, key), loser_id, survivor_id, _keep_later_choice)
 
 
 def _write_alias(

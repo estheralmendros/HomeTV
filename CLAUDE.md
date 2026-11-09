@@ -16,14 +16,23 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     `scan.watch_enabled` / `scan.watch_quiet_seconds` (`HOMETV_SCAN_WATCH_ENABLED|QUIET_SECONDS`,
     default on / 30 s, `ge=5`): change detection; `make_settings` turns it off for tests.
   - `hometv/text.py` (also `undecodable(name)`, shared by scanner/folder browser/scheduler/changes),
-    `hometv/parser.py`: pure modules (no I/O).
+    `hometv/parser.py`: pure modules (no I/O). `hometv/subtitle_style.py`: the five style `Literal`
+    aliases (`SubtitleSizeValue`…), `DEFAULT_STYLE` (medium/white/outline/black/low), `STYLE_FIELDS`
+    (single source for the profile CHECKs and `SubtitleStyle`).
   - `hometv/probe.py`: ffprobe wrapper (injectable `runner`) + pure `normalize()`.
   - `hometv/db/engine.py`: `Database` (read/write engines, `write_session()`),
     `run_migrations()`. `db/models.py`: full data model (incl. `WatchlistEntry`: profile + film|show,
     partial unique per target, `added_at`; `Rating`: profile + film|show, `stars_x2` 1..10 CHECK,
     `rated_at`, partial unique led by the title column `uq_rating_{film|show}_id_profile_id`,
-    `ix_rating_rated_at_id`; `RatingDismissal`: same shape, `dismissed_at`).
-    `db/migrations/versions/`: Alembic (head `0006`).
+    `ix_rating_rated_at_id`; `RatingDismissal`: same shape, `dismissed_at`; `TrackChoice`: profile +
+    film|show, nullable audio part (`audio_language` NULL = none, `audio_title`, `audio_channels` ≥ 1)
+    and subtitle part (`subtitle_mode` NULL|`off`|`track`, language/title/forced/SDH/source/kind; shape
+    CHECKs: `track` needs language+source+kind, `off`/none carry no trait, `some_part`), `updated_at`,
+    partial unique `uq_track_choice_{film|show}_id_profile_id`; `TRACK_CHOICE_PART_COLUMNS` (merge +
+    `choice_columns`); `Profile.subtitle_size|color|edge|edge_color|position` NOT NULL with defaults,
+    CHECKs built from the `subtitle_style.py` aliases).
+    `db/migrations/versions/`: Alembic (head `0007`: plain `ALTER TABLE profile ADD COLUMN`, never a
+    batch recreate of `profile`; `_STYLE_COLUMNS` literals checked against `subtitle_style.py`).
   - `hometv/libraries.py`: library folders owned by the DB (`library_folder`, seeded once per
     library: env/YAML > present `media_file` roots > empty; `library.folders_seeded_at`). Pure
     `normalize_folder`/`same_folders`/`choose_seed`/`validate_change`/`split_removals`/
@@ -61,7 +70,8 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     `BIOGRAPHY_LANGUAGE_KEY`), `matching.py` (pure `choose_match`), `enrich.py` (`Enricher`,
     `merge_items` (moves progress, watchlist entries, ratings and dismissals through the generic
     `_merge_per_profile(model, column, resolve)`: `_keep_earlier_added`, `_keep_later_rating` (survivor
-    row stays, the loser's stars copied onto it), `_keep_earlier_dismissal`), admin `match_item`/`resolve_unmatched`), `artwork.py` (`ArtworkCache`,
+    row stays, the loser's stars copied onto it), `_keep_earlier_dismissal`, `_keep_later_choice` (track
+    choices: the later `updated_at` wins as a whole, copied onto the survivor row)), admin `match_item`/`resolve_unmatched`), `artwork.py` (`ArtworkCache`,
     `image()` Image object; profile = `w185`/`h632`, both lazy).
   - `hometv/admin.py`: admin services (`list_unmatched`, `unmatched_count`, `TmdbProxy`).
   - `hometv/profiles.py`: PIN hashing, `TokenService` (profile/admin tokens, injectable
@@ -84,6 +94,11 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     `my_rating` on every `film_summaries`/`show_summaries`), `item_ratings` -> `ItemRatings` (one
     query: `my_rating`, `others` newest first, `average` from 2 ratings; detail `my_rating`/
     `ratings`/`household_average`);
+    track choices (read side; `catalog` never imports `track_choices`): pure `choice_out(row)` →
+    `TrackChoice`, `track_choice(session, profile_id, kind, id)` (one SELECT on the unique index:
+    `FilmDetail`/`EpisodeDetail.track_choice`, the episode's = its show's), `show_track_choices` (one
+    batched SELECT, none for no show: `HomeEpisode.track_choice` in `home_episodes`); show/season detail,
+    lists and search read none;
     `person_detail`: TMDB credits (`person_credit`, `library_id` subquery so SQLite seeks
     `uq_*_library_id_tmdb_id`) ∪ local `cast_credit`, matched + visible only, ≤ 9 queries).
   - `hometv/watchlist.py` ("Mi lista", per profile): `add`/`remove` (one write each, visible
@@ -100,6 +115,12 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     NOTHING`, first `dismissed_at` kept): visible title only else 404, wrapped in
     `fk_to_unauthorized()` (401); `list_activity(session, profile_id, page, page_size)` (every
     visible rating, `rated_at DESC, id DESC`, `item` = the viewer's summary; ≤ 8 queries, 2 empty).
+  - `hometv/track_choices.py` (remembered audio/subtitle pick per profile + title; style writes):
+    `set_track_choice(db, profile_id, kind, id, TrackChoice)` (upsert of the whole choice, a null part
+    clears it (NULLs, `False` flags), bumps `updated_at`; visible title only else 404; `fk_to_unauthorized`
+    → 401), `set_subtitle_style(db, profile_id, SubtitleStyle)` (one UPDATE, 0 rows → 401), pure
+    `choice_columns` (keys = `TRACK_CHOICE_PART_COLUMNS`), own `_target`. The server never matches a
+    choice against tracks (the clients do).
   - `hometv/people.py` (actor screen): pure `normalize_credits`/`normalize_person`/`is_fresh`
     (`PERSON_TTL` 30 d, `PERSON_FETCH_WAIT_SECONDS` 5); `PersonService` (`app.state.people`:
     `detail()` single-flight fetch task per person in `_inflight`, never-fetched waits
@@ -138,14 +159,20 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     single-worker entry (console script `hometv`, the container CMD).
   - `hometv/api/`: `errors.py` (envelope, `unauthorized()` so services need not import `deps`,
     `fk_to_unauthorized()` context manager: FK `IntegrityError` -> 401, other ones re-raised), `deps.py` (auth deps), `schemas.py`,
-    `list_params.py` (films/shows query params; `PageNumber` = `page` 1..`MAX_PAGE` (1 000 000) and the strict `WatchedParam` (`"true"|"false"`) + `watched_flag`, also used by the watchlist list), `routes_*.py` (system, profiles, catalog,
+    `list_params.py` (films/shows query params; `PageNumber` = `page` 1..`MAX_PAGE` (1 000 000) and the strict `WatchedParam` (`"true"|"false"`) + `watched_flag`, also used by the watchlist list), `routes_*.py` (system, profiles
+    (`GET /api/me` → `Me` = `Profile` + `subtitle_style` via `me_out`; `PUT /api/me/subtitle-style`
+    `SubtitleStyleRequest` (all five keys) 204; session/bootstrap keep `SessionResponse.profile: Profile`), catalog,
     films, shows, people (async `GET /api/people/{id}`, `PeopleDep`), watch, watchlist
     (`PUT`/`DELETE /api/watchlist/{films|shows}/{id}` 204, `GET /api/watchlist?type=&sort=&watched=` →
     `Page[WatchlistEntry]` (`kind`, `item`, `added_to_list_at`); Bearer only), ratings (tag
     `ratings`: `PUT`/`DELETE /api/ratings/{films|shows}/{id}` 204 (`RatingRequest.stars` ½..5 in ½
     steps, strict float), `POST .../dismiss-prompt` 204, `GET /api/activity?page=&page_size=` →
-    `Page[ActivityEntry]` (`profile`, `kind`, `item`, `stars`, `rated_at`); Bearer only), artwork, admin,
-    media).
+    `Page[ActivityEntry]` (`profile`, `kind`, `item`, `stars`, `rated_at`); Bearer only), track_choices
+    (tag `track-choices`, after ratings: `PUT /api/track-choices/{films|shows}/{id}` body `TrackChoice`
+    (`AudioChoice`/`SubtitleChoice` shape validators, both parts null = 422) 204; Bearer only), artwork,
+    admin, media). Schemas: `SubtitleStyle`, `SubtitleStyleRequest`, `Me`, `AudioChoice`,
+    `SubtitleChoice`, `TrackChoice`; `track_choice: TrackChoice | None` on `FilmDetail` (last),
+    `EpisodeDetail`, `HomeEpisode`.
   - `tests/`: `unit/` (pure), `service/` (tmp dirs + SQLite, stubs), `api/` (in-process
     httpx), `integration/` (real ffmpeg/ffprobe, marker `integration`; `test_inotify_backend.py`
     also marked `inotify`: no ffmpeg needed, skipped off Linux), `perf/` (marker `perf`, incl.
@@ -153,11 +180,17 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     `add_show`/`add_file(root=, rel=, library=)`/`add_progress`/`add_person`/`add_cast_credit`/
     `add_person_credit`/`add_watchlist_entry(s, profile_id, film=|show=, added_at=)`/`add_rating(s,
     profile_id, film=|show=, stars_x2=8, rated_at=)`/`add_rating_dismissal(s, profile_id, film=|show=,
-    dismissed_at=)`/`add_profile(s, name)`),
+    dismissed_at=)`/`add_track_choice(s, profile_id, film=|show=, audio=("eng", None, 6) | None,
+    subtitles="off" | {traits} | None, updated_at=)` (audio-only by default)/`add_profile(s, name)`),
     `stubs.py` (`FakeProc`, `Spawner`, `ScaledClock`, `wait_until`, `FakeWatchBackend` (`emit`,
     `calls`/`ops`, `fail_with`, `alive`, `gate(op)`/`open_gate`), `BackendFactory`, `capture_selects`/
     `capture_writes` (SQL statement recorders for query-count tests)),
     `fmp4_builder.py` (synthetic fMP4), `hls_stub.py` (argv-driven stub ffmpeg for API tests).
+- `shared/track-choice-cases.json`: the matching rule's case table (`prd.md` §2 of
+  `specs/subtitles-improvements`: 24 rows, 11 and 22 split per mode = 26 entries; `expected` +
+  `expected_web`/`expected_tv` overrides, case 24 `pick`). Read by path by the web and TV suites,
+  never imported (the Docker web build context has no `shared/`); the server only checks its shape
+  (`tests/unit/test_track_choice_cases.py`).
 - `web/`: React 18 + TS (strict, `noUncheckedIndexedAccess`, alias `@/`) + Vite 5 SPA, Node 24
   (`.nvmrc`), TanStack Query 5, React Router 6 data router, hls.js (lazy), CSS Modules over
   `styles/tokens.css`, no UI kit. `tsconfig.json` = references to `tsconfig.app.json` (src +
@@ -166,7 +199,9 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     `S.ratings.stars(n)` = the star text equivalent "4,5 estrellas"/"1 estrella" via `lib/intl`
     `starsFormat`, `S.ratings.average` "4,0 (3)" via `oneDecimalFormat` (also `formatRating`), `S.activity.*`, `S.cards.withRating`).
   - `src/api/`: `client.ts` (`apiFetch`, 401 hook, `X-Admin-Token`), `errors.ts` (`ApiError`,
-    `errorMessage`), `types.ts` (REST shapes, snake_case; `TitleKind` = `RatingKind`/`WatchlistKind`), `kind.ts` (`kindSegment(kind)` → `films|shows`), one module per area,
+    `errorMessage`), `types.ts` (REST shapes, snake_case; `TitleKind` = `RatingKind`/`WatchlistKind`; `Me extends Profile`
+    + `SubtitleStyle` (and its value types), `AudioChoice`/`SubtitleChoice`/`TrackChoice`, `track_choice`
+    on `FilmDetail`/`EpisodeDetail`/`HomeEpisode`, `null` in the fixtures), `kind.ts` (`kindSegment(kind)` → `films|shows`), one module per area,
     `queryKeys.ts` (`queryKeys`, `mutationKeys` (`watchlistWrite(kind, id)`, `ratingWrite(kind, id)`), `staleTimes`
     (`activity: 0`), `invalidateAfter(event)`, `title(kind, id)` = the film/show detail key; `['person', id]` /
     `personAll()` and `watchlistAll()` (`['watchlist']`; list key `watchlist({type, sort, watched})`) are
@@ -301,7 +336,8 @@ is a contract shared by the web and TV clients: change it deliberately and updat
   APK, ≈ 95 MB, `.so` stored uncompressed; no x86); `proguard-rules.pro` keeps `org.videolan.libvlc.**` (JNI; the
   AAR has no consumer rules). `local.properties` (sdk.dir) and `keystore.properties` are gitignored.
   - `core/` (pure Kotlin/JVM, package `com.hometv.tv.core`): `api/` (`HomeTvApi` Retrofit,
-    `ApiModels` DTOs, `ApiException`/`apiCall`, `ApiClients` (API / stream / validation OkHttp),
+    `ApiModels` DTOs (incl. `AudioChoice`/`SubtitleChoice`/`TrackChoice`, `SubtitleStyle`, `Me` +
+    `toProfile()`; `track_choice: TrackChoice? = null` on `FilmDetail`/`EpisodeDetail`/`EpisodeSummary`), `ApiException`/`apiCall`, `ApiClients` (API / stream / validation OkHttp),
     `AuthInterceptor` Bearer for the server host only), `data/` (`SessionStore` StateFlow +
     `InMemorySessionStore`; `signOut()` (keeps the server URL), conditional `saveRenewedSession(profileId, …)` /
     `clearToken(profileId)`: Boolean (only while that profile is still stored), `SessionGuard` single-flight

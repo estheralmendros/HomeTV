@@ -38,6 +38,49 @@ data class Profile(
 @Serializable
 data class ProfileList(val items: List<Profile>)
 
+/** One profile's subtitle look (`GET /api/me`; `PUT /api/me/subtitle-style` sends every key). */
+@Serializable
+data class SubtitleStyle(
+    val size: String = "medium", // "small" | "medium" | "large"
+    val color: String = "white", // "white" | "yellow" | "green" | "cyan" | "magenta" | "orange"
+    val edge: String = "outline", // "outline" | "shadow" | "none"
+    val edge_color: String = "black", // "black" | "dark_gray" | "white"
+    val position: String = "low", // "low" | "middle" | "high"
+)
+
+/** `GET /api/me`: the token's profile plus its own preferences (never in the profile list). */
+@Serializable
+data class Me(
+    val id: Long,
+    val name: String,
+    val avatar_id: String,
+    val is_admin: Boolean = false,
+    val created_at: String? = null,
+    val subtitle_style: SubtitleStyle = SubtitleStyle(),
+) {
+    fun toProfile() = Profile(id, name, avatar_id, is_admin, created_at)
+}
+
+/** Remembered audio part of a [TrackChoice]. */
+@Serializable
+data class AudioChoice(val language: String, val title: String? = null, val channels: Int? = null)
+
+/** `{"mode": "off"}` or a picked track's traits. */
+@Serializable
+data class SubtitleChoice(
+    val mode: String, // "off" | "track"
+    val language: String? = null,
+    val title: String? = null,
+    val forced: Boolean = false,
+    val hearing_impaired: Boolean = false,
+    val source: String? = null, // "embedded" | "external"
+    val kind: String? = null, // "text" | "image" (the track's kind); null only with "off"
+)
+
+/** Remembered pick per profile and title (`PUT /api/track-choices/{films|shows}/{id}`); a null part = not remembered. */
+@Serializable
+data class TrackChoice(val audio: AudioChoice? = null, val subtitles: SubtitleChoice? = null)
+
 /** `POST /api/admin/unlock`: the TV only uses it to check an admin PIN (before a server change). */
 @Serializable
 data class UnlockRequest(val pin: String)
@@ -190,6 +233,8 @@ data class EpisodeSummary(
     val show_backdrop: Image? = null,
     val progress: Progress? = null,
     val media_files: List<MediaFile> = emptyList(),
+    /** The show's remembered choice; only `/api/home` fills it. */
+    val track_choice: TrackChoice? = null,
     override val type: String = "episode",
 ) : Summary
 
@@ -258,6 +303,8 @@ data class FilmDetail(
     val my_rating: Double? = null,
     val ratings: List<OtherRating> = emptyList(),
     val household_average: HouseholdAverage? = null,
+    /** This profile's remembered audio/subtitle choice (null: never picked). */
+    val track_choice: TrackChoice? = null,
     val type: String = "film",
 )
 
@@ -334,6 +381,8 @@ data class EpisodeDetail(
     val media_files: List<MediaFile> = emptyList(),
     val previous_episode_id: Long? = null,
     val next_episode_id: Long? = null,
+    /** The show's remembered choice. */
+    val track_choice: TrackChoice? = null,
     val type: String = "episode",
 )
 
