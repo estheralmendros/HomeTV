@@ -73,7 +73,7 @@ abstract class PlayerTestBase {
 
     /** The profile's style state and its store, over [repos] (their `appScope`: PUTs run at once). */
     protected val account = com.hometv.tv.data.AccountState(repos.profiles, repos.store, repos.appScope)
-    protected val subtitleStyles = com.hometv.tv.data.SubtitleStyleStore(account, repos.profiles, repos.store, repos.appScope)
+    protected val subtitleStyles = com.hometv.tv.data.SubtitleStyleStore(account, repos.profiles, repos.store, repos.appScope, log = {})
     private val created = mutableListOf<PlayerViewModel>()
     private val clearedVms = mutableSetOf<PlayerViewModel>()
 

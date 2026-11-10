@@ -157,8 +157,9 @@ export function resetSessionProfiles(): void {
 /**
  * The test server's saved track choices (`PUT /api/track-choices/{films|shows}/{id}`, recorded by
  * the default handler or `f.saveTrackChoice`), so a refetch after a 204 carries the pick like the
- * real server. `filmDetail`/`episodeDetail`/`homeEpisode` default `track_choice` to the saved one
- * (null when none). Reset after each test (tests/setup.ts).
+ * real server. Only the MSW handlers read it (the default film/episode/home handlers and
+ * `serveEpisodes` answer a null `track_choice` with the saved one); the factories stay pure
+ * (`track_choice: null` by default). Reset after each test (tests/setup.ts).
  */
 const savedTrackChoices = new Map<string, TrackChoice>();
 
@@ -351,8 +352,7 @@ export function episodeFile(overrides: Partial<MediaFile> = {}): MediaFile {
 }
 
 export function homeEpisode(overrides: Partial<HomeEpisode> = {}): HomeEpisode {
-  const showId = overrides.show_id ?? 7;
-  return { ...episodeSummary(), media_files: [episodeFile()], track_choice: savedTrackChoice('show', showId), ...overrides };
+  return { ...episodeSummary(), media_files: [episodeFile()], track_choice: null, ...overrides };
 }
 
 export function episodeDetail(overrides: Partial<EpisodeDetail> = {}): EpisodeDetail {
@@ -361,7 +361,7 @@ export function episodeDetail(overrides: Partial<EpisodeDetail> = {}): EpisodeDe
     media_files: [episodeFile()],
     previous_episode_id: 344,
     next_episode_id: 346,
-    track_choice: savedTrackChoice('show', overrides.show_id ?? 7),
+    track_choice: null,
     ...overrides,
   };
 }
@@ -426,7 +426,7 @@ export function filmDetail(overrides: Partial<FilmDetail> = {}): FilmDetail {
     my_rating: null,
     ratings: [],
     household_average: null,
-    track_choice: savedTrackChoice('film', overrides.id ?? 12),
+    track_choice: null,
     ...overrides,
   };
 }

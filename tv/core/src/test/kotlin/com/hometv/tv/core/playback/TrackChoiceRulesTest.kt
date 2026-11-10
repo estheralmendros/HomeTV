@@ -61,8 +61,9 @@ class TrackChoiceRulesTest {
         case["pick"]?.let { assertEquals(choice?.audio, TrackChoiceRules.audioChoiceOf(audioTrack(it)), "audioChoiceOf(pick)") }
         val expected = case.getValue("expected").jsonObject + (case["expected_tv"]?.jsonObject ?: emptyMap())
         val match = TrackChoiceRules.match(choice, audio, subtitles, mode)
-        assertEquals(expected["audio_stream_index"]?.jsonPrimitive?.intOrNull, match.audioStreamIndex, "audio_stream_index")
-        assertEquals(expected["subtitle_id"]?.jsonPrimitive?.contentOrNull, match.subtitleId, "subtitle_id")
+        // getValue: a missing (e.g. misspelt) key fails the case; an explicit JSON null means null.
+        assertEquals(expected.getValue("audio_stream_index").jsonPrimitive.intOrNull, match.audioStreamIndex, "audio_stream_index")
+        assertEquals(expected.getValue("subtitle_id").jsonPrimitive.contentOrNull, match.subtitleId, "subtitle_id")
     }
 
     private fun audioTrack(e: JsonElement): AudioTrack {

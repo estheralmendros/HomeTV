@@ -23,11 +23,9 @@ from typing import Any, Literal
 
 from sqlalchemy.orm import Session
 
-from hometv.api.schemas import AudioChoice, SubtitleChoice, TrackChoice
 from hometv.db import models as m
 from hometv.scanner import ensure_libraries
 from hometv.text import normalize_title, search_text, sort_title
-from hometv.track_choices import choice_columns
 
 T0 = datetime(2026, 1, 1, tzinfo=UTC)
 _WIDTHS = {2160: 3840, 1080: 1920, 720: 1280, 480: 854}
@@ -453,21 +451,31 @@ def add_track_choice(
     """``audio`` = ``(language, title, channels)`` or ``None``; ``subtitles`` = ``"off"``, a dict
     of track traits (``language`` required; ``title`` None, ``forced``/``hearing_impaired`` False,
     ``source`` "embedded", ``kind`` "text" by default) or ``None`` (no part). Audio-only by
-    default; columns built by ``track_choices.choice_columns``."""
-    sub: SubtitleChoice | None = None
-    if subtitles == "off":
-        sub = SubtitleChoice(mode="off")
-    elif isinstance(subtitles, dict):
-        sub = SubtitleChoice(mode="track", source="embedded", kind="text", **subtitles)
-    choice = TrackChoice(
-        audio=AudioChoice(language=audio[0], title=audio[1], channels=audio[2]) if audio else None,
-        subtitles=sub,
+    default; columns written by hand (never ``track_choices.choice_columns``, the code under
+    test)."""
+    language, title, channels = audio if audio is not None else (None, None, None)
+    track: dict[str, Any] = (
+        {"title": None, "forced": False, "hearing_impaired": False}
+        | {"source": "embedded", "kind": "text"}
+        | subtitles
+        if isinstance(subtitles, dict)
+        else {}
     )
+    mode = "off" if subtitles == "off" else "track" if track else None
     row = m.TrackChoice(
         profile_id=profile_id,
         film_id=film.id if film is not None else None,
         show_id=show.id if show is not None else None,
-        **choice_columns(choice),
+        audio_language=language,
+        audio_title=title,
+        audio_channels=channels,
+        subtitle_mode=mode,
+        subtitle_language=track.get("language"),
+        subtitle_title=track.get("title"),
+        subtitle_forced=track.get("forced", False),
+        subtitle_hearing_impaired=track.get("hearing_impaired", False),
+        subtitle_source=track.get("source"),
+        subtitle_kind=track.get("kind"),
         updated_at=updated_at or T0,
     )
     s.add(row)

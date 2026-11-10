@@ -90,7 +90,7 @@ export function useTrackChoiceSaver(input: TrackChoiceSaverInput): TrackChoiceSa
       const seq = rememberPick(profileId, kind, id, next);
       patchTrackChoice(queryClient, kind, id, next);
       const event = { type: 'trackChoiceChanged', kind, id } as const;
-      void enqueueWrite(profileId, kind, id, seq, () => putTrackChoice(kind, id, next)).then(async ({ outcome, error }) => {
+      void enqueueWrite(profileId, kind, id, () => putTrackChoice(kind, id, next)).then(async ({ outcome, error }) => {
         if (outcome === 'ok') {
           await runInvalidation(queryClient, event).catch(() => undefined);
           settlePick(profileId, kind, id, seq, true);

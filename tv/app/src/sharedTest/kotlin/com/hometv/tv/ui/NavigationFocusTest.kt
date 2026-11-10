@@ -8,6 +8,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.hometv.tv.core.api.Me
 import com.hometv.tv.core.api.Profile
 import com.hometv.tv.core.data.Session
 import com.hometv.tv.testing.TEST_SERVER
@@ -202,7 +203,7 @@ class NavigationFocusTest : UiTestBase() {
     @Test
     fun settingsOpensFromTheNavBarAndBackFocusesItsTab() {
         useLibrary()
-        api.onMe = { com.hometv.tv.core.api.Me(5, "Esther", "avatar-05", is_admin = true) }
+        api.onMe = { Me(5, "Esther", "avatar-05", is_admin = true) }
         launch()
         press(Key.DirectionUp)
         press(Key.DirectionRight, times = 5)
@@ -224,7 +225,7 @@ class NavigationFocusTest : UiTestBase() {
         assertTrue(rule.onAllNodes(hasTestTag("tab_SETTINGS"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
         // Tailscale is up now: [Reintentar] loads Home, and the admin's profile follows.
         api.onHome = home
-        api.onMe = { com.hometv.tv.core.api.Me(5, "Esther", "avatar-05", is_admin = true) }
+        api.onMe = { Me(5, "Esther", "avatar-05", is_admin = true) }
         press(Key.DirectionCenter)
         node("card_continue:film:12").assertIsDisplayed()
         node("tab_SETTINGS").assertExists()

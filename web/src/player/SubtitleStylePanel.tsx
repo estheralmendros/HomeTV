@@ -22,11 +22,13 @@ import {
   STYLE_VALUES,
   choose,
   edge,
+  effectiveEdgeColor,
   isDisabled,
   step,
   subtitleStyleOf,
   textShadow,
   type StyleRow,
+  type StyleValue,
 } from './subtitleStyle';
 
 const T = S.player.subtitleStyle;
@@ -39,7 +41,7 @@ const ROW_TITLE: Record<StyleRow, string> = {
   position: T.position,
 };
 
-const VALUE_LABEL: Record<StyleRow, Record<string, string>> = {
+const VALUE_LABEL: { [R in StyleRow]: Record<StyleValue<R>, string> } = {
   size: T.sizes,
   color: T.colors,
   edge: T.edges,
@@ -47,7 +49,7 @@ const VALUE_LABEL: Record<StyleRow, Record<string, string>> = {
   position: T.positions,
 };
 
-const SWATCH_HEX: Partial<Record<StyleRow, Record<string, string>>> = {
+const SWATCH_HEX: { [R in StyleRow]?: Record<StyleValue<R>, string> } = {
   color: COLOR_HEX,
   edge_color: EDGE_COLOR_HEX,
 };
@@ -62,13 +64,13 @@ const sameStyle = (a: SubtitleStyle, b: SubtitleStyle) =>
 
 const HANDLED_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End']);
 
-interface StyleGroupProps {
-  row: StyleRow;
+interface StyleGroupProps<R extends StyleRow> {
+  row: R;
   style: SubtitleStyle;
   onChange: (next: SubtitleStyle) => void;
 }
 
-function StyleGroup({ row, style, onChange }: StyleGroupProps) {
+function StyleGroup<R extends StyleRow>({ row, style, onChange }: StyleGroupProps<R>) {
   const titleId = useId();
   const groupRef = useRef<HTMLDivElement>(null);
   const value = style[row];
@@ -102,7 +104,7 @@ function StyleGroup({ row, style, onChange }: StyleGroupProps) {
         aria-disabled={groupDisabled || undefined}
         className={styles.styleOptions}
       >
-        {STYLE_VALUES[row].map((option: string) => {
+        {STYLE_VALUES[row].map((option) => {
           const checked = option === value;
           const disabled = isDisabled(style, row, option);
           const swatch = SWATCH_HEX[row]?.[option];
@@ -157,7 +159,10 @@ export interface SubtitleStylePanelProps {
 export function SubtitleStylePanel({ onClose, onSave, shownTrack }: SubtitleStylePanelProps) {
   const { subtitleStyleDraft: draft } = usePlayerShell();
   const saved = subtitleStyleOf(useMeQuery().data);
-  const current = useSyncExternalStore(draft.subscribe, draft.get) ?? saved;
+  // A stored white-on-white clash opens on the look it is drawn with (black edge, prd.md FR-6), so
+  // no checked radio is disabled; it is saved only after a change (`openedWith` stays the stored one).
+  const start: SubtitleStyle = { ...saved, edge_color: effectiveEdgeColor(saved) };
+  const current = useSyncExternalStore(draft.subscribe, draft.get) ?? start;
   const phone = useMediaQuery(PHONE_QUERY);
   const titleId = useId();
   const [panelEl, setPanelEl] = useState<HTMLDivElement | null>(null);
@@ -187,7 +192,8 @@ export function SubtitleStylePanel({ onClose, onSave, shownTrack }: SubtitleStyl
     textShadow: textShadow(current),
     fontSize: `calc(var(--video-h, 0px) * 0.05 * ${SIZE_FACTOR[current.size]})`,
     bottom: phone
-      ? `calc(var(--style-sheet-h) + 8px + var(--video-h, 0px) * ${SAMPLE_RAISE[current.position]})`
+      ? // The sheet sits on the control bar (`bottom: var(--player-controls-h)`): clear both.
+        `calc(var(--player-controls-h) + var(--style-sheet-h) + 8px + var(--video-h, 0px) * ${SAMPLE_RAISE[current.position]})`
       : SAMPLE_BOTTOM[current.position],
   };
   const showSample = phone || !cueActive;

@@ -1,5 +1,7 @@
-package com.hometv.tv.testing
+﻿package com.hometv.tv.testing
 
+import com.hometv.tv.ui.player.ExoCaptionApplied
+import com.hometv.tv.ui.player.LocalExoCaptionProbe
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.input.key.Key
@@ -83,8 +85,8 @@ abstract class UiTestBase {
     /** Every (engine, controller) pair the video surface bound, through `LocalVideoSurfaceProbe`. */
     protected val surfaceBindings = mutableListOf<Pair<PlaybackEngine?, PlayerController?>>()
 
-    /** The Exo `PlayerView` after each surface update, through `LocalExoViewProbe` (its `SubtitleView` carries the look). */
-    protected var exoView: androidx.media3.ui.PlayerView? = null
+    /** What the Exo surface last applied to its `SubtitleView` (look, bottom padding, overlay clearance), through `LocalExoCaptionProbe`. */
+    internal var exoCaption: ExoCaptionApplied? = null
 
     /** The activity-level key hook (`MainActivity.dispatchKeyEvent` offers keys to it before Compose focus). */
     protected val keyDispatch = com.hometv.tv.ui.KeyDispatch()
@@ -113,7 +115,7 @@ abstract class UiTestBase {
         rule.setContent {
             CompositionLocalProvider(
                 LocalVideoSurfaceProbe provides { e, c -> surfaceBindings += e to c },
-                com.hometv.tv.ui.player.LocalExoViewProbe provides { view -> exoView = view },
+                LocalExoCaptionProbe provides { applied -> exoCaption = applied },
             ) {
                 HomeTvRoot(container, onExit = { exited = true }, keyDispatch = keyDispatch)
             }

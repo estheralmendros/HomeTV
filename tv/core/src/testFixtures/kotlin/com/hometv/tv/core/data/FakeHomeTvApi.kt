@@ -8,6 +8,7 @@ import com.hometv.tv.core.api.Fixtures
 import com.hometv.tv.core.api.Health
 import com.hometv.tv.core.api.HomeResponse
 import com.hometv.tv.core.api.HomeTvApi
+import com.hometv.tv.core.api.Me
 import com.hometv.tv.core.api.Page
 import com.hometv.tv.core.api.PlaybackRequest
 import com.hometv.tv.core.api.PlaybackResponse
@@ -19,6 +20,8 @@ import com.hometv.tv.core.api.ServerInfo
 import com.hometv.tv.core.api.SessionResponse
 import com.hometv.tv.core.api.ShowDetail
 import com.hometv.tv.core.api.ShowSummary
+import com.hometv.tv.core.api.SubtitleStyle
+import com.hometv.tv.core.api.TrackChoice
 import com.hometv.tv.core.api.WatchedRequest
 import com.hometv.tv.core.api.WatchedResponse
 import com.hometv.tv.core.api.WatchlistEntry
@@ -36,9 +39,9 @@ open class FakeHomeTvApi : HomeTvApi {
     override suspend fun info(): ServerInfo = unused()
     override suspend fun profiles(): ProfileList = unused()
     override suspend fun createSession(profileId: Long): SessionResponse = unused()
-    override suspend fun me(): com.hometv.tv.core.api.Me = unused()
-    override suspend fun putSubtitleStyle(body: com.hometv.tv.core.api.SubtitleStyle): Unit = unused()
-    override suspend fun putTrackChoice(segment: String, id: Long, body: com.hometv.tv.core.api.TrackChoice): Unit = unused()
+    override suspend fun me(): Me = unused()
+    override suspend fun putSubtitleStyle(body: SubtitleStyle): Unit = unused()
+    override suspend fun putTrackChoice(segment: String, id: Long, body: TrackChoice): Unit = unused()
     override suspend fun unlock(body: com.hometv.tv.core.api.UnlockRequest): com.hometv.tv.core.api.UnlockResponse = unused()
     override suspend fun home(limit: Int): HomeResponse = unused()
     override suspend fun films(page: Int, pageSize: Int, sort: String, order: String, genre: Long?, yearFrom: Int?, yearTo: Int?, watched: Boolean?): Page<FilmSummary> = unused()

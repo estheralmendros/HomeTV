@@ -64,7 +64,7 @@ describe('opening and the keyboard (W-AC-11)', () => {
     await start();
     const dialog = openPanel();
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
-    expect(within(dialog).getAllByRole('radiogroup').map((g) => g.getAttribute('aria-labelledby') && g)).toHaveLength(5);
+    expect(within(dialog).getAllByRole('radiogroup')).toHaveLength(5);
     for (const name of ['Tamaño', 'Color', 'Contorno', 'Color del contorno', 'Posición']) expect(group(name)).toBeInTheDocument();
     expect(within(group('Color')).getAllByRole('radio').map((r) => r.textContent)).toEqual([
       'Blanco', 'Amarillo', 'Verde', 'Cian', 'Magenta', 'Naranja',
@@ -92,6 +92,25 @@ describe('opening and the keyboard (W-AC-11)', () => {
     openPanel();
     key('ArrowRight');
     expect(p.video().currentTime).toBe(100);
+  });
+
+  it('Tab walks one stop per row (the checked radio), then [Cerrar]; Shift+Tab walks back', async () => {
+    const p = await start();
+    openPanel();
+    expect(document.activeElement).toBe(radio('Tamaño', 'Mediano'));
+    await p.user.tab();
+    expect(document.activeElement).toBe(radio('Color', 'Blanco'));
+    await p.user.tab();
+    expect(document.activeElement).toBe(radio('Contorno', 'Contorno'));
+    await p.user.tab();
+    expect(document.activeElement).toBe(radio('Color del contorno', 'Negro'));
+    await p.user.tab();
+    expect(document.activeElement).toBe(radio('Posición', 'Baja'));
+    await p.user.tab();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Cerrar' }));
+    await p.user.tab({ shift: true });
+    await p.user.tab({ shift: true });
+    expect(document.activeElement).toBe(radio('Color del contorno', 'Negro'));
   });
 
   it('[Cerrar] closes it; opening another menu closes it too', async () => {
@@ -164,6 +183,23 @@ describe('the clash rule (W-AC-13)', () => {
     fireEvent.click(radio('Contorno', 'Contorno'));
     expect(checked('Color del contorno')).toHaveTextContent('Negro');
   });
+
+  it('a stored white-on-white clash opens on the normalized look (Negro); closing without a change sends no PUT', async () => {
+    const p = await start({ subtitleStyle: f.subtitleStyle({ color: 'white', edge_color: 'white', edge: 'outline' }) });
+    openPanel();
+    expect(checked('Color')).toHaveTextContent('Blanco');
+    expect(checked('Color del contorno')).toHaveTextContent('Negro');
+    for (const name of ['Color', 'Color del contorno']) expect(checked(name)).not.toHaveAttribute('aria-disabled');
+    key('Escape');
+    openPanel();
+    fireEvent.click(radio('Tamaño', 'Grande'));
+    key('Escape');
+    await until(() => expect(p.rec.find('PUT', '/api/me/subtitle-style')).toHaveLength(1));
+    await p.rec.settled();
+    expect(p.rec.find('PUT', '/api/me/subtitle-style')[0]?.body).toEqual(
+      f.subtitleStyle({ size: 'large', color: 'white', edge_color: 'black', edge: 'outline' }),
+    );
+  });
 });
 
 describe('the sample line (W-AC-14, W-AC-16)', () => {
@@ -181,6 +217,14 @@ describe('the sample line (W-AC-14, W-AC-16)', () => {
     expect(screen.getByTestId('subtitle-style-sample').style.bottom).toBe('20%');
   });
 
+  it('≥ 600 px with subtitles Off (no shown track): the sample shows', async () => {
+    const p = await start();
+    expect(p.video().querySelector('track')).toBeNull();
+    openPanel();
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-layout', 'panel');
+    expect(screen.getByTestId('subtitle-style-sample')).toHaveTextContent('Así se verán los subtítulos');
+  });
+
   it('< 600 px: a sheet; the sample always shows above it and moves with Posición', async () => {
     setViewportWidth(360);
     const p = await start();
@@ -190,6 +234,8 @@ describe('the sample line (W-AC-14, W-AC-16)', () => {
     act(() => setActiveCues(el, [{ line: -3, snapToLines: true }]));
     const sample = screen.getByTestId('subtitle-style-sample');
     expect(sample.style.bottom).toContain('var(--style-sheet-h)');
+    // The sheet sits on the control bar (bottom: var(--player-controls-h)), so the sample clears both.
+    expect(sample.style.bottom).toContain('var(--player-controls-h)');
     expect(sample.style.bottom).not.toContain('0.06');
     fireEvent.click(radio('Posición', 'Media'));
     expect(screen.getByTestId('subtitle-style-sample').style.bottom).toContain('0.06');
@@ -210,6 +256,18 @@ describe('the sample line (W-AC-14, W-AC-16)', () => {
 describe('saving on close (W-AC-15)', () => {
   const styleOf = (qc: PlayerHarness['queryClient']) => qc.getQueryData<Me>(queryKeys.me())?.subtitle_style;
 
+  it('closing it by opening another menu saves the change (one PUT)', async () => {
+    const p = await start();
+    openPanel();
+    fireEvent.click(radio('Color', 'Amarillo'));
+    fireEvent.click(screen.getByRole('button', { name: 'Subtítulos' }));
+    expect(screen.queryByRole('dialog', { name: 'Formato de los subtítulos' })).not.toBeInTheDocument();
+    await until(() => expect(p.rec.find('PUT', '/api/me/subtitle-style')).toHaveLength(1));
+    await p.rec.settled();
+    expect(p.rec.find('PUT', '/api/me/subtitle-style')[0]?.body).toEqual(f.subtitleStyle({ color: 'yellow' }));
+    expect(styleOf(p.queryClient)?.color).toBe('yellow');
+  });
+
   it('Escape after a change: one PUT with the full style; ["me"] holds it; no PUT without a change', async () => {
     const p = await start();
     openPanel();
@@ -226,25 +284,33 @@ describe('saving on close (W-AC-15)', () => {
   });
 
   it('a style save during the sign-in /api/me refetch is not reverted (cancelQueries)', async () => {
-    let release: () => void = () => undefined;
+    let release: (() => void) | null = null;
+    let answered = false;
     server.use(
       http.get(`${API}/me`, async () => {
         await new Promise<void>((resolve) => {
           release = resolve;
         });
+        answered = true;
         return HttpResponse.json(f.me());
       }),
     );
     const p = await start();
     void p.queryClient.invalidateQueries({ queryKey: queryKeys.me() });
-    await until(() => expect(p.rec.find('GET', '/api/me')).toHaveLength(1));
+    // The handler holds the answer (the request reached it before the save).
+    await until(() => expect(release).not.toBeNull());
+    expect(p.queryClient.getQueryState(queryKeys.me())?.fetchStatus).toBe('fetching');
     openPanel();
     fireEvent.click(radio('Color', 'Naranja'));
     key('Escape');
-    release();
+    // Cancelled at once: the refetch's answer can no longer be written into ['me'].
+    expect(p.queryClient.getQueryState(queryKeys.me())?.fetchStatus).toBe('idle');
+    (release as unknown as () => void)();
+    await until(() => expect(answered).toBe(true));
     await until(() => expect(p.rec.find('PUT', '/api/me/subtitle-style')).toHaveLength(1));
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await p.rec.settled();
     expect(styleOf(p.queryClient)?.color).toBe('orange');
+    expect(p.queryClient.getQueryState(queryKeys.me())?.fetchStatus).toBe('idle');
   });
 
   it('a failure toasts in the player while mounted and keeps the style for the session', async () => {

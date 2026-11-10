@@ -34,11 +34,13 @@ class AccountState(
     /** The profile's subtitle style; the default until `/api/me` answers. */
     val subtitleStyle: StateFlow<SubtitleLook> = _style.asStateFlow()
 
+    /** Guards [styleSeq] with the [_style] write it goes with (main-thread sets vs a `Me` landing on IO). */
+    private val styleLock = Any()
+
     @Volatile
     private var styleLoaded = false
 
     /** Bumped by every local style change and reset: a `Me` requested before it never overwrites it. */
-    @Volatile
     private var styleSeq = 0L
 
     /** The Picker's callback: a new profile starts on the default style and loads its own at once. */
@@ -46,7 +48,7 @@ class AccountState(
         if (_profile.value?.id != profile.id) resetStyle()
         _profile.value = profile
         if (info != null) _info.value = info
-        appScope.launch { refresh() }
+        appScope.launch { refreshMe() }
     }
 
     fun clear() {
@@ -57,8 +59,10 @@ class AccountState(
 
     /** Applies a style for this session (the Player's "Formato de los subtítulos"). */
     fun setSubtitleStyle(look: SubtitleLook) {
-        styleSeq++
-        _style.value = look
+        synchronized(styleLock) {
+            styleSeq++
+            _style.value = look
+        }
     }
 
     /** `#RRGGBB` of the current profile's avatar, from `/api/info`. */
@@ -84,15 +88,23 @@ class AccountState(
             throw e
         } catch (_: ApiException) {
         }
-        val seq = styleSeq
+        refreshMe()
+    }
+
+    /** `GET /api/me` as a background call: the profile, and its style unless a local set happened since. */
+    private suspend fun refreshMe() {
+        val seq = synchronized(styleLock) { styleSeq }
         try {
             val me = profiles.me(Origin.Background)
             val stored = store.session.value.profileId
             if (stored == null || stored != me.id) return
             _profile.value = me.toProfile()
-            if (seq == styleSeq) {
-                _style.value = SubtitleLook.of(me.subtitle_style)
-                styleLoaded = true
+            val look = SubtitleLook.of(me.subtitle_style)
+            synchronized(styleLock) {
+                if (seq == styleSeq) {
+                    _style.value = look
+                    styleLoaded = true
+                }
             }
         } catch (e: CancellationException) {
             throw e
@@ -101,8 +113,10 @@ class AccountState(
     }
 
     private fun resetStyle() {
-        styleSeq++
-        styleLoaded = false
-        _style.value = SubtitleLook.DEFAULT
+        synchronized(styleLock) {
+            styleSeq++
+            styleLoaded = false
+            _style.value = SubtitleLook.DEFAULT
+        }
     }
 }

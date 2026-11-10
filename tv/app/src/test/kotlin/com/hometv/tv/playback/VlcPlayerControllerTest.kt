@@ -763,7 +763,7 @@ class VlcPlayerControllerTest {
         }
 
         @Test
-        fun `no port swap while a media is open (another version, the subtitle rebuild)`() {
+        fun `no port swap when the open media is reopened (the subtitle rebuild of the same file)`() {
             playing()
             look = large
             factory = { port2 }
@@ -771,6 +771,41 @@ class VlcPlayerControllerTest {
             vlc.prepare()
             assertEquals(1, factoryCalls)
             assertEquals(2, port.opens.size)
+        }
+
+        @Test
+        fun `a new item opened while one plays (next episode, another version) rebuilds the port for a changed look`() {
+            playing()
+            port.emit(VlcEvent.TimeChanged(60_000))
+            val oldListener = port.listener!!
+            look = large
+            factory = { port2 }
+            port.clear()
+            events.clear()
+            vlc.setMediaItem(spec("http://s/api/media-files/4/stream"), 0)
+            vlc.prepare()
+            assertEquals(listOf("setEventListener null", "detachViews", "stop", "release"), port.commands())
+            assertEquals(listOf("attachViews layout", "setEventListener", "open"), port2.commands())
+            assertEquals(listOf(SubtitleLook.DEFAULT, large), requestedLooks)
+            assertTrue(port2.opens.single().uri.startsWith("http://s/api/media-files/4/stream"))
+            // The replaced media's late events are dropped; no IDLE nor failure is reported.
+            oldListener(VlcEvent.EndReached)
+            drain()
+            assertEquals(PlayerState.BUFFERING, vlc.state)
+            port2.emit(VlcEvent.Playing)
+            assertEquals(PlayerState.READY, vlc.state)
+            assertTrue(events.none { it == "state IDLE" || it.startsWith("failure") }, "$events")
+        }
+
+        @Test
+        fun `a new item opened while one plays with the same look reuses the port`() {
+            playing()
+            factory = { port2 }
+            vlc.setMediaItem(spec("http://s/api/media-files/4/stream"), 0)
+            vlc.prepare()
+            assertEquals(1, factoryCalls)
+            assertEquals(2, port.opens.size)
+            assertFalse("release" in port.commands())
         }
 
         @Test

@@ -9,10 +9,11 @@ import type { AudioTrack, EpisodeDetail, MediaFile, TrackChoice } from '@/api/ty
 import * as f from '../../tests/fixtures';
 import { FakeHls } from '../../tests/fakeHls';
 import { advance, until } from '../../tests/flush';
-import { API, apiError } from '../../tests/msw/handlers';
+import { API, apiError, withSavedChoice } from '../../tests/msw/handlers';
 import { server } from '../../tests/msw/server';
 import { createTestQueryClient } from '../../tests/renderWithProviders';
-import { PLAYBACK, deferred, renderPlayer, serveEpisodes, useFakePlayerTimers, type PlayerHarness } from '../../tests/player';
+import { PLAYBACK, deferred, gateTrackChoicePuts, renderPlayer, serveEpisodes, useFakePlayerTimers, type PlayerHarness } from '../../tests/player';
+import { pendingChoice } from './trackChoiceSession';
 
 vi.mock('hls.js', () => import('../../tests/fakeHls'));
 
@@ -56,20 +57,6 @@ function servePlayback(mode: 'direct' | 'hls' = 'direct', override?: (n: number,
       );
     }),
   );
-}
-
-/** A PUT handler held until `gate.resolve()`; records the saved choice like the server. */
-function gatePuts() {
-  const gates: Array<() => void> = [];
-  server.use(
-    http.put(`${API}/track-choices/:segment/:id`, async ({ params, request }) => {
-      const body = (await request.json()) as TrackChoice;
-      await new Promise<void>((resolve) => gates.push(resolve));
-      f.saveTrackChoice(params.segment === 'films' ? 'film' : 'show', Number(params.id), body);
-      return new HttpResponse(null, { status: 204 });
-    }),
-  );
-  return { release: () => gates.shift()?.(), pending: () => gates.length };
 }
 
 const puts = (p: PlayerHarness) => p.rec.find('PUT', /^\/api\/track-choices\//);
@@ -270,7 +257,9 @@ describe('re-picking the playing audio track (W-AC-22)', () => {
     const p = renderPlayer('/watch/film/12');
     await p.startDirect(0);
     pickAudio('Español · AAC 2.0');
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    // A save records its session override synchronously before its PUT: none means no PUT ever.
+    expect(pendingChoice(1, 'film', 12)).toBeUndefined();
+    await p.rec.settled();
     expect(puts(p)).toHaveLength(0);
     expect(p.posts()).toHaveLength(1);
   });
@@ -280,7 +269,7 @@ describe('quick picks are serialized per title (W-AC-8b)', () => {
   it('three picks: at most two PUTs, one at a time, the last body is the last pick', async () => {
     server.use(http.get(`${API}/films/:id`, () => HttpResponse.json(film(null))));
     servePlayback();
-    const gate = gatePuts();
+    const gate = gateTrackChoicePuts();
     const p = renderPlayer('/watch/film/12');
     await p.startDirect(0);
     pickSubtitle('Español');
@@ -319,7 +308,7 @@ describe('the next episode starts with the pick (W-AC-7, W-AC-8)', () => {
   it('while the PUT is pending (gated)', async () => {
     serveEpisodes(EPISODES());
     servePlayback('hls');
-    const gate = gatePuts();
+    const gate = gateTrackChoicePuts();
     const p = renderPlayer('/watch/episode/345');
     await pickThenNext(p);
     await until(() => expect(gate.pending()).toBe(1));
@@ -385,7 +374,7 @@ describe('"Seguir viendo" starts (W-AC-10, W-AC-21)', () => {
     qc.setQueryData(queryKeys.home(), homeWith(null));
     serveEpisodes([episode(345, 1, null)]);
     servePlayback();
-    const gate = gatePuts();
+    const gate = gateTrackChoicePuts();
     const p = renderPlayer('/watch/episode/345', { queryClient: qc });
     await p.startDirect(300);
     pickAudio('Inglés · AAC 2.0');
@@ -413,7 +402,9 @@ describe('another version after settled picks (W-AC-24)', () => {
       audio_tracks: [f.audioTrack({ index: 4, language: 'spa', default: true }), f.audioTrack({ index: 7, language: 'eng', default: false })],
       subtitle_tracks: subsFor(92),
     });
-    server.use(http.get(`${API}/films/:id`, () => HttpResponse.json(f.filmDetail({ media_files: [file1, file2], progress: null }))));
+    server.use(
+      http.get(`${API}/films/:id`, () => HttpResponse.json(withSavedChoice(f.filmDetail({ media_files: [file1, file2], progress: null }), 'film', 12))),
+    );
     servePlayback('hls', (_n, body) =>
       body.start_position_seconds === 333
         ? apiError(500, 'transcoder_failed', { details: { detail: 'keyframe_index_failed: stalled' } })

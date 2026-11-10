@@ -26,9 +26,10 @@ import kotlin.math.abs
  * - `isPlaying` = the last event was `Playing` && play intent && READY (false while buffering, as with Exo).
  * - **Subtitle style** (prd3 FR-T9): the style is in the LibVLC instance options, so the port is built for a
  *   look ([portLook], the look requested from [portFactory], whether it was applied or not). Port-look rule:
- *   whenever a media is about to open while none is open (never opened, after [stop], `EndReached` or an error)
- *   and [look] differs from [portLook], the port is released and rebuilt ([portForOpen], the only way the open
- *   paths get their port), with the attached layout re-attached before the open. [reloadSubtitleStyle] reopens
+ *   whenever a media is about to open while none is open (never opened, after [stop], `EndReached` or an error),
+ *   or a new item (another URL) is about to replace the open one, and [look] differs from [portLook], the port is
+ *   released and rebuilt ([portForOpen], the only way the open paths get their port), with the attached layout
+ *   re-attached before the open. [reloadSubtitleStyle] reopens
  *   a playing or paused media at the same position with a port for the new look.
  */
 class VlcPlayerController(
@@ -72,6 +73,9 @@ class VlcPlayerController(
 
     /** A media is open in the port (until [stop], an error or `Stopped`). */
     private var opened = false
+
+    /** The URL of the last open: a [prepare] for another URL opens a new item (port-look rule). */
+    private var openedUrl: String? = null
     private var generation = 0
 
     /** The first `Playing`/`Paused` of the current open was seen. */
@@ -193,13 +197,7 @@ class VlcPlayerController(
     override fun release() {
         if (released) return
         released = true
-        port?.let { p ->
-            p.setEventListener(null)
-            if (layout != null) p.detachViews()
-            p.release()
-        }
-        port = null
-        portLook = null
+        port?.let { dropPort(it, stopMedia = false) }
         layout = null
         opened = false
         currentState = PlayerState.IDLE
@@ -233,14 +231,8 @@ class VlcPlayerController(
         }
         val resumeAt = position
         val keptLayout = layout
-        closeMedia()
-        p.setEventListener(null)
-        if (keptLayout != null) p.detachViews()
+        dropPort(p)
         layout = null
-        p.stop()
-        p.release()
-        port = null
-        portLook = null
         pendingStartMs = resumeAt
         position = resumeAt
         openPending = true
@@ -257,24 +249,31 @@ class VlcPlayerController(
     // ---- Internals ---------------------------------------------------------------------------
 
     /**
-     * The port for the next open (the port-look rule): with no media open and a changed [look], the old port is
-     * released and a new one built, attached to the current layout before the caller opens. A port built while a
-     * layout is attached (after a restyle dropped the previous one) is attached here too.
+     * The port for the next open (the port-look rule): with a changed [look] and no media open (or an ended one),
+     * or a new item about to replace the open media (another URL: next episode, another version, an audio switch's
+     * new stream), the old port is released (the open media stopped first) and a new one built, attached to the
+     * current layout before the caller opens. A reopen of the open media's own URL (the subtitle rebuild) keeps
+     * the port. A port built while a layout is attached (after a restyle dropped the previous one) is attached here too.
      */
     private fun portForOpen(): VlcPlayerPort? {
         val current = port
-        if (current != null && (!opened || currentState == PlayerState.ENDED) && look() != portLook) dropPort(current)
+        val replaceable = !opened || currentState == PlayerState.ENDED || spec?.url != openedUrl
+        if (current != null && replaceable && look() != portLook) dropPort(current)
         val fresh = port == null
         val p = ensurePort() ?: return null
         if (fresh) layout?.let { p.attachViews(it) }
         return p
     }
 
-    /** Releases the port as [release] does (listener, views, player); the layout stays recorded for the next port. */
-    private fun dropPort(p: VlcPlayerPort) {
+    /**
+     * Releases the port (listener, views, a playing media stopped when [stopMedia], player); the open media is
+     * closed (its late events dropped). The layout stays recorded for the next port.
+     */
+    private fun dropPort(p: VlcPlayerPort, stopMedia: Boolean = opened && currentState != PlayerState.ENDED) {
         if (opened) closeMedia()
         p.setEventListener(null)
         if (layout != null) p.detachViews()
+        if (stopMedia) p.stop()
         p.release()
         port = null
         portLook = null
@@ -312,6 +311,7 @@ class VlcPlayerController(
         started = false
         eventPlaying = false
         opened = true
+        openedUrl = s.url
         p.setEventListener { event -> if (gen == generation) onEvent(event) }
         try {
             p.open(VlcUrls.withToken(s.url, token()), VlcOptions.media(start, startPaused = !playWhenReady), s.subtitles.map { it.fileUri })

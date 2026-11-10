@@ -7,14 +7,17 @@ export { DEFAULT_SUBTITLE_STYLE };
 
 export type StyleRow = 'size' | 'color' | 'edge' | 'edge_color' | 'position';
 
+/** A row's value type (e.g. `SubtitleColor` for 'color'). */
+export type StyleValue<R extends StyleRow> = SubtitleStyle[R];
+
 /** Every row's values in panel order. */
-export const STYLE_VALUES = {
+export const STYLE_VALUES: { readonly [R in StyleRow]: readonly StyleValue<R>[] } = {
   size: ['small', 'medium', 'large'],
   color: ['white', 'yellow', 'green', 'cyan', 'magenta', 'orange'],
   edge: ['outline', 'shadow', 'none'],
   edge_color: ['black', 'dark_gray', 'white'],
   position: ['low', 'middle', 'high'],
-} as const satisfies { [R in StyleRow]: readonly SubtitleStyle[R][] };
+};
 
 export const STYLE_ROWS: readonly StyleRow[] = ['size', 'color', 'edge', 'edge_color', 'position'];
 
@@ -36,9 +39,26 @@ export const EDGE_COLOR_HEX: Record<SubtitleEdgeColor, string> = {
 /** The text size factor (`::cue` font-size and the sample line). */
 export const SIZE_FACTOR: Record<SubtitleSize, number> = { small: 0.8, medium: 1, large: 1.3 };
 
-/** The profile's style; the default for a bare Profile (seeded before /api/me answered) or none. */
+function knownValue<R extends StyleRow>(row: R, value: unknown): StyleValue<R> {
+  const values: readonly unknown[] = STYLE_VALUES[row];
+  return values.includes(value) ? (value as StyleValue<R>) : DEFAULT_SUBTITLE_STYLE[row];
+}
+
+/**
+ * The profile's style; the default for a bare Profile (seeded before /api/me answered) or none.
+ * Each field is checked at runtime: an unknown value falls back to that field's default (like the
+ * TV's `SubtitleLook.of`), so a newer server value never draws `undefined`.
+ */
 export function subtitleStyleOf(me: Partial<Me> | undefined | null): SubtitleStyle {
-  return me?.subtitle_style ?? DEFAULT_SUBTITLE_STYLE;
+  const stored = me?.subtitle_style;
+  if (!stored) return DEFAULT_SUBTITLE_STYLE;
+  return {
+    size: knownValue('size', stored.size),
+    color: knownValue('color', stored.color),
+    edge: knownValue('edge', stored.edge),
+    edge_color: knownValue('edge_color', stored.edge_color),
+    position: knownValue('position', stored.position),
+  };
 }
 
 /** A stored white-on-white clash (edge on) is drawn with black. */
@@ -78,15 +98,15 @@ export function cueLine(position: SubtitlePosition): number {
 }
 
 /** Clash values and the edge colours while "Sin contorno" is chosen. */
-export function isDisabled(style: SubtitleStyle, row: StyleRow, value: string): boolean {
+export function isDisabled<R extends StyleRow>(style: SubtitleStyle, row: R, value: StyleValue<R>): boolean {
   if (row === 'edge_color') return style.edge === 'none' || (value === 'white' && style.color === 'white');
   if (row === 'color') return value === 'white' && style.edge_color === 'white' && style.edge !== 'none';
   return false;
 }
 
 /** Sets `row` to `value` (a disabled value changes nothing); an edge turned on again never clashes. */
-export function choose(style: SubtitleStyle, row: StyleRow, value: string): SubtitleStyle {
-  if (!(STYLE_VALUES[row] as readonly string[]).includes(value) || isDisabled(style, row, value)) return style;
+export function choose<R extends StyleRow>(style: SubtitleStyle, row: R, value: StyleValue<R>): SubtitleStyle {
+  if (!STYLE_VALUES[row].includes(value) || isDisabled(style, row, value)) return style;
   const next = { ...style, [row]: value } as SubtitleStyle;
   if (row === 'edge' && style.edge === 'none' && next.edge !== 'none' && next.color === 'white' && next.edge_color === 'white') {
     next.edge_color = 'black';
@@ -95,18 +115,18 @@ export function choose(style: SubtitleStyle, row: StyleRow, value: string): Subt
 }
 
 /** The next enabled value in `dir` (disabled ones skipped); unchanged at the ends. */
-export function step(style: SubtitleStyle, row: StyleRow, dir: 1 | -1): SubtitleStyle {
-  const values = STYLE_VALUES[row] as readonly string[];
+export function step<R extends StyleRow>(style: SubtitleStyle, row: R, dir: 1 | -1): SubtitleStyle {
+  const values = STYLE_VALUES[row];
   for (let i = values.indexOf(style[row]) + dir; i >= 0 && i < values.length; i += dir) {
-    const value = values[i] as string;
-    if (!isDisabled(style, row, value)) return choose(style, row, value);
+    const value = values[i];
+    if (value !== undefined && !isDisabled(style, row, value)) return choose(style, row, value);
   }
   return style;
 }
 
 /** The first (or last) enabled value of a row (Home / End). */
-export function edge(style: SubtitleStyle, row: StyleRow, which: 'first' | 'last'): SubtitleStyle {
-  const values = STYLE_VALUES[row] as readonly string[];
+export function edge<R extends StyleRow>(style: SubtitleStyle, row: R, which: 'first' | 'last'): SubtitleStyle {
+  const values: readonly StyleValue<R>[] = STYLE_VALUES[row];
   const ordered = which === 'first' ? values : [...values].reverse();
   const value = ordered.find((v) => !isDisabled(style, row, v));
   return value === undefined ? style : choose(style, row, value);

@@ -51,6 +51,14 @@ describe('values (prd.md FR-6)', () => {
     expect(subtitleStyleOf(undefined)).toEqual(DEFAULT_SUBTITLE_STYLE);
   });
 
+  it('subtitleStyleOf: an unknown or missing value falls back to that field’s default only', () => {
+    const odd = { size: 'huge', color: 'cyan', edge: 42, edge_color: null, position: 'high' } as unknown as SubtitleStyle;
+    expect(subtitleStyleOf(f.me({ subtitle_style: odd }))).toEqual(style({ color: 'cyan', position: 'high' }));
+    const partial = { color: 'yellow' } as unknown as SubtitleStyle;
+    expect(subtitleStyleOf(f.me({ subtitle_style: partial }))).toEqual(style({ color: 'yellow' }));
+    expect(subtitleStyleOf(f.me({ subtitle_style: null as unknown as SubtitleStyle }))).toEqual(DEFAULT_SUBTITLE_STYLE);
+  });
+
   it('cueLine: low -3 (SUBTITLE_CUE_LINE), middle -4, high -5', () => {
     expect([cueLine('low'), cueLine('middle'), cueLine('high')]).toEqual([-3, -4, -5]);
     expect(SUBTITLE_CUE_LINE).toBe(cueLine('low'));
@@ -103,7 +111,7 @@ describe('clash rule and keyboard steps', () => {
   });
 
   it('every edge colour is disabled with "Sin contorno"', () => {
-    for (const value of ['black', 'dark_gray', 'white']) expect(isDisabled(style({ edge: 'none' }), 'edge_color', value)).toBe(true);
+    for (const value of ['black', 'dark_gray', 'white'] as const) expect(isDisabled(style({ edge: 'none' }), 'edge_color', value)).toBe(true);
     expect(step(style({ edge: 'none' }), 'edge_color', 1)).toEqual(style({ edge: 'none' }));
   });
 

@@ -17,6 +17,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -102,6 +103,7 @@ class TrackChoiceMemoryTest {
             start.countDown()
             m.put(5, show, 7, off)
             other.join(TimeUnit.SECONDS.toMillis(5))
+            assertFalse(other.isAlive, "the confirming thread finished")
             m.fetched(5, show, 7, m.ticket())
             assertEquals(off, m.get(5, show, 7))
         }

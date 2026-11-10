@@ -19,6 +19,11 @@ import kotlinx.coroutines.launch
  * fetched older choice never lose it; a real change of (serverUrl, profileId), [clear] (sign-out,
  * `AppNavigator.authExpired`) and process death do.
  *
+ * The clear on a (serverUrl, profileId) change runs asynchronously, from the session collector on
+ * `scope` (like [RatingPrompts]): a pick made right after a switch, before the collector runs, can be
+ * wiped, and a quick A→B→A switch can be conflated by the `StateFlow` into no change at all. Both are
+ * harmless: the keys include the profile id, so another profile never reads an entry.
+ *
  * Thread-safe: called from the main thread (get/put/ticket/fetched), from `appScope` (markConfirmed,
  * the session collector) and from sign-out; every public method runs its whole body under one lock,
  * with no suspension or callback inside. Seqs and tickets share one counter, so they are strictly

@@ -79,15 +79,15 @@ describe('overrides', () => {
 
 describe('enqueueWrite', () => {
   it('sends at once and resolves ok', async () => {
-    const seq = rememberPick(1, 'film', 12, english);
+    rememberPick(1, 'film', 12, english);
     const send = vi.fn(() => Promise.resolve());
-    await expect(enqueueWrite(1, 'film', 12, seq, send)).resolves.toEqual({ outcome: 'ok' });
+    await expect(enqueueWrite(1, 'film', 12, send)).resolves.toEqual({ outcome: 'ok' });
     expect(send).toHaveBeenCalledTimes(1);
   });
 
   it('a failure resolves failed with the error', async () => {
     const err = new Error('boom');
-    const result = await enqueueWrite(1, 'film', 12, 1, () => Promise.reject(err));
+    const result = await enqueueWrite(1, 'film', 12, () => Promise.reject(err));
     expect(result).toEqual({ outcome: 'failed', error: err });
   });
 
@@ -95,9 +95,9 @@ describe('enqueueWrite', () => {
     const a = gate();
     const b = gate();
     const c = gate();
-    const first = enqueueWrite(1, 'show', 7, 1, a.send);
-    const second = enqueueWrite(1, 'show', 7, 2, b.send);
-    const third = enqueueWrite(1, 'show', 7, 3, c.send);
+    const first = enqueueWrite(1, 'show', 7, a.send);
+    const second = enqueueWrite(1, 'show', 7, b.send);
+    const third = enqueueWrite(1, 'show', 7, c.send);
     expect(a.send).toHaveBeenCalledTimes(1);
     expect(b.send).not.toHaveBeenCalled();
     await expect(second).resolves.toEqual({ outcome: 'superseded' });
@@ -114,8 +114,8 @@ describe('enqueueWrite', () => {
   it('other titles are independent', () => {
     const a = gate();
     const b = gate();
-    void enqueueWrite(1, 'show', 7, 1, a.send);
-    void enqueueWrite(1, 'film', 7, 2, b.send);
+    void enqueueWrite(1, 'show', 7, a.send);
+    void enqueueWrite(1, 'film', 7, b.send);
     expect(a.send).toHaveBeenCalledTimes(1);
     expect(b.send).toHaveBeenCalledTimes(1);
   });
@@ -123,8 +123,8 @@ describe('enqueueWrite', () => {
   it('a profile change drops the queued wish (never sent) and ignores the in-flight settle', async () => {
     const a = gate();
     const b = gate();
-    const first = enqueueWrite(1, 'show', 7, 1, a.send);
-    const queued = enqueueWrite(1, 'show', 7, 2, b.send);
+    const first = enqueueWrite(1, 'show', 7, a.send);
+    const queued = enqueueWrite(1, 'show', 7, b.send);
     profile = 2;
     setActiveProfile(2);
     await expect(queued).resolves.toEqual({ outcome: 'dropped' });
@@ -137,17 +137,17 @@ describe('enqueueWrite', () => {
   it('a wish whose profile is not the getter’s at send time is dropped, send never called', async () => {
     profile = 2;
     const send = vi.fn(() => Promise.resolve());
-    await expect(enqueueWrite(1, 'film', 12, 1, send)).resolves.toEqual({ outcome: 'dropped' });
+    await expect(enqueueWrite(1, 'film', 12, send)).resolves.toEqual({ outcome: 'dropped' });
     profile = null;
-    await expect(enqueueWrite(1, 'film', 12, 2, send)).resolves.toEqual({ outcome: 'dropped' });
+    await expect(enqueueWrite(1, 'film', 12, send)).resolves.toEqual({ outcome: 'dropped' });
     expect(send).not.toHaveBeenCalled();
   });
 
   it('the queued wish is checked against the getter when it is sent', async () => {
     const a = gate();
     const b = gate();
-    void enqueueWrite(1, 'show', 7, 1, a.send);
-    const queued = enqueueWrite(1, 'show', 7, 2, b.send);
+    void enqueueWrite(1, 'show', 7, a.send);
+    const queued = enqueueWrite(1, 'show', 7, b.send);
     profile = null; // signed out in another way (the getter answers null)
     a.resolve();
     await expect(queued).resolves.toEqual({ outcome: 'dropped' });
@@ -157,7 +157,7 @@ describe('enqueueWrite', () => {
   it('unregistered getter (after reset): every wish is dropped', async () => {
     resetTrackChoiceSession();
     const send = vi.fn(() => Promise.resolve());
-    await expect(enqueueWrite(1, 'film', 12, 1, send)).resolves.toEqual({ outcome: 'dropped' });
+    await expect(enqueueWrite(1, 'film', 12, send)).resolves.toEqual({ outcome: 'dropped' });
     expect(send).not.toHaveBeenCalled();
   });
 });

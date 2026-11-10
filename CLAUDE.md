@@ -18,7 +18,9 @@ is a contract shared by the web and TV clients: change it deliberately and updat
   - `hometv/text.py` (also `undecodable(name)`, shared by scanner/folder browser/scheduler/changes),
     `hometv/parser.py`: pure modules (no I/O). `hometv/subtitle_style.py`: the five style `Literal`
     aliases (`SubtitleSizeValue`…), `DEFAULT_STYLE` (medium/white/outline/black/low), `STYLE_FIELDS`
-    (single source for the profile CHECKs and `SubtitleStyle`).
+    (the `StyleDefaults` field names: field -> `profile.subtitle_<field>` column for `me_out`/
+    `set_subtitle_style`; a test checks it equals `SubtitleStyle.model_fields`; the CHECKs are built
+    per alias in `models.py`).
   - `hometv/probe.py`: ffprobe wrapper (injectable `runner`) + pure `normalize()`.
   - `hometv/db/engine.py`: `Database` (read/write engines, `write_session()`),
     `run_migrations()`. `db/models.py`: full data model (incl. `WatchlistEntry`: profile + film|show,
@@ -235,16 +237,19 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     of `specs/subtitles-improvements/prd.md` FR-3..FR-5a: `languageKey`, `matchAudio`, `matchSubtitle`,
     `matchTrackChoice`, `audioChoiceOf`/`subtitleChoiceOf`, `withAudio`/`withSubtitles`, `sameAudioChoice`,
     `defaultAudio`; `trackChoice.test.ts` runs `shared/track-choice-cases.json`), `subtitleStyle` (`COLOR_HEX`,
-    `EDGE_COLOR_HEX`, `subtitleStyleOf`, `effectiveEdgeColor`, `textShadow`, `cueCss`, `cueLine` -3/-4/-5,
-    `isDisabled`/`step`/`choose`/`edge`), `subtitleStyleDraft` (the panel draft store on `PlayerShellContext`),
+    `EDGE_COLOR_HEX`, `subtitleStyleOf` (each field checked against `STYLE_VALUES`, an unknown value = that
+    field's default), `effectiveEdgeColor`, `textShadow`, `cueCss`, `cueLine` -3/-4/-5,
+    `isDisabled`/`step`/`choose`/`edge` typed per row by `StyleValue<R>`), `subtitleStyleDraft` (the panel draft store on `PlayerShellContext`),
     `trackChoiceSession` (tab-lifetime overrides `pendingChoice`/`rememberPick`/`settlePick`, per-title
-    `enqueueWrite` → `{outcome: ok|failed|superseded|dropped, error?}`, `setProfileGetter`, `setActiveProfile`,
-    `resetTrackChoiceSession`), `nextEpisode`, `progressSync`; I/O hooks `useTrackChoiceSaver` (`base()` = override
+    `enqueueWrite(profileId, kind, id, send)` → `{outcome: ok|failed|superseded|dropped, error?}`, `setProfileGetter`,
+    `currentProfileId`, `setActiveProfile` (+ `onActiveProfileChange` listeners), `resetTrackChoiceSession`), `nextEpisode`, `progressSync`; I/O hooks `useTrackChoiceSaver` (`base()` = override
     ?? live source's `track_choice`, `saveAudio`/`saveSubtitles`; `patchTrackChoice` keeps `dataUpdatedAt` and
     writes only the title's entries; settle after the `trackChoiceChanged` refetch), `useSubtitleStyleSave`
-    (owned by `PlayerPage`: `['me']` updated + `cancelQueries`, latest-wins PUT, failure toast by the "form gone"
-    rule), `SubtitleStylePanel` (`menu = 'style'`: five radiogroups, roving tabindex, clash rule, sample line,
-    saves on unmount when changed and clears the draft),
+    (owned by `PlayerPage`: `['me']` updated + `cancelQueries`, latest-wins PUT, each wish records
+    `currentProfileId()` and is sent only while it still matches, a profile change drops the queued one;
+    failure toast by the "form gone" rule; `subtitleStyleSaveIdle()` for tests), `SubtitleStylePanel` (`menu =
+    'style'`: five radiogroups, roving tabindex, clash rule, sample line, opens on the Clash-normalized look
+    (`effectiveEdgeColor`), saves on unmount when changed and clears the draft),
     `usePlaybackSession` (POST/preparing/attach/keep-alive/recovery/exit), `attachSource`
     (direct, hls.js, native iOS HLS), `useProgressReporter` (`PositionTracker` attach
     generations; `ratingPrompt` state = the latest non-null `rating_prompt` of a non-final report,
@@ -253,8 +258,9 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     lock-screen play/pause/seek handlers + metadata, feature-detected); `PlayerRoute` is the stable
     shell (fullscreen root + the single `<video>`, `PlayerShellContext` incl. `subtitleStyleDraft`, the
     `<style data-subtitle-style>` `::cue` rule (draft else saved style), `--video-h`; holds the rating host's
-    `suppress()` while mounted), `usePlayerSubtitles` (takes `choice` (start's effective choice, then
-    `saver.base()` after a PLAY_FILE), `matchSubtitle` at each file's first decision, `onPick` on menu picks,
+    `suppress()` while mounted; `Controls` sets the measured bottom bar height as `--player-controls-h` on the
+    shell root, 112px in CSS until measured), `usePlayerSubtitles` (takes `getChoice()` (start's effective
+    choice, then `saver.base()` after a PLAY_FILE), called only at each file's first decision for `matchSubtitle`, `onPick` on menu picks,
     subscribes to the effective position string only, `shownTrack`), `PlayerPage` is keyed by
     `pathname + ?file=` and holds all per-playback state (rating end state: `endedAtLastItem` (waits
     for next-up) → `endedWithRating` (`reporter.ratingPrompt` and not `ratingHandled`) renders the
@@ -335,8 +341,9 @@ is a contract shared by the web and TV clients: change it deliberately and updat
   - `tests/`: `setup.ts` (MSW `onUnhandledRequest: 'error'`, media/TextTrack stubs, resets),
     `fixtures.ts` (`f.*` factories; `f.me`/`f.subtitleStyle`/`f.trackChoice`/`f.audioChoice`/`f.subtitleChoice`;
     `f.sessionResponse` records token → profile for `f.meForToken`; `f.saveTrackChoice`/`savedTrackChoice`: the test
-    server's saved choices, the default of `track_choice` in `filmDetail`/`episodeDetail`/`homeEpisode` and
-    `serveEpisodes`), `msw/handlers.ts` (`handlers`, `apiError`),
+    server's saved choices, read only by the MSW handlers (factories stay pure, `track_choice: null`)),
+    `msw/handlers.ts` (`handlers`, `apiError`, `withSavedChoice(item, kind, id)`: a null `track_choice` answered
+    with the saved one, used by the default film/episode/home handlers, `serveEpisodes` and custom handlers),
     `msw/server.ts` (`recordRequests()`), `renderWithProviders.tsx`, `player.tsx`, `fakeHls.ts`,
     `flush.ts`, `capsEnvs.ts`, `media.ts`, `e2e/smoke.spec.ts` (optional Playwright; also the 360 px
     tab bar + banner "Buscar", 768 px NavBar, 720/959 px (icon, no field, no overflow) and 960 px
@@ -380,10 +387,13 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     (skips the playing multi-episode file), `CatalogRepository.person(id)` (`GET /api/people/{id}`, drops non film/show appearances),
     `ProfileRepository.verifyAdminPin` → `PinCheck` (the only PIN on the TV: server change; an
     expired token renews once, `invalid_pin` never renews), `ProfileRepository.me(origin)` → `Me`, `saveSubtitleStyle(style)`
-    (`Origin.Background`, throws `ApiException`), `TrackChoiceRepository(api, guard, store, appScope, log)` (`save(RatingKind, id,
-    TrackChoice)` → `Deferred<Boolean>`, never throws: per-title worker in `appScope`, one PUT in flight, the queued wish replaced by
-    the latest (its `Deferred` completes with the next result), a wish whose recorded profile is no longer stored is dropped
-    (`false`), `Origin.Background` renewal, failures logged; `awaitIdle`), `PlaybackRepository` (`preparing` loop as a `Flow<PlaybackProgress>`, POSTs in
+    (`Origin.Background`, throws `ApiException`), `LatestWinsWriter<K, V>(store, appScope, log, write)`
+    (the one latest-wins queue: `submit(key, value)` → `Deferred<Boolean>`, never throws; per-key lazy worker in `appScope`, one
+    write in flight, each wish records the stored profile: a replaced wish's `Deferred`s move to the newer one only for the same
+    profile, else complete `false` at once (never sent); a wish whose profile is no longer stored (or none) is dropped (`false`);
+    failures logged; cancellation of `appScope` completes every pending `Deferred` `false`; one plain lock, writes and completions
+    outside it; `awaitIdle`), `TrackChoiceRepository(api, guard, store, appScope, log)` (`save(RatingKind, id,
+    TrackChoice)` = a `LatestWinsWriter` keyed by title, `Origin.Background` renewal; `awaitIdle`), `PlaybackRepository` (`preparing` loop as a `Flow<PlaybackProgress>`, POSTs in
     `appScope`; `subtitleLoop`, keep-alive, DELETE), `WatchlistRepository` ("Mi lista": `list(type,
     sort, page, pageSize = 50, watched: Boolean? = null)` drops non film/show items; `write(kind, id, inList)` → `Deferred<Boolean>`,
     a per-title worker in `appScope` (latest wish wins, one request in flight, plain-lock map, the
@@ -447,10 +457,12 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     ViewModel), `data/` (`ProfileAvatar` (pure `initial(name)`/`color(avatarId, avatars)`), `AccountState` (profile, info and
     `subtitleStyle: StateFlow<SubtitleLook>` (default until `/api/me`) + `setSubtitleStyle`; late-`Me` rule: a `Me` applies only
     when its id is `store.session.value.profileId` when it lands, its style only when no local set happened since the request
-    started (style seq); `signedIn` with another id resets the style and launches `refresh()` in `appScope`; `clear()` resets;
-    `ensureLoaded` also refreshes while the style is not loaded), `SubtitleStyleStore(account, profiles, store, appScope)`
-    (`style` = the account's; `save(look)` applies at once then PUTs: latest-wins single flight under one lock, every `Deferred`
-    of a run completes with its last result, a queued look of a profile no longer stored is dropped), `TrackChoiceMemory(session,
+    started (style seq); `signedIn` with another id resets the style and launches a `/api/me`-only refresh in `appScope` (the info it was
+    handed is not refetched); the style seq and its `_style` write share one `styleLock`; `clear()` resets;
+    `ensureLoaded` also refreshes while the style is not loaded), `SubtitleStyleStore(account, profiles, store, appScope, log)`
+    (`style` = the account's; `save(look)` applies at once then PUTs through a one-slot `LatestWinsWriter`: one PUT in flight, a
+    replaced look's `Deferred` gets the newer look's result (same profile) or `false` (profile changed), a queued look of a profile
+    no longer stored is dropped, failures logged through `log` (`AppContainer`: `Log.w` in `runCatching`)), `TrackChoiceMemory(session,
     scope)` (this device's picks per (profile, title), process lifetime, one lock: `get`/`put` → seq/`ticket()`/`markConfirmed(…,
     seq)` (ignored unless the latest)/`fetched(…, requestTicket)` (drops a confirmed entry only for a request after the
     confirmation)/`clear()` (a real (serverUrl, profileId) change, `SignOut`, `AppNavigator.authExpired`)), `RatingPrompts` (`pending` `PendingPrompt(profileId, prompt)`, `offer(profileId?,
@@ -486,7 +498,9 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     count guard → null/-1), `VlcEventMapper` (`state`, `failure()` = `VLC_ERROR`/VLC, `isEarlyEnd` 30 s);
     `VlcPlayerController(portFactory: (SubtitleLook) -> Pair<VlcPlayerPort, Boolean>, token, log, post, look)` (port-look rule:
     `portForOpen()` (the only port source of `prepare()`, the `seekTo` reopen at ENDED and `attach()`'s deferred open) rebuilds the
-    port when no media is open (or ENDED) and `look()` ≠ `portLook` (the requested look, also on `applied = false`), releasing
+    port when no media is open (or ENDED), or a new item (a URL other than the open one's: next episode mid-play, another
+    version, a direct audio switch's stream) replaces the open media (stopped first; a same-URL reopen keeps the port), and
+    `look()` ≠ `portLook` (the requested look, also on `applied = false`), releasing
     the old one (`setEventListener(null)`, `detachViews()`, `release()`) and attaching the layout to the new one before `open`;
     `reloadSubtitleStyle()`: nothing playing (no port / not opened / ENDED / failed) → only drops the port; else reopens at the
     same position and play intent on a new port (old events dropped, BUFFERING never IDLE, selection re-applied at the first
@@ -598,15 +612,20 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     overlay hidden, media keys/commands never bring it back), `onStyleStep`, every close through `commitStyleDraft(userClose)`
     (Back/`onBack`/`onDialogDismiss` = user closes; `onEnded`/`showError`/`onStop` (after `controller.stop()`)/`exit`/`onCleared`
     = teardowns): a changed draft is saved, only a user close with libVLC active and playing/paused calls `reloadSubtitleStyle()`
-    (`reloading` keeps progress transitions from `ProgressReporter`); a failed save or reload = one toast;
+    (`reloading` keeps progress transitions from `ProgressReporter`); a user close while a direct audio switch is pending owes
+    the reload (`styleReloadOwed`): run by `endSwitch` when the switch is abandoned, cleared by its attach (the new stream gets the
+    look through the port-look rule), a stop, an end, a failure or the next item; a failed save or reload = one toast; `render()`
+    keeps the overlay HIDDEN while the style dialog is open, whatever path set it;
     `PlayerUiState.subtitleLook` = draft else the store's style, re-rendered on every store emission),
     `NextEpisodeResolution` (next-episode state + retry),
     `HlsSessionOwner` (HLS DELETEs and abandoned-POST orphans in `appScope`), `PlayerScreen` (`VideoSurface(vm, engine, keepScreenOn)`
     reads `vm.playerController` inside `key(engine)`: null → plain `Box`, EXO → `ExoSurface` (Media3 `PlayerView`), VLC →
     `VlcSurface` (`VLCVideoLayout` captured in state from `factory`, a lifecycle observer keyed on controller + layout:
     `ON_STOP` → `detach`, `ON_START` → `attach`; `update` attaches only while STARTED; a plain `Box` with a fake); test
-    seams `LocalVideoSurfaceProbe`, `LocalExoViewProbe` (the `PlayerView`); `ExoSurface` applies `PlayerUiState.subtitleLook`
-    (`ExoSubtitleStyle`, never the device caption settings) at every update, bottom padding = max(position, `overlayClearance`:
+    seams `LocalVideoSurfaceProbe`, `LocalExoCaptionProbe` (`ExoCaptionApplied(spec, bottomPaddingFraction, overlayClearance)`:
+    what was set on the `SubtitleView`); `ExoSurface` applies `PlayerUiState.subtitleLook`
+    (`ExoSubtitleStyle`, never the device caption settings; `BASE_TEXT_SIZE_FRACTION`, top-level `opaqueArgb` shared with the
+    style dialog) only when the spec or the padding changed (a remembered `AppliedCaption`), bottom padding = max(position, `overlayClearance`:
     `PlayerOverlay`'s bottom block top via `onPlaced` + 16 dp, rounded to 0.01, 0 when hidden or gone); owns the screen's
     `ControllerSessionPlayer` + `PlayerMediaSession`, refreshed on every `vm.state` emission), overlay, track dialog
     (`TrackSelectionDialog`: columns in a `weight(1f, fill = false)` row, `heightIn(max = 406.dp)`, full-width "Formato de los
@@ -645,7 +664,7 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     `clock` passed to `testContainer`, e.g. a fixed date for age texts; `testContainer(zone = clock.zone)`, so times never depend on the host zone) +
     `testContainer` + `ScriptedApi` (`onPerson` seam, 404 by default; `PersonFocusTest`; `onMe` returns `Me` (`Profile.toMe(style)`
     helper); `onTrackChoiceWrite(segment, id, body)` + `trackChoiceBodies`, `onSubtitleStyleWrite(body)` + `subtitleStyleBodies`
-    (204 by default, suspend to gate); `FakePlayerController.reloadCalls`/`reloadResult`/`onReload`; `UiTestBase.exoView`;
+    (204 by default, suspend to gate); `FakePlayerController.reloadCalls`/`reloadResult`/`onReload`; `UiTestBase.exoCaption`;
     `SubtitleStyleFocusTest`, `SubtitleStyleDialogFitTest` (bottom ≤ 324 dp at Mediano and Grande), `TrackSelectionDialogFitTest`;
     `onWatchlist(type, sort, page, pageSize, watched)` (empty page by default) / `onWatchlistWrite(segment, id, inList)` seams, gate a write
     by suspending in it; `WatchlistFocusTest`, `DetailWatchlistTest`; ratings: `onRatingWrite(segment, id,
@@ -773,7 +792,8 @@ is a contract shared by the web and TV clients: change it deliberately and updat
 - **Tests** (`npm test` must pass with no network, no stderr): `renderWithProviders(ui, opts)` /
   `renderApp({route, …})` (seeded session/`['me']`/`['info']`; `profile: null`/`info: null` run
   the boot requests), `renderPlayer(url)` from `tests/player.tsx` (`startDirect`, `startHls`,
-  `at`, `pauseAt`, `puts/posts/deletes/keepalives`, `answerPlayback`, `stubFullscreen`),
+  `at`, `pauseAt`, `puts/posts/deletes/keepalives`, `answerPlayback`, `stubFullscreen`, `gateTrackChoicePuts()`
+  (holds each track-choice PUT until `release()`)),
   `recordRequests()` (MSW recorder; bodies after `await settled()`), `vi.mock('hls.js', () =>
   import('<rel>/tests/fakeHls'))` (`FakeHls.last`, `hlsLog`, `emit`, `fatal`), `setCapabilityEnv(
   iphoneEnv())` from `tests/capsEnvs.ts`, `mediaState(video)` / `fakeTextTrack(el)` from

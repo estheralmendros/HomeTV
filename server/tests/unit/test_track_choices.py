@@ -69,6 +69,9 @@ _OFF = {
         pytest.param({"subtitles": {**_SPA_TRACK, "extra": 1}}, id="subtitle-extra-key"),
         pytest.param({"audio": {"language": "eng", "channels": 0}}, id="channels-0"),
         pytest.param({"audio": {"language": "eng", "channels": 33}}, id="channels-33"),
+        pytest.param({"audio": {"language": "eng", "channels": True}}, id="channels-bool"),
+        pytest.param({"audio": {"language": "eng", "channels": "6"}}, id="channels-string"),
+        pytest.param({"audio": {"language": "eng", "channels": 6.0}}, id="channels-float"),
         pytest.param({"audio": {"language": ""}}, id="audio-empty-language"),
         pytest.param({"audio": {"language": "a" * 17}}, id="language-17"),
         pytest.param({"audio": {"language": "eng", "title": "t" * 1001}}, id="title-1001"),
@@ -229,12 +232,21 @@ def test_migration_style_columns_equal_the_subtitle_style_module():
     assert tuple(SubtitleStyle.model_fields) == subtitle_style.STYLE_FIELDS
 
 
-def test_profile_style_checks_are_built_from_the_aliases():
+@pytest.mark.parametrize(
+    ("column", "alias"),
+    [
+        ("subtitle_size", subtitle_style.SubtitleSizeValue),
+        ("subtitle_color", subtitle_style.SubtitleColorValue),
+        ("subtitle_edge", subtitle_style.SubtitleEdgeValue),
+        ("subtitle_edge_color", subtitle_style.SubtitleEdgeColorValue),
+        ("subtitle_position", subtitle_style.SubtitlePositionValue),
+    ],
+)
+def test_profile_style_checks_are_built_from_the_aliases(column, alias):
     checks = {
         str(c.name).removeprefix("ck_profile_"): str(c.sqltext)
         for c in m.Profile.__table__.constraints
         if isinstance(c, CheckConstraint)
     }
-    assert checks["subtitle_color_values"] == (
-        "subtitle_color IN ('white','yellow','green','cyan','magenta','orange')"
-    )
+    values = ",".join(f"'{value}'" for value in get_args(alias))
+    assert checks[f"{column}_values"] == f"{column} IN ({values})"

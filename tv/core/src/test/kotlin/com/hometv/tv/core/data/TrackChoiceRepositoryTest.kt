@@ -8,7 +8,6 @@ import com.hometv.tv.core.data.FakeHomeTvApi.Companion.httpError
 import java.io.IOException
 import java.time.Instant
 import java.util.Collections
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -101,13 +100,27 @@ class TrackChoiceRepositoryTest {
     fun `two titles write independently`() = runTest {
         api.gated = true
         val repo = repo()
-        repo.save(RatingKind.SHOW, 7, eng)
-        repo.save(RatingKind.FILM, 7, spa)
+        val show = repo.save(RatingKind.SHOW, 7, eng)
+        val film = repo.save(RatingKind.FILM, 7, spa)
         runCurrent()
-        assertEquals(2, api.calls.size)
+        assertEquals(setOf(Triple("shows", 7L, eng), Triple("films", 7L, spa)), api.calls.toSet())
         api.release(0)
         api.release(1)
         runCurrent()
+        assertTrue(show.await())
+        assertTrue(film.await())
+        repo.awaitIdle()
+    }
+
+    @Test
+    fun `a save while signed out resolves false and sends nothing`() = runTest {
+        store.signOut()
+        val repo = repo()
+        val done = repo.save(RatingKind.FILM, 3, eng)
+        runCurrent()
+        assertFalse(done.await())
+        assertTrue(api.calls.isEmpty())
+        assertTrue(logged.isEmpty())
     }
 
     @Test
@@ -123,6 +136,27 @@ class TrackChoiceRepositoryTest {
         assertEquals(listOf(eng), api.calls.map { it.third })
         assertTrue(first.await())
         assertFalse(queued.await())
+    }
+
+    @Test
+    fun `a wish replaced by another profile's wish resolves false and is never sent`() = runTest {
+        api.gated = true
+        val repo = repo()
+        val first = repo.save(RatingKind.SHOW, 7, eng)
+        runCurrent()
+        val oldProfile = repo.save(RatingKind.SHOW, 7, spa)
+        store.saveSession(9, "tok-9", Instant.parse("2026-12-01T00:00:00Z"))
+        val newProfile = repo.save(RatingKind.SHOW, 7, off)
+        assertTrue(oldProfile.isCompleted)
+        assertFalse(oldProfile.await())
+        api.release(0)
+        runCurrent()
+        api.release(1)
+        runCurrent()
+        assertEquals(listOf(eng, off), api.calls.map { it.third })
+        assertTrue(first.await())
+        assertTrue(newProfile.await())
+        repo.awaitIdle()
     }
 
     @Test
@@ -157,7 +191,7 @@ class TrackChoiceRepositoryTest {
     }
 
     @Test
-    fun `cancellation of appScope is rethrown, not logged, and the title is free again`() = runTest {
+    fun `cancellation of appScope resolves pending saves false, is not logged, and frees the title`() = runTest {
         api.gated = true
         val scope = CoroutineScope(backgroundScope.coroutineContext + Job())
         val repo = repo(scope)
@@ -166,7 +200,7 @@ class TrackChoiceRepositoryTest {
         scope.cancel()
         runCurrent()
         assertTrue(done.isCompleted)
-        assertTrue(runCatching { done.await() }.exceptionOrNull() is CancellationException)
+        assertFalse(done.await())
         assertTrue(logged.isEmpty())
         repo.awaitIdle()
     }

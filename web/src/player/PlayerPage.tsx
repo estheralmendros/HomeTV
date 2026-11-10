@@ -17,7 +17,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { errorMessage, isApiError } from '@/api/errors';
 import { getEpisode, getFilm } from '@/api/catalog';
 import { mutationKeys, queryKeys, staleTimes } from '@/api/queryKeys';
-import type { AudioTrack, EpisodeDetail, FilmDetail, HomeEpisode, ItemType, MediaFile, SubtitleChoice, TitleKind, TrackChoice } from '@/api/types';
+import type { AudioTrack, EpisodeDetail, FilmDetail, ItemType, MediaFile, SubtitleChoice, TitleKind, TrackChoice } from '@/api/types';
 import { useAuth } from '@/auth/AuthProvider';
 import { ErrorState } from '@/components/ErrorState';
 import { Spinner } from '@/components/Spinner';
@@ -90,7 +90,7 @@ function parseFile(raw: string | null): number | null {
 }
 
 /** The show of an episode source (the title whose choice applies). */
-const showIdOf = (source: DecisionSource | undefined) => (source as EpisodeDetail | HomeEpisode | undefined)?.show_id ?? null;
+const showIdOf = (source: DecisionSource | undefined) => (source && 'show_id' in source ? source.show_id : null);
 
 function playerTitle(type: ItemType, source: DecisionSource | undefined, file: MediaFile | null): string {
   if (!source) return S.titles.player;
@@ -229,9 +229,11 @@ export function PlayerPage({ type, id }: PlayerPageProps) {
   const audioTrack: AudioTrack | null = audioTracks.find((t) => t.index === state.audioStreamIndex) ?? defaultAudio(audioTracks);
   const { saveSubtitles } = saver;
   const onSubtitlePick = useCallback((part: SubtitleChoice) => saveSubtitles(part), [saveSubtitles]);
+  const { base: liveChoice } = saver;
+  const getSubtitleChoice = useCallback(() => (playFileUsed.current ? liveChoice() : startChoice.current), [liveChoice]);
   const subtitles = usePlayerSubtitles({
     video,
-    choice: playFileUsed.current ? saver.base() : startChoice.current,
+    getChoice: getSubtitleChoice,
     fileId: state.fileId,
     tracks: state.subtitleTracks,
     attachSeq: state.attachSeq,

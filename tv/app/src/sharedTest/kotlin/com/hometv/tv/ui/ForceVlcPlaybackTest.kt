@@ -4,6 +4,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.hometv.tv.core.api.FilmDetail
+import com.hometv.tv.core.api.Me
 import com.hometv.tv.core.api.PlaybackResponse
 import com.hometv.tv.core.playback.F
 import com.hometv.tv.testing.UiTestBase
@@ -56,7 +57,7 @@ class ForceVlcPlaybackTest : UiTestBase() {
     @Test
     fun theSwitchSendsTheNextFilmToLibVlcAndOffBackToExoPlayer() {
         useLibrary()
-        api.onMe = { com.hometv.tv.core.api.Me(5, "Esther", "avatar-05", is_admin = true) }
+        api.onMe = { Me(5, "Esther", "avatar-05", is_admin = true) }
         api.onFilm = { id -> FilmDetail(id = id, title = "Dune", media_files = listOf(F.file(1))) }
         api.onPlayback = { _, _ -> PlaybackResponse("direct", url = "/api/media-files/1/stream", audio_stream_index = 1, duration_seconds = 9360.0) }
         launch()

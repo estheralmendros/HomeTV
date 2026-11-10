@@ -111,8 +111,7 @@ object SubtitleStyleEditor {
         val delta = if (forward) 1 else -1
         var i = values.indexOf(value(look, row)) + delta
         while (i in values.indices) {
-            val candidate = values[i]
-            if (!isDisabled(look, row, candidate)) return with(look, row, candidate)
+            if (!isDisabled(look, row, values[i])) return withValueAt(look, row, i)
             i += delta
         }
         return look
@@ -123,11 +122,12 @@ object SubtitleStyleEditor {
     /** A stored clash opens with a black edge colour, so the editor never starts on a disabled value. */
     fun normalized(look: SubtitleLook): SubtitleLook = if (look.isClash) look.copy(edgeColor = SubtitleEdgeColor.BLACK) else look
 
-    private fun with(look: SubtitleLook, row: StyleRow, value: Enum<*>): SubtitleLook = when (row) {
-        StyleRow.SIZE -> look.copy(size = value as SubtitleSize)
-        StyleRow.COLOR -> look.copy(color = value as SubtitleColor)
-        StyleRow.EDGE -> normalized(look.copy(edge = value as SubtitleEdge))
-        StyleRow.EDGE_COLOR -> look.copy(edgeColor = value as SubtitleEdgeColor)
-        StyleRow.POSITION -> look.copy(position = value as SubtitlePosition)
+    /** [look] with the row's value at [index] of [values] (typed per row: no cast). */
+    private fun withValueAt(look: SubtitleLook, row: StyleRow, index: Int): SubtitleLook = when (row) {
+        StyleRow.SIZE -> look.copy(size = SubtitleSize.entries[index])
+        StyleRow.COLOR -> look.copy(color = SubtitleColor.entries[index])
+        StyleRow.EDGE -> normalized(look.copy(edge = SubtitleEdge.entries[index]))
+        StyleRow.EDGE_COLOR -> look.copy(edgeColor = SubtitleEdgeColor.entries[index])
+        StyleRow.POSITION -> look.copy(position = SubtitlePosition.entries[index])
     }
 }

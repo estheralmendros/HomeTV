@@ -121,6 +121,12 @@ describe('building a choice from a pick (FR-5a)', () => {
     expect(subtitleChoiceOf(f.subtitleTrack({ title: 'y'.repeat(1001) })).title).toHaveLength(1000);
   });
 
+  it('a language over 16 characters (after the trim) is cut to 16, the server cap', () => {
+    expect(audioChoiceOf(f.audioTrack({ language: ` ${'a'.repeat(20)} ` })).language).toBe('a'.repeat(16));
+    expect(subtitleChoiceOf(f.subtitleTrack({ language: 'b'.repeat(17) })).language).toBe('b'.repeat(16));
+    expect(audioChoiceOf(f.audioTrack({ language: 'zh-Hant-TW' })).language).toBe('zh-Hant-TW');
+  });
+
   it('subtitleChoiceOf: null → off; a track → its traits', () => {
     expect(subtitleChoiceOf(null)).toEqual({
       mode: 'off',

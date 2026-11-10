@@ -69,8 +69,10 @@ def test_set_track_choice_upserts_the_whole_choice_and_bumps_updated_at(mdb, pro
     first = rows(mdb)[0]
     assert catalog.choice_out(first) == TrackChoice(subtitles=SPA_TRACK)
     assert first.audio_language is None and first.audio_channels is None
+    with mdb.write_session() as s:
+        s.get_one(m.TrackChoice, first.id).updated_at = T0
     track_choices.set_track_choice(mdb, a, "film", film_id, TrackChoice(subtitles=SPA_TRACK))
-    assert rows(mdb)[0].updated_at >= first.updated_at
+    assert rows(mdb)[0].updated_at > T0
     assert rows(mdb)[0].id == first.id
 
 

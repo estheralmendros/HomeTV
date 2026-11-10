@@ -5,7 +5,9 @@ import com.hometv.tv.core.playback.SubtitleLook
 import com.hometv.tv.core.playback.SubtitlePosition
 import com.hometv.tv.core.playback.SubtitleSize
 import com.hometv.tv.testing.TestRepos
+import java.io.IOException
 import java.time.Instant
+import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
@@ -35,7 +37,8 @@ class SubtitleStyleStoreTest {
     private class Fixture(scope: CoroutineScope) {
         val repos = TestRepos(appScope = scope)
         val account = AccountState(repos.profiles, repos.store, scope)
-        val styles = SubtitleStyleStore(account, repos.profiles, repos.store, scope)
+        val logged: MutableList<Throwable> = Collections.synchronizedList(mutableListOf())
+        val styles = SubtitleStyleStore(account, repos.profiles, repos.store, scope) { logged += it }
         val gates = mutableListOf<CompletableDeferred<Unit>>()
         var gated = false
 
@@ -78,13 +81,14 @@ class SubtitleStyleStoreTest {
     }
 
     @Test
-    fun `a failed PUT resolves false and keeps the applied look`() = runTest {
+    fun `a failed PUT is logged, resolves false and keeps the applied look`() = runTest {
         val f = fixture()
-        f.repos.api.onSubtitleStyleWrite = { throw java.io.IOException("down") }
+        f.repos.api.onSubtitleStyleWrite = { throw IOException("down") }
         val done = f.styles.save(large)
         runCurrent()
         assertFalse(done.await())
         assertEquals(large, f.styles.style.value)
+        assertEquals(1, f.logged.size)
     }
 
     @Test
@@ -99,6 +103,26 @@ class SubtitleStyleStoreTest {
         runCurrent()
         assertEquals(listOf(large.toWire()), f.repos.api.subtitleStyleBodies)
         assertFalse(queued.await())
+    }
+
+    @Test
+    fun `a look replaced by another profile's look resolves false and is never sent`() = runTest {
+        val f = fixture()
+        f.gated = true
+        val first = f.styles.save(large)
+        runCurrent()
+        val oldProfile = f.styles.save(high)
+        f.repos.store.saveSession(6, "tok-6", Instant.parse("2026-12-20T00:00:00Z"))
+        val newProfile = f.styles.save(small)
+        assertTrue(oldProfile.isCompleted)
+        assertFalse(oldProfile.await())
+        f.gates[0].complete(Unit)
+        runCurrent()
+        f.gates[1].complete(Unit)
+        runCurrent()
+        assertEquals(listOf(large.toWire(), small.toWire()), f.repos.api.subtitleStyleBodies)
+        assertTrue(first.await())
+        assertTrue(newProfile.await())
     }
 
     @Test

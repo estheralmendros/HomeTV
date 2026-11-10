@@ -5,16 +5,28 @@ import com.hometv.tv.core.api.Profile
 import com.hometv.tv.core.api.SubtitleStyle
 import com.hometv.tv.core.playback.SubtitleColor
 import com.hometv.tv.core.playback.SubtitleLook
+import com.hometv.tv.core.playback.SubtitlePosition
 import com.hometv.tv.core.playback.SubtitleSize
 import com.hometv.tv.testing.TestRepos
 import java.time.Instant
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /** The signed-in profile, the server info and the profile's subtitle style (`/api/me`), in memory. */
@@ -80,7 +92,7 @@ class AccountStateTest {
         assertEquals(SubtitleLook.DEFAULT, account.subtitleStyle.value)
         gate.complete(Unit)
         runCurrent()
-        assertEquals(SubtitleLook.DEFAULT.copy(position = com.hometv.tv.core.playback.SubtitlePosition.HIGH), account.subtitleStyle.value)
+        assertEquals(SubtitleLook.DEFAULT.copy(position = SubtitlePosition.HIGH), account.subtitleStyle.value)
     }
 
     @Test
@@ -127,5 +139,47 @@ class AccountStateTest {
         refresh.join()
         assertEquals(Profile(5, "Esther", "avatar-05"), account.profile.value)
         assertEquals(yellowLargeLook, account.subtitleStyle.value)
+    }
+
+    @Test
+    fun `signedIn fetches only api me, not the info it was handed`() = runTest {
+        val (repos, account) = fixture()
+        val infoCalls = repos.api.count("GET /api/info")
+        account.signedIn(Profile(5, "Esther", "avatar-05"), null)
+        runCurrent()
+        assertEquals(1, repos.api.count("GET /api/me"))
+        assertEquals(infoCalls, repos.api.count("GET /api/info"))
+    }
+
+    @Test
+    fun `a local style set racing a landing Me on another thread is never overwritten`() {
+        repeat(300) { iteration ->
+            val repos = TestRepos(appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO))
+            try {
+                val account = AccountState(repos.profiles, repos.store, repos.appScope)
+                val requested = CountDownLatch(1)
+                val release = CountDownLatch(1)
+                repos.api.onMe = {
+                    requested.countDown()
+                    runInterruptible { release.await(5, TimeUnit.SECONDS) }
+                    Me(5, "Esther", "avatar-05", subtitle_style = SubtitleStyle(position = "high"))
+                }
+                val landing = thread { runBlocking { account.refresh() } }
+                assertTrue(requested.await(5, TimeUnit.SECONDS))
+                val go = CountDownLatch(1)
+                val local = thread {
+                    go.await()
+                    account.setSubtitleStyle(yellowLargeLook)
+                }
+                go.countDown()
+                release.countDown()
+                local.join(5_000)
+                landing.join(5_000)
+                assertFalse(local.isAlive || landing.isAlive, "iteration $iteration")
+                assertEquals(yellowLargeLook, account.subtitleStyle.value, "iteration $iteration")
+            } finally {
+                repos.appScope.cancel()
+            }
+        }
     }
 }

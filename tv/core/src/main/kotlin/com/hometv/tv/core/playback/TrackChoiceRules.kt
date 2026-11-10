@@ -18,6 +18,8 @@ data class TrackMatch(val audioStreamIndex: Int?, val subtitleId: String?)
 object TrackChoiceRules {
     /** The server's limit for a stored title (FR-9); longer titles are cut. */
     private const val MAX_TITLE = 1000
+    private const val MODE_OFF = "off"
+    private const val MODE_TRACK = "track"
 
     /** FR-3: empty → null; region/script dropped; `und` stays `und`; else the BCP 47 code or the code. */
     fun languageKey(code: String?): String? {
@@ -34,7 +36,7 @@ object TrackChoiceRules {
     }
 
     /** The file default: the `default`-flagged audio track, else the first. */
-    fun defaultAudio(tracks: List<AudioTrack>): AudioTrack? = tracks.firstOrNull { it.default } ?: tracks.firstOrNull()
+    private fun defaultAudio(tracks: List<AudioTrack>): AudioTrack? = tracks.firstOrNull { it.default } ?: tracks.firstOrNull()
 
     /** FR-4: the index to send as `audio_stream_index`; null = the file default. */
     fun matchAudio(choice: AudioChoice?, tracks: List<AudioTrack>): Int? {
@@ -103,9 +105,6 @@ object TrackChoiceRules {
         if (session == null) return fetched
         return TrackChoice(session.audio ?: fetched?.audio, session.subtitles ?: fetched?.subtitles)
     }
-
-    private const val MODE_OFF = "off"
-    private const val MODE_TRACK = "track"
 
     private fun normalTitle(title: String?): String? = title?.trim()?.takeIf { it.isNotEmpty() }
 

@@ -2,7 +2,7 @@
 // - one SubtitleLoader per mount (blob URLs cached by `${fileId}:${track.id}`, revoked when the
 //   file changes and on unmount);
 // - at the first decision of each file the remembered choice is matched (`matchSubtitle`: the
-//   `choice` input read at that moment, today's default rule without a subtitle part) and loads in
+//   `getChoice()` answer at that moment, today's default rule without a subtitle part) and loads in
 //   parallel with the video; the same file keeps its selection on later decisions;
 // - the selected, loaded track is rendered as a blob-URL <track> portaled into the shell's
 //   <video> and set to `showing`; pending tracks show "Preparando…"; failures toast and revert
@@ -24,8 +24,8 @@ import { SUBTITLES_OFF, liftCues, subtitleLabel } from './tracks';
 
 export interface PlayerSubtitlesInput {
   video: HTMLVideoElement;
-  /** The effective track choice for a new file's first decision (read when it happens). */
-  choice: TrackChoice | null;
+  /** The effective track choice for a new file's first decision (called only when it happens). */
+  getChoice: () => TrackChoice | null;
   fileId: number | null;
   /** The playback response's tracks (URLs come from here). */
   tracks: readonly SubtitleTrack[];
@@ -40,7 +40,7 @@ export interface PlayerSubtitlesInput {
 
 const noSubscription = () => () => undefined;
 
-export function usePlayerSubtitles({ video, choice, fileId, tracks, attachSeq, audioTrack, notify, onPick }: PlayerSubtitlesInput) {
+export function usePlayerSubtitles({ video, getChoice, fileId, tracks, attachSeq, audioTrack, notify, onPick }: PlayerSubtitlesInput) {
   const loaderRef = useRef<SubtitleLoader | null>(null);
   const [selected, setSelected] = useState<string>(SUBTITLES_OFF);
   const [loaded, setLoaded] = useState<{ trackId: string; url: string } | null>(null);
@@ -49,8 +49,8 @@ export function usePlayerSubtitles({ video, choice, fileId, tracks, attachSeq, a
   const [shownTrack, setShownTrack] = useState<TextTrack | null>(null);
   const defaultFor = useRef<number | null>(null);
   const trackRef = useRef<HTMLTrackElement | null>(null);
-  const latest = useRef({ notify, tracks, audioTrack, choice, onPick });
-  latest.current = { notify, tracks, audioTrack, choice, onPick };
+  const latest = useRef({ notify, tracks, audioTrack, getChoice, onPick });
+  latest.current = { notify, tracks, audioTrack, getChoice, onPick };
 
   // The effective position only: a size/colour/edge step of the panel never re-renders the page.
   const draft = useContext(PlayerShellContext)?.subtitleStyleDraft;
@@ -83,7 +83,8 @@ export function usePlayerSubtitles({ video, choice, fileId, tracks, attachSeq, a
       if (attachSeq === awaitingDecision.current.seq) return;
     }
     defaultFor.current = fileId;
-    const { choice: effective, tracks: current, audioTrack: audio } = latest.current;
+    const { getChoice: choiceNow, tracks: current, audioTrack: audio } = latest.current;
+    const effective = choiceNow();
     setSelected(matchSubtitle(effective?.subtitles ?? null, current, audio?.language ?? null) ?? SUBTITLES_OFF);
   }, [attachSeq, fileId]);
 

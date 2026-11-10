@@ -4,10 +4,14 @@ import com.hometv.tv.R
 import com.hometv.tv.core.api.AudioChoice
 import com.hometv.tv.core.api.FilmDetail
 import com.hometv.tv.core.api.Me
+import com.hometv.tv.core.api.PlaybackRequest
+import com.hometv.tv.core.api.PlaybackResponse
 import com.hometv.tv.core.api.SubtitleStyle
 import com.hometv.tv.core.api.TrackChoice
+import com.hometv.tv.core.api.VideoInfo
 import com.hometv.tv.core.data.RatingKind
 import com.hometv.tv.core.playback.F
+import com.hometv.tv.core.playback.PlaybackEngine
 import com.hometv.tv.core.playback.PlaybackErrorCodes
 import com.hometv.tv.core.playback.PlayerFailure
 import com.hometv.tv.core.playback.PlayerState
@@ -17,9 +21,11 @@ import com.hometv.tv.core.playback.SubtitleLook
 import com.hometv.tv.core.playback.SubtitleSize
 import com.hometv.tv.ui.text.UiText
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -42,7 +48,7 @@ class PlayerSubtitleStyleTest : PlayerTestBase() {
         runCurrent()
         vlcController.ready()
         runCurrent()
-        assertEquals(com.hometv.tv.core.playback.PlaybackEngine.VLC, vm.state.value.engine)
+        assertEquals(PlaybackEngine.VLC, vm.state.value.engine)
         return vm
     }
 
@@ -75,6 +81,22 @@ class PlayerSubtitleStyleTest : PlayerTestBase() {
         assertEquals(OverlayMode.FULL, vm.state.value.overlay)
         assertEquals(large, vm.state.value.subtitleLook)
         assertEquals(large, subtitleStyles.style.value)
+    }
+
+    @Test
+    fun `the overlay stays hidden under the dialog when a paused HLS session is released`() = playerTest {
+        val vm = startHls()
+        vm.onPlayPause()
+        runCurrent()
+        assertEquals(SessionState.Paused, vm.session)
+        vm.onOpenTracks()
+        vm.onOpenSubtitleStyle()
+        advance(PlayerViewModel.PAUSE_RELEASE_MS + 1_000)
+        assertEquals(SessionState.Released, vm.session)
+        assertTrue(vm.state.value.dialog is PlayerDialog.SubtitleStyle)
+        assertEquals(OverlayMode.HIDDEN, vm.state.value.overlay)
+        vm.onStyleDialogClosed()
+        assertEquals(OverlayMode.FULL, vm.state.value.overlay)
     }
 
     @Test
@@ -148,20 +170,26 @@ class PlayerSubtitleStyleTest : PlayerTestBase() {
     // ---- libVLC: reload only for a user close on the active VLC engine -----------------------------
 
     @Test
-    fun `on VLC a user close with a change reloads once, with no extra progress PUT`() = playerTest {
-        val vm = vlc()
+    fun `on VLC a user close with a change reloads once, the progress ticker keeps its phase`() = playerTest {
+        val vm = vlc() // the 10 s progress ticker started at this READY
         vlcController.onReload = {
+            vlcController.isPlaying = false
+            vlcController.state = PlayerState.BUFFERING
             vlcController.listener?.onIsPlayingChanged(false)
             vlcController.listener?.onStateChanged(PlayerState.BUFFERING)
         }
         val puts = puts().size
+        advance(4_000)
         vm.openAndGrow()
         vm.onBack()
         runCurrent()
         assertEquals(1, vlcController.reloadCalls)
         vlcController.ready()
         runCurrent()
-        assertEquals(puts, puts().size)
+        assertEquals(puts, puts().size, "the reopen's transitions are not progress")
+        // Not restarted by the reopen: the next periodic PUT comes at the original 10 s phase.
+        advance(6_000)
+        assertEquals(puts + 1, puts().size)
         assertNull(vm.state.value.toast)
         // No change: no reload.
         vm.onOpenSubtitleStyle()
@@ -197,7 +225,7 @@ class PlayerSubtitleStyleTest : PlayerTestBase() {
         val vm = vlc()
         vm.openAndGrow()
         // A libVLC failure: the one renew + recovery of the file, then the error screen.
-        val failure = PlayerFailure(PlaybackErrorCodes.VLC_ERROR, engine = com.hometv.tv.core.playback.PlaybackEngine.VLC)
+        val failure = PlayerFailure(PlaybackErrorCodes.VLC_ERROR, engine = PlaybackEngine.VLC)
         vlcController.fail(failure)
         runCurrent()
         vlcController.fail(failure)
@@ -230,12 +258,95 @@ class PlayerSubtitleStyleTest : PlayerTestBase() {
         assertEquals(0, vlcController.reloadCalls)
     }
 
+    /** A film on libVLC whose second audio track (10 channels) needs the server: picking it starts a direct audio switch. */
+    private fun TestScope.vlcSwitching(answerSwitch: suspend (PlaybackRequest) -> PlaybackResponse = { awaitCancellation() }): PlayerViewModel {
+        vlcAvailable = true
+        forceVlc = true
+        film(F.file(1, audio = listOf(F.audio(1, default = true), F.audio(2, channels = 10, language = "spa"))))
+        answerWith(direct())
+        val vm = vm()
+        runCurrent()
+        vlcController.ready()
+        runCurrent()
+        answer(answerSwitch)
+        vm.onSelectAudio(2)
+        runCurrent()
+        assertNotNull(vm.state.value.switchChip, "a direct audio switch is pending")
+        return vm
+    }
+
     @Test
-    fun `an inactive VLC controller is never reloaded`() = playerTest {
-        val vm = exo()
+    fun `on VLC a user close during a pending audio switch reloads once the switch is abandoned`() = playerTest {
+        val vm = vlcSwitching()
         vm.openAndGrow()
         vm.onBack()
         runCurrent()
+        assertEquals(listOf(SubtitleStyle(size = "large")), api.subtitleStyleBodies)
+        assertEquals(0, vlcController.reloadCalls, "the base keeps playing until the switch settles")
+        vm.onBack() // abandons the switch: the base media stays, so it is reloaded now
+        runCurrent()
+        assertNull(vm.state.value.switchChip)
+        assertEquals(1, vlcController.reloadCalls)
+        assertNull(vm.state.value.toast)
+    }
+
+    @Test
+    fun `on VLC an attached audio switch owes no reload - its new stream opens with the new look`() = playerTest {
+        val gate = CompletableDeferred<Unit>()
+        val vm = vlcSwitching { gate.await(); hls("S1", audio = 2, action = "aac") }
+        vm.openAndGrow()
+        vm.onBack()
+        runCurrent()
+        gate.complete(Unit)
+        runCurrent()
+        assertNull(vm.state.value.switchChip)
+        assertEquals(2, vlcController.audio)
+        vm.onPlayPause()
+        vm.onPlayPause()
+        runCurrent()
+        assertEquals(0, vlcController.reloadCalls)
+    }
+
+    @Test
+    fun `on VLC an owed reload that fails shows the toast when the switch is abandoned`() = playerTest {
+        val vm = vlcSwitching()
+        vlcController.reloadResult = false
+        vm.openAndGrow()
+        vm.onBack()
+        runCurrent()
+        vm.onBack()
+        runCurrent()
+        assertEquals(1, vlcController.reloadCalls)
+        assertEquals(UiText.Res(R.string.subtitle_style_save_failed), vm.state.value.toast)
+    }
+
+    @Test
+    fun `an inactive VLC controller is never reloaded`() = playerTest {
+        // Episode 1 (an MPEG-4 AVI) plays on libVLC, episode 2 on ExoPlayer: the VLC controller exists but is inactive.
+        vlcAvailable = true
+        val mpeg4 = VideoInfo("mpeg4", 720, 400)
+        episodes(
+            episodeDetail(101, listOf(F.file(1, video = mpeg4, container = "avi", fileName = "e1.avi", duration = 1320.0)), next = 102),
+            episodeDetail(102, listOf(F.file(2, duration = 1320.0)), next = null),
+        )
+        answerWith(direct(duration = 1320.0))
+        val vm = vm(itemType = "episode", itemId = 101)
+        runCurrent()
+        assertEquals(PlaybackEngine.VLC, vm.state.value.engine)
+        vlcController.ready()
+        vlcController.end()
+        runCurrent()
+        answerWith(direct(fileId = 2, duration = 1320.0))
+        vm.onPlayNow()
+        runCurrent()
+        controller.ready()
+        runCurrent()
+        assertEquals(PlaybackEngine.EXO, vm.state.value.engine)
+        assertTrue(vlcController.stopped)
+        vm.openAndGrow()
+        vm.onBack()
+        runCurrent()
+        assertEquals(listOf(SubtitleStyle(size = "large")), api.subtitleStyleBodies)
         assertEquals(0, controller.reloadCalls)
         assertEquals(0, vlcController.reloadCalls)
     }

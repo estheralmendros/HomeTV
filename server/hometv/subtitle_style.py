@@ -6,7 +6,7 @@ as literals (it never imports app code; a unit test keeps both in step). How eac
 a value lives in the clients.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from typing import Final, Literal
 
 SubtitleSizeValue = Literal["small", "medium", "large"]
@@ -28,5 +28,5 @@ class StyleDefaults:
 DEFAULT_STYLE: Final = StyleDefaults()
 """Today's look: every existing profile gets it."""
 
-STYLE_FIELDS: Final = ("size", "color", "edge", "edge_color", "position")
+STYLE_FIELDS: Final = tuple(f.name for f in fields(StyleDefaults))
 """``SubtitleStyle`` field names; the ``profile`` column of each is ``subtitle_<field>``."""

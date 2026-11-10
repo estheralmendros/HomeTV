@@ -1,7 +1,8 @@
 /* Player shell, overlays and controls. Full viewport, black, no AppShell. */
 
 .root {
-  /* The bottom control bar's height (seek bar + buttons): the style panel stays clear of it. */
+  /* The bottom control bar's height (seek bar + buttons): the style panel stays clear of it.
+     Controls sets the measured value on this element; 112px only until the first measure. */
   --player-controls-h: 112px;
   position: fixed;
   inset: 0;

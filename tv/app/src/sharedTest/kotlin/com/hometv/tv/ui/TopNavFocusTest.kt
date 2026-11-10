@@ -4,10 +4,9 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
@@ -15,7 +14,9 @@ import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.hometv.tv.core.api.Me
 import com.hometv.tv.testing.UiTestBase
 import com.hometv.tv.ui.components.NavTab
 import com.hometv.tv.ui.theme.HomeTvColors
@@ -34,7 +35,7 @@ class TopNavFocusTest : UiTestBase() {
 
     /** "Ajustes" is an admin-only tab: sign in as an admin so every label is on the bar. */
     private fun signInAsAdmin() {
-        api.onMe = { com.hometv.tv.core.api.Me(5, "Esther", "avatar-05", is_admin = true) }
+        api.onMe = { Me(5, "Esther", "avatar-05", is_admin = true) }
     }
 
     /** The color the tab's label was laid out with. */

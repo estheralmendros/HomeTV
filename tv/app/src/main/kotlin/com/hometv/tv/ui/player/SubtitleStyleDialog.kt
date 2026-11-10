@@ -19,7 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -67,6 +67,8 @@ import com.hometv.tv.core.playback.SubtitleLook
 import com.hometv.tv.core.playback.SubtitlePosition
 import com.hometv.tv.core.playback.SubtitleSize
 import com.hometv.tv.core.playback.SubtitleStyleEditor
+import com.hometv.tv.playback.ExoSubtitleStyle
+import com.hometv.tv.playback.opaqueArgb
 import com.hometv.tv.ui.components.RequestFocus
 import com.hometv.tv.ui.theme.HomeTvColors
 import com.hometv.tv.ui.theme.HomeTvDimens
@@ -84,7 +86,7 @@ fun SubtitleStyleDialog(ui: SubtitleStyleUi, onStep: (StyleRow, Boolean) -> Unit
     val look = ui.draft
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         val window = (LocalView.current.parent as? DialogWindowProvider)?.window
-        SideEffect { window?.setDimAmount(0f) }
+        LaunchedEffect(window) { window?.setDimAmount(0f) }
         Box(Modifier.fillMaxSize().padding(top = HomeTvDimens.SafeVertical), contentAlignment = Alignment.TopCenter) {
             Column(
                 Modifier.width(DIALOG_WIDTH)
@@ -116,9 +118,8 @@ fun SubtitleStyleDialog(ui: SubtitleStyleUi, onStep: (StyleRow, Boolean) -> Unit
 private fun StyleRowItem(look: SubtitleLook, row: StyleRow, requester: FocusRequester, onStep: (StyleRow, Boolean) -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val enabled = SubtitleStyleEditor.isEnabled(look, row)
-    val value = SubtitleStyleEditor.value(look, row)
     val label = stringResource(rowLabel(row))
-    val valueText = stringResource(valueLabel(value))
+    val valueText = stringResource(valueLabel(look, row))
     val description = stringResource(R.string.subtitle_style_row_description, label, valueText)
     val scale = if (focused) HomeTvDimens.WIDE_FOCUSED_SCALE else 1f
     Row(
@@ -152,7 +153,7 @@ private fun StyleRowItem(look: SubtitleLook, row: StyleRow, requester: FocusRequ
         Row(Modifier.width(VALUE_WIDTH), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
             Chevron(R.drawable.ic_chevron_left, SubtitleStyleEditor.canStep(look, row, forward = false))
             Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                swatch(value)?.let { color ->
+                swatch(look, row)?.let { color ->
                     Box(Modifier.size(SWATCH).background(color, CircleShape).border(1.dp, HomeTvColors.Muted, CircleShape))
                     Spacer(Modifier.width(8.dp))
                 }
@@ -178,15 +179,15 @@ fun SubtitleSample(look: SubtitleLook, modifier: Modifier = Modifier) {
     val density = LocalDensity.current
     // The display's height in dp (the Exo SubtitleView fills it), read from the metrics: inside the dialog the window is not the screen.
     val screenHeight = LocalContext.current.resources.displayMetrics.let { it.heightPixels / it.density }
-    val fontSize = with(density) { (SIZE_FRACTION * screenHeight * look.size.factor).dp.toSp() }
+    val fontSize = with(density) { (ExoSubtitleStyle.BASE_TEXT_SIZE_FRACTION * screenHeight * look.size.factor).dp.toSp() }
     val text = stringResource(R.string.subtitle_style_sample)
-    val fill = Color(OPAQUE or look.color.rgb)
-    val edge = Color(OPAQUE or look.effectiveEdgeColor.rgb)
+    val fill = Color(opaqueArgb(look.color.rgb))
+    val edge = Color(opaqueArgb(look.effectiveEdgeColor.rgb))
     val base = TextStyle(fontSize = fontSize, lineHeight = fontSize * 1.15f, textAlign = TextAlign.Center)
     val px = with(density) { 2.dp.toPx() }
     Box(
         modifier.fillMaxWidth().height(if (look.size == SubtitleSize.LARGE) 48.dp else 44.dp)
-            .background(Color(0x99000000), RoundedCornerShape(6.dp))
+            .background(HomeTvColors.SubtitleSampleBand, RoundedCornerShape(6.dp))
             .testTag("style_sample"),
         contentAlignment = Alignment.Center,
     ) {
@@ -210,38 +211,46 @@ private fun rowLabel(row: StyleRow): Int = when (row) {
     StyleRow.POSITION -> R.string.subtitle_style_position
 }
 
+/** The row's current value label: typed per row, so a new enum value fails to compile instead of crashing. */
 @StringRes
-private fun valueLabel(value: Enum<*>): Int = when (value) {
-    SubtitleSize.SMALL -> R.string.subtitle_size_small
-    SubtitleSize.MEDIUM -> R.string.subtitle_size_medium
-    SubtitleSize.LARGE -> R.string.subtitle_size_large
-    SubtitleColor.WHITE -> R.string.subtitle_color_white
-    SubtitleColor.YELLOW -> R.string.subtitle_color_yellow
-    SubtitleColor.GREEN -> R.string.subtitle_color_green
-    SubtitleColor.CYAN -> R.string.subtitle_color_cyan
-    SubtitleColor.MAGENTA -> R.string.subtitle_color_magenta
-    SubtitleColor.ORANGE -> R.string.subtitle_color_orange
-    SubtitleEdge.OUTLINE -> R.string.subtitle_edge_outline
-    SubtitleEdge.SHADOW -> R.string.subtitle_edge_shadow
-    SubtitleEdge.NONE -> R.string.subtitle_edge_none
-    SubtitleEdgeColor.BLACK -> R.string.subtitle_edge_color_black
-    SubtitleEdgeColor.DARK_GRAY -> R.string.subtitle_edge_color_dark_gray
-    SubtitleEdgeColor.WHITE -> R.string.subtitle_edge_color_white
-    SubtitlePosition.LOW -> R.string.subtitle_position_low
-    SubtitlePosition.MIDDLE -> R.string.subtitle_position_middle
-    SubtitlePosition.HIGH -> R.string.subtitle_position_high
-    else -> error("no label for $value")
+private fun valueLabel(look: SubtitleLook, row: StyleRow): Int = when (row) {
+    StyleRow.SIZE -> when (look.size) {
+        SubtitleSize.SMALL -> R.string.subtitle_size_small
+        SubtitleSize.MEDIUM -> R.string.subtitle_size_medium
+        SubtitleSize.LARGE -> R.string.subtitle_size_large
+    }
+    StyleRow.COLOR -> when (look.color) {
+        SubtitleColor.WHITE -> R.string.subtitle_color_white
+        SubtitleColor.YELLOW -> R.string.subtitle_color_yellow
+        SubtitleColor.GREEN -> R.string.subtitle_color_green
+        SubtitleColor.CYAN -> R.string.subtitle_color_cyan
+        SubtitleColor.MAGENTA -> R.string.subtitle_color_magenta
+        SubtitleColor.ORANGE -> R.string.subtitle_color_orange
+    }
+    StyleRow.EDGE -> when (look.edge) {
+        SubtitleEdge.OUTLINE -> R.string.subtitle_edge_outline
+        SubtitleEdge.SHADOW -> R.string.subtitle_edge_shadow
+        SubtitleEdge.NONE -> R.string.subtitle_edge_none
+    }
+    StyleRow.EDGE_COLOR -> when (look.edgeColor) {
+        SubtitleEdgeColor.BLACK -> R.string.subtitle_edge_color_black
+        SubtitleEdgeColor.DARK_GRAY -> R.string.subtitle_edge_color_dark_gray
+        SubtitleEdgeColor.WHITE -> R.string.subtitle_edge_color_white
+    }
+    StyleRow.POSITION -> when (look.position) {
+        SubtitlePosition.LOW -> R.string.subtitle_position_low
+        SubtitlePosition.MIDDLE -> R.string.subtitle_position_middle
+        SubtitlePosition.HIGH -> R.string.subtitle_position_high
+    }
 }
 
 /** The colour rows' swatch. */
-private fun swatch(value: Enum<*>): Color? = when (value) {
-    is SubtitleColor -> Color(OPAQUE or value.rgb)
-    is SubtitleEdgeColor -> Color(OPAQUE or value.rgb)
-    else -> null
+private fun swatch(look: SubtitleLook, row: StyleRow): Color? = when (row) {
+    StyleRow.COLOR -> Color(opaqueArgb(look.color.rgb))
+    StyleRow.EDGE_COLOR -> Color(opaqueArgb(look.edgeColor.rgb))
+    StyleRow.SIZE, StyleRow.EDGE, StyleRow.POSITION -> null
 }
 
-private const val OPAQUE = 0xFF000000.toInt()
-private const val SIZE_FRACTION = 0.0533f
 private const val DISABLED_ALPHA = 0.4f
 private val DIALOG_WIDTH = 640.dp
 private val ROW_HEIGHT = 32.dp

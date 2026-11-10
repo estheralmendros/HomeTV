@@ -78,7 +78,9 @@ export function matchTrackChoice(
   return { audioStreamIndex, subtitleId: matchSubtitle(choice?.subtitles ?? null, subtitles, audioTrack?.language ?? null) };
 }
 
-const pickLanguage = (language: string | null | undefined) => language?.trim() || 'und';
+/** The server's `Language` cap (schemas.py `max_length=16`): a longer probe tag would get a 422. */
+const MAX_LANGUAGE = 16;
+const pickLanguage = (language: string | null | undefined) => (language?.trim() || 'und').slice(0, MAX_LANGUAGE);
 const pickTitle = (title: string | null) => (title === null ? null : title.slice(0, MAX_TITLE));
 
 /** FR-5a: blank language → 'und'; channels outside 1..32 → null (the server would answer 422). */

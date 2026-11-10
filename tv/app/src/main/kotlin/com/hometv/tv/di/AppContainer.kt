@@ -121,7 +121,8 @@ data class AppConfig(
  * [codecs] + [capsForFile] (capability hook), [playerLaunches], [homeRefresh], [detailRefresh],
  * [watchlistMemory], [account] (incl. the subtitle style) + [subtitleStyles], [ratings] + [ratingPrompts] (every
  * rating change marks Home stale), [trackChoices] + [trackChoiceMemory] (remembered audio/subtitle picks),
- * [signOut] (Home's "Salir": prompts, account, sort memories and the stored profile),
+ * [signOut] (Home's "Salir": rating prompts, the track-choice memory, the account (incl. the subtitle style),
+ * sort memories and the stored profile),
  * [imageLoader] and one factory function per ViewModel.
  */
 class AppContainer(
@@ -192,7 +193,10 @@ class AppContainer(
     val account = AccountState(profiles, store, appScope)
 
     /** The profile's subtitle style for the Player (applied at once, PUT latest-wins). */
-    val subtitleStyles = SubtitleStyleStore(account, profiles, store, appScope)
+    val subtitleStyles = SubtitleStyleStore(
+        account, profiles, store, appScope,
+        log = { e -> runCatching { android.util.Log.w("HomeTvSubtitleStyle", "subtitle style save failed", e) } },
+    )
     val homeRefresh = HomeRefresh()
     val detailRefresh = DetailRefresh()
     val browseSorts = BrowseSortMemory()

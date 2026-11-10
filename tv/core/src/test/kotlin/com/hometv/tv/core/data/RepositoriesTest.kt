@@ -1,11 +1,16 @@
 package com.hometv.tv.core.data
 
 import com.hometv.tv.core.api.ApiException
+import com.hometv.tv.core.api.AudioChoice
 import com.hometv.tv.core.api.Fixtures
 import com.hometv.tv.core.api.FilmSummary
+import com.hometv.tv.core.api.Profile
 import com.hometv.tv.core.api.ProgressRequest
 import com.hometv.tv.core.api.RatingPrompt
 import com.hometv.tv.core.api.ShowSummary
+import com.hometv.tv.core.api.SubtitleChoice
+import com.hometv.tv.core.api.SubtitleStyle
+import com.hometv.tv.core.api.TrackChoice
 import com.hometv.tv.core.api.apiCall
 import java.time.Instant
 import kotlinx.coroutines.test.runTest
@@ -13,6 +18,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.SocketPolicy
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -79,10 +85,10 @@ class RepositoriesTest {
             t.json("""{"id": 5, "name": "Esther", "avatar_id": "avatar-05", "is_admin": true, "subtitle_style": {"size": "large", "color": "yellow", "edge": "shadow", "edge_color": "dark_gray", "position": "high"}}""")
         }
         val me = profiles.me()
-        assertEquals(com.hometv.tv.core.api.SubtitleStyle("large", "yellow", "shadow", "dark_gray", "high"), me.subtitle_style)
-        assertEquals(com.hometv.tv.core.api.Profile(5, "Esther", "avatar-05", is_admin = true), me.toProfile())
+        assertEquals(SubtitleStyle("large", "yellow", "shadow", "dark_gray", "high"), me.subtitle_style)
+        assertEquals(Profile(5, "Esther", "avatar-05", is_admin = true), me.toProfile())
         t.route("GET", "/api/me") { t.json("""{"id": 5, "name": "Esther", "avatar_id": "avatar-05"}""") }
-        assertEquals(com.hometv.tv.core.api.SubtitleStyle(), profiles.me().subtitle_style)
+        assertEquals(SubtitleStyle(), profiles.me().subtitle_style)
     }
 
     @Test
@@ -91,14 +97,26 @@ class RepositoriesTest {
             if (r.getHeader("Authorization") == "Bearer old") t.error(401, "unauthorized") else MockResponse().setResponseCode(204)
         }
         t.route("POST", "/api/profiles/5/session") { t.json(t.sessionJson("new")) }
-        profiles.saveSubtitleStyle(com.hometv.tv.core.api.SubtitleStyle(size = "small"))
-        val put = t.requests.last { it.method == "PUT" }
+        profiles.saveSubtitleStyle(SubtitleStyle(size = "small"))
+        // One renewal, then the PUT retried once with the new token.
+        assertEquals(1, t.requests.count { it.method == "POST" && it.path == "/api/profiles/5/session" })
+        val puts = t.requests.filter { it.method == "PUT" }
+        assertEquals(listOf("Bearer old", "Bearer new"), puts.map { it.getHeader("Authorization") })
         assertEquals(
             Json.parseToJsonElement("""{"size": "small", "color": "white", "edge": "outline", "edge_color": "black", "position": "low"}"""),
-            Json.parseToJsonElement(put.body.readUtf8()),
+            Json.parseToJsonElement(puts.last().body.readUtf8()),
         )
         t.route("PUT", "/api/me/subtitle-style") { t.error(422, "validation_error") }
-        assertThrows<ApiException.Http> { profiles.saveSubtitleStyle(com.hometv.tv.core.api.SubtitleStyle()) }
+        assertThrows<ApiException.Http> { profiles.saveSubtitleStyle(SubtitleStyle()) }
+        assertTrue(events.isEmpty(), "$events")
+    }
+
+    @Test
+    fun `saveSubtitleStyle is a background request - an unreachable renewal throws and emits no ServerUnreachable`() = runTest {
+        t.route("PUT", "/api/me/subtitle-style") { t.error(401, "unauthorized") }
+        t.route("POST", "/api/profiles/5/session") { MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AFTER_REQUEST) }
+        assertThrows<ApiException.Unreachable> { profiles.saveSubtitleStyle(SubtitleStyle()) }
+        assertTrue(events.none { it is AppEvent.ServerUnreachable }, "$events")
     }
 
     @Test
@@ -107,7 +125,7 @@ class RepositoriesTest {
         apiCall {
             t.clients.api.putTrackChoice(
                 "shows", 7,
-                com.hometv.tv.core.api.TrackChoice(com.hometv.tv.core.api.AudioChoice("eng", null, 6), com.hometv.tv.core.api.SubtitleChoice("off")),
+                TrackChoice(AudioChoice("eng", null, 6), SubtitleChoice("off")),
             )
         }
         assertEquals(

@@ -36,6 +36,8 @@ let lastSeq = 0;
 let epoch = 0;
 let activeProfile: number | null = null;
 let profileGetter: () => number | null = () => null;
+/** Module-lifetime listeners of a profile change (useSubtitleStyleSave's queue); never reset. */
+const profileChangeListeners = new Set<() => void>();
 
 const keyOf = (profileId: number, kind: TitleKind, id: number) => `${profileId}:${kind}:${id}`;
 const titleKeyOf = (kind: TitleKind, id: number) => `${kind}:${id}`;
@@ -99,7 +101,6 @@ export function enqueueWrite(
   profileId: number,
   kind: TitleKind,
   id: number,
-  _seq: number,
   sendFn: () => Promise<void>,
 ): Promise<WriteResult> {
   const key = `${profileId}:${titleKeyOf(kind, id)}`;
@@ -129,6 +130,17 @@ export function setProfileGetter(getter: () => number | null): void {
   profileGetter = getter;
 }
 
+/** The session profile as the registered getter answers it now (null when unregistered). */
+export function currentProfileId(): number | null {
+  return profileGetter();
+}
+
+/** Runs `listener` on every profile change `setActiveProfile` applies; returns the unsubscribe. */
+export function onActiveProfileChange(listener: () => void): () => void {
+  profileChangeListeners.add(listener);
+  return () => profileChangeListeners.delete(listener);
+}
+
 /**
  * Called by AuthProvider on a profile change it makes (signIn, endSession): a different id (or
  * null) clears every override and drops every queued (unsent) wish as 'dropped'.
@@ -139,6 +151,7 @@ export function setActiveProfile(profileId: number | null): void {
   epoch += 1;
   overrides.clear();
   dropQueued();
+  for (const listener of profileChangeListeners) listener();
 }
 
 /** Tests (tests/setup.ts afterEach): clear + active profile null + unregistered getter. */

@@ -1,6 +1,7 @@
 package com.hometv.tv.ui.settings
 
 import com.hometv.tv.R
+import com.hometv.tv.core.api.Me
 import com.hometv.tv.core.api.Profile
 import com.hometv.tv.core.api.ServerInfo
 import com.hometv.tv.data.EnginePrefs
@@ -33,7 +34,7 @@ class SettingsViewModelTest {
     fun `shows the server, the profile, versions, the TMDB notice and the caps summary`() = runTest(main.dispatcher) {
         val api = ScriptedApi().apply {
             onInfo = { ServerInfo(name = "Casa", version = "1.2.0", tmdb_attribution = "Este producto usa la API de TMDB pero no está avalado ni certificado por TMDB.") }
-            onMe = { com.hometv.tv.core.api.Me(5, "Esther", "avatar-05") }
+            onMe = { Me(5, "Esther", "avatar-05") }
         }
         val container = testContainer(api, backgroundScope)
         val vm = container.settingsViewModel()

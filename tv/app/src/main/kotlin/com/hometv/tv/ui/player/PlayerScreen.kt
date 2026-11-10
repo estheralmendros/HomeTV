@@ -44,6 +44,7 @@ import com.hometv.tv.R
 import com.hometv.tv.core.playback.PlaybackEngine
 import com.hometv.tv.core.playback.PlayerController
 import com.hometv.tv.core.playback.SubtitleLook
+import com.hometv.tv.playback.ExoCaptionSpec
 import com.hometv.tv.playback.ExoSubtitleStyle
 import com.hometv.tv.playback.toCaptionStyle
 import kotlin.math.max
@@ -106,11 +107,12 @@ fun PlayerScreen(vm: PlayerViewModel, onExit: () -> Unit) {
 
     // The fraction of the screen the overlay's bottom block covers (0 while it is hidden or gone): Exo subtitles sit above it.
     var overlayClearance by remember { mutableFloatStateOf(0f) }
+    val onClearance: (Float) -> Unit = remember { { overlayClearance = it } }
     Box(Modifier.fillMaxSize().background(Color.Black).testTag("player")) {
         VideoSurface(vm, engine = state.engine, keepScreenOn = state.keepScreenOn, look = state.subtitleLook, overlayClearance = overlayClearance)
         when (val screen = state.screen) {
             is PlayerScreenUi.Loading -> PreparingView(state.title, screen, onCancel = vm::onCancelLoading)
-            PlayerScreenUi.Video -> PlayerOverlay(state, vm, onClearance = { overlayClearance = it })
+            PlayerScreenUi.Video -> PlayerOverlay(state, vm, onClearance = onClearance)
             is PlayerScreenUi.Countdown -> NextEpisodeCountdown(screen.next, onPlayNow = vm::onPlayNow, onCancel = vm::onBack)
             is PlayerScreenUi.EndScreen -> PlayerEndScreen(screen, onRetry = vm::onEndScreenRetry, onBack = vm::onBack)
             is PlayerScreenUi.Error -> PlayerErrorScreen(screen, onAction = vm::onErrorAction)
@@ -194,14 +196,16 @@ private fun VideoSurface(vm: PlayerViewModel, engine: PlaybackEngine?, keepScree
 
 /**
  * ExoPlayer's `PlayerView` (own controller disabled). Its `SubtitleView` always draws the profile's [look]
- * (`ExoSubtitleStyle`; the device caption settings are ignored), re-applied at every update (cheap): a draft
- * change restyles live; the bottom padding is the look's position, raised above the overlay's bottom block while
- * it shows ([overlayClearance]).
+ * (`ExoSubtitleStyle`; the device caption settings are ignored): a draft change restyles live; the bottom padding
+ * is the look's position, raised above the overlay's bottom block while it shows ([overlayClearance]). The
+ * surface recomposes on every Player state change, so the style and the padding are set only when they changed
+ * (each `SubtitleView` setter re-lays out its cues).
  */
 @OptIn(UnstableApi::class)
 @Composable
 private fun ExoSurface(exo: ExoPlayerController?, keepScreenOn: Boolean, look: SubtitleLook, overlayClearance: Float, onBind: () -> Unit) {
-    val viewProbe = LocalExoViewProbe.current
+    val captionProbe = LocalExoCaptionProbe.current
+    val applied = remember { AppliedCaption() }
     AndroidView(
         factory = { context ->
             PlayerView(context).apply {
@@ -218,12 +222,19 @@ private fun ExoSurface(exo: ExoPlayerController?, keepScreenOn: Boolean, look: S
             exo?.attach(view)
             view.keepScreenOn = keepScreenOn
             val spec = ExoSubtitleStyle.of(look)
-            view.subtitleView?.apply {
-                setStyle(spec.toCaptionStyle())
-                setFractionalTextSize(spec.textSizeFraction)
-                setBottomPaddingFraction(max(spec.bottomPaddingFraction, overlayClearance))
+            val padding = max(spec.bottomPaddingFraction, overlayClearance)
+            view.subtitleView?.let { subtitles ->
+                if (spec != applied.spec) {
+                    subtitles.setStyle(spec.toCaptionStyle())
+                    subtitles.setFractionalTextSize(spec.textSizeFraction)
+                    applied.spec = spec
+                }
+                if (padding != applied.padding) {
+                    subtitles.setBottomPaddingFraction(padding)
+                    applied.padding = padding
+                }
+                captionProbe(ExoCaptionApplied(spec, padding, overlayClearance))
             }
-            viewProbe(view)
         },
         onRelease = { view -> exo?.detach(view) },
         modifier = Modifier.fillMaxSize().testTag("player_video"),
@@ -288,8 +299,14 @@ private fun VlcSurface(vlc: VlcPlayerController?, keepScreenOn: Boolean, onBind:
  */
 internal val LocalVideoSurfaceProbe = staticCompositionLocalOf<(PlaybackEngine?, PlayerController?) -> Unit> { { _, _ -> } }
 
-/** Test seam: the Exo `PlayerView` after each `update` (its `SubtitleView` carries the applied look). Production never provides it. */
-internal val LocalExoViewProbe = staticCompositionLocalOf<(PlayerView) -> Unit> { {} }
+/** What the Exo surface's `SubtitleView` was last set to (the look, the bottom padding) and the overlay clearance then. */
+internal data class ExoCaptionApplied(val spec: ExoCaptionSpec, val bottomPaddingFraction: Float, val overlayClearance: Float)
+
+/** The last values set on the `SubtitleView` (null / NaN: nothing set yet on this view). */
+private class AppliedCaption(var spec: ExoCaptionSpec? = null, var padding: Float = Float.NaN)
+
+/** Test seam: what the Exo surface applied to its `SubtitleView` after each `update`. Production never provides it. */
+internal val LocalExoCaptionProbe = staticCompositionLocalOf<(ExoCaptionApplied) -> Unit> { {} }
 
 /** Item load / "Preparando el vídeo… quedan unos N min" with [Cancelar] (503 `preparing`). */
 @Composable

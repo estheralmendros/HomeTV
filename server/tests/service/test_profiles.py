@@ -368,7 +368,7 @@ def test_delete_profile_removes_only_its_ratings_and_dismissals(mdb):
             }
 
 
-def test_delete_profile_removes_only_its_track_choices_and_style(mdb):
+def test_delete_profile_removes_only_its_track_choices(mdb):
     admin = p.bootstrap(mdb, name="Esther", avatar_id="avatar-05", pin="1234")
     kids = p.create_profile(mdb, name="Kids", avatar_id="avatar-04", is_admin=False, pin=None)
     with mdb.write_session() as s:

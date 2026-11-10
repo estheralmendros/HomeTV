@@ -24,6 +24,22 @@ afterEach(() => {
 const controls = () => screen.getByTestId('player-controls');
 
 describe('controls', () => {
+  it('the measured bottom bar height sets --player-controls-h on the shell root (and follows a resize)', async () => {
+    let barHeight = 96;
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (this: HTMLElement) {
+      return this.getAttribute('aria-label') === 'Controles del reproductor' ? barHeight : 0;
+    });
+    const p = renderPlayer('/watch/film/12');
+    await p.startDirect(0);
+    const root = screen.getByTestId('player-root');
+    await until(() => expect(root.style.getPropertyValue('--player-controls-h')).toBe('96px'));
+    barHeight = 130;
+    act(() => {
+      window.dispatchEvent(new Event('resize'));
+    });
+    await until(() => expect(root.style.getPropertyValue('--player-controls-h')).toBe('130px'));
+  });
+
   it('have Spanish labels; play/pause, ∓10 s and the seek bar drive the element', async () => {
     const p = renderPlayer('/watch/film/12');
     await p.startDirect(100);

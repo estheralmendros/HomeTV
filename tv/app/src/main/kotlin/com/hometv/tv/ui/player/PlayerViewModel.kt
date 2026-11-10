@@ -351,6 +351,14 @@ class PlayerViewModel(
 
     /** A libVLC restyle reopen is running: its state/playing transitions are not progress (prd3 FR-T9 step 4). */
     private var reloading = false
+
+    /**
+     * A user close of the style dialog on libVLC while a direct audio switch was pending: the base media is
+     * reloaded if the switch is abandoned and the base keeps playing ([endSwitch]). An attached switch needs
+     * nothing (its new stream opens on a port for the new look, the controller's port-look rule); a stop, an
+     * end, a failure or the next item clear it (their next open picks the look).
+     */
+    private var styleReloadOwed = false
     private var otherVersions: List<MediaFile> = emptyList()
 
     init {
@@ -501,11 +509,8 @@ class PlayerViewModel(
     private fun rememberedAudio(f: MediaFile, target: Item = item): Int? = TrackChoiceRules.matchAudio(choiceFor(target)?.audio, f.audio_tracks)
 
     /** The subtitle a new file starts on: the remembered part matched in this plan, else today's default rule. */
-    private fun firstSubtitle(f: MediaFile, plan: PlaybackPlan.Play): String? {
-        if (!::item.isInitialized) return plan.defaultSubtitleId
-        val audioLanguage = f.audio_tracks.firstOrNull { it.index == plan.audioStreamIndex }?.language
-        return TrackChoiceRules.matchSubtitle(choiceFor(item)?.subtitles, plan.subtitles.map { it.track }, plan.mode, audioLanguage)
-    }
+    private fun firstSubtitle(plan: PlaybackPlan.Play): String? =
+        TrackChoiceRules.matchSubtitle(choiceFor(item)?.subtitles, plan.subtitles.map { it.track }, plan.mode, plan.audioLanguage)
 
     /**
      * FR-T6: a manual audio pick saves first, before the switch's early returns: unless it re-picks the track the
@@ -797,7 +802,7 @@ class PlayerViewModel(
         if (justDefaulted) {
             subtitleDefaulted = true
             // FR-T4.4: the remembered subtitle part matched in this file (no part: TrackRules.defaultSubtitle).
-            selectedSubtitleId = firstSubtitle(spec.file, plan)
+            selectedSubtitleId = firstSubtitle(plan)
         }
         if (selectedSubtitleId != null && plan.subtitles.none { it.track.id == selectedSubtitleId }) selectedSubtitleId = null
         // The default text subtitle is fetched before prepare() with a 3 s budget (never a track the engine renders natively).
@@ -817,6 +822,7 @@ class PlayerViewModel(
         }
         switchBase = null
         switchAudioIndex = null
+        styleReloadOwed = false
         selectEngine(engine)
         deps.log("attach engine=$engine file=${spec.file.id} mode=${plan.mode}", null)
         selectedAudioIndex = plan.audioStreamIndex
@@ -1055,6 +1061,7 @@ class PlayerViewModel(
 
     override fun onFailure(failure: PlayerFailure) {
         reloading = false
+        styleReloadOwed = false
         val attached = session == SessionState.Playing || session == SessionState.Paused || switchBase != null
         if (!attached) return
         if (switchBase != null) abandonSwitch() // row 41
@@ -1175,6 +1182,7 @@ class PlayerViewModel(
     // ---- End of an item (rows 15–19) --------------------------------------------------------
 
     private fun onEnded() {
+        styleReloadOwed = false
         if (switchBase != null) abandonSwitch() // rows 37/39
         val a = att ?: return
         if (session != SessionState.Playing && session != SessionState.Paused) return
@@ -1511,6 +1519,10 @@ class PlayerViewModel(
         session = if (basePaused) SessionState.Paused else SessionState.Playing
         basePaused = false
         if (session == SessionState.Playing) startTicker()
+        if (styleReloadOwed) {
+            styleReloadOwed = false
+            if (!reloadStyle()) showToast(UiText.Res(R.string.subtitle_style_save_failed))
+        }
         render()
     }
 
@@ -1615,6 +1627,7 @@ class PlayerViewModel(
     // ---- Next episode / next part buttons ---------------------------------------------------
 
     fun onNext() {
+        styleReloadOwed = false
         if (switchBase != null) abandonSwitch() // row 38
         if (!::item.isInitialized) return
         val a = att ?: return
@@ -1943,13 +1956,21 @@ class PlayerViewModel(
             showToast(UiText.Res(R.string.subtitle_style_save_failed))
             return
         }
+        // The save itself runs in appScope; the toast needs a live ViewModel (not from onCleared).
         if (!cleared) viewModelScope.launch { if (!saved.await()) showToast(UiText.Res(R.string.subtitle_style_save_failed)) }
     }
 
-    /** libVLC can't restyle live: the active VLC controller reopens at the same position (FR-T9). */
+    /**
+     * libVLC can't restyle live: the active VLC controller reopens at the same position (FR-T9). While a direct
+     * audio switch is pending the reload is owed to [endSwitch] (the base keeps playing until the switch settles).
+     */
     private fun reloadStyle(): Boolean {
         val c = createdController ?: return true
-        if (activeEngine != PlaybackEngine.VLC || switchBase != null) return true
+        if (activeEngine != PlaybackEngine.VLC) return true
+        if (switchBase != null) {
+            styleReloadOwed = true
+            return true
+        }
         if (session != SessionState.Playing && session != SessionState.Paused) return true
         reloading = true
         return c.reloadSubtitleStyle()
@@ -2087,6 +2108,7 @@ class PlayerViewModel(
         val base = switchBase ?: return
         switchBase = null
         switchAudioIndex = null
+        styleReloadOwed = false
         pending = null
         att = base
         controller.pause()
@@ -2126,8 +2148,10 @@ class PlayerViewModel(
     }
 
     override fun onCleared() {
-        commitStyleDraft(userClose = false)
+        // `viewModelScope` is already cancelled here: `cleared` first, so the commit saves without launching
+        // the (dead) failure-toast await.
         cleared = true
+        commitStyleDraft(userClose = false)
         // Row 30: finishSession() for the current key; in Loading also row 33 for a late response.
         when (session) {
             SessionState.Loading -> {
@@ -2199,6 +2223,12 @@ class PlayerViewModel(
     }
 
     private fun render() {
+        // The overlay never shows under the style dialog (live Exo preview at the real height), whichever path set
+        // it (e.g. the paused-HLS release or a paused recovery attach).
+        if (styleDialogOpen && overlay != OverlayMode.HIDDEN) {
+            overlay = OverlayMode.HIDDEN
+            overlayJob?.cancel()
+        }
         val a = switchBase ?: att
         val s = session
         val screen: PlayerScreenUi = when (s) {

@@ -10,6 +10,7 @@ from pydantic import (
     Field,
     PlainSerializer,
     StrictBool,
+    StrictInt,
     StringConstraints,
     model_validator,
 )
@@ -485,7 +486,7 @@ class AudioChoice(BaseModel):
 
     language: Language
     title: TrackTitle | None = None
-    channels: Annotated[int, Field(ge=1, le=32)] | None = None
+    channels: Annotated[StrictInt, Field(ge=1, le=32)] | None = None
 
 
 class SubtitleChoice(BaseModel):

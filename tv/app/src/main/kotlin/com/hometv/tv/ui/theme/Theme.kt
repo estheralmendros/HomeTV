@@ -39,6 +39,9 @@ object HomeTvColors {
     /** Rating stars (amber; ≥ 3:1 on Background and Surface, a graphic). Empty stars use [Muted]. */
     val Rating = Color(0xFFFFC107)
     val Placeholder = Color(0xFF2E3542)
+
+    /** The translucent dark band behind the subtitle style dialog's sample line. */
+    val SubtitleSampleBand = Color(0x99000000)
 }
 
 /** Safe-area padding (48 dp horizontal / 27 dp vertical) and focus visuals shared by the screens. */

@@ -34,7 +34,7 @@ def me_out(profile: m.Profile) -> Me:
     style = SubtitleStyle.model_validate(
         {field: getattr(profile, f"subtitle_{field}") for field in STYLE_FIELDS}
     )
-    return Me(**profile_out(profile).model_dump(), subtitle_style=style)
+    return Me(**dict(profile_out(profile)), subtitle_style=style)
 
 
 def session_out(tokens: profiles.TokenService, profile: m.Profile) -> SessionResponse:

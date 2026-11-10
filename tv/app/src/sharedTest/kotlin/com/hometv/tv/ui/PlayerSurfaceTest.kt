@@ -2,6 +2,8 @@ package com.hometv.tv.ui
 
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.media3.ui.CaptionStyleCompat
+import androidx.media3.ui.SubtitleView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.hometv.tv.core.api.EpisodeDetail
 import com.hometv.tv.core.api.FilmDetail
@@ -10,7 +12,11 @@ import com.hometv.tv.core.api.PlaybackResponse
 import com.hometv.tv.core.api.VideoInfo
 import com.hometv.tv.core.playback.F
 import com.hometv.tv.core.playback.PlaybackEngine
+import com.hometv.tv.testing.FakePlayerController
 import com.hometv.tv.testing.UiTestBase
+import com.hometv.tv.testing.UiTestPlatform
+import com.hometv.tv.ui.player.ExoCaptionApplied
+import kotlin.math.max
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
@@ -137,9 +143,9 @@ class PlayerSurfaceTest : UiTestBase() {
     }
 
     /** Near the end, ENDED, then "Reproducir ahora" on the countdown. */
-    private fun endThenPlayNow(drive: (com.hometv.tv.testing.FakePlayerController.() -> Unit) -> Unit) {
+    private fun endThenPlayNow(drive: (FakePlayerController.() -> Unit) -> Unit) {
         drive { positionMs = 1_300_000 }
-        com.hometv.tv.testing.UiTestPlatform.advance(1_100)
+        UiTestPlatform.advance(1_100)
         settle()
         drive { end() }
         assertFocused("countdown_play_now")
@@ -148,41 +154,64 @@ class PlayerSurfaceTest : UiTestBase() {
 
     private fun <T> List<T>.dedupeRuns(): List<T> = filterIndexed { i, v -> i == 0 || this[i - 1] != v }
 
-    /** The `SubtitleView`'s applied style, text size fraction and bottom padding (Media3 1.5.1 private fields). */
-    private fun subtitleField(name: String): Any? {
-        val view = checkNotNull(exoView?.subtitleView) { "no Exo SubtitleView bound" }
-        return androidx.media3.ui.SubtitleView::class.java.getDeclaredField(name).apply { isAccessible = true }.get(view)
-    }
+    /** What the Exo surface last applied to its `SubtitleView` (through `LocalExoCaptionProbe`). */
+    private fun applied(): ExoCaptionApplied = checkNotNull(exoCaption) { "no Exo SubtitleView bound" }
 
     @Test
     fun theExoSubtitleViewDrawsTheProfileStyleAndADraftChangeRestylesItLive() {
         val gate = CompletableDeferred<Unit>().apply { complete(Unit) }
         openFilm(gate)
         onPlayer { ready() }
-        val default = subtitleField("style") as androidx.media3.ui.CaptionStyleCompat
-        assertEquals(0xFFFFFFFF.toInt(), default.foregroundColor)
-        assertEquals(androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE, default.edgeType)
-        assertEquals(androidx.media3.ui.SubtitleView.DEFAULT_TEXT_SIZE_FRACTION, subtitleField("defaultTextSize") as Float, 1e-4f)
+        assertEquals(0xFFFFFFFF.toInt(), applied().spec.foreground)
+        assertEquals(CaptionStyleCompat.EDGE_TYPE_OUTLINE, applied().spec.edgeType)
+        assertEquals(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION, applied().spec.textSizeFraction, 1e-4f)
         // With the overlay hidden the padding is the look's position (Baja: 8 %).
-        assertEquals(0.08f, subtitleField("bottomPaddingFraction") as Float, 1e-4f)
-        // The overlay's bottom block shown: the subtitles sit above it.
+        assertEquals(0.08f, applied().bottomPaddingFraction, 1e-4f)
+        openStyleDialog()
+        // The style dialog hides the overlay: "Posición" previews at its real height.
+        assertEquals(0f, applied().overlayClearance, 0f)
+        assertEquals(0.08f, applied().bottomPaddingFraction, 1e-4f)
+        press(Key.DirectionRight)
+        assertEquals(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * 1.3f, applied().spec.textSizeFraction, 1e-4f)
+        press(Key.DirectionDown)
+        press(Key.DirectionRight)
+        assertEquals(0xFFFFFF00.toInt(), applied().spec.foreground)
+        press(Key.DirectionDown, times = 3)
+        assertFocused("style_row_position")
+        press(Key.DirectionRight, times = 2)
+        assertEquals(0.20f, applied().bottomPaddingFraction, 1e-4f)
+    }
+
+    @Test
+    fun withTheOverlayShownTheExoSubtitlesSitAboveItAtEveryPosition() {
+        val gate = CompletableDeferred<Unit>().apply { complete(Unit) }
+        openFilm(gate)
+        onPlayer { ready() }
+        listOf(0.08f, 0.14f, 0.20f).forEachIndexed { step, position ->
+            if (step > 0) {
+                back() // hides the overlay
+                openStyleDialog()
+                press(Key.DirectionDown, times = 4)
+                assertFocused("style_row_position")
+                press(Key.DirectionRight)
+                back() // closes and saves: the overlay comes back
+            } else {
+                press(Key.DirectionUp)
+            }
+            val a = applied()
+            assertTrue("the overlay's bottom block is measured: $a", a.overlayClearance > 0f)
+            assertEquals("position $position: $a", max(position, a.overlayClearance), a.bottomPaddingFraction, 1e-4f)
+            assertTrue("above the overlay at $position: $a", a.bottomPaddingFraction >= a.overlayClearance)
+        }
+    }
+
+    /** From playback: the overlay, "Audio y subtítulos", then "Formato de los subtítulos" (focus on Tamaño). */
+    private fun openStyleDialog() {
         press(Key.DirectionUp)
-        assertTrue("raised above the overlay: ${subtitleField("bottomPaddingFraction")}", (subtitleField("bottomPaddingFraction") as Float) > 0.08f)
         press(Key.DirectionRight, times = 2)
         press(Key.DirectionCenter)
         press(Key.DirectionDown, times = 2)
         press(Key.DirectionCenter)
         assertFocused("style_row_size")
-        // The style dialog hides the overlay: "Posición" previews at its real height.
-        assertEquals(0.08f, subtitleField("bottomPaddingFraction") as Float, 1e-4f)
-        press(Key.DirectionRight)
-        assertEquals(androidx.media3.ui.SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * 1.3f, subtitleField("defaultTextSize") as Float, 1e-4f)
-        press(Key.DirectionDown)
-        press(Key.DirectionRight)
-        assertEquals(0xFFFFFF00.toInt(), (subtitleField("style") as androidx.media3.ui.CaptionStyleCompat).foregroundColor)
-        press(Key.DirectionDown, times = 3)
-        assertFocused("style_row_position")
-        press(Key.DirectionRight, times = 2)
-        assertEquals(0.20f, subtitleField("bottomPaddingFraction") as Float, 1e-4f)
     }
 }

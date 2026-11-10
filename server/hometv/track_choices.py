@@ -12,9 +12,9 @@ The server never matches a choice against tracks (the clients do). The read side
 this module.
 """
 
-from typing import Any, cast
+from typing import Any
 
-from sqlalchemy import CursorResult, text, update
+from sqlalchemy import text, update
 from sqlalchemy.dialects import sqlite
 from sqlalchemy.orm import InstrumentedAttribute
 
@@ -78,9 +78,11 @@ def set_subtitle_style(db: Database, profile_id: int, style: SubtitleStyle) -> N
     """``UPDATE profile SET subtitle_* WHERE id = :profile_id``; 0 rows -> ``unauthorized()``."""
     values = {f"subtitle_{field}": getattr(style, field) for field in STYLE_FIELDS}
     with db.write_session() as session:
-        result = cast(
-            CursorResult[Any],
-            session.execute(update(m.Profile).where(m.Profile.id == profile_id).values(values)),
+        stmt = (
+            update(m.Profile)
+            .where(m.Profile.id == profile_id)
+            .values(values)
+            .returning(m.Profile.id)
         )
-        if result.rowcount == 0:
+        if session.scalar(stmt) is None:
             raise unauthorized()

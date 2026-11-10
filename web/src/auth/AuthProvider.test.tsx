@@ -200,8 +200,8 @@ describe('AuthProvider: ["me"] and the track choice session', () => {
   it('registers the profile getter on the first render with a stored session (no signIn)', async () => {
     renderWithProviders(<p>page</p>, { session: anaSession, profile: ana, path: '/' });
     const send = vi.fn(() => Promise.resolve());
-    await expect(enqueueWrite(1, 'film', 12, 1, send)).resolves.toEqual({ outcome: 'ok' });
-    await expect(enqueueWrite(2, 'film', 12, 2, send)).resolves.toEqual({ outcome: 'dropped' });
+    await expect(enqueueWrite(1, 'film', 12, send)).resolves.toEqual({ outcome: 'ok' });
+    await expect(enqueueWrite(2, 'film', 12, send)).resolves.toEqual({ outcome: 'dropped' });
     expect(send).toHaveBeenCalledTimes(1);
   });
 

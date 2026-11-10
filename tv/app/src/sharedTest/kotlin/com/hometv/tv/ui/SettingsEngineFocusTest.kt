@@ -8,6 +8,7 @@ import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.hometv.tv.core.api.Me
 import com.hometv.tv.testing.UiTestBase
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -30,7 +31,7 @@ class SettingsEngineFocusTest : UiTestBase() {
 
     private fun openSettingsAsAdmin() {
         useLibrary()
-        api.onMe = { com.hometv.tv.core.api.Me(5, "Esther", "avatar-05", is_admin = true) }
+        api.onMe = { Me(5, "Esther", "avatar-05", is_admin = true) }
         launch()
         // Inicio → Películas → Series → Mi lista → Actividad → Ajustes.
         press(Key.DirectionUp)

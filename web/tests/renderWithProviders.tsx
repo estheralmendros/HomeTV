@@ -32,8 +32,11 @@ export interface ProviderOptions {
    * for `profile` (or profile 1). `null`: signed out.
    */
   session?: StoredSession | null;
-  /** Seeds ['me'] (fresh for 5 min) as f.me(profile). Default f.profile(); null: not seeded (GET /api/me runs). */
-  profile?: Profile | null;
+  /**
+   * Seeds ['me'] (fresh for 5 min) as f.me(profile) (a `Me` keeps its own style). Default
+   * f.profile(); null: not seeded (GET /api/me runs).
+   */
+  profile?: Profile | Me | null;
   /** The seeded profile's subtitle style (default: DEFAULT_SUBTITLE_STYLE). */
   subtitleStyle?: SubtitleStyle;
   /** Seeds ['info'] (staleTime Infinity). Default f.info(); null: not seeded. */
@@ -110,6 +113,9 @@ function trackMemoryIndex(router: ReturnType<typeof createMemoryRouter>, initial
   historyIndex.read = () => index;
 }
 
+/** A `Me` (profile + `subtitle_style`) rather than a bare `Profile`. */
+const isMe = (profile: Profile | Me): profile is Me => 'subtitle_style' in profile;
+
 function mount(routes: RouteObject[], options: ProviderOptions): RenderWithProvidersResult {
   const profile = options.profile === undefined ? f.profile() : options.profile;
   const session =
@@ -121,7 +127,7 @@ function mount(routes: RouteObject[], options: ProviderOptions): RenderWithProvi
   const info = options.info === undefined ? f.info() : options.info;
   if (info) queryClient.setQueryData(queryKeys.info(), info);
   if (profile && session) {
-    const style = options.subtitleStyle ?? ('subtitle_style' in profile ? (profile as Me).subtitle_style : f.subtitleStyle());
+    const style = options.subtitleStyle ?? (isMe(profile) ? profile.subtitle_style : f.subtitleStyle());
     queryClient.setQueryData(queryKeys.me(), f.me({ ...profile, subtitle_style: style }));
   }
   if (options.adminUnlock) adminUnlock.set(options.adminUnlock);
