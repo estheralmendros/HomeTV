@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.8.2] - Released on 2026-11-12 by Esther Almendros Pérez
+
+### Fixed
+
+#### Web app
+- Some films whose subtitles or audio last longer than the video (for example, more than a minute past the end of the credits) couldn't be played in the browser, which showed "Este archivo no se puede convertir para reproducirlo". They now play. The TV app was not affected.
+
 ## [0.8.1] - Released on 2026-11-12 by Esther Almendros Pérez
 
 ### Added

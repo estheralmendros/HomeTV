@@ -60,15 +60,14 @@ class PlanCheck:
 
 
 def check_plan(plan: list[Segment], seg: float) -> PlanCheck:
-    """Sparse-keyframe guard: every segment <= max(4 x seg, 30 s); the last one of a plan with
-    several segments may reach twice that, since audio/subtitles often run past the video's
-    last keyframe (end credits)."""
+    """Sparse-keyframe guard: every segment <= max(4 x seg, 30 s), except the last one of a plan
+    with several segments. That one runs from the video's last keyframe to the format duration,
+    which audio or subtitle tracks often stretch well past the end of the video (seen: 44 s and
+    95 s tails), so its length says nothing about how sparse the keyframes are."""
     bound = max_segment_seconds(seg)
     longest = max((s.duration for s in plan), default=0.0)
-    ok = all(
-        round(s.duration, 6) <= (2 * bound if 0 < k == len(plan) - 1 else bound)
-        for k, s in enumerate(plan)
-    )
+    checked = plan[:-1] if len(plan) > 1 else plan
+    ok = all(round(s.duration, 6) <= bound for s in checked)
     return PlanCheck(ok, longest)
 
 
