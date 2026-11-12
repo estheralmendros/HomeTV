@@ -1,6 +1,8 @@
-// Search input. Enter → /search?q=…; on /search, typing updates q in the URL
-// (replace, debounced 300 ms) so results follow. Used in the NavBar and, as variant "page",
-// at the top of the search page (phones, where the NavBar input is hidden).
+// Search input. Enter or the magnifier button → /search?q=… (an empty or blank field does
+// nothing); on /search, typing updates q in the URL (replace, debounced 300 ms) so results follow.
+// Used in the NavBar and, as variant "page", at the top of the search page (below 960 px, where
+// the NavBar input is hidden). A new `resetToken` clears the field (the NavBar bumps it when the
+// viewer switches screen).
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { cx } from '@/lib/cx';
@@ -12,7 +14,17 @@ export const SEARCH_PATH = '/search';
 const DEBOUNCE_MS = 300;
 const MAX_LENGTH = 100;
 
-export function NavSearch({ variant = 'nav' }: { variant?: 'nav' | 'page' }) {
+/** Inline SVG magnifier (decorative: its button or link carries the name). */
+export function MagnifierIcon({ size = 24 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true" focusable="false">
+      <circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" strokeWidth="2" />
+      <path d="M15.5 15.5L21 21" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function NavSearch({ variant = 'nav', resetToken = 0 }: { variant?: 'nav' | 'page'; resetToken?: number }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -31,6 +43,11 @@ export function NavSearch({ variant = 'nav' }: { variant?: 'nav' | 'page' }) {
     if (urlQ !== null) setValue((current) => (current.trim() === urlQ ? current : urlQ));
   }, [urlQ]);
 
+  // Screen switch → empty field. The q of a /search URL still refills it on back/forward (effect above).
+  useEffect(() => {
+    if (resetToken) setValue('');
+  }, [resetToken]);
+
   // Input → URL on /search, once typing settles.
   const writeRef = useRef<(q: string) => void>(() => undefined);
   writeRef.current = (q: string) => {
@@ -43,11 +60,12 @@ export function NavSearch({ variant = 'nav' }: { variant?: 'nav' | 'page' }) {
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
     const q = value.trim();
+    if (!q) return;
     if (onSearchPage) {
       writeRef.current(q);
       return;
     }
-    navigate(q ? `${SEARCH_PATH}?q=${encodeURIComponent(q)}` : SEARCH_PATH);
+    navigate(`${SEARCH_PATH}?q=${encodeURIComponent(q)}`);
   };
 
   return (
@@ -61,6 +79,9 @@ export function NavSearch({ variant = 'nav' }: { variant?: 'nav' | 'page' }) {
         aria-label={variant === 'page' ? S.search.inputLabel : S.nav.searchLabel}
         onChange={(event) => setValue(event.target.value)}
       />
+      <button type="submit" className={styles.submit} aria-label={S.nav.search}>
+        <MagnifierIcon size={18} />
+      </button>
     </form>
   );
 }

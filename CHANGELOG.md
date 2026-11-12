@@ -4,6 +4,48 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.8.1] - Released on 2026-11-12 by Esther Almendros Pérez
+
+### Added
+
+#### Web app
+- The search bar has a magnifier button at its right end: clicking it searches, just like pressing Enter. On narrower windows (below 960 px), the search field on the "Buscar" page has it too.
+
+### Changed
+
+#### Web app
+- On a film's or TV show's page, the description now reaches about three quarters of the window instead of stopping around the middle, and it is justified (long words can break with a hyphen to avoid large gaps). On phones it takes the full width.
+- The search bar is emptied when you switch screen: Inicio, Películas, Series, Mi lista, Actividad, the HomeTV logo or an entry of the profile menu. Opening a result and going back still keeps your search.
+- Pressing Enter (or the magnifier) with an empty search bar no longer opens an empty "Buscar" page; it does nothing.
+
+### Fixed
+
+#### Web app
+- In "Corregir identificación", the year field was too narrow to show its four digits.
+
+## [0.8.0] - Released on 2026-11-12 by Esther Almendros Pérez
+
+### Added
+
+#### Web app and TV app
+- The player remembers the audio track and the subtitles you choose, per profile and per title (a film, or a whole TV show). Every later playback of that title by that profile starts with the same choice, on the web and on the TV: from the detail page, "Seguir viendo", resuming, starting again, another version of the film, and every episode of the show, including the next episode played automatically. The choice is saved only when you pick a track yourself, so the defaults and automatic fallbacks never overwrite it.
+- When the remembered track doesn't exist in the file being played (another version of a film, another episode), the player picks the closest one: the same language, preferring the same kind of track (for example forced or for the hearing impaired), or the usual default when that language isn't there.
+- "Formato de los subtítulos", in the player's "Subtítulos" menu (web) and in the "Audio y subtítulos" dialog (TV), lets each profile choose how text subtitles look: "Tamaño" (Pequeño, Mediano, Grande), "Color" (Blanco, Amarillo, Verde, Cian, Magenta, Naranja), "Contorno" (Contorno, Sombra, Sin contorno), "Color del contorno" (Negro, Gris oscuro, Blanco) and "Posición" (Baja, Media, Alta). The subtitles on screen change while you choose, and a sample line "Así se verán los subtítulos" shows the style when no subtitle is visible. The style is the same on every device and on both TV players (the TV's own player and VLC). Image subtitles (such as Blu-ray PGS or DVD subtitles) keep their own colours.
+
+#### Server
+- Remembered choices and the subtitle style are stored on the server for each profile. A profile only sees and changes its own. Choices are deleted with their profile or title, and are kept when a title is merged or re-identified.
+
+### Changed
+
+#### Web app
+- Subtitles no longer have a semi-transparent black box behind them: they use the chosen outline instead (white text with a black outline by default), so they look like on the TV.
+- The last subtitle language is no longer kept per browser; the remembered choice on the server replaces it.
+
+### Fixed
+
+#### Web app
+- Turning subtitles off ("Desactivados") while a line was on screen left that line frozen over the video (Firefox).
+
 ## [0.7.0] - Released on 2026-11-08 by Esther Almendros Pérez
 
 ### Added

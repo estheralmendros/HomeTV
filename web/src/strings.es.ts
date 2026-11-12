@@ -114,7 +114,7 @@ export const S = {
     shows: 'Series',
     watchlist: 'Mi lista',
     activity: 'Actividad',
-    /** Also the name of the magnifier icon link (compact bar, 720–959 px). */
+    /** Also the name of the magnifier icon link (compact bar, < 960 px) and of the search field's submit button. */
     search: 'Buscar',
     searchPlaceholder: 'Buscar títulos…',
     searchLabel: 'Buscar títulos',

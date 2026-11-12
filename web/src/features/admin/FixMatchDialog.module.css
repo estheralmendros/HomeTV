@@ -45,8 +45,9 @@ select[multiple].input {
   padding: var(--space-1);
 }
 
+/* Four digits (+1ch of slack) plus the .input padding and border. */
 .year {
-  width: 6ch;
+  width: calc(5ch + 2 * var(--space-3) + 2px);
 }
 
 .results {
