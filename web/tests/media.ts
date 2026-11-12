@@ -59,17 +59,18 @@ function load(this: HTMLMediaElement): void {
   queueMicrotask(() => this.dispatchEvent(new Event('timeupdate')));
 }
 
-/** jsdom has no TextTrack: each <track> element gets a fake `track` with a writable `mode`. */
 /** Writable stand-in for a VTTCue's position fields (jsdom has no TextTrack/VTTCue). */
 export interface FakeCue {
   line: number | 'auto';
   snapToLines: boolean;
 }
 
-export interface FakeTextTrack {
-  mode: TextTrackMode;
+export class FakeTextTrack extends EventTarget {
+  mode: TextTrackMode = 'disabled';
   /** null until the track "loads"; tests fill it and dispatch `load` on the <track>. */
-  cues: FakeCue[] | null;
+  cues: FakeCue[] | null = null;
+  /** The cues showing now; change with `setActiveCues` (fires `cuechange`). */
+  activeCues: FakeCue[] = [];
 }
 
 const textTracks = new WeakMap<HTMLTrackElement, FakeTextTrack>();
@@ -77,10 +78,17 @@ const textTracks = new WeakMap<HTMLTrackElement, FakeTextTrack>();
 export function fakeTextTrack(el: HTMLTrackElement): FakeTextTrack {
   let track = textTracks.get(el);
   if (!track) {
-    track = { mode: 'disabled', cues: null };
+    track = new FakeTextTrack();
     textTracks.set(el, track);
   }
   return track;
+}
+
+/** Sets the active cues of a <track>'s fake TextTrack and dispatches `cuechange`. */
+export function setActiveCues(el: HTMLTrackElement, cues: FakeCue[]): void {
+  const track = fakeTextTrack(el);
+  track.activeCues = cues;
+  track.dispatchEvent(new Event('cuechange'));
 }
 
 export function installMediaStubs() {

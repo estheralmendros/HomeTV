@@ -13,6 +13,7 @@ from tests.factories import (
     add_rating,
     add_rating_dismissal,
     add_show,
+    add_track_choice,
     add_watchlist_entry,
 )
 
@@ -365,3 +366,21 @@ def test_delete_profile_removes_only_its_ratings_and_dismissals(mdb):
                 (admin.id, None, show.id),
                 (admin.id, film.id, None),
             }
+
+
+def test_delete_profile_removes_only_its_track_choices(mdb):
+    admin = p.bootstrap(mdb, name="Esther", avatar_id="avatar-05", pin="1234")
+    kids = p.create_profile(mdb, name="Kids", avatar_id="avatar-04", is_admin=False, pin=None)
+    with mdb.write_session() as s:
+        film = add_film(s, "Dune")
+        show = add_show(s, "Lost")[0]
+        for pid in (admin.id, kids.id):
+            add_track_choice(s, pid, film=film)
+            add_track_choice(s, pid, show=show, audio=None, subtitles="off")
+    p.delete_profile(mdb, kids.id)
+    with mdb.read_session() as s:
+        rows = s.scalars(select(m.TrackChoice)).all()
+        assert {(r.profile_id, r.film_id, r.show_id) for r in rows} == {
+            (admin.id, None, show.id),
+            (admin.id, film.id, None),
+        }

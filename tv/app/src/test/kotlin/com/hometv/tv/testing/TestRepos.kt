@@ -9,9 +9,11 @@ import com.hometv.tv.core.data.ProfileRepository
 import com.hometv.tv.core.data.RatingsRepository
 import com.hometv.tv.core.data.Session
 import com.hometv.tv.core.data.SessionGuard
+import com.hometv.tv.core.data.TrackChoiceRepository
 import com.hometv.tv.core.data.WatchRepository
 import com.hometv.tv.core.data.WatchlistRepository
 import com.hometv.tv.data.RatingPrompts
+import com.hometv.tv.data.TrackChoiceMemory
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -38,6 +40,8 @@ class TestRepos(
     val watchlist = WatchlistRepository({ api }, guard, appScope)
     val ratings = RatingsRepository({ api }, guard, appScope)
     val ratingPrompts = RatingPrompts(store.session, appScope)
+    val trackChoices = TrackChoiceRepository({ api }, guard, store, appScope, log = {})
+    val trackChoiceMemory = TrackChoiceMemory(store.session, appScope)
 
     /** Collects every AppEvent into [received] (start it in `backgroundScope`; unconfined, so no test-scheduler step is needed). */
     val received = mutableListOf<AppEvent>()

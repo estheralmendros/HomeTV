@@ -34,6 +34,7 @@ class PlaybackPlannerTest {
         assertNull(plan.subtitles[2].url)
         // Audio track 1 is English: the forced English track is the default.
         assertEquals("ext-5", plan.defaultSubtitleId)
+        assertEquals("eng", plan.audioLanguage)
         assertFalse(plan.audioConverted)
     }
 

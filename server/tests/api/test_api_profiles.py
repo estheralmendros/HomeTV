@@ -3,6 +3,20 @@
 import pytest
 
 PROFILE_KEYS = {"id", "name", "avatar_id", "is_admin", "created_at"}
+DEFAULT_STYLE = {
+    "size": "medium",
+    "color": "white",
+    "edge": "outline",
+    "edge_color": "black",
+    "position": "low",
+}
+STYLE = {
+    "size": "large",
+    "color": "yellow",
+    "edge": "shadow",
+    "edge_color": "dark_gray",
+    "position": "high",
+}
 
 
 def _iso_z(value: str) -> bool:
@@ -35,7 +49,10 @@ async def test_bootstrap_once_with_pin(client):
     assert data["profile"]["name"] == "Esther" and data["profile"]["is_admin"] is True
     assert _iso_z(data["expires_at"])
     me = await client.get("/api/me", headers={"Authorization": f"Bearer {data['token']}"})
-    assert me.status_code == 200 and me.json() == data["profile"]
+    assert me.status_code == 200
+    mine = me.json()
+    assert mine.pop("subtitle_style") == DEFAULT_STYLE
+    assert mine == data["profile"]
     assert (await client.get("/api/info")).json()["needs_bootstrap"] is False
 
     r = await client.post("/api/profiles/bootstrap", json=body)
@@ -125,3 +142,85 @@ async def test_pin_and_admin_changes_keep_profile_tokens(client, admin, profile_
     )
     assert r.status_code == 200
     assert (await client.get("/api/me", headers=other.headers)).status_code == 200
+
+
+# --- /api/me subtitle style -------------------------------------------------------------------
+
+
+async def test_me_is_the_profile_plus_its_subtitle_style(client, user):
+    r = await client.get("/api/me", headers=user.headers)
+    assert r.status_code == 200
+    data = r.json()
+    assert set(data) == PROFILE_KEYS | {"subtitle_style"}
+    assert data["subtitle_style"] == DEFAULT_STYLE
+    listed = (await client.get("/api/profiles")).json()["items"]
+    assert all("subtitle_style" not in x for x in listed)
+    assert next(x for x in listed if x["id"] == user.id) == {
+        k: v for k, v in data.items() if k != "subtitle_style"
+    }
+
+
+async def test_put_subtitle_style_round_trip_per_profile(client, user, admin):
+    r = await client.put("/api/me/subtitle-style", json=STYLE, headers=user.headers)
+    assert (r.status_code, r.content) == (204, b"")
+    assert (await client.get("/api/me", headers=user.headers)).json()["subtitle_style"] == STYLE
+    other = (await client.get("/api/me", headers=admin.headers)).json()["subtitle_style"]
+    assert other == DEFAULT_STYLE
+    clash = {**STYLE, "color": "white", "edge": "outline", "edge_color": "white"}
+    r = await client.put("/api/me/subtitle-style", json=clash, headers=user.headers)
+    assert r.status_code == 204  # the white-on-white clash is accepted (renderers resolve it)
+    assert (await client.get("/api/me", headers=user.headers)).json()["subtitle_style"] == clash
+    # The session responses keep the plain Profile shape.
+    session = (await client.post(f"/api/profiles/{user.id}/session")).json()
+    assert set(session["profile"]) == PROFILE_KEYS
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        *({**STYLE, field: "purple"} for field in STYLE),
+        *({k: v for k, v in STYLE.items() if k != field} for field in STYLE),
+        {**STYLE, "font": "serif"},
+        {},
+        None,
+    ],
+)
+async def test_put_subtitle_style_validation(client, user, body):
+    kwargs = {} if body is None else {"json": body}
+    r = await client.put("/api/me/subtitle-style", headers=user.headers, **kwargs)
+    assert r.status_code == 422
+    assert r.json()["error"]["code"] == "validation_error"
+    assert (await client.get("/api/me", headers=user.headers)).json()["subtitle_style"] == (
+        DEFAULT_STYLE
+    )
+
+
+async def test_put_subtitle_style_needs_a_bearer_profile_token(client, user, admin):
+    for kwargs in ({}, {"params": {"token": user.token}}):
+        r = await client.put("/api/me/subtitle-style", json=STYLE, **kwargs)
+        assert (r.status_code, r.json()["error"]["code"]) == (401, "unauthorized")
+    admin_only = {"X-Admin-Token": admin.admin_headers["X-Admin-Token"]}
+    r = await client.put("/api/me/subtitle-style", json=STYLE, headers=admin_only)
+    assert r.status_code == 401
+
+
+async def test_put_subtitle_style_for_a_deleted_profile_is_unauthorized(
+    client, admin, profile_factory
+):
+    kids = profile_factory("Kids2")
+    r = await client.delete(f"/api/admin/profiles/{kids.id}", headers=admin.admin_headers)
+    assert r.status_code == 204
+    r = await client.put("/api/me/subtitle-style", json=STYLE, headers=kids.headers)
+    assert (r.status_code, r.json()["error"]["code"]) == (401, "unauthorized")
+
+
+async def test_me_and_style_routes_in_openapi(client):
+    spec = (await client.get("/api/openapi.json")).json()
+    paths = spec["paths"]
+    assert set(paths["/api/me/subtitle-style"]) == {"put"}
+    me_ok = paths["/api/me"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+    assert me_ok == {"$ref": "#/components/schemas/Me"}
+    schemas = spec["components"]["schemas"]
+    assert set(schemas["Me"]["properties"]) == PROFILE_KEYS | {"subtitle_style"}
+    assert set(schemas["SubtitleStyle"]["properties"]) == set(STYLE)
+    assert set(schemas["SubtitleStyleRequest"]["required"]) == set(STYLE)

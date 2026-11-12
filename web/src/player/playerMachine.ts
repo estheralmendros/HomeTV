@@ -46,6 +46,12 @@ export interface PlaybackIntent {
   previousSessionId: string | null;
   /** The attach starts tracking from `startPositionSeconds` (PLAY_FILE, play again after a release). */
   resetPosition: boolean;
+  /**
+   * `audioStreamIndex` is the remembered audio choice (LOAD / PLAY_FILE with a matched index): an
+   * `unsupported` or `invalid_audio_stream` answer re-sends once with the file default
+   * (REMEMBERED_AUDIO_REJECTED). False for every other builder.
+   */
+  audioFromChoice: boolean;
 }
 
 export interface PendingRequest {
@@ -109,7 +115,7 @@ export interface PlayerState {
 }
 
 export type PlayerEvent =
-  | { type: 'LOAD'; fileId: number; startPositionSeconds: number; audioStreamIndex?: number | null }
+  | { type: 'LOAD'; fileId: number; startPositionSeconds: number; audioStreamIndex?: number | null; audioFromChoice?: boolean }
   | { type: 'ITEM_NOT_FOUND' }
   | { type: 'DECISION_DIRECT'; response: PlaybackDirect }
   | { type: 'DECISION_HLS'; response: PlaybackHls }
@@ -130,7 +136,10 @@ export type PlayerEvent =
   | { type: 'MEDIA_ERROR'; now: number; source: MediaErrorSource; kind: MediaErrorKind; position: number; code?: string }
   | { type: 'PAUSE_RELEASE' }
   | { type: 'RETRY'; position: number }
-  | { type: 'PLAY_FILE'; fileId: number; startPositionSeconds: number }
+  /** `audioStreamIndex`: the remembered audio matched on that file (null: its default). */
+  | { type: 'PLAY_FILE'; fileId: number; startPositionSeconds: number; audioStreamIndex?: number | null }
+  /** The remembered audio index was refused (unsupported / invalid_audio_stream): re-send with the default. */
+  | { type: 'REMEMBERED_AUDIO_REJECTED' }
   | { type: 'NEXT' }
   | { type: 'NEXT_PART' };
 
@@ -139,7 +148,8 @@ export type PlayerEventType = PlayerEvent['type'];
 export const ALL_EVENT_TYPES: readonly PlayerEventType[] = [
   'LOAD', 'ITEM_NOT_FOUND', 'DECISION_DIRECT', 'DECISION_HLS', 'DECISION_UNSUPPORTED', 'PREPARING',
   'PREPARE_TICK', 'CANCEL', 'REQUEST_FAILED', 'CAN_PLAY', 'PLAYING', 'PAUSE', 'PLAY', 'PLAY_BLOCKED',
-  'WAITING', 'ENDED', 'SWITCH_AUDIO', 'MEDIA_ERROR', 'PAUSE_RELEASE', 'RETRY', 'PLAY_FILE', 'NEXT', 'NEXT_PART',
+  'WAITING', 'ENDED', 'SWITCH_AUDIO', 'MEDIA_ERROR', 'PAUSE_RELEASE', 'RETRY', 'PLAY_FILE', 'REMEMBERED_AUDIO_REJECTED',
+  'NEXT', 'NEXT_PART',
 ];
 
 export const RECOVERY_WINDOW_MS = 30_000;
@@ -250,6 +260,7 @@ function sameSourceIntent(s: PlayerState, start: number, resetPosition = false):
     startPositionSeconds: Math.max(0, start),
     previousSessionId: null,
     resetPosition,
+    audioFromChoice: false,
   };
 }
 
@@ -334,6 +345,7 @@ function restoreAfterSwitch(s: PlayerState, notice: PlayerNotice | null): Player
     startPositionSeconds: from.t,
     previousSessionId: null,
     resetPosition: false,
+    audioFromChoice: false,
   });
 }
 
@@ -363,6 +375,7 @@ function switchAudio(s: PlayerState, e: Extract<PlayerEvent, { type: 'SWITCH_AUD
       startPositionSeconds: Math.max(0, e.t),
       previousSessionId: handOver ? s.sessionId : null,
       resetPosition: false,
+      audioFromChoice: false,
     },
     { resumeState, switchFrom: { t: Math.max(0, e.t), prevAudio: s.audioStreamIndex, oldSessionReleased: s.mode === 'hls' } },
   );
@@ -376,12 +389,14 @@ type Handler = (s: PlayerState, e: PlayerEvent) => PlayerState;
 const HANDLERS: Record<PlayerStateName, Handler> = {
   idle: (s, e) => {
     if (e.type === 'LOAD') {
+      const audio = e.audioStreamIndex ?? null;
       return request(s, 'requesting', {
         fileId: e.fileId,
-        audioStreamIndex: e.audioStreamIndex ?? null,
+        audioStreamIndex: audio,
         startPositionSeconds: Math.max(0, e.startPositionSeconds),
         previousSessionId: null,
         resetPosition: false,
+        audioFromChoice: (e.audioFromChoice ?? false) && audio !== null,
       });
     }
     return s;
@@ -398,6 +413,11 @@ const HANDLERS: Record<PlayerStateName, Handler> = {
         return preparingFrom(s, e);
       case 'REQUEST_FAILED':
         return toError(s, e.error);
+      case 'REMEMBERED_AUDIO_REJECTED': {
+        const intent = s.pendingRequest?.intent;
+        if (!intent) return s;
+        return request(s, 'requesting', { ...intent, audioStreamIndex: null, audioFromChoice: false });
+      }
       default:
         return s;
     }
@@ -580,15 +600,17 @@ function retryOrPlayFile(s: PlayerState, e: PlayerEvent): PlayerState {
     return request(s, 'requesting', { ...s.lastIntent, startPositionSeconds: Math.max(0, e.position), previousSessionId: null }, reset);
   }
   if (e.type === 'PLAY_FILE') {
+    const audio = e.audioStreamIndex ?? null;
     return request(
       s,
       'requesting',
       {
         fileId: e.fileId,
-        audioStreamIndex: null,
+        audioStreamIndex: audio,
         startPositionSeconds: Math.max(0, e.startPositionSeconds),
         previousSessionId: null,
         resetPosition: true,
+        audioFromChoice: audio !== null,
       },
       { ...reset, hasPlayed: false, fileId: e.fileId, mode: null, sessionId: null, url: null, subtitleTracks: [] },
     );

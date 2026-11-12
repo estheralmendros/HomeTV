@@ -1,7 +1,7 @@
 """Pydantic request/response models (the REST contract; reflected in /api/openapi.json)."""
 
 from datetime import UTC, date, datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, Self
 
 from pydantic import (
     AfterValidator,
@@ -9,6 +9,8 @@ from pydantic import (
     ConfigDict,
     Field,
     PlainSerializer,
+    StrictBool,
+    StrictInt,
     StringConstraints,
     model_validator,
 )
@@ -16,6 +18,14 @@ from pydantic import (
 from hometv.db.models import ScanTrigger
 from hometv.playback.decide import ClientCaps
 from hometv.profiles import AVATAR_IDS, NAME_MAX_LENGTH, PIN_PATTERN
+from hometv.subtitle_style import (
+    DEFAULT_STYLE,
+    SubtitleColorValue,
+    SubtitleEdgeColorValue,
+    SubtitleEdgeValue,
+    SubtitlePositionValue,
+    SubtitleSizeValue,
+)
 
 
 def _iso_utc(value: datetime) -> str:
@@ -429,6 +439,100 @@ class ResolveResponse(BaseModel):
     target: ResolveTarget
 
 
+# --- Subtitle style ------------------------------------------------------------------------
+
+
+class SubtitleStyle(BaseModel):
+    """A profile's subtitle look (values and defaults: ``hometv/subtitle_style.py``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    size: SubtitleSizeValue = DEFAULT_STYLE.size
+    color: SubtitleColorValue = DEFAULT_STYLE.color
+    edge: SubtitleEdgeValue = DEFAULT_STYLE.edge
+    edge_color: SubtitleEdgeColorValue = DEFAULT_STYLE.edge_color
+    position: SubtitlePositionValue = DEFAULT_STYLE.position
+
+
+class SubtitleStyleRequest(SubtitleStyle):
+    """``PUT /api/me/subtitle-style``: every key required (a partial body is a 422, never a
+    silent reset to the defaults)."""
+
+    size: SubtitleSizeValue
+    color: SubtitleColorValue
+    edge: SubtitleEdgeValue
+    edge_color: SubtitleEdgeColorValue
+    position: SubtitlePositionValue
+
+
+class Me(Profile):
+    """``GET /api/me``: the token's profile plus its own preferences (never in the profile list)."""
+
+    subtitle_style: SubtitleStyle
+
+
+# --- Track choice --------------------------------------------------------------------------
+
+
+Language = Annotated[
+    str, StringConstraints(strip_whitespace=True, to_lower=True, min_length=1, max_length=16)
+]
+TrackTitle = Annotated[str, StringConstraints(max_length=1000)]
+"""A track title as picked; clients cut longer titles to 1000 characters."""
+
+
+class AudioChoice(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    language: Language
+    title: TrackTitle | None = None
+    channels: Annotated[StrictInt, Field(ge=1, le=32)] | None = None
+
+
+class SubtitleChoice(BaseModel):
+    """``{"mode": "off"}`` or a track's traits. Responses always carry every key."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["off", "track"]
+    language: Language | None = None
+    title: TrackTitle | None = None
+    forced: StrictBool = False
+    hearing_impaired: StrictBool = False
+    source: Literal["embedded", "external"] | None = None
+    kind: Literal["text", "image"] | None = None
+
+    @model_validator(mode="after")
+    def _shape(self) -> Self:
+        if self.mode == "track":
+            missing = [f for f in ("language", "source", "kind") if getattr(self, f) is None]
+            if missing:
+                raise ValueError(f"mode 'track' requires {', '.join(missing)}")
+        elif (
+            any(getattr(self, f) is not None for f in ("language", "title", "source", "kind"))
+            or self.forced
+            or self.hearing_impaired
+        ):
+            raise ValueError("mode 'off' takes no track traits")
+        return self
+
+
+class TrackChoice(BaseModel):
+    """A profile's remembered pick for a title: each part ``null`` = not remembered (the
+    client's default applies); at least one part is set."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    audio: AudioChoice | None = None
+    subtitles: SubtitleChoice | None = None
+
+    @model_validator(mode="after")
+    def _some_part(self) -> Self:
+        if self.audio is None and self.subtitles is None:
+            raise ValueError("audio or subtitles is required")
+        return self
+
+
 # --- Ratings -------------------------------------------------------------------------------
 
 
@@ -634,12 +738,14 @@ class EpisodeSummary(BaseModel):
 
 class HomeEpisode(EpisodeSummary):
     media_files: list[MediaFile]
+    track_choice: TrackChoice | None  # the show's (a "Seguir viendo" start needs no detail)
 
 
 class EpisodeDetail(EpisodeSummary):
     media_files: list[MediaFile]
     previous_episode_id: int | None
     next_episode_id: int | None
+    track_choice: TrackChoice | None  # the show's
 
 
 class GenreRef(BaseModel):
@@ -701,6 +807,7 @@ class FilmDetail(BaseModel):
     ratings: list[OtherRating]  # other profiles only, newest first
     household_average: HouseholdAverage | None
     added_at: UtcDateTime
+    track_choice: TrackChoice | None
 
 
 class ShowSeason(BaseModel):

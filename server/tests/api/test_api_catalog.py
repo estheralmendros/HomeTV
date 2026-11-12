@@ -66,6 +66,8 @@ async def test_continue_watching(client, db, user, admin):
     assert episode["progress"]["position_seconds"] == 120.0
     detail = (await client.get(f"/api/episodes/{ep_id}", headers=user.headers)).json()
     assert episode["media_files"] == detail["media_files"]
+    assert set(episode) == set(detail) - {"previous_episode_id", "next_episode_id"}
+    assert "track_choice" in episode and episode["track_choice"] is None
     assert {k: v for k, v in episode.items() if k != "media_files"} == {
         k: v
         for k, v in detail.items()

@@ -359,8 +359,10 @@ async def test_film_detail_shape(client, db, user):
         "ratings",
         "household_average",
         "added_at",
+        "track_choice",
     }
     assert d["in_watchlist"] is False
+    assert d["track_choice"] is None
     assert (d["my_rating"], d["ratings"], d["household_average"]) == (None, [], None)
     assert (d["release_date"], d["tagline"], d["runtime_minutes"], d["vote_average"]) == (
         "2021-09-15",

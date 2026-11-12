@@ -1,11 +1,12 @@
 import { render, screen, within } from '@testing-library/react';
+import { createRef } from 'react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import * as f from '../../tests/fixtures';
 import { AudioMenu, SubtitleMenu, type AudioMenuProps, type SubtitleMenuProps } from './TrackMenu';
 
 function renderSubtitles(props: Partial<SubtitleMenuProps> = {}) {
-  const handlers = { onToggle: vi.fn(), onClose: vi.fn(), onSelect: vi.fn() };
+  const handlers = { onToggle: vi.fn(), onClose: vi.fn(), onSelect: vi.fn(), onFormat: vi.fn() };
   render(
     <SubtitleMenu
       tracks={[
@@ -60,6 +61,27 @@ describe('SubtitleMenu', () => {
     expect(screen.queryByText('Los subtítulos de imagen no se admiten en el navegador')).not.toBeInTheDocument();
   });
 
+  it('ends with "Formato de los subtítulos" (also with no text track): it calls onFormat, not onSelect', async () => {
+    const { onFormat, onSelect } = renderSubtitles({ tracks: [] });
+    const entry = screen.getByRole('menuitem', { name: 'Formato de los subtítulos' });
+    await userEvent.click(entry);
+    expect(onFormat).toHaveBeenCalledTimes(1);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('the entry comes after the tracks and the notes', () => {
+    renderSubtitles({ tracks: [f.subtitleTrack({ id: 'emb-5', kind: 'image' })] });
+    const menu = screen.getByRole('menu', { name: 'Subtítulos' });
+    const text = menu.textContent ?? '';
+    expect(text.indexOf('Formato de los subtítulos')).toBeGreaterThan(text.indexOf('Los subtítulos de imagen no se admiten'));
+  });
+
+  it('buttonRef is forwarded to the trigger button', () => {
+    const buttonRef = createRef<HTMLButtonElement>();
+    renderSubtitles({ open: false, buttonRef });
+    expect(buttonRef.current).toBe(screen.getByRole('button', { name: 'Subtítulos' }));
+  });
+
   it('the button toggles the menu and is labelled "Subtítulos"', async () => {
     const { onToggle } = renderSubtitles({ open: false });
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
@@ -99,6 +121,13 @@ describe('AudioMenu', () => {
     const { onSelect } = renderAudio();
     await userEvent.click(screen.getByRole('menuitemradio', { name: 'Español · AC3 2.0' }));
     expect(onSelect).toHaveBeenCalledWith(2);
+  });
+
+  it('selecting the checked track calls onSelect with the current index too (PlayerPage filters)', async () => {
+    const { onSelect, onClose } = renderAudio();
+    await userEvent.click(screen.getByRole('menuitemradio', { name: 'Inglés · EAC3 5.1 · Surround' }));
+    expect(onSelect).toHaveBeenCalledWith(1);
+    expect(onClose).toHaveBeenCalled();
   });
 
   it('is hidden with fewer than 2 tracks', () => {

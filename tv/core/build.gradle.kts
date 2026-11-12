@@ -51,6 +51,10 @@ tasks.test {
     inputs.files(appRes.resolve("drawable-xhdpi/banner.png"), appRes.resolve("drawable/ic_launcher_foreground.xml"), appRes.resolve("values/colors.xml"))
         .withPropertyName("brandAssets").withPathSensitivity(PathSensitivity.RELATIVE)
     systemProperty("hometv.appRes", appRes.absolutePath)
+    // TrackChoiceRulesTest runs the matching rule's shared case table (read by path, also by the web suite).
+    val trackChoiceCases = rootProject.file("../shared/track-choice-cases.json")
+    inputs.file(trackChoiceCases).withPropertyName("trackChoiceCases").withPathSensitivity(PathSensitivity.RELATIVE)
+    systemProperty("hometv.trackChoiceCases", trackChoiceCases.absolutePath)
     testLogging {
         events("failed")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL

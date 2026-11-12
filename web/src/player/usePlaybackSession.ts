@@ -1,6 +1,8 @@
 // The playback session effects behind the player machine:
 // - sends `POST playback` whenever the machine bumps `requestSeq` (initial, Retry, PLAY_FILE,
 //   audio switch, recovery, resume after the pause release), with one retry on 422 invalid_audio_stream;
+//   a remembered audio index (`intent.audioFromChoice`) answered `unsupported` or invalid_audio_stream
+//   dispatches REMEMBERED_AUDIO_REJECTED instead: the machine re-sends once with the file default;
 // - the `preparing` wait: PREPARE_TICK after Retry-After (the reducer applies the time cap);
 // - attaches each decision (`attachSeq`) to the shell's <video> through attachSource, after
 //   releasing the previous source (tracker snapshot → hls.destroy() / src reset);
@@ -54,8 +56,8 @@ export interface PlaybackSession {
   pause: () => void;
   switchAudio: (audioStreamIndex: number) => void;
   retry: () => void;
-  /** An alternative version from the unsupported/error screen. */
-  playFile: (fileId: number, startPositionSeconds: number) => void;
+  /** An alternative version from the unsupported/error screen (`audioStreamIndex`: the remembered audio on it). */
+  playFile: (fileId: number, startPositionSeconds: number, audioStreamIndex?: number | null) => void;
   /** [Cancelar] of the preparing overlay. */
   cancel: () => void;
 }
@@ -149,6 +151,7 @@ export function usePlaybackSession(options: PlaybackSessionOptions): PlaybackSes
     const pending = s.pendingRequest;
     if (!pending || !REQUEST_STATES.has(s.name)) return;
     const { intent } = pending;
+    const rememberedAudio = intent.audioFromChoice && intent.audioStreamIndex !== null;
     // The server stops previous_session_id whatever the answer; never touch it again.
     if (intent.previousSessionId && ownedSession.current === intent.previousSessionId) ownedSession.current = null;
     const controller = new AbortController();
@@ -172,6 +175,9 @@ export function usePlaybackSession(options: PlaybackSessionOptions): PlaybackSes
             dispatch({ type: 'DECISION_HLS', response });
           } else if (response.mode === 'direct') {
             dispatch({ type: 'DECISION_DIRECT', response });
+          } else if (rememberedAudio) {
+            // The remembered track can't play here: the default track, silently (no screen, no toast).
+            dispatch({ type: 'REMEMBERED_AUDIO_REJECTED' });
           } else {
             console.warn(`[player] unsupported: ${response.reason}: ${response.detail}`);
             dispatch({ type: 'DECISION_UNSUPPORTED', response });
@@ -179,6 +185,10 @@ export function usePlaybackSession(options: PlaybackSessionOptions): PlaybackSes
           return;
         } catch (err) {
           if (controller.signal.aborted) return;
+          if (rememberedAudio && isApiError(err, 'invalid_audio_stream')) {
+            dispatch({ type: 'REMEMBERED_AUDIO_REJECTED' });
+            return;
+          }
           if (isApiError(err, 'invalid_audio_stream') && audio !== null && attempt === 0) {
             audio = null;
             continue;
@@ -322,7 +332,8 @@ export function usePlaybackSession(options: PlaybackSessionOptions): PlaybackSes
   const retry = useCallback(() => dispatch({ type: 'RETRY', position: tracker.position }), [dispatch, tracker]);
 
   const playFile = useCallback(
-    (fileId: number, startPositionSeconds: number) => dispatch({ type: 'PLAY_FILE', fileId, startPositionSeconds }),
+    (fileId: number, startPositionSeconds: number, audioStreamIndex: number | null = null) =>
+      dispatch({ type: 'PLAY_FILE', fileId, startPositionSeconds, audioStreamIndex }),
     [dispatch],
   );
 

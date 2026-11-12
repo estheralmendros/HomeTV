@@ -3,6 +3,7 @@ full scan of the generated tree."""
 
 import asyncio
 import itertools
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -24,6 +25,41 @@ def subtitle_packet_times(path: Path) -> list[float]:
         check=True, capture_output=True, text=True,
     ).stdout  # fmt: skip
     return [float(line) for line in out.split()]
+
+
+_CUE_TIME = r"(?:(\d+):)?(\d{2}):(\d{2}\.\d{3})"
+_CUE_LINE = re.compile(rf"^{_CUE_TIME} --> {_CUE_TIME}$", re.MULTILINE)
+# How far a converted cue may sit from its source time: ffmpeg moves the whole clip by the
+# stream's first PTS (the 1.023 s AC3 priming) at a different stage per version.
+CUE_SHIFT = 0.05
+
+
+def _seconds(hours: str | None, minutes: str, seconds: str) -> float:
+    return int(hours or 0) * 3600 + int(minutes) * 60 + float(seconds)
+
+
+def vtt_cues(text: str) -> list[tuple[float, float, str]]:
+    """(start, end, text) of every cue of a WebVTT document."""
+    cues = []
+    for block in text.split("\n\n")[1:]:
+        lines = block.strip().splitlines()
+        timing = next(i for i, line in enumerate(lines) if _CUE_LINE.match(line))
+        match = _CUE_LINE.match(lines[timing])
+        assert match is not None
+        start, end = _seconds(*match.groups()[:3]), _seconds(*match.groups()[3:])
+        cues.append((start, end, "\n".join(lines[timing + 1 :])))
+    return cues
+
+
+def assert_cues(text: str, expected: list[tuple[float, float, str]]) -> None:
+    """Same texts and durations; one shared shift of at most CUE_SHIFT."""
+    cues = vtt_cues(text)
+    assert [c[2] for c in cues] == [e[2] for e in expected]
+    shift = cues[0][0] - expected[0][0]
+    assert abs(shift) <= CUE_SHIFT
+    for (start, end, _), (want_start, want_end, _) in zip(cues, expected, strict=True):
+        assert start - want_start == pytest.approx(shift, abs=0.002)
+        assert end - want_end == pytest.approx(shift, abs=0.002)
 
 
 EXPECTED = {
@@ -153,12 +189,14 @@ async def test_webvtt_embedded_and_cp1252_sidecar(make_media_app, clips_dir):
         assert response.status_code == 200
         text = response.content.decode("utf-8")
         assert text.startswith("WEBVTT")
-        assert "¿qué tal?" in text
-        # WebVTT short form (mm:ss.ttt) at the source packet time: 1.000 s as written, but
-        # ffmpeg 5.1's matroska muxer shifts the whole clip by the AC3 priming (1.023 s).
+        # WebVTT short form (mm:ss.ttt), the SRT input's cues (1-3 s, 5-7 s). The AC3 priming
+        # (23 ms) moves them: ffmpeg 5.1's matroska muxer shifts the packets, 6.1 the converted
+        # cues; 9.0.2 neither. Either way within CUE_SHIFT of the source packet time.
+        assert re.search(r"^\d{2}:\d{2}\.\d{3} --> ", text, re.MULTILINE)
         start = subtitle_packet_times(clips_dir / "h264_ac3_51.mkv")[0]
-        assert f"00:{start:06.3f} --> 00:{start + 2:06.3f}" in text
-        assert abs(start - 1.0) < 0.05
+        assert abs(start - 1.0) <= CUE_SHIFT
+        source = [(start, start + 2, "Hola, ¿qué tal?"), (start + 4, start + 6, "Adiós")]
+        assert_cues(text, source)
         cache = media.app.state.settings.subtitles_dir / str(fid) / "emb-3.vtt"
         assert cache.is_file()
 
@@ -172,7 +210,7 @@ async def test_webvtt_embedded_and_cp1252_sidecar(make_media_app, clips_dir):
         assert response.status_code == 200
         assert response.headers["content-type"] == "text/vtt; charset=utf-8"
         text = response.content.decode("utf-8")  # valid UTF-8
-        assert "Café con leche" in text
+        assert_cues(text, [(1.0, 2.5, "Café con leche")])
         assert (clips_dir / CP1252_SIDECAR).read_bytes().decode("cp1252").count("é") == 1
 
 

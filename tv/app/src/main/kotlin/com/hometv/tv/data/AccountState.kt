@@ -5,26 +5,64 @@ import com.hometv.tv.core.api.Profile
 import com.hometv.tv.core.api.ServerInfo
 import com.hometv.tv.core.data.Origin
 import com.hometv.tv.core.data.ProfileRepository
+import com.hometv.tv.core.data.SessionStore
+import com.hometv.tv.core.playback.SubtitleLook
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
-/** The signed-in profile and the server info, for the top-nav avatar and Settings (in memory). */
-class AccountState(private val profiles: ProfileRepository) {
+/**
+ * The signed-in profile, the server info (top-nav avatar, Settings) and the profile's subtitle
+ * style (the Player), in memory. A `Me` applies only while its id is the profile stored in [store]
+ * when it lands (a late answer for a previous profile, or after sign-out, changes nothing), and its
+ * style only when no local [setSubtitleStyle] happened since the request started.
+ */
+class AccountState(
+    private val profiles: ProfileRepository,
+    private val store: SessionStore,
+    private val appScope: CoroutineScope,
+) {
     private val _profile = MutableStateFlow<Profile?>(null)
     val profile: StateFlow<Profile?> = _profile.asStateFlow()
     private val _info = MutableStateFlow<ServerInfo?>(null)
     val info: StateFlow<ServerInfo?> = _info.asStateFlow()
+    private val _style = MutableStateFlow(SubtitleLook.DEFAULT)
 
+    /** The profile's subtitle style; the default until `/api/me` answers. */
+    val subtitleStyle: StateFlow<SubtitleLook> = _style.asStateFlow()
+
+    /** Guards [styleSeq] with the [_style] write it goes with (main-thread sets vs a `Me` landing on IO). */
+    private val styleLock = Any()
+
+    @Volatile
+    private var styleLoaded = false
+
+    /** Bumped by every local style change and reset: a `Me` requested before it never overwrites it. */
+    private var styleSeq = 0L
+
+    /** The Picker's callback: a new profile starts on the default style and loads its own at once. */
     fun signedIn(profile: Profile, info: ServerInfo?) {
+        if (_profile.value?.id != profile.id) resetStyle()
         _profile.value = profile
         if (info != null) _info.value = info
+        appScope.launch { refreshMe() }
     }
 
     fun clear() {
         _profile.value = null
         _info.value = null
+        resetStyle()
+    }
+
+    /** Applies a style for this session (the Player's "Formato de los subtítulos"). */
+    fun setSubtitleStyle(look: SubtitleLook) {
+        synchronized(styleLock) {
+            styleSeq++
+            _style.value = look
+        }
     }
 
     /** `#RRGGBB` of the current profile's avatar, from `/api/info`. */
@@ -34,11 +72,12 @@ class AccountState(private val profiles: ProfileRepository) {
     }
 
     /**
-     * [refresh] while the profile is still unknown (a cold-start `/api/me` failed, e.g. before
-     * Tailscale was up): called after a foreground load succeeds, so the avatar and "Ajustes" follow.
+     * [refresh] while the profile or its style is still unknown (a cold-start `/api/me` failed, e.g.
+     * before Tailscale was up): called after a foreground load succeeds, so the avatar, "Ajustes" and
+     * the subtitle style follow.
      */
     suspend fun ensureLoaded() {
-        if (_profile.value == null) refresh()
+        if (_profile.value == null || !styleLoaded) refresh()
     }
 
     /** `GET /api/info` + `GET /api/me` as background calls: failures keep the previous values. */
@@ -49,11 +88,35 @@ class AccountState(private val profiles: ProfileRepository) {
             throw e
         } catch (_: ApiException) {
         }
+        refreshMe()
+    }
+
+    /** `GET /api/me` as a background call: the profile, and its style unless a local set happened since. */
+    private suspend fun refreshMe() {
+        val seq = synchronized(styleLock) { styleSeq }
         try {
-            _profile.value = profiles.me(Origin.Background)
+            val me = profiles.me(Origin.Background)
+            val stored = store.session.value.profileId
+            if (stored == null || stored != me.id) return
+            _profile.value = me.toProfile()
+            val look = SubtitleLook.of(me.subtitle_style)
+            synchronized(styleLock) {
+                if (seq == styleSeq) {
+                    _style.value = look
+                    styleLoaded = true
+                }
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (_: ApiException) {
+        }
+    }
+
+    private fun resetStyle() {
+        synchronized(styleLock) {
+            styleSeq++
+            styleLoaded = false
+            _style.value = SubtitleLook.DEFAULT
         }
     }
 }

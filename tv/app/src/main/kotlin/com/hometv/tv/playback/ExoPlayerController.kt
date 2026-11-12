@@ -91,12 +91,15 @@ class ExoPlayerController(private val player: ExoPlayer) : PlayerController {
     override val state: PlayerState get() = stateOf(player.playbackState)
 
     /** Shows this player in [view] (the Player screen's `PlayerView`); the ExoPlayer never leaves this class. */
+    /** What the `PlayerView` gets: the player with its auto cues placed by the look's position (`ExoCuePlacement`). */
+    private val viewPlayer = CuePlacementPlayer(player)
+
     fun attach(view: PlayerView) {
-        if (view.player !== player) view.player = player
+        if (view.player !== viewPlayer) view.player = viewPlayer
     }
 
     fun detach(view: PlayerView) {
-        if (view.player === player) view.player = null
+        if (view.player === viewPlayer) view.player = null
     }
 
     override fun setListener(listener: PlayerController.Listener?) {

@@ -388,7 +388,7 @@ async def test_background_queue_scan_promotion_join_and_session_gate(
         )
 
     # Lockstep: a "session" holds the worker (it pops nothing) until the queue and the promotion
-    # have been checked, so no background build can race the assertions (CLAUDE.md "Timing").
+    # have been checked, so no background build can race the assertions (server/CLAUDE.md "Timing in tests").
     session = {"running": True}
     spawner = Spawner(scenario)
     svc = service(

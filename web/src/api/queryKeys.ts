@@ -2,7 +2,7 @@
 // Keys never include the profile id: switching profile clears the whole cache.
 import type { QueryKey } from '@tanstack/react-query';
 import { kindSegment } from './kind';
-import type { LibraryQuery, LibraryType, RatingKind, TmdbType, UnmatchedQuery, WatchlistKind, WatchlistSort, WatchlistType } from './types';
+import type { LibraryQuery, LibraryType, RatingKind, TitleKind, TmdbType, UnmatchedQuery, WatchlistKind, WatchlistSort, WatchlistType } from './types';
 
 export const queryKeys = {
   info: () => ['info'] as const,
@@ -97,7 +97,9 @@ export type InvalidationEvent =
   /** PUT /api/admin/libraries success (folders saved, a `libraries` scan may have started). */
   | { type: 'librariesChanged' }
   /** Profile create / edit / delete. */
-  | { type: 'profilesChanged' };
+  | { type: 'profilesChanged' }
+  /** PUT /api/track-choices/... answered 204 (the remembered audio/subtitle pick). */
+  | { type: 'trackChoiceChanged'; kind: TitleKind; id: number };
 
 /** The query keys (prefixes) to invalidate after an event (the invalidation table). */
 export function invalidateAfter(event: InvalidationEvent): QueryKey[] {
@@ -164,5 +166,9 @@ export function invalidateAfter(event: InvalidationEvent): QueryKey[] {
       return [queryKeys.admin.libraries(), queryKeys.admin.scan()];
     case 'profilesChanged':
       return [queryKeys.profiles(), queryKeys.me()];
+    case 'trackChoiceChanged':
+      // A show's choice rides on every episode detail and on Home's HomeEpisodes (episodes of other
+      // shows refetch harmlessly); ShowDetail carries no choice.
+      return event.kind === 'film' ? [queryKeys.film(event.id)] : [['episode'], queryKeys.home()];
   }
 }

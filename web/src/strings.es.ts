@@ -641,6 +641,23 @@ export const S = {
     audio: {
       menu: 'Audio',
     },
+    subtitleStyle: {
+      entry: 'Formato de los subtítulos',
+      title: 'Formato de los subtítulos',
+      size: 'Tamaño',
+      sizes: { small: 'Pequeño', medium: 'Mediano', large: 'Grande' },
+      color: 'Color',
+      colors: { white: 'Blanco', yellow: 'Amarillo', green: 'Verde', cyan: 'Cian', magenta: 'Magenta', orange: 'Naranja' },
+      edge: 'Contorno',
+      edges: { outline: 'Contorno', shadow: 'Sombra', none: 'Sin contorno' },
+      edgeColor: 'Color del contorno',
+      edgeColors: { black: 'Negro', dark_gray: 'Gris oscuro', white: 'Blanco' },
+      position: 'Posición',
+      positions: { low: 'Baja', middle: 'Media', high: 'Alta' },
+      sample: 'Así se verán los subtítulos',
+      saveFailed: 'No se ha podido guardar el formato de los subtítulos.',
+      close: 'Cerrar',
+    },
   },
 
   /** "Mi lista" toggle, /watchlist page and toolbar. */

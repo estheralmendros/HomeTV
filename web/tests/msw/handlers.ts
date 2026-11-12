@@ -1,10 +1,16 @@
 // Default MSW handlers: every endpoint the web uses, fixture-backed. Tests override single
 // endpoints with `server.use(...)`. Unhandled requests fail the test (tests/setup.ts).
 import { http, HttpResponse, type JsonBodyType } from 'msw';
+import type { TrackChoice } from '@/api/types';
 import * as f from '../fixtures';
 
 /** Path prefix for handlers (relative paths resolve against jsdom's location). */
 export const API = '/api';
+
+/** The saved track choice (f.saveTrackChoice) when the answer carries none, like the real server. */
+export function withSavedChoice<T extends { track_choice: TrackChoice | null }>(item: T, kind: 'film' | 'show', id: number): T {
+  return { ...item, track_choice: item.track_choice ?? f.savedTrackChoice(kind, id) };
+}
 
 /** API error envelope response. */
 export function apiError(
@@ -28,18 +34,29 @@ export const handlers = [
   http.post(`${API}/profiles/:id/session`, ({ params }) =>
     HttpResponse.json(f.sessionResponse(f.profile({ id: Number(params.id) }))),
   ),
-  http.get(`${API}/me`, () => HttpResponse.json(f.profile())),
+  // The profile the Bearer token was issued for (f.sessionResponse records it), else f.profile().
+  http.get(`${API}/me`, ({ request }) => HttpResponse.json(f.meForToken(request.headers.get('authorization')))),
+  http.put(`${API}/me/subtitle-style`, () => new HttpResponse(null, { status: 204 })),
 
   // Catalog
-  http.get(`${API}/home`, () => HttpResponse.json(f.homeResponse())),
+  http.get(`${API}/home`, () => {
+    const home = f.homeResponse();
+    return HttpResponse.json({
+      ...home,
+      continue_watching: home.continue_watching.map((item) => (item.type === 'episode' ? withSavedChoice(item, 'show', item.show_id) : item)),
+    });
+  }),
   http.get(`${API}/films`, () => HttpResponse.json(f.page([f.filmSummary()]))),
-  http.get(`${API}/films/:id`, ({ params }) => HttpResponse.json(f.filmDetail({ id: Number(params.id) }))),
+  http.get(`${API}/films/:id`, ({ params }) => HttpResponse.json(withSavedChoice(f.filmDetail({ id: Number(params.id) }), 'film', Number(params.id)))),
   http.get(`${API}/shows`, () => HttpResponse.json(f.page([f.showSummary()]))),
   http.get(`${API}/shows/:id`, ({ params }) => HttpResponse.json(f.showDetail({ id: Number(params.id) }))),
   http.get(`${API}/shows/:id/seasons/:n`, ({ params }) =>
     HttpResponse.json(f.seasonDetail({ show_id: Number(params.id), season_number: Number(params.n) })),
   ),
-  http.get(`${API}/episodes/:id`, ({ params }) => HttpResponse.json(f.episodeDetail({ id: Number(params.id) }))),
+  http.get(`${API}/episodes/:id`, ({ params }) => {
+    const episode = f.episodeDetail({ id: Number(params.id) });
+    return HttpResponse.json(withSavedChoice(episode, 'show', episode.show_id));
+  }),
   http.get(`${API}/genres`, () => HttpResponse.json({ items: [f.genre(), f.genre({ id: 35, name: 'Comedia', count: 40 })] })),
   http.get(`${API}/search`, () => HttpResponse.json({ films: [f.filmSummary()], shows: [f.showSummary()] })),
   http.get(`${API}/people/:id`, ({ params }) => HttpResponse.json(f.personDetail({ person_id: Number(params.id) }))),
@@ -62,6 +79,12 @@ export const handlers = [
   http.delete(`${API}/ratings/:segment/:id`, () => new HttpResponse(null, { status: 204 })),
   http.post(`${API}/ratings/:segment/:id/dismiss-prompt`, () => new HttpResponse(null, { status: 204 })),
   http.get(`${API}/activity`, () => HttpResponse.json(f.page([], { page_size: 50 }))),
+
+  // Remembered audio/subtitle choice
+  http.put(`${API}/track-choices/:segment/:id`, async ({ params, request }) => {
+    f.saveTrackChoice(params.segment === 'films' ? 'film' : 'show', Number(params.id), (await request.json()) as TrackChoice);
+    return new HttpResponse(null, { status: 204 });
+  }),
 
   // Mi lista
   http.get(`${API}/watchlist`, () => HttpResponse.json(f.page([], { page_size: 50 }))),

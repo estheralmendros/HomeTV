@@ -101,10 +101,11 @@ class AppNavigator(
 
     /**
      * `AppEvent.AuthExpired`: the only path to the Picker, with the "Tu sesión ha caducado…" banner.
-     * The profile is gone, so its rating prompts go too.
+     * The profile is gone, so its rating prompts and remembered track picks go too.
      */
     fun authExpired() {
         container.ratingPrompts.clear()
+        container.trackChoiceMemory.clear()
         nav.navigate(Route.Profiles(expired = true)) { popUpTo(nav.graph.id) { inclusive = true } }
     }
 

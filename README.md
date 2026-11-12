@@ -172,7 +172,7 @@ library).
 `make tv-build` (signed release APK; needs `tv/keystore.properties`). Install it with
 `adb install -r`; see the [TV app guide](docs/tv-app-installation.md).
 
-Contributor conventions (strict TDD, DB write rules, test layout) are in [`CLAUDE.md`](CLAUDE.md).
+Contributor conventions (strict TDD, DB write rules, test layout) are in [`CLAUDE.md`](CLAUDE.md) and the per-area [`server/CLAUDE.md`](server/CLAUDE.md), [`web/CLAUDE.md`](web/CLAUDE.md) and [`tv/CLAUDE.md`](tv/CLAUDE.md).
 The release version lives in [`version.txt`](version.txt), the only file a version bump changes (the
 server, the Docker image and the TV app read it); changes are listed in
 [`CHANGELOG.md`](CHANGELOG.md).

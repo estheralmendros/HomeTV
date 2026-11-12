@@ -22,6 +22,13 @@ class FakePlayerController : PlayerController {
     var stopped = false
     var playWhenReady = false
 
+    /** `reloadSubtitleStyle()` calls, and what the next ones return (a libVLC restyle whose new instance failed: false). */
+    var reloadCalls = 0
+    var reloadResult = true
+
+    /** Runs inside [reloadSubtitleStyle] (e.g. the reopen's BUFFERING / READY callbacks). */
+    var onReload: (() -> Unit)? = null
+
     /** Runs at the end of [stop] (e.g. a real player's late `onIsPlayingChanged(false)` / `onStateChanged(IDLE)`). */
     var onStop: (() -> Unit)? = null
 
@@ -86,6 +93,13 @@ class FakePlayerController : PlayerController {
     override fun selectSubtitle(trackId: String?) {
         subtitle = trackId
         log += "subtitle $trackId"
+    }
+
+    override fun reloadSubtitleStyle(): Boolean {
+        reloadCalls++
+        log += "reloadSubtitleStyle"
+        onReload?.invoke()
+        return reloadResult
     }
 
     private fun updatePlaying(playing: Boolean) {

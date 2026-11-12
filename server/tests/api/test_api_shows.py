@@ -280,7 +280,9 @@ async def test_episode_detail_versions_and_neighbours(client, db, user):
         "media_files",
         "previous_episode_id",
         "next_episode_id",
+        "track_choice",
     }
+    assert d["track_choice"] is None
     assert [f["id"] for f in d["media_files"]] == list(ids)
     assert d["duration_seconds"] == d["media_files"][0]["duration_seconds"]
     # Neighbours cross seasons and skip specials (and hidden S1E3).

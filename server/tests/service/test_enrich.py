@@ -23,6 +23,7 @@ from tests.factories import (
     add_rating,
     add_rating_dismissal,
     add_show,
+    add_track_choice,
     add_watchlist_entry,
 )
 
@@ -680,6 +681,84 @@ def test_merge_moves_dismissals_keeping_the_earlier(mdb, kind):
     }
 
 
+def _seed_merge_choices(mdb, kind: str):
+    """Loser + survivor of ``kind``; four profiles with track choices: loser only (A), both with
+    the loser newer (B), both with the survivor newer (C), survivor only (D). The loser rows are
+    audio-only (channels = the row), the survivor rows subtitles-only ("off"), so a mixed result
+    would show."""
+    t0 = m.utcnow() - timedelta(days=10)
+    with mdb.write_session() as s:
+        if kind == "film":
+            survivor, loser = add_film(s, "Dune"), add_film(s, "Dune Part One")
+        else:
+            survivor, loser = add_show(s, "The Office")[0], add_show(s, "The Office US")[0]
+        a, b, c, d = (add_profile(s, n).id for n in ("A", "B", "C", "D"))
+        for pid, item, days in [
+            (a, loser, 1),
+            (b, loser, 3),  # B: the loser's choice is newer
+            (b, survivor, 2),
+            (c, loser, 4),  # C: the survivor's choice is newer
+            (c, survivor, 5),
+            (d, survivor, 6),
+        ]:
+            is_loser = item is loser
+            add_track_choice(
+                s,
+                pid,
+                **{kind: item},
+                audio=("eng", "Original", days) if is_loser else None,
+                subtitles=None if is_loser else "off",
+                updated_at=t0 + timedelta(days=days),
+            )
+        ids = {
+            (r.profile_id, r.film_id or r.show_id): r.id for r in s.scalars(select(m.TrackChoice))
+        }
+        return loser.id, survivor.id, (a, b, c, d), t0, ids
+
+
+def _parts(row: m.TrackChoice) -> tuple[object, ...]:
+    return tuple(getattr(row, column) for column in m.TRACK_CHOICE_PART_COLUMNS)
+
+
+@pytest.mark.parametrize("kind", ["film", "show"])
+def test_merge_moves_track_choices_keeping_the_later_whole_choice(mdb, kind):
+    loser, survivor, (a, b, c, d), t0, ids = _seed_merge_choices(mdb, kind)
+    model = m.Film if kind == "film" else m.Show
+    with mdb.write_session() as s:
+        merge_items(s, kind, s.get(model, loser), s.get(model, survivor))
+
+    rows = {r.profile_id: r for r in _all(mdb, m.TrackChoice)}
+    assert len(_all(mdb, m.TrackChoice)) == 4  # one per profile
+    column = "film_id" if kind == "film" else "show_id"
+    assert {getattr(r, column) for r in rows.values()} == {survivor}
+    audio = ("eng", "Original")
+    no_subs = (None, None, None, False, False, None, None)
+    off = (None, None, None, "off", None, None, False, False, None, None)
+    assert {pid: (_parts(r), r.updated_at) for pid, r in rows.items()} == {
+        a: ((*audio, 1, *no_subs), t0 + timedelta(days=1)),  # moved
+        b: ((*audio, 3, *no_subs), t0 + timedelta(days=3)),  # loser newer: copied as a whole
+        c: (off, t0 + timedelta(days=5)),  # survivor newer: kept as a whole
+        d: (off, t0 + timedelta(days=6)),  # unchanged
+    }
+    assert rows[a].id == ids[(a, loser)]  # re-pointed
+    assert rows[b].id == ids[(b, survivor)]  # the survivor row always stays
+    assert rows[c].id == ids[(c, survivor)]
+
+
+def test_merge_track_choice_tie_keeps_the_survivors(mdb):
+    t0 = m.utcnow() - timedelta(days=1)
+    with mdb.write_session() as s:
+        survivor, loser = add_film(s, "Dune"), add_film(s, "Dune Part One")
+        a = add_profile(s, "A").id
+        add_track_choice(s, a, film=loser, audio=("spa", None, 2), updated_at=t0)
+        kept = add_track_choice(s, a, film=survivor, audio=("eng", None, 6), updated_at=t0).id
+        loser_id, survivor_id = loser.id, survivor.id
+    with mdb.write_session() as s:
+        merge_items(s, "film", s.get(m.Film, loser_id), s.get(m.Film, survivor_id))
+    [row] = _all(mdb, m.TrackChoice)
+    assert (row.id, row.film_id, row.audio_language) == (kept, survivor_id, "eng")
+
+
 async def test_admin_match_during_fetch_wins_over_stale_enrichment(
     mdb, media: MediaTree, settings, stub_probe, tmdb, client, artwork
 ):
@@ -720,8 +799,13 @@ async def test_match_item_refetches_and_merges(
         kept_rating = add_rating(s, a, film=s.get(m.Film, dune.id), stars_x2=7).id
         add_rating(s, b, film=s.get(m.Film, duna.id), stars_x2=2)
         kept_dismissal = add_rating_dismissal(s, a, film=s.get(m.Film, dune.id)).id
+        kept_choice = add_track_choice(s, a, film=s.get(m.Film, dune.id)).id
+        add_track_choice(s, b, film=s.get(m.Film, duna.id), audio=None, subtitles="off")
 
     assert await match_item(mdb, settings, client, artwork, "film", dune.id, 438631) == dune.id
+    assert [(r.id, r.film_id) for r in _all(mdb, m.TrackChoice, m.TrackChoice.profile_id == a)] == [
+        (kept_choice, dune.id)
+    ]
     # a re-match without a duplicate keeps the entry
     assert [
         (e.id, e.film_id) for e in _all(mdb, m.WatchlistEntry, m.WatchlistEntry.profile_id == a)
@@ -746,6 +830,10 @@ async def test_match_item_refetches_and_merges(
         (a, dune.id, 7),
         (b, dune.id, 2),
     ]
+    assert sorted(
+        (r.profile_id, r.film_id, r.audio_language, r.subtitle_mode)
+        for r in _all(mdb, m.TrackChoice)
+    ) == [(a, dune.id, "eng", None), (b, dune.id, None, "off")]
 
 
 async def test_match_item_errors(

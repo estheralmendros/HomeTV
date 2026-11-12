@@ -57,7 +57,7 @@ fun testContainer(
     codecs = FakeCodecs(),
     clock = clock,
     zone = { zone },
-    playerControllers = { engine, _ -> if (engine == com.hometv.tv.core.playback.PlaybackEngine.EXO) player() else vlcPlayer() },
+    playerControllers = { engine, _, _ -> if (engine == com.hometv.tv.core.playback.PlaybackEngine.EXO) player() else vlcPlayer() },
     vlcAvailability = com.hometv.tv.playback.VlcAvailability { vlcAvailable },
     subtitleCache = com.hometv.tv.playback.SubtitleFileCache(Files.createTempDirectory("subtitles").toFile()),
     enginePrefs = enginePrefs,

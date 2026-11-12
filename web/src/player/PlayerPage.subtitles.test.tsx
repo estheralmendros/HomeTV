@@ -28,7 +28,7 @@ function openMenu() {
 }
 
 describe('PlayerPage subtitles', () => {
-  it('lists only text tracks; choosing one fetches the VTT with Bearer (no token) and shows it as a blob <track>; the choice is remembered', async () => {
+  it('lists only text tracks; choosing one fetches the VTT with Bearer (no token) and shows it as a blob <track>; each pick saves the choice', async () => {
     answerPlayback(f.playbackDirect({ subtitle_tracks: SUBS }));
     const p = renderPlayer('/watch/film/12');
     await p.startDirect(0);
@@ -50,11 +50,42 @@ describe('PlayerPage subtitles', () => {
     expect(el).toHaveAttribute('kind', 'subtitles');
     expect(el).toHaveAttribute('srclang', 'es');
     expect(el.track.mode).toBe('showing');
-    expect(localStorage.getItem('hometv.subtitleLang.1')).toBe('spa');
+    await until(() => expect(p.rec.find('PUT', '/api/track-choices/films/12')).toHaveLength(1));
+    expect(localStorage.getItem('hometv.subtitleLang.1')).toBeNull();
 
     fireEvent.click(within(openMenu()).getByRole('menuitemradio', { name: 'Desactivados' }));
     await until(() => expect(trackEl(p)).toBeNull());
-    expect(localStorage.getItem('hometv.subtitleLang.1')).toBe('off');
+    await until(() => expect(p.rec.find('PUT', '/api/track-choices/films/12')).toHaveLength(2));
+    await p.rec.settled();
+    expect(p.rec.find('PUT', '/api/track-choices/films/12').map((c) => (c.body as { subtitles: unknown }).subtitles)).toEqual([
+      f.subtitleChoice(),
+      { mode: 'off', language: null, title: null, forced: false, hearing_impaired: false, source: null, kind: null },
+    ]);
+  });
+
+  // Firefox keeps painting the active cue of a showing <track> removed from the DOM (a frozen line after
+  // "Desactivados"): the track must already be disabled when React takes the element out.
+  it('a removed <track> (Off, or another track) is disabled before it leaves the <video>', async () => {
+    answerPlayback(f.playbackDirect({ subtitle_tracks: SUBS }));
+    const p = renderPlayer('/watch/film/12');
+    await p.startDirect(0);
+    const video = p.video();
+    const modesAtRemoval: string[] = [];
+    const removeChild = video.removeChild.bind(video);
+    vi.spyOn(video, 'removeChild').mockImplementation(<T extends Node>(child: T): T => {
+      if (child instanceof HTMLTrackElement) modesAtRemoval.push(child.track.mode);
+      return removeChild(child);
+    });
+
+    fireEvent.click(within(openMenu()).getByRole('menuitemradio', { name: 'Español' }));
+    await until(() => expect(trackEl(p)?.track.mode).toBe('showing'));
+    fireEvent.click(within(openMenu()).getByRole('menuitemradio', { name: 'Inglés · Externo' }));
+    await until(() => expect(trackEl(p)?.getAttribute('src')).toBe('blob:http://localhost:3000/mock-2'));
+    await until(() => expect(trackEl(p)?.track.mode).toBe('showing'));
+    fireEvent.click(within(openMenu()).getByRole('menuitemradio', { name: 'Desactivados' }));
+    await until(() => expect(trackEl(p)).toBeNull());
+
+    expect(modesAtRemoval).toEqual(['disabled', 'disabled']);
   });
 
   it('lifts auto-positioned cues above the control bar once the <track> loads (positioned cues are kept)', async () => {
@@ -73,8 +104,12 @@ describe('PlayerPage subtitles', () => {
     expect(placed.line).toBe(2);
   });
 
-  it('the stored language is the default and loads right after the decision, without delaying the video', async () => {
-    localStorage.setItem('hometv.subtitleLang.1', 'eng');
+  it('the remembered subtitle part is the default and loads right after the decision, without delaying the video', async () => {
+    server.use(
+      http.get('/api/films/:id', () =>
+        HttpResponse.json(f.filmDetail({ track_choice: f.trackChoice({ audio: null, subtitles: f.subtitleChoice({ language: 'eng', source: 'external' }) }) })),
+      ),
+    );
     let release: () => void = () => undefined;
     server.use(
       http.get('/api/media-files/:id/subtitles/:track', async () => {

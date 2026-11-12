@@ -14,11 +14,13 @@ import { act, screen } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import type { RouteObject } from 'react-router-dom';
 import { expect, vi } from 'vitest';
-import type { EpisodeDetail, PlaybackResponse } from '@/api/types';
+import type { EpisodeDetail, PlaybackResponse, TrackChoice } from '@/api/types';
 import { PlayerRoute } from '@/player/PlayerRoute';
 import { FakeHls } from './fakeHls';
+import * as f from './fixtures';
 import { until } from './flush';
 import { mediaState } from './media';
+import { withSavedChoice } from './msw/handlers';
 import { recordRequests, server } from './msw/server';
 import { renderWithProviders, type ProviderOptions } from './renderWithProviders';
 
@@ -52,7 +54,7 @@ export function answerPlayback(...answers: Answer[]): void {
   );
 }
 
-/** Serves GET /api/episodes/{id} from a map (404 for unknown ids). */
+/** Serves GET /api/episodes/{id} from a map (404 for unknown ids); a null `track_choice` answers the saved one. */
 export function serveEpisodes(episodes: EpisodeDetail[], delayFor: Record<number, Promise<void>> = {}): void {
   server.use(
     http.get('/api/episodes/:id', async ({ params }) => {
@@ -60,10 +62,27 @@ export function serveEpisodes(episodes: EpisodeDetail[], delayFor: Record<number
       await delayFor[id];
       const episode = episodes.find((e) => e.id === id);
       return episode
-        ? HttpResponse.json(episode)
+        ? HttpResponse.json(withSavedChoice(episode, 'show', episode.show_id))
         : HttpResponse.json({ error: { code: 'not_found', message: 'not found', details: {} } }, { status: 404 });
     }),
   );
+}
+
+/**
+ * Holds every `PUT /api/track-choices/{films|shows}/{id}` until `release()` (one per call, in
+ * order); the body is then saved like the default handler (`f.saveTrackChoice`) and 204 answered.
+ */
+export function gateTrackChoicePuts(): { release: () => void; pending: () => number } {
+  const gates: Array<() => void> = [];
+  server.use(
+    http.put('/api/track-choices/:segment/:id', async ({ params, request }) => {
+      const body = (await request.json()) as TrackChoice;
+      await new Promise<void>((resolve) => gates.push(resolve));
+      f.saveTrackChoice(params.segment === 'films' ? 'film' : 'show', Number(params.id), body);
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  return { release: () => gates.shift()?.(), pending: () => gates.length };
 }
 
 /** A promise with its resolve function (to hold an MSW response). */

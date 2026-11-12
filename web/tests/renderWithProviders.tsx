@@ -11,7 +11,7 @@ import type { ReactElement } from 'react';
 import { RouterProvider, createMemoryRouter, useLocation, type RouteObject } from 'react-router-dom';
 import { createQueryClient } from '@/api/queryClient';
 import { queryKeys } from '@/api/queryKeys';
-import type { Info, Profile, UnlockResponse } from '@/api/types';
+import type { Info, Me, Profile, SubtitleStyle, UnlockResponse } from '@/api/types';
 import { AppProviders } from '@/AppProviders';
 import { adminUnlock } from '@/auth/adminUnlock';
 import { historyIndex } from '@/lib/historyIndex';
@@ -32,8 +32,13 @@ export interface ProviderOptions {
    * for `profile` (or profile 1). `null`: signed out.
    */
   session?: StoredSession | null;
-  /** Seeds ['me'] (fresh for 5 min). Default f.profile(); null: not seeded (GET /api/me runs). */
-  profile?: Profile | null;
+  /**
+   * Seeds ['me'] (fresh for 5 min) as f.me(profile) (a `Me` keeps its own style). Default
+   * f.profile(); null: not seeded (GET /api/me runs).
+   */
+  profile?: Profile | Me | null;
+  /** The seeded profile's subtitle style (default: DEFAULT_SUBTITLE_STYLE). */
+  subtitleStyle?: SubtitleStyle;
   /** Seeds ['info'] (staleTime Infinity). Default f.info(); null: not seeded. */
   info?: Info | null;
   /** Pre-unlocked admin token (in memory). */
@@ -108,6 +113,9 @@ function trackMemoryIndex(router: ReturnType<typeof createMemoryRouter>, initial
   historyIndex.read = () => index;
 }
 
+/** A `Me` (profile + `subtitle_style`) rather than a bare `Profile`. */
+const isMe = (profile: Profile | Me): profile is Me => 'subtitle_style' in profile;
+
 function mount(routes: RouteObject[], options: ProviderOptions): RenderWithProvidersResult {
   const profile = options.profile === undefined ? f.profile() : options.profile;
   const session =
@@ -118,7 +126,10 @@ function mount(routes: RouteObject[], options: ProviderOptions): RenderWithProvi
   const queryClient = options.queryClient ?? createTestQueryClient();
   const info = options.info === undefined ? f.info() : options.info;
   if (info) queryClient.setQueryData(queryKeys.info(), info);
-  if (profile && session) queryClient.setQueryData(queryKeys.me(), profile);
+  if (profile && session) {
+    const style = options.subtitleStyle ?? (isMe(profile) ? profile.subtitle_style : f.subtitleStyle());
+    queryClient.setQueryData(queryKeys.me(), f.me({ ...profile, subtitle_style: style }));
+  }
   if (options.adminUnlock) adminUnlock.set(options.adminUnlock);
 
   const initialEntries = [...(options.history ?? []), options.route ?? '/'];

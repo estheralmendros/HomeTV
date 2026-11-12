@@ -1,26 +1,40 @@
-"""Profiles: /api/profiles (public list), bootstrap, session (no PIN), /api/me."""
+"""Profiles: /api/profiles (public list), bootstrap, session (no PIN), /api/me (the profile plus
+its own subtitle style) and PUT /api/me/subtitle-style."""
 
 import asyncio
+from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Response
 
-from hometv import profiles
+from hometv import profiles, track_choices
 from hometv.api.deps import CurrentProfile, Db, ReadSession, TokensDep
 from hometv.api.errors import ApiError
 from hometv.api.schemas import (
     BootstrapRequest,
     ErrorResponse,
+    Me,
     Profile,
     ProfilesResponse,
     SessionResponse,
+    SubtitleStyle,
+    SubtitleStyleRequest,
 )
 from hometv.db import models as m
+from hometv.subtitle_style import STYLE_FIELDS
 
 router = APIRouter(prefix="/api", tags=["profiles"])
 
 
 def profile_out(profile: m.Profile) -> Profile:
     return Profile.model_validate(profile, from_attributes=True)
+
+
+def me_out(profile: m.Profile) -> Me:
+    """``profile_out`` fields + the ``SubtitleStyle`` of the five ``subtitle_*`` columns."""
+    style = SubtitleStyle.model_validate(
+        {field: getattr(profile, f"subtitle_{field}") for field in STYLE_FIELDS}
+    )
+    return Me(**dict(profile_out(profile)), subtitle_style=style)
 
 
 def session_out(tokens: profiles.TokenService, profile: m.Profile) -> SessionResponse:
@@ -62,10 +76,18 @@ def create_session(profile_id: int, session: ReadSession, tokens: TokensDep) -> 
     return session_out(tokens, profile)
 
 
-@router.get(
-    "/me",
-    response_model=Profile,
-    responses={401: {"model": ErrorResponse, "description": "unauthorized"}},
-)
-def me(profile: CurrentProfile) -> Profile:
-    return profile_out(profile)
+_UNAUTHORIZED: dict[int | str, dict[str, Any]] = {
+    401: {"model": ErrorResponse, "description": "unauthorized"}
+}
+
+
+@router.get("/me", response_model=Me, responses=_UNAUTHORIZED)
+def me(profile: CurrentProfile) -> Me:
+    return me_out(profile)
+
+
+@router.put("/me/subtitle-style", status_code=204, response_class=Response, responses=_UNAUTHORIZED)
+def put_subtitle_style(body: SubtitleStyleRequest, profile: CurrentProfile, db: Db) -> Response:
+    """Every key required; the white-on-white clash is accepted (renderers draw it black)."""
+    track_choices.set_subtitle_style(db, profile.id, body)
+    return Response(status_code=204)

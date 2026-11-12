@@ -29,8 +29,13 @@ interface HomeTvApi {
     @POST("api/profiles/{id}/session")
     suspend fun createSession(@Path("id") profileId: Long): SessionResponse
 
+    /** The token's profile plus its subtitle style. */
     @GET("api/me")
-    suspend fun me(): Profile
+    suspend fun me(): Me
+
+    /** Sends every key; 204 with no body. */
+    @PUT("api/me/subtitle-style")
+    suspend fun putSubtitleStyle(@Body body: SubtitleStyle)
 
     @POST("api/admin/unlock")
     suspend fun unlock(@Body body: UnlockRequest): UnlockResponse
@@ -121,6 +126,10 @@ interface HomeTvApi {
 
     @POST("api/ratings/{segment}/{id}/dismiss-prompt")
     suspend fun dismissRatingPrompt(@Path("segment") segment: String, @Path("id") id: Long)
+
+    /** The remembered audio/subtitle choice: [segment] = `films` | `shows`; the whole choice; 204 with no body. */
+    @PUT("api/track-choices/{segment}/{id}")
+    suspend fun putTrackChoice(@Path("segment") segment: String, @Path("id") id: Long, @Body body: TrackChoice)
 
     /** The household's ratings, newest first. */
     @GET("api/activity")

@@ -1,11 +1,14 @@
 // Player chrome: back arrow + title on top; seek bar, play/pause, ∓10 s,
 // time, volume + mute, subtitle/audio menus and fullscreen at the bottom. Every control has a
-// Spanish aria-label from the catalog.
-import type { ReactNode } from 'react';
+// Spanish aria-label from the catalog. The bottom bar's measured height is the shell root's
+// `--player-controls-h` (the style panel and its sample line stay clear of it).
+import { useContext, useEffect, useState, type ReactNode } from 'react';
 import { PLAY_GLYPH } from '@/components/glyphs';
 import { formatDuration } from '@/lib/format';
+import { useElementHeight } from '@/lib/useElementHeight';
 import { S } from '@/strings.es';
 import styles from './Player.module.css';
+import { PlayerShellContext } from './PlayerRoute';
 import { SeekBar } from './SeekBar';
 import { useMediaClock } from './useMediaClock';
 
@@ -36,12 +39,27 @@ export interface ControlsProps {
   fullscreen: { available: boolean; active: boolean; onToggle: () => void };
 }
 
+/** Sets `--player-controls-h` on the shell root (a leaf: a resize re-renders only this). */
+function ControlsHeightVar({ bar }: { bar: HTMLElement | null }) {
+  const root = useContext(PlayerShellContext)?.rootEl ?? null;
+  const height = useElementHeight(bar);
+  useEffect(() => {
+    if (!root) return;
+    // No bar (error screens): the CSS default stays.
+    if (bar) root.style.setProperty('--player-controls-h', `${height}px`);
+    else root.style.removeProperty('--player-controls-h');
+  }, [root, bar, height]);
+  return null;
+}
+
 export function Controls(props: ControlsProps) {
   const { visible, title, watched, onBack, showBottom, playing, duration, fullscreen } = props;
   const clock = useMediaClock(props.video);
+  const [bottomBar, setBottomBar] = useState<HTMLDivElement | null>(null);
   const current = props.trackedPosition ? props.trackedPosition() : clock.current;
   return (
     <div className={styles.chrome} data-hidden={!visible} data-testid="player-controls">
+      <ControlsHeightVar bar={bottomBar} />
       <div className={styles.topBar}>
         <button type="button" className={styles.controlButton} aria-label={S.player.controls.back} onClick={onBack}>
           <span aria-hidden="true">←</span>
@@ -55,7 +73,7 @@ export function Controls(props: ControlsProps) {
         )}
       </div>
       {showBottom && (
-        <div className={styles.bottomBar} role="group" aria-label={S.player.controls.label}>
+        <div ref={setBottomBar} className={styles.bottomBar} role="group" aria-label={S.player.controls.label}>
           <SeekBar current={current} duration={duration} buffered={clock.buffered} onSeek={props.onSeek} />
           <div className={styles.buttons}>
             <button

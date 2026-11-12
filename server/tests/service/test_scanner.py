@@ -54,7 +54,8 @@ def _profile_id(s) -> int:
 
 
 def _list_everything(mdb) -> None:
-    """Put every film and show in profile P1's "Mi lista", rate it and dismiss its prompt."""
+    """Put every film and show in profile P1's "Mi lista", rate it, dismiss its prompt and
+    remember a track choice."""
     with mdb.write_session() as s:
         pid = _profile_id(s)
         films, shows = list(s.scalars(select(m.Film))), list(s.scalars(select(m.Show)))
@@ -64,6 +65,8 @@ def _list_everything(mdb) -> None:
         s.add_all(m.Rating(profile_id=pid, show_id=x.id, stars_x2=8) for x in shows)
         s.add_all(m.RatingDismissal(profile_id=pid, film_id=f.id) for f in films)
         s.add_all(m.RatingDismissal(profile_id=pid, show_id=x.id) for x in shows)
+        s.add_all(m.TrackChoice(profile_id=pid, film_id=f.id, audio_language="eng") for f in films)
+        s.add_all(m.TrackChoice(profile_id=pid, show_id=x.id, subtitle_mode="off") for x in shows)
 
 
 def _listed_titles(mdb) -> list[str]:
@@ -87,6 +90,15 @@ def _rated_titles(mdb) -> tuple[list[str], list[str]]:
             shows = s.scalars(select(m.Show.title).join(model, model.show_id == m.Show.id))
             out.append(sorted([*films, *shows]))
     return out[0], out[1]
+
+
+def _chosen_titles(mdb) -> list[str]:
+    """Titles with a track choice row (hidden or not), sorted."""
+    tc = m.TrackChoice
+    with mdb.read_session() as s:
+        films = s.scalars(select(m.Film.title).join(tc, tc.film_id == m.Film.id))
+        shows = s.scalars(select(m.Show.title).join(tc, tc.show_id == m.Show.id))
+        return sorted([*films, *shows])
 
 
 # --- First scan / unchanged / changed --------------------------------------------------------
@@ -278,6 +290,7 @@ async def test_grace_zero_purges_file_and_orphans(
     assert _count(mdb, m.Episode) == 1
     assert _listed_titles(mdb) == ["Alien", "Fargo"]  # purged titles' entries cascade
     assert _rated_titles(mdb) == (["Alien", "Fargo"], ["Alien", "Fargo"])  # ratings too
+    assert _chosen_titles(mdb) == ["Alien", "Fargo"]  # and track choices
 
 
 async def test_missing_file_is_purged_only_after_grace_period(
@@ -292,6 +305,7 @@ async def test_missing_file_is_purged_only_after_grace_period(
     await _scan(mdb, settings, stub_probe)
     assert _listed_titles(mdb) == ["Alien", "Dune"]  # inside the grace period: kept
     assert _rated_titles(mdb) == (["Alien", "Dune"], ["Alien", "Dune"])
+    assert _chosen_titles(mdb) == ["Alien", "Dune"]
     row = _file(mdb, a)
     with mdb.write_session() as s:
         s.get(m.MediaFile, row.id).missing_since = m.utcnow() - timedelta(days=8)
@@ -303,6 +317,7 @@ async def test_missing_file_is_purged_only_after_grace_period(
     assert [f.title for f in _all(mdb, m.Film)] == ["Alien"]
     assert _listed_titles(mdb) == ["Alien"]
     assert _rated_titles(mdb) == (["Alien"], ["Alien"])
+    assert _chosen_titles(mdb) == ["Alien"]
 
 
 async def test_relinking_every_file_of_a_title_drops_its_watchlist_entries(
@@ -321,6 +336,7 @@ async def test_relinking_every_file_of_a_title_drops_its_watchlist_entries(
         s.add(m.WatchlistEntry(profile_id=pid, film_id=dune.id))
         s.add(m.Rating(profile_id=pid, film_id=dune.id, stars_x2=9))
         s.add(m.RatingDismissal(profile_id=pid, film_id=dune.id))
+        s.add(m.TrackChoice(profile_id=pid, film_id=dune.id, audio_language="eng"))
         s.get(m.MediaFile, _file(mdb, a).id).film_id = alien.id  # what every relink ends with
         dune_id = dune.id
 
@@ -330,6 +346,7 @@ async def test_relinking_every_file_of_a_title_drops_its_watchlist_entries(
         assert s.get(m.Film, dune_id) is None
     assert _all(mdb, m.WatchlistEntry) == []
     assert _all(mdb, m.Rating) == [] and _all(mdb, m.RatingDismissal) == []
+    assert _all(mdb, m.TrackChoice) == []
 
 
 # --- Root safety ------------------------------------------------------------------------------
