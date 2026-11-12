@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/auth/AuthProvider';
 import { useCurrentProfile } from '@/auth/useCurrentProfile';
-import { NavSearch } from '@/features/search/NavSearch';
+import { MagnifierIcon, NavSearch } from '@/features/search/NavSearch';
 import { COMPACT_NAV_QUERY, SEARCH_ICON_QUERY, useMediaQuery } from '@/lib/useMediaQuery';
 import { S } from '@/strings.es';
 import { ProfileAvatar } from './Avatar';
@@ -25,9 +25,13 @@ const SECTIONS = [
 export function NavBar() {
   const compact = useMediaQuery(COMPACT_NAV_QUERY);
   const searchIcon = useMediaQuery(SEARCH_ICON_QUERY);
+  // Switching screen (a section, the logo or a profile-menu entry) empties the search field. Below
+  // 960 px there is no field here: the /search page's own field unmounts when the viewer leaves it.
+  const [searchReset, setSearchReset] = useState(0);
+  const resetSearch = () => setSearchReset((n) => n + 1);
   return (
     <header className={styles.bar}>
-      <Link to="/" className={styles.logo} aria-label={S.nav.logo}>
+      <Link to="/" className={styles.logo} aria-label={S.nav.logo} onClick={resetSearch}>
         <span className={styles.logoMark} aria-hidden="true">
           {PLAY_GLYPH}
         </span>
@@ -38,7 +42,7 @@ export function NavBar() {
           <ul className={styles.links}>
             {SECTIONS.map((section) => (
               <li key={section.to}>
-                <NavLink to={section.to} end={section.end} className={styles.link}>
+                <NavLink to={section.to} end={section.end} className={styles.link} onClick={resetSearch}>
                   {section.label}
                 </NavLink>
               </li>
@@ -47,8 +51,8 @@ export function NavBar() {
         </nav>
       )}
       <span className={styles.spacer} />
-      {searchIcon ? <SearchIconLink /> : <NavSearch />}
-      <AvatarMenu />
+      {searchIcon ? <SearchIconLink /> : <NavSearch resetToken={searchReset} />}
+      <AvatarMenu onNavigate={resetSearch} />
     </header>
   );
 }
@@ -57,15 +61,12 @@ export function NavBar() {
 function SearchIconLink() {
   return (
     <NavLink to="/search" className={styles.searchIcon} aria-label={S.nav.search}>
-      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false">
-        <circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" strokeWidth="2" />
-        <path d="M15.5 15.5L21 21" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      </svg>
+      <MagnifierIcon />
     </NavLink>
   );
 }
 
-function AvatarMenu() {
+function AvatarMenu({ onNavigate }: { onNavigate: () => void }) {
   const profile = useCurrentProfile();
   const { signOut } = useAuth();
   const navigate = useNavigate();
@@ -92,6 +93,7 @@ function AvatarMenu() {
 
   const go = (to: string) => {
     setOpen(false);
+    onNavigate();
     navigate(to);
   };
 

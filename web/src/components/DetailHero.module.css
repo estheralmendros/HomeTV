@@ -60,9 +60,14 @@
   font-style: italic;
 }
 
+/* Ends at about 3/4 of the window (the poster and the gap come before it); justified, with Spanish
+   hyphenation (html lang="es") to keep the word gaps small. Never narrower than 45ch on mid-size
+   windows, where 3/4 of the window leaves little room next to the poster. */
 .overview {
   margin: 0;
-  max-width: 70ch;
+  max-width: max(45ch, calc(75vw - var(--page-gutter) - 200px - var(--space-5)));
+  text-align: justify;
+  hyphens: auto;
 }
 
 .actions {
@@ -80,5 +85,9 @@
 
   .poster {
     width: 120px;
+  }
+
+  .overview {
+    max-width: none;
   }
 }
