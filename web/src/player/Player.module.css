@@ -1,6 +1,9 @@
 /* Player shell, overlays and controls. Full viewport, black, no AppShell. */
 
 .root {
+  /* The bottom control bar's height (seek bar + buttons): the style panel stays clear of it.
+     Controls sets the measured value on this element; 112px only until the first measure. */
+  --player-controls-h: 112px;
   position: fixed;
   inset: 0;
   background: #000;
@@ -232,10 +235,122 @@
   background: rgb(255 255 255 / 0.1);
 }
 
+.menuItemText {
+  flex: 1;
+}
+
+.menuSeparator {
+  width: 100%;
+  margin: var(--space-2) 0;
+  border: 0;
+  border-top: 1px solid var(--color-border);
+}
+
 .menuNote {
   margin: var(--space-2);
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
+}
+
+/* --- "Formato de los subtítulos" panel ------------------------------------------------------- */
+
+.styleLayer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* ≥ 600 px: top right, clear of the bottom-centred cue area. */
+.stylePanel {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 360px;
+  max-height: calc(100% - var(--player-controls-h) - 32px);
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: rgb(21 25 34 / 0.96);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  pointer-events: auto;
+}
+
+.styleTitle {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+}
+
+.styleRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.styleRowTitle {
+  margin: 0;
+  font-weight: 600;
+}
+
+.styleOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.styleOption {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 40px;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+}
+
+.styleOption[aria-checked='true'] {
+  border-color: var(--color-accent);
+  background: rgb(255 255 255 / 0.12);
+  font-weight: 700;
+}
+
+.styleOption[aria-disabled='true'],
+.styleOption:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.styleSwatch {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid rgb(255 255 255 / 0.5);
+}
+
+.styleActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* The app-drawn sample line (font size: 5 % of the video height × the size factor). */
+.styleSample {
+  position: absolute;
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 0 var(--space-4);
+  text-align: center;
+  line-height: 1.2;
+  pointer-events: none;
 }
 
 /* --- Overlays, prompts and screens ---------------------------------------------------------- */
@@ -425,6 +540,21 @@
   background: transparent;
   color: var(--color-accent-strong);
   font-weight: 700;
+}
+
+/* < 600 px: a short full-width sheet directly above the control bar (the sample is the preview). */
+@media (max-width: 599px) {
+  .styleSheet {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: var(--player-controls-h);
+    width: auto;
+    max-height: 45%;
+    overflow-y: auto;
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+  }
 }
 
 @media (max-width: 600px) {

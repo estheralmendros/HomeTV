@@ -42,6 +42,21 @@ async function playingAt400(p: PlayerHarness, mode: 'hls' | 'direct') {
   p.at(400);
 }
 
+describe('audio pick saves the choice', () => {
+  it('a switch to Español sends one PUT /api/track-choices/films/12 with the picked audio part', async () => {
+    answerPlayback(hls(1), hls(2, 2));
+    const p = renderPlayer('/watch/film/12');
+    await playingAt400(p, 'hls');
+    chooseSpanish();
+    await until(() => expect(p.rec.find('PUT', '/api/track-choices/films/12')).toHaveLength(1));
+    await p.rec.settled();
+    expect(p.rec.find('PUT', '/api/track-choices/films/12')[0]?.body).toEqual({
+      audio: { language: 'spa', title: null, channels: 2 },
+      subtitles: null,
+    });
+  });
+});
+
 describe('audio switch in HLS mode', () => {
   it('POSTs audio_stream_index, start = the saved position and previous_session_id; the old session gets no keep-alive or DELETE afterwards', async () => {
     useFakePlayerTimers();

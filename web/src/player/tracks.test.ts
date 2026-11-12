@@ -6,11 +6,8 @@ import {
   SUBTITLE_CUE_LINE,
   defaultSubtitle,
   hasImageTracks,
-  readSubtitleLang,
   subtitleLabel,
-  SUBTITLES_OFF,
   textTracks,
-  writeSubtitleLang,
 } from './tracks';
 
 const spa = f.subtitleTrack({ id: 'emb-3', language: 'spa' });
@@ -27,27 +24,24 @@ describe('textTracks / hasImageTracks', () => {
   });
 });
 
-describe('defaultSubtitle (stored language → default flag → forced matching audio → off)', () => {
-  it('uses the stored language when a track has it', () => {
-    expect(defaultSubtitle([engDefault, spa], { storedLang: 'spa', audioLanguage: 'eng' })).toBe(spa);
-  });
-
-  it('stored "off" means none, even with a default track', () => {
-    expect(defaultSubtitle([engDefault, spa], { storedLang: SUBTITLES_OFF, audioLanguage: 'eng' })).toBeNull();
-  });
-
-  it('a stored language without a track falls through to the default flag', () => {
-    expect(defaultSubtitle([spa, engDefault], { storedLang: 'fre', audioLanguage: null })).toBe(engDefault);
+describe('defaultSubtitle (default flag → forced matching audio → off)', () => {
+  it('the default-flagged text track first', () => {
+    expect(defaultSubtitle([spa, engDefault], { audioLanguage: 'spa' })).toBe(engDefault);
   });
 
   it('then a forced track in the audio language', () => {
-    expect(defaultSubtitle([spa, engForced], { storedLang: null, audioLanguage: 'eng' })).toBe(engForced);
-    expect(defaultSubtitle([spa, engForced], { storedLang: null, audioLanguage: 'spa' })).toBeNull();
+    expect(defaultSubtitle([spa, engForced], { audioLanguage: 'eng' })).toBe(engForced);
+    expect(defaultSubtitle([spa, engForced], { audioLanguage: 'spa' })).toBeNull();
   });
 
   it('else none; image tracks never count', () => {
-    expect(defaultSubtitle([spa, eng], { storedLang: null, audioLanguage: 'eng' })).toBeNull();
-    expect(defaultSubtitle([pgs], { storedLang: 'spa', audioLanguage: 'spa' })).toBeNull();
+    expect(defaultSubtitle([spa, eng], { audioLanguage: 'eng' })).toBeNull();
+    expect(defaultSubtitle([pgs], { audioLanguage: 'spa' })).toBeNull();
+  });
+
+  it('the stored-language step is gone: hometv.subtitleLang is never read', () => {
+    window.localStorage.setItem('hometv.subtitleLang.1', 'spa');
+    expect(defaultSubtitle([engDefault, spa], { audioLanguage: 'eng' })).toBe(engDefault);
   });
 });
 
@@ -74,24 +68,28 @@ describe('labels', () => {
   });
 });
 
-describe('stored subtitle choice (hometv.subtitleLang.<pid>)', () => {
-  it('round-trips per profile', () => {
-    expect(readSubtitleLang(1)).toBeNull();
-    writeSubtitleLang(1, 'spa');
-    writeSubtitleLang(2, SUBTITLES_OFF);
-    expect(readSubtitleLang(1)).toBe('spa');
-    expect(readSubtitleLang(2)).toBe('off');
-    expect(window.localStorage.getItem('hometv.subtitleLang.1')).toBe('spa');
-  });
-});
-
 describe('liftCues', () => {
-  it('moves only auto-positioned, line-snapped cues to SUBTITLE_CUE_LINE', () => {
-    const auto = { line: 'auto' as const, snapToLines: true };
-    const placed = { line: 1, snapToLines: true };
-    const percent = { line: 'auto' as const, snapToLines: false };
-    liftCues([auto, placed, percent]);
-    expect([auto.line, placed.line, percent.line]).toEqual([SUBTITLE_CUE_LINE, 1, 'auto']);
-    expect(() => liftCues(null)).not.toThrow();
+  it('moves only auto-positioned, line-snapped cues; file-positioned cues are never touched', () => {
+    const auto = { line: 'auto' as number | 'auto', snapToLines: true };
+    const placed = { line: 1 as number | 'auto', snapToLines: true };
+    const percent = { line: 'auto' as number | 'auto', snapToLines: false };
+    const lifted = new WeakSet<object>();
+    liftCues([auto, placed, percent], SUBTITLE_CUE_LINE, lifted);
+    expect([auto.line, placed.line, percent.line]).toEqual([-3, 1, 'auto']);
+    expect(() => liftCues(null, -3, lifted)).not.toThrow();
+  });
+
+  it('re-lifts the cues it lifted when the line changes (-4, then -5); a numeric cue stays', () => {
+    const auto = { line: 'auto' as number | 'auto', snapToLines: true };
+    const placed = { line: -2 as number | 'auto', snapToLines: true };
+    const lifted = new WeakSet<object>();
+    liftCues([auto, placed], -4, lifted);
+    expect([auto.line, placed.line]).toEqual([-4, -2]);
+    liftCues([auto, placed], -5, lifted);
+    expect([auto.line, placed.line]).toEqual([-5, -2]);
+  });
+
+  it('SUBTITLE_CUE_LINE is the "Baja" line (-3)', () => {
+    expect(SUBTITLE_CUE_LINE).toBe(-3);
   });
 });

@@ -24,6 +24,7 @@ from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from hometv.api.errors import ApiError
 from hometv.api.schemas import (
+    AudioChoice,
     AudioTrack,
     CastMember,
     EpisodeDetail,
@@ -48,7 +49,9 @@ from hometv.api.schemas import (
     ShowDetail,
     ShowSeason,
     ShowSummary,
+    SubtitleChoice,
     SubtitleTrack,
+    TrackChoice,
     VideoInfo,
 )
 from hometv.db import models as m
@@ -449,8 +452,13 @@ def home_episodes(
     session: Session, profile_id: int, episodes: Sequence[m.Episode]
 ) -> list[HomeEpisode]:
     files = episode_media_files(session, [e.id for e in episodes])
+    choices = show_track_choices(session, profile_id, [e.show_id for e in episodes])
     return [
-        HomeEpisode(**summary.model_dump(), media_files=files.get(summary.id, []))
+        HomeEpisode(
+            **summary.model_dump(),
+            media_files=files.get(summary.id, []),
+            track_choice=choices.get(summary.show_id),
+        )
         for summary in episode_summaries(session, profile_id, episodes)
     ]
 
@@ -773,6 +781,59 @@ def in_watchlist(session: Session, profile_id: int, kind: WatchlistKind, item_id
     )
 
 
+# --- Track choices (read side; ``track_choices`` holds the writes and imports this module) -----
+
+
+def choice_out(row: m.TrackChoice) -> TrackChoice:
+    """Pure: a ``track_choice`` row -> the API shape (the inverse of
+    ``track_choices.choice_columns``)."""
+    audio = None
+    if row.audio_language is not None:
+        audio = AudioChoice(
+            language=row.audio_language, title=row.audio_title, channels=row.audio_channels
+        )
+    subtitles = None
+    if row.subtitle_mode == "off":
+        subtitles = SubtitleChoice(mode="off")
+    elif row.subtitle_mode == "track":
+        subtitles = SubtitleChoice.model_validate(
+            {
+                "mode": "track",
+                "language": row.subtitle_language,
+                "title": row.subtitle_title,
+                "forced": bool(row.subtitle_forced),
+                "hearing_impaired": bool(row.subtitle_hearing_impaired),
+                "source": row.subtitle_source,
+                "kind": row.subtitle_kind,
+            }
+        )
+    return TrackChoice(audio=audio, subtitles=subtitles)
+
+
+def track_choice(
+    session: Session, profile_id: int, kind: ItemKind, item_id: int
+) -> TrackChoice | None:
+    """The profile's remembered choice for a film or show: one SELECT on the unique index."""
+    tc = m.TrackChoice
+    column = tc.film_id if kind == "film" else tc.show_id
+    row = session.scalar(select(tc).where(column == item_id, tc.profile_id == profile_id))
+    return choice_out(row) if row is not None else None
+
+
+def show_track_choices(
+    session: Session, profile_id: int, show_ids: Sequence[int]
+) -> dict[int, TrackChoice]:
+    """Batched ``track_choice`` for many shows (one SELECT, none for no show): show id -> choice;
+    a show without a row is absent."""
+    if not show_ids:
+        return {}
+    tc = m.TrackChoice
+    rows = session.scalars(
+        select(tc).where(tc.show_id.in_(sorted(set(show_ids))), tc.profile_id == profile_id)
+    )
+    return {row.show_id: choice_out(row) for row in rows if row.show_id is not None}
+
+
 def film_detail(session: Session, profile_id: int, film_id: int, cast_limit: int) -> FilmDetail:
     film = session.scalar(select(m.Film).where(m.Film.id == film_id, film_has_present_file()))
     if film is None:
@@ -802,6 +863,7 @@ def film_detail(session: Session, profile_id: int, film_id: int, cast_limit: int
         ratings=rated.others,
         household_average=rated.average,
         added_at=film.added_at,
+        track_choice=track_choice(session, profile_id, "film", film.id),
     )
 
 
@@ -941,6 +1003,7 @@ def episode_detail(session: Session, profile_id: int, episode_id: int) -> Episod
         media_files=episode_media_files(session, [episode.id]).get(episode.id, []),
         previous_episode_id=order[index - 1] if index > 0 else None,
         next_episode_id=order[index + 1] if index + 1 < len(order) else None,
+        track_choice=track_choice(session, profile_id, "show", episode.show_id),
     )
 
 

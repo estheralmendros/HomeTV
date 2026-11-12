@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,6 +34,10 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.findRootCoordinates
+import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -52,6 +57,10 @@ import com.hometv.tv.ui.components.requestFocusWhenReady
 import com.hometv.tv.ui.text.resolve
 import com.hometv.tv.ui.theme.HomeTvColors
 import com.hometv.tv.ui.theme.HomeTvFocus
+import kotlin.math.roundToInt
+
+/** The room between the overlay's bottom block and the subtitles above it. */
+private val CLEARANCE_GAP = 16.dp
 
 /**
  * The custom Compose overlay: title/subtitle at the top left; progress bar (elapsed, total,
@@ -60,7 +69,7 @@ import com.hometv.tv.ui.theme.HomeTvFocus
  * with [Cancelar] at the top right. [OverlayMode.PROGRESS] shows the progress bar only.
  */
 @Composable
-fun PlayerOverlay(state: PlayerUiState, vm: PlayerViewModel) {
+fun PlayerOverlay(state: PlayerUiState, vm: PlayerViewModel, onClearance: (Float) -> Unit = {}) {
     val requesters = rememberFocusRequesters<String>()
     var tracksWereOpen by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxSize()) {
@@ -88,7 +97,16 @@ fun PlayerOverlay(state: PlayerUiState, vm: PlayerViewModel) {
             Text(stringResource(R.string.loading), Modifier.align(Alignment.Center).testTag("player_spinner"), color = HomeTvColors.Muted)
         }
         if (state.overlay != OverlayMode.HIDDEN) {
-            Column(OverlayPadding.align(Alignment.BottomCenter).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            // FR-2.5: the Exo subtitles sit above the bottom block while it shows (back to their position once it hides).
+            val gap = with(LocalDensity.current) { CLEARANCE_GAP.toPx() }
+            DisposableEffect(Unit) { onDispose { onClearance(0f) } }
+            Column(
+                OverlayPadding.align(Alignment.BottomCenter).fillMaxWidth().onPlaced { c ->
+                    val height = c.findRootCoordinates().size.height.toFloat()
+                    if (height > 0f) onClearance(((height - c.positionInRoot().y + gap) / height * 100f).roundToInt() / 100f)
+                },
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
                 ProgressBar(state, focusable = state.overlay == OverlayMode.FULL, vm = vm)
                 if (state.overlay == OverlayMode.FULL) {
                     Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -123,7 +141,8 @@ fun PlayerOverlay(state: PlayerUiState, vm: PlayerViewModel) {
         }
     }
     LaunchedEffect(state.focusPlayPause, state.overlay == OverlayMode.FULL) {
-        if (state.overlay == OverlayMode.FULL) requesters["play"].requestFocusWhenReady()
+        // Back from the track/style dialogs: focus goes to "Audio y subtítulos" (the effect below), not to play/pause.
+        if (state.overlay == OverlayMode.FULL && !tracksWereOpen) requesters["play"].requestFocusWhenReady()
     }
     // A closed track dialog returns focus to its opener.
     LaunchedEffect(state.dialog == null) {

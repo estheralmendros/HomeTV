@@ -1,41 +1,70 @@
 // Subtitle selection and loading for one PlayerPage mount:
 // - one SubtitleLoader per mount (blob URLs cached by `${fileId}:${track.id}`, revoked when the
 //   file changes and on unmount);
-// - the default track (stored language → default flag → forced in the audio language → off) is
-//   chosen at the first decision of each file and loads in parallel with the video;
+// - at the first decision of each file the remembered choice is matched (`matchSubtitle`: the
+//   `getChoice()` answer at that moment, today's default rule without a subtitle part) and loads in
+//   parallel with the video; the same file keeps its selection on later decisions;
 // - the selected, loaded track is rendered as a blob-URL <track> portaled into the shell's
 //   <video> and set to `showing`; pending tracks show "Preparando…"; failures toast and revert
-//   to Off; a choice is saved to `hometv.subtitleLang.<pid>`.
-import { useCallback, useEffect, useRef, useState } from 'react';
+//   to Off (automatic reverts never save);
+// - auto cues are lifted to the line of the effective "Posición" (the panel draft's, else the
+//   saved style's), re-lifted live when it changes; the hook subscribes to that string only;
+// - a menu pick (incl. "Desactivados") calls `onPick` with the built subtitle part.
+import { useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
-import type { AudioTrack, SubtitleTrack } from '@/api/types';
+import type { AudioTrack, SubtitleChoice, SubtitleTrack, TrackChoice } from '@/api/types';
+import { useMeQuery } from '@/auth/useCurrentProfile';
 import { toBcp47 } from '@/lib/languages';
 import { S } from '@/strings.es';
+import { PlayerShellContext } from './PlayerRoute';
 import { SubtitleLoader } from './subtitleLoader';
-import { SUBTITLES_OFF, defaultSubtitle, liftCues, readSubtitleLang, subtitleLabel, writeSubtitleLang } from './tracks';
+import { cueLine, subtitleStyleOf } from './subtitleStyle';
+import { matchSubtitle, subtitleChoiceOf } from './trackChoice';
+import { SUBTITLES_OFF, liftCues, subtitleLabel } from './tracks';
 
 export interface PlayerSubtitlesInput {
   video: HTMLVideoElement;
-  profileId: number | null;
+  /** The effective track choice for a new file's first decision (called only when it happens). */
+  getChoice: () => TrackChoice | null;
   fileId: number | null;
   /** The playback response's tracks (URLs come from here). */
   tracks: readonly SubtitleTrack[];
   /** Incremented by every decision (machine `attachSeq`). */
   attachSeq: number;
-  /** The selected audio track (forced-subtitle default). */
+  /** The audio track the decision answered with (else the file default). */
   audioTrack: AudioTrack | null;
   notify: (message: string) => void;
+  /** A manual pick in the menu (never the automatic reverts). */
+  onPick?: (part: SubtitleChoice) => void;
 }
 
-export function usePlayerSubtitles({ video, profileId, fileId, tracks, attachSeq, audioTrack, notify }: PlayerSubtitlesInput) {
+const noSubscription = () => () => undefined;
+
+export function usePlayerSubtitles({ video, getChoice, fileId, tracks, attachSeq, audioTrack, notify, onPick }: PlayerSubtitlesInput) {
   const loaderRef = useRef<SubtitleLoader | null>(null);
   const [selected, setSelected] = useState<string>(SUBTITLES_OFF);
   const [loaded, setLoaded] = useState<{ trackId: string; url: string } | null>(null);
   const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
+  /** The shown TextTrack (the style panel's sample line follows its active cues). */
+  const [shownTrack, setShownTrack] = useState<TextTrack | null>(null);
   const defaultFor = useRef<number | null>(null);
   const trackRef = useRef<HTMLTrackElement | null>(null);
-  const latest = useRef({ notify, tracks, audioTrack, profileId });
-  latest.current = { notify, tracks, audioTrack, profileId };
+  // React clears a ref before it takes the node out of the DOM: our <track> is disabled first (Off,
+  // another track, another file, unmount). Firefox keeps painting the active cue of a showing <track>
+  // removed from the <video>, which froze the last line on screen after "Desactivados".
+  const setTrackEl = useCallback((el: HTMLTrackElement | null) => {
+    const leaving = trackRef.current;
+    if (!el && leaving) leaving.track.mode = 'disabled';
+    trackRef.current = el;
+  }, []);
+  const latest = useRef({ notify, tracks, audioTrack, getChoice, onPick });
+  latest.current = { notify, tracks, audioTrack, getChoice, onPick };
+
+  // The effective position only: a size/colour/edge step of the panel never re-renders the page.
+  const draft = useContext(PlayerShellContext)?.subtitleStyleDraft;
+  const savedPosition = subtitleStyleOf(useMeQuery().data).position;
+  const position = useSyncExternalStore(draft?.subscribe ?? noSubscription, () => draft?.get()?.position ?? savedPosition);
+  const line = cueLine(position);
 
   // One loader per mount (created in an effect so StrictMode's simulated unmount can't kill it).
   useEffect(() => {
@@ -52,14 +81,19 @@ export function usePlayerSubtitles({ video, profileId, fileId, tracks, attachSeq
     if (fileId != null) loaderRef.current?.setFile(fileId);
   }, [fileId]);
 
-  // The default track, at the first decision of each file.
+  // The remembered (else default) track, at the first decision of each file. A PLAY_FILE sets the
+  // new file id before its decision: wait for the next attach (the previous file's tracks are gone).
+  const awaitingDecision = useRef<{ fileId: number; seq: number } | null>(null);
   useEffect(() => {
     if (attachSeq === 0 || fileId == null || defaultFor.current === fileId) return;
+    if (defaultFor.current !== null) {
+      if (awaitingDecision.current?.fileId !== fileId) awaitingDecision.current = { fileId, seq: attachSeq };
+      if (attachSeq === awaitingDecision.current.seq) return;
+    }
     defaultFor.current = fileId;
-    const { profileId: pid, tracks: current, audioTrack: audio } = latest.current;
-    const storedLang = pid == null ? null : readSubtitleLang(pid);
-    const track = defaultSubtitle(current, { storedLang, audioLanguage: audio?.language ?? null });
-    setSelected(track?.id ?? SUBTITLES_OFF);
+    const { getChoice: choiceNow, tracks: current, audioTrack: audio } = latest.current;
+    const effective = choiceNow();
+    setSelected(matchSubtitle(effective?.subtitles ?? null, current, audio?.language ?? null) ?? SUBTITLES_OFF);
   }, [attachSeq, fileId]);
 
   const track = selected === SUBTITLES_OFF ? null : (tracks.find((t) => t.id === selected && t.kind === 'text') ?? null);
@@ -114,6 +148,7 @@ export function usePlayerSubtitles({ video, profileId, fileId, tracks, attachSeq
   useEffect(() => {
     const ours = blobUrl ? trackRef.current?.track : undefined;
     if (ours) ours.mode = 'showing';
+    setShownTrack(ours ?? null);
     const all = video.textTracks as TextTrackList | undefined;
     if (all) {
       for (let i = 0; i < all.length; i += 1) {
@@ -123,41 +158,45 @@ export function usePlayerSubtitles({ video, profileId, fileId, tracks, attachSeq
     }
   }, [blobUrl, video]);
 
-  // Loaded cues are lifted above the control bar; a malformed VTT toasts and reverts to Off.
+  // A malformed VTT toasts and reverts to Off.
   useEffect(() => {
     const el = trackRef.current;
     if (!blobUrl || !el) return;
-    const onLoad = () => liftCues(el.track.cues as ArrayLike<VTTCue> | null);
     const onError = () => {
       latest.current.notify(S.player.subtitles.loadFailed);
       setSelected(SUBTITLES_OFF);
     };
-    onLoad();
-    el.addEventListener('load', onLoad);
     el.addEventListener('error', onError);
-    return () => {
-      el.removeEventListener('load', onLoad);
-      el.removeEventListener('error', onError);
-    };
+    return () => el.removeEventListener('error', onError);
   }, [blobUrl]);
 
-  const choose = useCallback(
-    (trackId: string) => {
-      setSelected(trackId);
-      const { profileId: pid, tracks: current } = latest.current;
-      if (pid == null) return;
-      const chosen = current.find((t) => t.id === trackId);
-      writeSubtitleLang(pid, trackId === SUBTITLES_OFF || !chosen ? SUBTITLES_OFF : chosen.language);
-    },
-    [],
-  );
+  // Loaded cues are lifted above the control bar to the position's line (one WeakSet per loaded
+  // track: only the cues this hook moved are moved again when "Posición" changes).
+  const lifted = useRef<{ url: string; cues: WeakSet<object> } | null>(null);
+  useEffect(() => {
+    const el = trackRef.current;
+    if (!blobUrl || !el) return;
+    if (lifted.current?.url !== blobUrl) lifted.current = { url: blobUrl, cues: new WeakSet() };
+    const set = lifted.current.cues;
+    const onLoad = () => liftCues(el.track.cues as ArrayLike<VTTCue> | null, line, set);
+    onLoad();
+    el.addEventListener('load', onLoad);
+    return () => el.removeEventListener('load', onLoad);
+  }, [blobUrl, line]);
+
+  const choose = useCallback((trackId: string) => {
+    setSelected(trackId);
+    const { tracks: current, onPick: pick } = latest.current;
+    const chosen = trackId === SUBTITLES_OFF ? null : (current.find((t) => t.id === trackId) ?? null);
+    pick?.(subtitleChoiceOf(chosen));
+  }, []);
 
   const trackElement =
     blobUrl && track
       ? createPortal(
           <track
             key={blobUrl}
-            ref={trackRef}
+            ref={setTrackEl}
             kind="subtitles"
             src={blobUrl}
             srcLang={toBcp47(track.language) ?? undefined}
@@ -167,5 +206,5 @@ export function usePlayerSubtitles({ video, profileId, fileId, tracks, attachSeq
         )
       : null;
 
-  return { selected, pending, choose, trackElement };
+  return { selected, pending, choose, trackElement, shownTrack };
 }

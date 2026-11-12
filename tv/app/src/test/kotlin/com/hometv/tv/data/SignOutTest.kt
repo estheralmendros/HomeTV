@@ -1,6 +1,9 @@
 package com.hometv.tv.data
 
+import com.hometv.tv.core.api.AudioChoice
 import com.hometv.tv.core.api.RatingPrompt
+import com.hometv.tv.core.api.TrackChoice
+import com.hometv.tv.core.data.RatingKind
 import com.hometv.tv.core.data.BrowseSort
 import com.hometv.tv.core.data.Session
 import com.hometv.tv.core.data.SessionStore
@@ -24,6 +27,7 @@ import org.junit.jupiter.api.Test
 /** "Salir": everything a viewer leaves behind on the device is forgotten; the server URL stays. */
 class SignOutTest {
     private val dune = RatingPrompt("film", 12, "Dune")
+    private val picked = TrackChoice(AudioChoice("eng"), null)
 
     /** Delegates to the real store; [beforeSignOut] runs first (record, gate or fail). */
     private class RecordingStore(private val inner: SessionStore, private val beforeSignOut: suspend () -> Unit) : SessionStore {
@@ -40,7 +44,7 @@ class SignOutTest {
 
     private inner class Fixture(scope: TestScope, beforeSignOut: suspend Fixture.() -> Unit = {}) {
         val repos = TestRepos(appScope = scope.backgroundScope)
-        val account = AccountState(repos.profiles)
+        val account = AccountState(repos.profiles, repos.store, scope.backgroundScope)
         val browseSorts = BrowseSortMemory().apply {
             set(Library.FILMS, BrowseSort.YEAR_DESC)
             set(Library.SHOWS, BrowseSort.ADDED_DESC)
@@ -48,11 +52,12 @@ class SignOutTest {
         val watchlistMemory = WatchlistMemory().apply { sort = WatchlistSort.TITLE }
         val logged = mutableListOf<Throwable>()
         val store = RecordingStore(repos.store) { beforeSignOut() }
-        val signOut = SignOut(store, repos.ratingPrompts, account, browseSorts, watchlistMemory, log = { logged += it })
+        val signOut = SignOut(store, repos.ratingPrompts, repos.trackChoiceMemory, account, browseSorts, watchlistMemory, log = { logged += it })
 
         suspend fun signedIn() = apply {
             account.refresh()
             repos.ratingPrompts.offer(5, dune)
+            repos.trackChoiceMemory.put(5, RatingKind.SHOW, 7, picked)
         }
     }
 
@@ -65,6 +70,7 @@ class SignOutTest {
 
         assertEquals(Session(serverUrl = TestRepos.SERVER), f.repos.store.session.value)
         assertNull(f.repos.ratingPrompts.pending.value)
+        assertNull(f.repos.trackChoiceMemory.get(5, RatingKind.SHOW, 7))
         assertNull(f.account.profile.value)
         assertNull(f.account.info.value)
         assertEquals(BrowseSort.TITLE_ASC, f.browseSorts.get(Library.FILMS))
@@ -77,12 +83,12 @@ class SignOutTest {
     fun `prompts, account and memories are cleared before the store signs out`() = runTest {
         val seen = mutableListOf<String>()
         val f = Fixture(this) {
-            seen += "pending=${repos.ratingPrompts.pending.value} profile=${account.profile.value} films=${browseSorts.get(Library.FILMS)} list=${watchlistMemory.sort}"
+            seen += "pending=${repos.ratingPrompts.pending.value} choice=${repos.trackChoiceMemory.get(5, RatingKind.SHOW, 7)} profile=${account.profile.value} films=${browseSorts.get(Library.FILMS)} list=${watchlistMemory.sort}"
         }.signedIn()
 
         f.signOut()
 
-        assertEquals(listOf("pending=null profile=null films=TITLE_ASC list=ADDED"), seen)
+        assertEquals(listOf("pending=null choice=null profile=null films=TITLE_ASC list=ADDED"), seen)
     }
 
     @Test

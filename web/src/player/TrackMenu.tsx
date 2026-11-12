@@ -1,6 +1,6 @@
 // Subtitle and audio menus. The open state lives in PlayerPage, so the
 // keyboard shortcuts know when a menu is open (Esc closes it, other keys are ignored).
-import { useId, type ReactNode } from 'react';
+import { useId, type ReactNode, type RefObject } from 'react';
 import type { AudioTrack, SubtitleTrack } from '@/api/types';
 import { Spinner } from '@/components/Spinner';
 import { S } from '@/strings.es';
@@ -13,14 +13,17 @@ interface MenuShellProps {
   open: boolean;
   disabled?: boolean;
   onToggle: () => void;
+  /** The trigger button (PlayerPage focuses "Subtítulos" when the style panel closes). */
+  buttonRef?: RefObject<HTMLButtonElement>;
   children: ReactNode;
 }
 
-function MenuShell({ label, icon, open, disabled = false, onToggle, children }: MenuShellProps) {
+function MenuShell({ label, icon, open, disabled = false, onToggle, buttonRef, children }: MenuShellProps) {
   const menuId = useId();
   return (
     <div className={styles.menuWrap}>
       <button
+        ref={buttonRef}
         type="button"
         className={styles.controlButton}
         aria-label={label}
@@ -64,16 +67,19 @@ export interface SubtitleMenuProps {
   onToggle: () => void;
   onClose: () => void;
   onSelect: (trackId: string) => void;
+  /** "Formato de los subtítulos": the menu closes and the style panel opens. */
+  onFormat: () => void;
+  buttonRef?: RefObject<HTMLButtonElement>;
 }
 
-export function SubtitleMenu({ tracks, selected, pending, open, onToggle, onClose, onSelect }: SubtitleMenuProps) {
+export function SubtitleMenu({ tracks, selected, pending, open, onToggle, onClose, onSelect, onFormat, buttonRef }: SubtitleMenuProps) {
   const text = textTracks(tracks);
   const choose = (id: string) => {
     onSelect(id);
     onClose();
   };
   return (
-    <MenuShell label={S.player.subtitles.menu} icon="CC" open={open} onToggle={onToggle}>
+    <MenuShell label={S.player.subtitles.menu} icon="CC" open={open} onToggle={onToggle} buttonRef={buttonRef}>
       <MenuItem checked={selected === SUBTITLES_OFF} onSelect={() => choose(SUBTITLES_OFF)}>
         {S.player.subtitles.off}
       </MenuItem>
@@ -85,13 +91,18 @@ export function SubtitleMenu({ tracks, selected, pending, open, onToggle, onClos
       ))}
       {text.length === 0 && <p className={styles.menuNote}>{S.player.subtitles.none}</p>}
       {text.length === 0 && hasImageTracks(tracks) && <p className={styles.menuNote}>{S.player.subtitles.imageNote}</p>}
+      <hr className={styles.menuSeparator} />
+      <button type="button" role="menuitem" className={styles.menuItem} onClick={onFormat}>
+        <span className={styles.menuItemText}>{S.player.subtitleStyle.entry}</span>
+        <span aria-hidden="true">›</span>
+      </button>
     </MenuShell>
   );
 }
 
 export interface AudioMenuProps {
   tracks: readonly AudioTrack[];
-  /** The current `audio_stream_index`. */
+  /** The current `audio_stream_index` (✓). */
   current: number | null;
   /** True in states without a SWITCH_AUDIO row. */
   disabled: boolean;
@@ -112,7 +123,8 @@ export function AudioMenu({ tracks, current, disabled, open, onToggle, onClose, 
           checked={track.index === current}
           onSelect={() => {
             onClose();
-            if (track.index !== current) onSelect(track.index);
+            // Every item, the checked one too: PlayerPage applies the switch and the re-pick rule.
+            onSelect(track.index);
           }}
         >
           {audioLabel(track)}

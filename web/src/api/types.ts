@@ -102,6 +102,47 @@ export interface ProfilesResponse {
   items: Profile[];
 }
 
+/** One profile's subtitle look (`GET /api/me`, `PUT /api/me/subtitle-style` with every key). */
+export type SubtitleSize = 'small' | 'medium' | 'large';
+export type SubtitleColor = 'white' | 'yellow' | 'green' | 'cyan' | 'magenta' | 'orange';
+export type SubtitleEdge = 'outline' | 'shadow' | 'none';
+export type SubtitleEdgeColor = 'black' | 'dark_gray' | 'white';
+export type SubtitlePosition = 'low' | 'middle' | 'high';
+export interface SubtitleStyle {
+  size: SubtitleSize;
+  color: SubtitleColor;
+  edge: SubtitleEdge;
+  edge_color: SubtitleEdgeColor;
+  position: SubtitlePosition;
+}
+
+/** `GET /api/me`: the token's profile plus its own preferences (never in the profile list). */
+export interface Me extends Profile {
+  subtitle_style: SubtitleStyle;
+}
+
+/** Remembered audio/subtitle pick per profile and title (`PUT /api/track-choices/{films|shows}/{id}`). */
+export interface AudioChoice {
+  language: string;
+  title: string | null;
+  channels: number | null;
+}
+export interface SubtitleChoice {
+  mode: 'off' | 'track';
+  language: string | null;
+  title: string | null;
+  forced: boolean;
+  hearing_impaired: boolean;
+  source: 'embedded' | 'external' | null;
+  /** The track's kind; null only with mode 'off'. */
+  kind: 'text' | 'image' | null;
+}
+/** A null part = not remembered (the default applies); at least one part is set. */
+export interface TrackChoice {
+  audio: AudioChoice | null;
+  subtitles: SubtitleChoice | null;
+}
+
 export interface BootstrapRequest {
   name: string;
   avatar_id: string;
@@ -247,7 +288,12 @@ export interface EpisodeSummary {
  * Continue Watching episode entry (in progress, or a started show's Next Up episode with
  * `progress` null or below 30 s): same version order as GET /api/episodes/{id}.
  */
-export type HomeEpisode = EpisodeSummary & { media_files: MediaFile[]; show_backdrop: Image | null };
+export type HomeEpisode = EpisodeSummary & {
+  media_files: MediaFile[];
+  show_backdrop: Image | null;
+  /** The show's remembered choice (a "Seguir viendo" start needs no episode detail). */
+  track_choice: TrackChoice | null;
+};
 
 export interface LibraryCounts {
   films: number;
@@ -344,6 +390,8 @@ export interface FilmDetail {
   ratings: OtherRating[];
   /** null below 2 ratings. */
   household_average: HouseholdAverage | null;
+  /** The requester's remembered audio/subtitle choice (null: never picked). */
+  track_choice: TrackChoice | null;
 }
 
 export interface ShowSeason {
@@ -457,6 +505,8 @@ export interface EpisodeDetail extends EpisodeSummary {
   media_files: MediaFile[];
   previous_episode_id: number | null;
   next_episode_id: number | null;
+  /** The show's remembered choice. */
+  track_choice: TrackChoice | null;
 }
 
 export interface SearchResponse {

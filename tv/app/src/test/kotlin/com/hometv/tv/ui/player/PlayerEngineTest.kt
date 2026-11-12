@@ -553,7 +553,7 @@ class PlayerEngineTest : PlayerTestBase() {
 
     /** A real controller over a failing port factory; its `post` launches on the test dispatcher. */
     private fun TestScope.failingVlc(factory: () -> VlcPlayerPort) = VlcPlayerController(
-        portFactory = factory,
+        portFactory = { factory() to true },
         token = { repos.store.session.value.token },
         post = { block -> launch { block() } },
     ).also { realVlc = it }
@@ -579,9 +579,9 @@ class PlayerEngineTest : PlayerTestBase() {
     @Test
     fun `after a LibVLC creation failure Reintentar desde aqui plays on ExoPlayer`() = playerTest {
         vlcAvailable = true
-        val provider = LibVlcProvider<Any>(listOf("arm64-v8a"), { throw UnsatisfiedLinkError("no libvlc.so") }) { _, _ -> }
+        val provider = LibVlcProvider<Any>(listOf("arm64-v8a"), { throw UnsatisfiedLinkError("no libvlc.so") }, {}) { _, _ -> }
         vlcAvailability = provider.availability::isAvailable
-        failingVlc { error("never returns: ${provider.get()}") }
+        failingVlc { error("never returns: ${provider.get(emptyList())}") }
         film(xvid)
         answerWith(direct())
         val vm = vm()
@@ -604,7 +604,7 @@ class PlayerEngineTest : PlayerTestBase() {
 
     /** A real controller over a [FakeVlcPort] whose layout is already attached, so `prepare()` opens at once. */
     private fun TestScope.attachedVlc(port: FakeVlcPort) = VlcPlayerController(
-        portFactory = { port },
+        portFactory = { port to true },
         token = { repos.store.session.value.token },
         post = { block -> launch { block() } },
     ).also {

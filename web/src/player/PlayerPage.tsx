@@ -7,15 +7,18 @@
 // at `ended` with no next item the inline RatingForm replaces "Fin de la reproducción" until it is
 // answered. Leaving with the form visible = Ahora no; leaving without it offers the prompt to the
 // host (RatingPromptHost), which shows it over the screen returned to.
+// Remembered tracks: LOAD carries the remembered audio matched on the start file (effective choice =
+// session override ?? the start source's track_choice); later uses (another version, a later file's
+// subtitle decision) read the live choice (`saver.base()`). Manual picks save through
+// useTrackChoiceSaver. "Formato de los subtítulos" opens SubtitleStylePanel (`menu = 'style'`).
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type PointerEvent } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { errorMessage, isApiError } from '@/api/errors';
 import { getEpisode, getFilm } from '@/api/catalog';
 import { mutationKeys, queryKeys, staleTimes } from '@/api/queryKeys';
-import type { EpisodeDetail, FilmDetail, ItemType, MediaFile } from '@/api/types';
+import type { AudioTrack, EpisodeDetail, FilmDetail, ItemType, MediaFile, SubtitleChoice, TitleKind, TrackChoice } from '@/api/types';
 import { useAuth } from '@/auth/AuthProvider';
-import { useCurrentProfile } from '@/auth/useCurrentProfile';
 import { ErrorState } from '@/components/ErrorState';
 import { Spinner } from '@/components/Spinner';
 import { RatingForm } from '@/features/ratings/RatingDialog';
@@ -25,6 +28,7 @@ import { clearChunkReloadMarker } from '@/lib/chunkReload';
 import { cx } from '@/lib/cx';
 import { episodeLabel } from '@/lib/episodes';
 import { reloader } from '@/lib/reload';
+import { removeKey } from '@/lib/storage';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
 import { useGoBack } from '@/lib/useGoBack';
 import { S } from '@/strings.es';
@@ -39,7 +43,10 @@ import { usePlayerShell } from './PlayerRoute';
 import { PlayerToasts, usePlayerToasts, type PlayerToast } from './PlayerToasts';
 import { playerUrl } from './playerUrl';
 import { PreparingOverlay } from './PreparingOverlay';
+import { SubtitleStylePanel } from './SubtitleStylePanel';
 import { TapToPlayOverlay } from './TapToPlayOverlay';
+import { audioChoiceOf, defaultAudio, matchAudio, sameAudioChoice } from './trackChoice';
+import { pendingChoice } from './trackChoiceSession';
 import { AudioMenu, SubtitleMenu } from './TrackMenu';
 import { UnsupportedMessage } from './UnsupportedMessage';
 import { useAutoHide } from './useAutoHide';
@@ -52,6 +59,8 @@ import { usePlaybackSession } from './usePlaybackSession';
 import { usePlayerSubtitles } from './usePlayerSubtitles';
 import { PositionTracker, useProgressReporter } from './useProgressReporter';
 import { playedItemOf, useStartDecision, type DecisionSource, type PlayerItem } from './useStartDecision';
+import { useSubtitleStyleSave } from './useSubtitleStyleSave';
+import { useTrackChoiceSaver } from './useTrackChoiceSaver';
 import { useVolume } from './useVolume';
 import { playableAlternatives, startPosition } from './versions';
 
@@ -60,7 +69,7 @@ export interface PlayerPageProps {
   id: number;
 }
 
-type Menu = 'subtitles' | 'audio' | null;
+type Menu = 'subtitles' | 'audio' | 'style' | null;
 
 const SPINNER_STATES: ReadonlySet<PlayerStateName> = new Set(['idle', 'requesting', 'loading', 'recovering', 'switching', 'buffering']);
 /** The element's position is not this playback's (released or replaced): show the tracked one. */
@@ -80,6 +89,9 @@ function parseFile(raw: string | null): number | null {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
+/** The show of an episode source (the title whose choice applies). */
+const showIdOf = (source: DecisionSource | undefined) => (source && 'show_id' in source ? source.show_id : null);
+
 function playerTitle(type: ItemType, source: DecisionSource | undefined, file: MediaFile | null): string {
   if (!source) return S.titles.player;
   if (type === 'episode') return episodeLabel(source as EpisodeDetail);
@@ -95,8 +107,7 @@ export function PlayerPage({ type, id }: PlayerPageProps) {
   const location = useLocation();
   const [search] = useSearchParams();
   const goBack = useGoBack('/');
-  const profile = useCurrentProfile();
-  const { crossTabNotice, dismissCrossTabNotice } = useAuth();
+  const { crossTabNotice, dismissCrossTabNotice, session: authSession } = useAuth();
   const platform = getPlatform();
   const caps = getClientCaps();
 
@@ -125,12 +136,42 @@ export function PlayerPage({ type, id }: PlayerPageProps) {
   const currentFile = files.find((f) => f.id === state.fileId) ?? ready?.file ?? null;
   const item = useMemo(() => playedItemOf(type, id, source), [type, id, source]);
 
+  // --- remembered audio/subtitle choice ------------------------------------------------------
+  const profileId = authSession?.profile_id ?? null;
+  const titleKind: TitleKind = type === 'film' ? 'film' : 'show';
+  const saver = useTrackChoiceSaver({ kind: titleKind, id: type === 'film' ? id : showIdOf(source), profileId, source });
+  /** The start's effective choice (first file); after a PLAY_FILE the live one (saver.base()). */
+  const startChoice = useRef<TrackChoice | null>(null);
+  const playFileUsed = useRef(false);
+
+  // The legacy per-browser subtitle language is gone (the server remembers picks now).
+  const legacyRemoved = useRef(false);
+  useEffect(() => {
+    if (profileId === null || legacyRemoved.current) return;
+    legacyRemoved.current = true;
+    removeKey(`hometv.subtitleLang.${profileId}`);
+  }, [profileId]);
+
   const loaded = useRef(false);
+  const loadInput = useRef({ profileId, titleKind });
+  loadInput.current = { profileId, titleKind };
   useEffect(() => {
     if (!ready || loaded.current) return;
     loaded.current = true;
     tracker.position = ready.start;
-    dispatch({ type: 'LOAD', fileId: ready.file.id, startPositionSeconds: ready.start });
+    const { profileId: pid, titleKind: kind } = loadInput.current;
+    const titleId = type === 'film' ? id : showIdOf(ready.source);
+    const pending = pid !== null && titleId !== null ? pendingChoice(pid, kind, titleId) : undefined;
+    const effective = pending ?? ready.source.track_choice ?? null;
+    startChoice.current = effective;
+    const audioStreamIndex = matchAudio(effective?.audio ?? null, ready.file.audio_tracks);
+    dispatch({
+      type: 'LOAD',
+      fileId: ready.file.id,
+      startPositionSeconds: ready.start,
+      audioStreamIndex,
+      audioFromChoice: audioStreamIndex !== null,
+    });
     // `?t=` is one-shot: drop only `t`, keep everything else (never add `file`).
     if (search.has('t')) {
       const rest = new URLSearchParams(search);
@@ -138,7 +179,7 @@ export function PlayerPage({ type, id }: PlayerPageProps) {
       const query = rest.toString();
       navigate({ pathname: location.pathname, search: query ? `?${query}` : '' }, { replace: true });
     }
-  }, [ready, tracker, search, navigate, location.pathname]);
+  }, [ready, tracker, search, navigate, location.pathname, type, id]);
 
   // Item 404 → `gone` (whichever arrives first), and Home drops the stale card.
   const itemGone = isApiError(query.error) && query.error.status === 404;
@@ -184,18 +225,45 @@ export function PlayerPage({ type, id }: PlayerPageProps) {
 
   // --- subtitles / audio --------------------------------------------------------------------
   const audioTracks = currentFile?.audio_tracks ?? [];
-  const audioTrack = audioTracks.find((t) => t.index === state.audioStreamIndex) ?? null;
+  // The track the decision answered with, else the file default (forced-subtitle default rule).
+  const audioTrack: AudioTrack | null = audioTracks.find((t) => t.index === state.audioStreamIndex) ?? defaultAudio(audioTracks);
+  const { saveSubtitles } = saver;
+  const onSubtitlePick = useCallback((part: SubtitleChoice) => saveSubtitles(part), [saveSubtitles]);
+  const { base: liveChoice } = saver;
+  const getSubtitleChoice = useCallback(() => (playFileUsed.current ? liveChoice() : startChoice.current), [liveChoice]);
   const subtitles = usePlayerSubtitles({
     video,
-    profileId: profile?.id ?? null,
+    getChoice: getSubtitleChoice,
     fileId: state.fileId,
     tracks: state.subtitleTracks,
     attachSeq: state.attachSeq,
     audioTrack,
     notify,
+    onPick: onSubtitlePick,
   });
   const [menu, setMenu] = useState<Menu>(null);
   const audioEnabled = canSwitchAudio(state.name);
+  const subtitleButtonRef = useRef<HTMLButtonElement>(null);
+  const saveStyle = useSubtitleStyleSave(notify);
+  // The style panel closed (Cerrar / Escape): focus back on the "Subtítulos" button.
+  const previousMenu = useRef<Menu>(null);
+  useEffect(() => {
+    if (previousMenu.current === 'style' && menu === null) subtitleButtonRef.current?.focus();
+    previousMenu.current = menu;
+  }, [menu]);
+
+  /** Every audio item: a switch when it differs; a re-pick saves only when it changes the held part. */
+  const selectAudio = (index: number) => {
+    const track = audioTracks.find((t) => t.index === index);
+    if (!track) return;
+    const pick = audioChoiceOf(track);
+    if (index !== state.audioStreamIndex) {
+      saver.saveAudio(pick);
+      session.switchAudio(index);
+    } else if (!sameAudioChoice(pick, saver.base()?.audio)) {
+      saver.saveAudio(pick);
+    }
+  };
 
   // --- clock, volume, fullscreen --------------------------------------------------------------
   // The time display and seek bar read the element clock inside Controls; the page re-renders only
@@ -256,7 +324,12 @@ export function PlayerPage({ type, id }: PlayerPageProps) {
   );
   const seekBy = useCallback((delta: number) => seekTo(video.currentTime + delta), [seekTo, video]);
   const alternatives = currentFile ? playableAlternatives(files, currentFile, caps, state.failedFileIds) : [];
-  const tryFile = (file: MediaFile) => session.playFile(file.id, startPosition(file, files, ready?.progress ?? null).seconds);
+  // Another version: the remembered audio matched on that file from the live choice.
+  const tryFile = (file: MediaFile) => {
+    playFileUsed.current = true;
+    const audio = matchAudio(saver.base()?.audio ?? null, file.audio_tracks);
+    session.playFile(file.id, startPosition(file, files, ready?.progress ?? null).seconds, audio);
+  };
 
   const screen = SCREEN_STATES.has(state.name) || appUpdated;
   const hideControls = useAutoHide(state.name === 'playing' && menu === null);
@@ -399,6 +472,8 @@ export function PlayerPage({ type, id }: PlayerPageProps) {
             onToggle={() => setMenu((m) => (m === 'subtitles' ? null : 'subtitles'))}
             onClose={() => setMenu(null)}
             onSelect={subtitles.choose}
+            onFormat={() => setMenu('style')}
+            buttonRef={subtitleButtonRef}
           />
         }
         audioMenu={
@@ -409,11 +484,15 @@ export function PlayerPage({ type, id }: PlayerPageProps) {
             open={menu === 'audio'}
             onToggle={() => setMenu((m) => (m === 'audio' ? null : 'audio'))}
             onClose={() => setMenu(null)}
-            onSelect={session.switchAudio}
+            onSelect={selectAudio}
           />
         }
         fullscreen={{ available: fullscreen.available, active: fullscreen.active, onToggle: fullscreen.toggle }}
       />
+
+      {menu === 'style' && (
+        <SubtitleStylePanel onClose={() => setMenu(null)} onSave={saveStyle} shownTrack={subtitles.shownTrack} />
+      )}
 
       {state.name === 'blocked' && <TapToPlayOverlay onPlay={session.play} />}
 

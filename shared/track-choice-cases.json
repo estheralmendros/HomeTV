@@ -1,0 +1,408 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "01 exact match on both parts",
+      "mode": "direct",
+      "choice": {
+        "audio": {"language": "eng", "title": null, "channels": 6},
+        "subtitles": {"mode": "track", "language": "spa", "title": null, "forced": false, "hearing_impaired": false, "source": "embedded", "kind": "text"}
+      },
+      "audio_tracks": [
+        {"index": 1, "language": "spa", "title": null, "channels": 6, "default": true},
+        {"index": 2, "language": "eng", "title": null, "channels": 6, "default": false}
+      ],
+      "subtitle_tracks": [
+        {"id": "emb-3", "kind": "text", "source": "embedded", "language": "spa", "title": null, "forced": true, "hearing_impaired": false, "default": false},
+        {"id": "emb-4", "kind": "text", "source": "embedded", "language": "spa", "title": null, "forced": false, "hearing_impaired": false, "default": false}
+      ],
+      "expected": {"audio_stream_index": 2, "subtitle_id": "emb-4"}
+    },
+    {
+      "name": "02 audio title differs: first same-language candidate",
+      "mode": "direct",
+      "choice": {
+        "audio": {"language": "eng", "title": "Comentarios", "channels": 2},
+        "subtitles": null
+      },
+      "audio_tracks": [
+        {"index": 1, "language": "spa", "title": null, "channels": 6, "default": true},
+        {"index": 2, "language": "eng", "title": null, "channels": 6, "default": false},
+        {"index": 3, "language": "eng", "title": "Director", "channels": 2, "default": false}
+      ],
+      "subtitle_tracks": [],
+      "expected": {"audio_stream_index": 2, "subtitle_id": null}
+    },
+    {
+      "name": "03 audio channels differ: the default among the candidates is the file default",
+      "mode": "direct",
+      "choice": {
+        "audio": {"language": "eng", "title": null, "channels": 2},
+        "subtitles": null
+      },
+      "audio_tracks": [
+        {"index": 1, "language": "eng", "title": null, "channels": 6, "default": true},
+        {"index": 2, "language": "eng", "title": "Comentarios", "channels": 2, "default": false}
+      ],
+      "subtitle_tracks": [],
+      "expected": {"audio_stream_index": null, "subtitle_id": null}
+    },
+    {
+      "name": "04 remembered audio language missing: file default",
+      "mode": "direct",
+      "choice": {
+        "audio": {"language": "fre", "title": null, "channels": 6},
+        "subtitles": null
+      },
+      "audio_tracks": [
+        {"index": 1, "language": "spa", "title": null, "channels": 6, "default": true},
+        {"index": 2, "language": "eng", "title": null, "channels": 2, "default": false}
+      ],
+      "subtitle_tracks": [],
+      "expected": {"audio_stream_index": null, "subtitle_id": null}
+    },
+    {
+      "name": "05 und matches und (audio)",
+      "mode": "direct",
+      "choice": {
+        "audio": {"language": "und", "title": null, "channels": 2},
+        "subtitles": null
+      },
+      "audio_tracks": [
+        {"index": 1, "language": "spa", "title": null, "channels": 6, "default": true},
+        {"index": 2, "language": "und", "title": null, "channels": 2, "default": false}
+      ],
+      "subtitle_tracks": [],
+      "expected": {"audio_stream_index": 2, "subtitle_id": null}
+    },
+    {
+      "name": "06 ISO 639-2/B matches 639-2/T (fre = fra, ger = deu)",
+      "mode": "direct",
+      "choice": {
+        "audio": {"language": "fre", "title": null, "channels": 6},
+        "subtitles": {"mode": "track", "language": "ger", "title": null, "forced": false, "hearing_impaired": false, "source": "embedded", "kind": "text"}
+      },
+      "audio_tracks": [
+        {"index": 1, "language": "spa", "title": null, "channels": 6, "default": true},
+        {"index": 2, "language": "fra", "title": null, "channels": 6, "default": false}
+      ],
+      "subtitle_tracks": [
+        {"id": "emb-5", "kind": "text", "source": "embedded", "language": "deu", "title": null, "forced": false, "hearing_impaired": false, "default": false}
+      ],
+      "expected": {"audio_stream_index": 2, "subtitle_id": "emb-5"}
+    },
+    {
+      "name": "07 matched audio track is the file default: null",
+      "mode": "direct",
+      "choice": {
+        "audio": {"language": "spa", "title": null, "channels": 6},
+        "subtitles": null
+      },
+      "audio_tracks": [
+        {"index": 1, "language": "spa", "title": null, "channels": 6, "default": true},
+        {"index": 2, "language": "eng", "title": null, "channels": 6, "default": false}
+      ],
+      "subtitle_tracks": [],
+      "expected": {"audio_stream_index": null, "subtitle_id": null}
+    },
+    {
+      "name": "08 subtitles off ignores the default flag",
+      "mode": "direct",
+      "choice": {
+        "audio": null,
+        "subtitles": {"mode": "off", "language": null, "title": null, "forced": false, "hearing_impaired": false, "source": null, "kind": null}
+      },
+      "audio_tracks": [
+        {"index": 1, "language": "spa", "title": null, "channels": 6, "default": true}
+      ],
+      "subtitle_tracks": [
+        {"id": "emb-3", "kind": "text", "source": "embedded", "language": "spa", "title": null, "forced": false, "hearing_impaired": false, "default": true}
+      ],
+      "expected": {"audio_stream_index": null, "subtitle_id": null}
+    },
+    {
+      "name": "09 forced/SDH/source preference: exact traits",
+      "mode": "direct",
+      "choice": {
+        "audio": null,
+        "subtitles": {"mode": "track", "language": "spa", "title": null, "forced": false, "hearing_impaired": true, "source": "external", "kind": "text"}
+      },
+      "audio_tracks": [
+        {"index": 1, "language": "spa", "title": null, "channels": 6, "default": true}
+      ],
+      "subtitle_tracks": [
+        {"id": "emb-3", "kind": "text", "source": "embedded", "language": "spa", "title": null, "forced": true, "hearing_impaired": false, "default": false},
+        {"id": "emb-4", "kind": "text", "source": "embedded", "language": "spa", "title": null, "forced": false, "hearing_impaired": false, "default": false},
+        {"id": "ext-9", "kind": "text", "source": "external", "language": "spa", "title": null, "forced": false, "hearing_impaired": true, "default": false}
+      ],
+      "expected": {"audio_stream_index": null, "subtitle_id": "ext-9"}
+    },
+    {
+      "name": "10 same flags, other source: same forced and SDH in the pool",
+      "mode": "direct",
+      "choice": {
+        "audio": null,
+        "subtitles": {"mode": "track", "language": "spa", "title": null, "forced": false, "hearing_impaired": false, "source": "external", "kind": "text"}
+      },
+      "audio_tracks": [
+        {"index": 1, "language": "spa", "title": null, "channels": 6, "default": true}
+      ],
+      "subtitle_tracks": [
+        {"id": "emb-4", "kind": "text", "source": "embedded", "language": "spa", "title": null, "forced": false, "hearing_impaired": false, "default": false},
+        {"id": "emb-5", "kind": "text", "source": "embedded", "language": "spa", "title": null, "forced": false, "hearing_impaired": true, "default": false}
+      ],
+      "expected": {"audio_stream_index": null, "subtitle_id": "emb-4"}
+    },
+    {
+      "name": "11a image pick, direct mode: image on the TV, text on the web",
+      "mode": "direct",
+      "choice": {
+        "audio": null,
+        "subtitles": {"mode": "track", "language": "eng", "title": null, "forced": false, "hearing_impaired": false, "source": "embedded", "kind": "image"}
+      },
+      "audio_tracks": [
+        {"index": 1, "language": "eng", "title": null, "channels": 6, "default": true}
+      ],
+      "subtitle_tracks": [
+        {"id": "emb-6", "kind": "image", "source": "embedded", "language": "eng", "title": null, "forced": false, "hearing_impaired": false, "default": false},
+        {"id": "emb-7", "kind": "text", "source": "embedded", "language": "eng", "title": null, "forced": false, "hearing_impaired": false, "default": false}
+      ],
+      "expected": {"audio_stream_index": null, "subtitle_id": "emb-7"},
+      "expected_tv": {"subtitle_id": "emb-6"}
+    },
+    {
+      "name": "11b image pick, HLS mode: text everywhere",
+      "mode": "hls",
+      "choice": {
+        "audio": null,
+        "subtitles": {"mode": "track", "language": "eng", "title": null, "forced": false, "hearing_impaired": false, "source": "embedded", "kind": "image"}
+      },
+      "audio_tracks": [
+        {"index": 1, "language": "eng", "title": null, "channels": 6, "default": true}
+      ],
+      "subtitle_tracks": [
+        {"id": "emb-6", "kind": "image", "source": "embedded", "language": "eng", "title": null, "forced": false, "hearing_impaired": false, "default": false},
+        {"id": "emb-7", "kind": "text", "source": "embedded", "language": "eng", "title": null, "forced": false, "hearing_impaired": false, "default": false}
+      ],
+      "expected": {"audio_stream_index": null, "subtitle_id": "emb-7"}
+    },
+    {
+      "name": "12 no part remembered: both default rules pick the default-flagged track",
+      "mode": "direct",
+      "choice": null,
+      "audio_tracks": [
+        {"index": 1, "language": "spa", "title": null, "channels": 6, "default": true},
+        {"index": 2, "language": "eng", "title": null, "channels": 6, "default": false}
+      ],
+      "subtitle_tracks": [
+        {"id": "emb-3", "kind": "text", "source": "embedded", "language": "eng", "title": null, "forced": true, "hearing_impaired": false, "default": false},
+        {"id": "emb-4", "kind": "text", "source": "embedded", "language": "spa", "title": null, "forced": false, "hearing_impaired": false, "default": true}
+      ],
+      "expected": {"audio_stream_index": null, "subtitle_id": "emb-4"}
+    },
+    {
+      "name": "13 no part remembered: the clients' fallback orders differ",
+      "mode": "direct",
+      "choice": null,
+      "audio_tracks": [
+        {"index": 1, "language": "eng", "title": null, "channels": 6, "default": true},
+        {"index": 2, "language": "spa", "title": null, "channels": 6, "default": false}
+      ],
+      "subtitle_tracks": [
+        {"id": "emb-3", "kind": "text", "source": "embedded", "language": "eng", "title": null, "forced": true, "hearing_impaired": false, "default": false},
+        {"id": "emb-4", "kind": "text", "source": "embedded", "language": "spa", "title": null, "forced": false, "hearing_impaired": false, "default": true}
+      ],
+      "expected": {"audio_stream_index": null, "subtitle_id": "emb-4"},
+      "expected_tv": {"subtitle_id": "emb-3"}
+    },
+    {
+      "name": "14 remembered subtitle language absent: default rule",
+      "mode": "direct",
+      "choice": {
+        "audio": null,
+        "subtitles": {"mode": "track", "language": "ita", "title": null, "forced": false, "hearing_impaired": false, "source": "embedded", "kind": "text"}
+      },
+      "audio_tracks": [
+        {"index": 1, "language": "spa", "title": null, "channels": 6, "default": true}
+      ],
+      "subtitle_tracks": [
+        {"id": "emb-4", "kind": "text", "source": "embedded", "language": "spa", "title": null, "forced": false, "hearing_impaired": false, "default": true}
+      ],
+      "expected": {"audio_stream_index": null, "subtitle_id": "emb-4"}
+    },
+    {
+      "name": "15 subtitle title tie-break",
+      "mode": "direct",
+      "choice": {
+        "audio": null,
+        "subtitles": {"mode": "track", "language": "eng", "title": "Signs", "forced": false, "hearing_impaired": false, "source": "embedded", "kind": "text"}
+      },
+      "audio_tracks": [
+        {"index": 1, "language": "spa", "title": null, "channels": 6, "default": true}
+      ],
+      "subtitle_tracks": [
+        {"id": "emb-3", "kind": "text", "source": "embedded", "language": "eng", "title": "Full", "forced": false, "hearing_impaired": false, "default": false},
+        {"id": "emb-4", "kind": "text", "source": "embedded", "language": "eng", "title": "Signs", "forced": false, "hearing_impaired": false, "default": false}
+      ],
+      "expected": {"audio_stream_index": null, "subtitle_id": "emb-4"}
+    },
+    {
+      "name": "16 audio only remembered: forced subtitles in the matched audio language",
+      "mode": "direct",
+      "choice": {
+        "audio": {"language": "eng", "title": null, "channels": 2},
+        "subtitles": null
+      },
+      "audio_tracks": [
+        {"index": 1, "language": "spa", "title": null, "channels": 6, "default": true},
+        {"index": 2, "language": "eng", "title": null, "channels": 2, "default": false}
+      ],
+      "subtitle_tracks": [
+        {"id": "emb-3", "kind": "text", "source": "embedded", "language": "eng", "title": null, "forced": true, "hearing_impaired": false, "default": false},
+        {"id": "emb-4", "kind": "text", "source": "embedded", "language": "spa", "title": null, "forced": false, "hearing_impaired": false, "default": false}
+      ],
+      "expected": {"audio_stream_index": 2, "subtitle_id": "emb-3"}
+    },
+    {
+      "name": "17 two-letter code matches 639-2",
+      "mode": "direct",
+      "choice": {
+        "audio": null,
+        "subtitles": {"mode": "track", "language": "en", "title": null, "forced": false, "hearing_impaired": false, "source": "external", "kind": "text"}
+      },
+      "audio_tracks": [
+        {"index": 1, "language": "eng", "title": null, "channels": 6, "default": true}
+      ],
+      "subtitle_tracks": [
+        {"id": "ext-2", "kind": "text", "source": "external", "language": "eng", "title": null, "forced": false, "hearing_impaired": false, "default": false}
+      ],
+      "expected": {"audio_stream_index": null, "subtitle_id": "ext-2"}
+    },
+    {
+      "name": "18 untagged sidecar kept across episodes (und = und)",
+      "mode": "direct",
+      "choice": {
+        "audio": null,
+        "subtitles": {"mode": "track", "language": "und", "title": null, "forced": false, "hearing_impaired": false, "source": "external", "kind": "text"}
+      },
+      "audio_tracks": [
+        {"index": 1, "language": "spa", "title": null, "channels": 6, "default": true}
+      ],
+      "subtitle_tracks": [
+        {"id": "emb-3", "kind": "text", "source": "embedded", "language": "spa", "title": null, "forced": false, "hearing_impaired": false, "default": true},
+        {"id": "ext-8", "kind": "text", "source": "external", "language": "und", "title": null, "forced": false, "hearing_impaired": false, "default": false}
+      ],
+      "expected": {"audio_stream_index": null, "subtitle_id": "ext-8"}
+    },
+    {
+      "name": "19 remembered und absent: default rule",
+      "mode": "direct",
+      "choice": {
+        "audio": null,
+        "subtitles": {"mode": "track", "language": "und", "title": null, "forced": false, "hearing_impaired": false, "source": "external", "kind": "text"}
+      },
+      "audio_tracks": [
+        {"index": 1, "language": "spa", "title": null, "channels": 6, "default": true}
+      ],
+      "subtitle_tracks": [
+        {"id": "emb-4", "kind": "text", "source": "embedded", "language": "spa", "title": null, "forced": false, "hearing_impaired": false, "default": true}
+      ],
+      "expected": {"audio_stream_index": null, "subtitle_id": "emb-4"}
+    },
+    {
+      "name": "20 a real language never matches und",
+      "mode": "direct",
+      "choice": {
+        "audio": {"language": "eng", "title": null, "channels": 2},
+        "subtitles": {"mode": "track", "language": "spa", "title": null, "forced": false, "hearing_impaired": false, "source": "embedded", "kind": "text"}
+      },
+      "audio_tracks": [
+        {"index": 1, "language": "und", "title": null, "channels": 2, "default": true}
+      ],
+      "subtitle_tracks": [
+        {"id": "ext-8", "kind": "text", "source": "external", "language": "und", "title": null, "forced": false, "hearing_impaired": false, "default": false}
+      ],
+      "expected": {"audio_stream_index": null, "subtitle_id": null}
+    },
+    {
+      "name": "21 region tag vs 639-2 (pt-BR = por = pt-br)",
+      "mode": "direct",
+      "choice": {
+        "audio": {"language": "por", "title": null, "channels": 2},
+        "subtitles": {"mode": "track", "language": "pt-BR", "title": null, "forced": false, "hearing_impaired": false, "source": "embedded", "kind": "text"}
+      },
+      "audio_tracks": [
+        {"index": 1, "language": "spa", "title": null, "channels": 6, "default": true},
+        {"index": 2, "language": "pt-br", "title": null, "channels": 2, "default": false}
+      ],
+      "subtitle_tracks": [
+        {"id": "emb-3", "kind": "text", "source": "embedded", "language": "por", "title": null, "forced": false, "hearing_impaired": false, "default": false}
+      ],
+      "expected": {"audio_stream_index": 2, "subtitle_id": "emb-3"}
+    },
+    {
+      "name": "22a text pick never lands on an image track (direct)",
+      "mode": "direct",
+      "choice": {
+        "audio": null,
+        "subtitles": {"mode": "track", "language": "eng", "title": null, "forced": false, "hearing_impaired": false, "source": "embedded", "kind": "text"}
+      },
+      "audio_tracks": [
+        {"index": 1, "language": "eng", "title": null, "channels": 6, "default": true}
+      ],
+      "subtitle_tracks": [
+        {"id": "emb-6", "kind": "image", "source": "embedded", "language": "eng", "title": null, "forced": false, "hearing_impaired": false, "default": false},
+        {"id": "emb-7", "kind": "text", "source": "embedded", "language": "eng", "title": null, "forced": false, "hearing_impaired": false, "default": false}
+      ],
+      "expected": {"audio_stream_index": null, "subtitle_id": "emb-7"}
+    },
+    {
+      "name": "22b text pick never lands on an image track (HLS)",
+      "mode": "hls",
+      "choice": {
+        "audio": null,
+        "subtitles": {"mode": "track", "language": "eng", "title": null, "forced": false, "hearing_impaired": false, "source": "embedded", "kind": "text"}
+      },
+      "audio_tracks": [
+        {"index": 1, "language": "eng", "title": null, "channels": 6, "default": true}
+      ],
+      "subtitle_tracks": [
+        {"id": "emb-6", "kind": "image", "source": "embedded", "language": "eng", "title": null, "forced": false, "hearing_impaired": false, "default": false},
+        {"id": "emb-7", "kind": "text", "source": "embedded", "language": "eng", "title": null, "forced": false, "hearing_impaired": false, "default": false}
+      ],
+      "expected": {"audio_stream_index": null, "subtitle_id": "emb-7"}
+    },
+    {
+      "name": "23 image pick without a same-kind track: text pool, same forced and SDH",
+      "mode": "direct",
+      "choice": {
+        "audio": null,
+        "subtitles": {"mode": "track", "language": "eng", "title": null, "forced": false, "hearing_impaired": false, "source": "external", "kind": "image"}
+      },
+      "audio_tracks": [
+        {"index": 1, "language": "eng", "title": null, "channels": 6, "default": true}
+      ],
+      "subtitle_tracks": [
+        {"id": "emb-4", "kind": "text", "source": "embedded", "language": "spa", "title": null, "forced": false, "hearing_impaired": false, "default": false},
+        {"id": "emb-7", "kind": "text", "source": "embedded", "language": "eng", "title": null, "forced": false, "hearing_impaired": true, "default": false},
+        {"id": "emb-8", "kind": "text", "source": "embedded", "language": "eng", "title": null, "forced": false, "hearing_impaired": false, "default": false}
+      ],
+      "expected": {"audio_stream_index": null, "subtitle_id": "emb-8"}
+    },
+    {
+      "name": "24 pick of a 0-channel audio track: channels null, same-language fallback",
+      "mode": "direct",
+      "pick": {"index": 2, "language": "eng", "title": null, "channels": 0, "default": false},
+      "choice": {
+        "audio": {"language": "eng", "title": null, "channels": null},
+        "subtitles": null
+      },
+      "audio_tracks": [
+        {"index": 1, "language": "spa", "title": null, "channels": 2, "default": true},
+        {"index": 2, "language": "eng", "title": null, "channels": 0, "default": false}
+      ],
+      "subtitle_tracks": [],
+      "expected": {"audio_stream_index": 2, "subtitle_id": null}
+    }
+  ]
+}

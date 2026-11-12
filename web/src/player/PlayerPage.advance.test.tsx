@@ -10,7 +10,7 @@ import { iphoneEnv } from '../../tests/capsEnvs';
 import { FakeHls, hlsLog } from '../../tests/fakeHls';
 import * as f from '../../tests/fixtures';
 import { advance, blobText, until } from '../../tests/flush';
-import { API } from '../../tests/msw/handlers';
+import { API, withSavedChoice } from '../../tests/msw/handlers';
 import { server } from '../../tests/msw/server';
 import { answerPlayback, renderPlayer, serveEpisodes, stubFullscreen, useFakePlayerTimers, type PlayerHarness } from '../../tests/player';
 import { currentUrl } from '../../tests/renderWithProviders';
@@ -229,7 +229,8 @@ describe('same-route navigation (Player identity)', () => {
       f.mediaFile({ id: 201, part_number: 1, duration_seconds: DURATION, subtitle_tracks: [f.subtitleTrack({ id: 'emb-3' }, 201)] }),
       f.mediaFile({ id: 202, part_number: 2, duration_seconds: DURATION, subtitle_tracks: [f.subtitleTrack({ id: 'emb-3' }, 202)] }),
     ];
-    server.use(http.get(`${API}/films/:id`, () => HttpResponse.json(f.filmDetail({ media_files: parts }))));
+    // The pick is saved (PUT 204): the refetch answers it, like the server.
+    server.use(http.get(`${API}/films/:id`, () => HttpResponse.json(withSavedChoice(f.filmDetail({ media_files: parts }), 'film', 12))));
     const p = renderPlayer('/watch/film/12');
     await p.startHls(0);
     fireEvent.click(screen.getByRole('button', { name: 'Subtítulos' }));

@@ -15,7 +15,9 @@ import {
 import { setTokenGetter, setUnauthorizedHandler } from '@/api/client';
 import { profilesQuery } from '@/api/queries';
 import { queryKeys } from '@/api/queryKeys';
-import type { Profile, ProfilesResponse, SessionResponse } from '@/api/types';
+import { DEFAULT_SUBTITLE_STYLE } from '@/api/subtitleStyleDefaults';
+import type { Me, Profile, ProfilesResponse, SessionResponse } from '@/api/types';
+import { setActiveProfile, setProfileGetter } from '@/player/trackChoiceSession';
 import { S } from '@/strings.es';
 import { adminUnlock } from './adminUnlock';
 import {
@@ -92,26 +94,31 @@ export function AuthProvider({ children, navigate }: AuthProviderProps) {
       setEndReason(reason);
       adminUnlock.clear();
       setCrossTabNotice(null);
+      setActiveProfile(null);
       clearProfileQueries(queryClient);
       navigateRef.current(reason === 'expired' ? '/profiles?reason=expired' : '/profiles');
     },
     [queryClient, setSession],
   );
 
-  // The getter reads the ref, so registering it during the first render is safe; children may
-  // build tokenized URLs (withToken) while rendering, before any effect runs.
+  // The getters read the ref, so registering them during the first render is safe; children may
+  // build tokenized URLs (withToken) while rendering, before any effect runs. The profile getter
+  // is the track choice write queue's send-time check (right after a reload too: no signIn ran).
   const getterRegistered = useRef(false);
   if (!getterRegistered.current) {
     getterRegistered.current = true;
     setTokenGetter(() => sessionRef.current?.token);
+    setProfileGetter(() => sessionRef.current?.profile_id ?? null);
   }
 
   // Layout effect: (re)registered before any child's passive effect can start a query.
   useLayoutEffect(() => {
     setTokenGetter(() => sessionRef.current?.token);
+    setProfileGetter(() => sessionRef.current?.profile_id ?? null);
     setUnauthorizedHandler(() => endSession('expired'));
     return () => {
       setTokenGetter(() => null);
+      setProfileGetter(() => null);
       setUnauthorizedHandler(null);
     };
   }, [endSession]);
@@ -125,8 +132,11 @@ export function AuthProvider({ children, navigate }: AuthProviderProps) {
       setEndReason(null);
       adminUnlock.clear();
       setCrossTabNotice(null);
+      setActiveProfile(next.profile_id);
       if (clearCache) clearProfileQueries(queryClient);
-      queryClient.setQueryData(queryKeys.me(), response.profile);
+      // The session answer has no style: seed the default, then load the real one.
+      queryClient.setQueryData<Me>(queryKeys.me(), { ...response.profile, subtitle_style: DEFAULT_SUBTITLE_STYLE });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.me() });
     },
     [queryClient, setSession],
   );

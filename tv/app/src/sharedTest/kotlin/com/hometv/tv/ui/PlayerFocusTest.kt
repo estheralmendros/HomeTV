@@ -249,4 +249,23 @@ class PlayerFocusTest : UiTestBase() {
         settle()
         node("card_continue:episode:203").assertIsDisplayed()
     }
+
+    @Test
+    fun formatoDeLosSubtitulosIsReachedFromTheAudioColumnAndUpReturnsToIt() {
+        openFilm()
+        press(Key.DirectionUp)
+        press(Key.DirectionRight, times = 2)
+        press(Key.DirectionCenter)
+        assertFocused("track_audio_1")
+        press(Key.DirectionDown, times = 2)
+        assertFocused("track_style")
+        text("Formato de los subtítulos").assertIsDisplayed()
+        press(Key.DirectionUp)
+        assertFocused("track_audio_2")
+        press(Key.DirectionDown)
+        press(Key.DirectionCenter)
+        assertFocused("style_row_size")
+        back()
+        assertFocused("player_tracks")
+    }
 }

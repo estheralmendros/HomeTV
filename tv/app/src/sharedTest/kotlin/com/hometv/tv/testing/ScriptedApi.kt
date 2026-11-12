@@ -11,7 +11,7 @@ import com.hometv.tv.core.api.PlaybackResponse
 import com.hometv.tv.core.api.Progress
 import com.hometv.tv.core.api.ProgressReport
 import com.hometv.tv.core.api.ProgressRequest
-import com.hometv.tv.core.api.Profile
+import com.hometv.tv.core.api.Me
 import com.hometv.tv.core.api.ProfileList
 import com.hometv.tv.core.api.RatingPrompt
 import com.hometv.tv.core.api.RatingRequest
@@ -21,6 +21,8 @@ import com.hometv.tv.core.api.ServerInfo
 import com.hometv.tv.core.api.SessionResponse
 import com.hometv.tv.core.api.ShowDetail
 import com.hometv.tv.core.api.ShowSummary
+import com.hometv.tv.core.api.SubtitleStyle
+import com.hometv.tv.core.api.TrackChoice
 import com.hometv.tv.core.api.WatchedRequest
 import com.hometv.tv.core.api.WatchedResponse
 import com.hometv.tv.core.api.WatchlistEntry
@@ -41,7 +43,16 @@ open class ScriptedApi : FakeHomeTvApi() {
     var onInfo: suspend () -> ServerInfo = { ServerInfo(name = "HomeTV", version = "1.0") }
     var onProfiles: suspend () -> ProfileList = { ProfileList(emptyList()) }
     var onCreateSession: suspend (Long) -> SessionResponse = { id -> session("tok-$id", id) }
-    var onMe: suspend () -> Profile = { Profile(5, "Esther", "avatar-05") }
+    /** `GET /api/me`: the profile and its subtitle style (the default style unless a test sets one). */
+    var onMe: suspend () -> Me = { Me(5, "Esther", "avatar-05") }
+
+    /** `PUT /api/track-choices/{segment}/{id}`: return to answer 204, throw to fail, suspend to gate. */
+    var onTrackChoiceWrite: suspend (segment: String, id: Long, body: TrackChoice) -> Unit = { _, _, _ -> }
+    val trackChoiceBodies: MutableList<Triple<String, Long, TrackChoice>> = Collections.synchronizedList(mutableListOf())
+
+    /** `PUT /api/me/subtitle-style`: return to answer 204, throw to fail, suspend to gate. */
+    var onSubtitleStyleWrite: suspend (body: SubtitleStyle) -> Unit = { }
+    val subtitleStyleBodies: MutableList<SubtitleStyle> = Collections.synchronizedList(mutableListOf())
     /** `POST /api/admin/unlock`: the PIN check behind the server change. */
     var onUnlock: suspend (pin: String) -> com.hometv.tv.core.api.UnlockResponse = { throw httpError(401, "invalid_pin") }
     var onHome: suspend (Int) -> HomeResponse = { HomeResponse() }
@@ -92,7 +103,15 @@ open class ScriptedApi : FakeHomeTvApi() {
     override suspend fun info(): ServerInfo = log("GET /api/info") { onInfo() }
     override suspend fun profiles(): ProfileList = log("GET /api/profiles") { onProfiles() }
     override suspend fun createSession(profileId: Long): SessionResponse = log("POST /api/profiles/$profileId/session") { onCreateSession(profileId) }
-    override suspend fun me(): Profile = log("GET /api/me") { onMe() }
+    override suspend fun me(): Me = log("GET /api/me") { onMe() }
+    override suspend fun putSubtitleStyle(body: SubtitleStyle) = log("PUT /api/me/subtitle-style") {
+        subtitleStyleBodies += body
+        onSubtitleStyleWrite(body)
+    }
+    override suspend fun putTrackChoice(segment: String, id: Long, body: TrackChoice) = log("PUT /api/track-choices/$segment/$id") {
+        trackChoiceBodies += Triple(segment, id, body)
+        onTrackChoiceWrite(segment, id, body)
+    }
     override suspend fun unlock(body: com.hometv.tv.core.api.UnlockRequest): com.hometv.tv.core.api.UnlockResponse = log("POST /api/admin/unlock") { onUnlock(body.pin) }
     override suspend fun home(limit: Int): HomeResponse = log("GET /api/home?limit=$limit") { onHome(limit) }
     override suspend fun films(page: Int, pageSize: Int, sort: String, order: String, genre: Long?, yearFrom: Int?, yearTo: Int?, watched: Boolean?): Page<FilmSummary> =
@@ -142,3 +161,6 @@ open class ScriptedApi : FakeHomeTvApi() {
         return block()
     }
 }
+
+/** The `GET /api/me` answer for a profile (tests that build a [com.hometv.tv.core.api.Profile] first). */
+fun com.hometv.tv.core.api.Profile.toMe(style: SubtitleStyle = SubtitleStyle()): Me = Me(id, name, avatar_id, is_admin, created_at, style)

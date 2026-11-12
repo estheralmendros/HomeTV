@@ -9,7 +9,8 @@ import { errorMessage } from '@/api/errors';
 import { infoQuery, profilesQuery } from '@/api/queries';
 import { runInvalidation } from '@/api/queryClient';
 import { queryKeys } from '@/api/queryKeys';
-import type { Profile, ProfileCreateRequest, ProfileUpdateRequest } from '@/api/types';
+import { DEFAULT_SUBTITLE_STYLE } from '@/api/subtitleStyleDefaults';
+import type { Me, Profile, ProfileCreateRequest, ProfileUpdateRequest } from '@/api/types';
 import { useAuth } from '@/auth/AuthProvider';
 import { adminUnlock } from '@/auth/adminUnlock';
 import { isAdminActionCancelled, useAdminAction } from '@/auth/useAdminAction';
@@ -56,7 +57,8 @@ export function ProfilesAdminPage() {
       // The server revoked this profile's admin tokens; the profile token stays valid.
       if (!updated.is_admin) {
         navigate('/', { replace: true });
-        queryClient.setQueryData(queryKeys.me(), updated);
+        // Same profile: keep its subtitle_style (the admin answer is a bare Profile).
+        queryClient.setQueryData<Me>(queryKeys.me(), (previous) => ({ subtitle_style: DEFAULT_SUBTITLE_STYLE, ...previous, ...updated }));
       }
       adminUnlock.clear();
     }

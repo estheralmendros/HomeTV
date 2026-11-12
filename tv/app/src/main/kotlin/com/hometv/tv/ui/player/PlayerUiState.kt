@@ -3,6 +3,7 @@ package com.hometv.tv.ui.player
 import com.hometv.tv.core.playback.PlaybackEngine
 import com.hometv.tv.core.playback.PlayerAction
 import com.hometv.tv.core.playback.PreparingEstimate
+import com.hometv.tv.core.playback.SubtitleLook
 import com.hometv.tv.core.util.EpisodeCode
 import com.hometv.tv.ui.text.UiText
 
@@ -66,7 +67,16 @@ sealed interface PlayerDialog {
 
     /** [Probar otra versión]: the playable labels. */
     data class Versions(val labels: List<String>) : PlayerDialog
+
+    /** "Formato de los subtítulos" (opened from "Audio y subtítulos"). */
+    data class SubtitleStyle(val ui: SubtitleStyleUi) : PlayerDialog
 }
+
+/**
+ * The style editor: [draft] (what the dialog and the Exo subtitles show) and [openedWith] (the look when it
+ * opened, before the Clash rule normalized it: a normalized draft counts as a change and is saved).
+ */
+data class SubtitleStyleUi(val draft: SubtitleLook, val openedWith: SubtitleLook)
 
 data class PlayerUiState(
     val session: SessionState = SessionState.Loading,
@@ -98,6 +108,8 @@ data class PlayerUiState(
      * engine switch. The video surface is keyed on it; no visible text depends on it (the choice is invisible).
      */
     val engine: PlaybackEngine? = null,
+    /** The subtitle look the video surface draws: the style dialog's draft while it is open, else the profile's style. */
+    val subtitleLook: SubtitleLook = SubtitleLook.DEFAULT,
 )
 
 /** One-off effects for the screen. */

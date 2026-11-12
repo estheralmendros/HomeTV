@@ -35,6 +35,8 @@ sealed interface PlaybackPlan {
         val durationSeconds: Double?,
         val subtitles: List<PlannedSubtitle>,
         val defaultSubtitleId: String?,
+        /** The language of the response's audio track (`audio_stream_index` in the file), null when unknown. */
+        val audioLanguage: String? = null,
     ) : PlaybackPlan {
         /** HLS with an `audio_action` other than `copy`/`none`: the current audio entry shows "(convertido)". */
         val audioConverted: Boolean get() = mode == PlaybackMode.HLS && audioAction != null && audioAction != "copy" && audioAction != "none"
@@ -80,6 +82,7 @@ object PlaybackPlanner {
             durationSeconds = response.duration_seconds,
             subtitles = visible.map { track -> PlannedSubtitle(track, track.url?.takeIf { track.isText }?.let { ServerUrl.resolve(serverUrl, it) }) },
             defaultSubtitleId = TrackRules.defaultSubtitle(visible, mode, audioLanguage)?.id,
+            audioLanguage = audioLanguage,
         )
     }
 }

@@ -115,6 +115,11 @@ describe('invalidateAfter', () => {
     expect(invalidateAfter({ type: 'librariesChanged' })).toEqual([['admin', 'libraries'], ['admin', 'scan']]);
   });
 
+  it('track choice changed: the film detail; for a show every episode detail and Home (never the show)', () => {
+    expect(invalidateAfter({ type: 'trackChoiceChanged', kind: 'film', id: 12 })).toEqual([['film', 12]]);
+    expect(invalidateAfter({ type: 'trackChoiceChanged', kind: 'show', id: 7 })).toEqual([['episode'], ['home']]);
+  });
+
   it('profile create / edit / delete', () => {
     expect(invalidateAfter({ type: 'profilesChanged' })).toEqual([['profiles'], ['me']]);
   });

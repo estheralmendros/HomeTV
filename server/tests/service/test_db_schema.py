@@ -35,6 +35,7 @@ EXPECTED_TABLES = {
     "watchlist_entry",
     "rating",
     "rating_dismissal",
+    "track_choice",
 }
 
 
@@ -55,7 +56,7 @@ def test_migration_creates_every_table(db):
 def test_migration_is_at_head_and_idempotent(db):
     run_migrations(db)
     with db.read_engine.connect() as conn:
-        assert MigrationContext.configure(conn).get_current_revision() == HEAD_REVISION == "0006"
+        assert MigrationContext.configure(conn).get_current_revision() == HEAD_REVISION == "0007"
 
 
 @pytest.mark.filterwarnings("ignore:.*expression-based index:UserWarning")
@@ -241,6 +242,34 @@ def test_all_data_model_columns_exist(db):
         "uq_rating_dismissal_film_id_profile_id",
         "uq_rating_dismissal_show_id_profile_id",
     } <= {i["name"] for i in insp.get_indexes("rating_dismissal")}
+    assert {
+        "id",
+        "profile_id",
+        "film_id",
+        "show_id",
+        "audio_language",
+        "audio_title",
+        "audio_channels",
+        "subtitle_mode",
+        "subtitle_language",
+        "subtitle_title",
+        "subtitle_forced",
+        "subtitle_hearing_impaired",
+        "subtitle_source",
+        "subtitle_kind",
+        "updated_at",
+    } <= cols["track_choice"]
+    assert {
+        "uq_track_choice_film_id_profile_id",
+        "uq_track_choice_show_id_profile_id",
+    } <= {i["name"] for i in insp.get_indexes("track_choice")}
+    assert {
+        "subtitle_size",
+        "subtitle_color",
+        "subtitle_edge",
+        "subtitle_edge_color",
+        "subtitle_position",
+    } <= cols["profile"]
 
 
 def test_wal_mode_after_migration(db):
@@ -917,5 +946,182 @@ def test_upgrade_from_0005_adds_ratings_and_downgrade_drops_them(tmp_path):
         with database.read_session() as s:
             assert s.scalar(text("SELECT count(*) FROM profile")) == 1
             assert s.scalar(text("SELECT count(*) FROM watchlist_entry")) == 1
+    finally:
+        database.dispose()
+
+
+# --- Track choices and subtitle style (0007) ---------------------------------------------------
+
+_SUB_TRACK = {
+    "subtitle_mode": "track",
+    "subtitle_language": "spa",
+    "subtitle_source": "embedded",
+    "subtitle_kind": "text",
+}
+
+
+def _choice_setup(db):
+    with db.write_session() as s:
+        film = _film(s, _library(s))
+        show = _show(s, _library(s, "shows"))
+        add_profile(s, "A")
+        add_profile(s, "B")
+        assert film.id == show.id == 1
+
+
+def _insert_choice(db, **kw):
+    kw.setdefault("profile_id", 1)
+    with db.write_session() as s:
+        s.add(m.TrackChoice(**kw))
+        s.flush()
+
+
+def test_track_choice_valid_rows_and_unique_per_profile_and_title(db):
+    _choice_setup(db)
+    _insert_choice(db, film_id=1, audio_language="eng", audio_channels=6)
+    _insert_choice(db, profile_id=2, film_id=1, subtitle_mode="off")  # two profiles, same film
+    _insert_choice(db, show_id=1, **_SUB_TRACK, subtitle_forced=True)  # film 1 and show 1: fine
+    with db.read_session() as s:
+        row = s.scalars(select(m.TrackChoice).where(m.TrackChoice.profile_id == 2)).one()
+        assert row.subtitle_forced is False and row.subtitle_hearing_impaired is False
+        assert row.updated_at.tzinfo is not None
+    for kw in ({"film_id": 1}, {"show_id": 1}):
+        with pytest.raises(IntegrityError):
+            _insert_choice(db, audio_language="spa", **kw)
+    with db.read_session() as s:
+        assert s.scalar(text("SELECT count(*) FROM track_choice")) == 3
+
+
+_OFF = {"film_id": 1, "subtitle_mode": "off"}
+_AUDIO_ONLY = {"film_id": 1, "audio_language": "eng"}
+
+
+@pytest.mark.parametrize(
+    "kw",
+    [
+        pytest.param({"film_id": 1, "show_id": 1, "audio_language": "eng"}, id="both-targets"),
+        pytest.param({"audio_language": "eng"}, id="no-target"),
+        pytest.param({"film_id": 1}, id="no-part"),
+        pytest.param({"film_id": 1, **_SUB_TRACK, "subtitle_language": None}, id="track-no-lang"),
+        pytest.param({"film_id": 1, **_SUB_TRACK, "subtitle_source": None}, id="track-no-source"),
+        pytest.param({"film_id": 1, **_SUB_TRACK, "subtitle_kind": None}, id="track-no-kind"),
+        pytest.param({**_OFF, "subtitle_language": "spa"}, id="off-lang"),
+        pytest.param({**_OFF, "subtitle_title": "x"}, id="off-title"),
+        pytest.param({**_OFF, "subtitle_source": "embedded"}, id="off-source"),
+        pytest.param({**_OFF, "subtitle_kind": "text"}, id="off-kind"),
+        pytest.param({**_OFF, "subtitle_forced": True}, id="off-forced"),
+        pytest.param({**_OFF, "subtitle_hearing_impaired": True}, id="off-sdh"),
+        pytest.param({**_AUDIO_ONLY, "subtitle_language": "spa"}, id="none-lang"),
+        pytest.param({**_AUDIO_ONLY, "subtitle_title": "x"}, id="none-title"),
+        pytest.param({**_AUDIO_ONLY, "subtitle_forced": True}, id="none-forced"),
+        pytest.param({**_AUDIO_ONLY, "subtitle_hearing_impaired": True}, id="none-sdh"),
+        pytest.param({**_AUDIO_ONLY, "subtitle_source": "external"}, id="none-source"),
+        pytest.param({**_AUDIO_ONLY, "subtitle_kind": "image"}, id="none-kind"),
+        pytest.param({**_OFF, "audio_title": "x"}, id="audio-title-no-part"),
+        pytest.param({**_OFF, "audio_channels": 2}, id="audio-channels-no-part"),
+        pytest.param({**_AUDIO_ONLY, "audio_channels": 0}, id="channels-0"),
+        pytest.param({"film_id": 1, "subtitle_mode": "on"}, id="unknown-mode"),
+        pytest.param({"film_id": 1, **_SUB_TRACK, "subtitle_source": "web"}, id="unknown-source"),
+        pytest.param({"film_id": 1, **_SUB_TRACK, "subtitle_kind": "bitmap"}, id="unknown-kind"),
+    ],
+)
+def test_track_choice_rejects_bad_shapes(db, kw):
+    _choice_setup(db)
+    with pytest.raises(IntegrityError):
+        _insert_choice(db, **kw)
+
+
+def test_track_choice_cascades(db):
+    _choice_setup(db)
+    for profile_id in (1, 2):
+        _insert_choice(db, profile_id=profile_id, film_id=1, audio_language="eng")
+        _insert_choice(db, profile_id=profile_id, show_id=1, subtitle_mode="off")
+
+    def count(where: str) -> int:
+        with db.read_session() as s:
+            return int(s.scalar(text(f"SELECT count(*) FROM track_choice WHERE {where}")) or 0)
+
+    assert count("1") == 4
+    with db.write_session() as s:
+        s.execute(text("DELETE FROM profile WHERE name = 'A'"))
+    assert count("1") == 2
+    with db.write_session() as s:
+        s.execute(text("DELETE FROM film"))
+    assert count("1") == 1
+    with db.write_session() as s:
+        s.execute(text("DELETE FROM show"))
+    assert count("1") == 0
+
+
+_STYLE_DEFAULTS = {
+    "subtitle_size": "medium",
+    "subtitle_color": "white",
+    "subtitle_edge": "outline",
+    "subtitle_edge_color": "black",
+    "subtitle_position": "low",
+}
+
+
+def test_profile_style_columns_default_and_reject_unknown_values(db):
+    with db.write_session() as s:
+        s.execute(text("INSERT INTO profile (name, avatar_id, is_admin) VALUES ('A', 'a', 0)"))
+    with db.read_session() as s:
+        row = s.execute(text(f"SELECT {', '.join(_STYLE_DEFAULTS)} FROM profile")).one()
+        assert dict(row._mapping) == _STYLE_DEFAULTS
+    for column in _STYLE_DEFAULTS:
+        with pytest.raises(IntegrityError), db.write_session() as s:
+            s.execute(text(f"UPDATE profile SET {column} = 'purple'"))
+    with db.write_session() as s:  # the white-on-white clash is accepted
+        s.execute(
+            text("UPDATE profile SET subtitle_color = 'white', subtitle_edge_color = 'white'")
+        )
+
+
+def test_upgrade_from_0006_keeps_profile_rows_and_downgrade_drops_choices(tmp_path):
+    from alembic import command
+
+    from hometv.db.engine import alembic_config
+
+    tables = ("profile", "playback_progress", "watchlist_entry", "rating", "rating_dismissal")
+    database = Database(tmp_path / "old.db")
+    try:
+        cfg = alembic_config(database)
+        with database.write_engine.connect() as conn:
+            cfg.attributes["connection"] = conn
+            command.upgrade(cfg, "0006")
+            assert conn.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
+            conn.exec_driver_sql(
+                "INSERT INTO profile (id, name, avatar_id, is_admin) VALUES (1, 'A', 'a', 0)"
+            )
+            conn.exec_driver_sql("INSERT INTO library (id, type) VALUES (1, 'films')")
+            conn.exec_driver_sql(
+                "INSERT INTO film (id, library_id, parsed_title, parsed_title_norm, title,"
+                " sort_title, search_text) VALUES (1, 1, 'Dune', 'dune', 'Dune', 'dune', 'dune')"
+            )
+            for table in tables[1:]:
+                extra = ", stars_x2" if table == "rating" else ""
+                value = ", 8" if table == "rating" else ""
+                conn.exec_driver_sql(
+                    f"INSERT INTO {table} (profile_id, film_id{extra}) VALUES (1, 1{value})"
+                )
+            conn.commit()
+        run_migrations(database)
+        with database.write_session() as s:
+            for table in tables:
+                assert s.scalar(text(f"SELECT count(*) FROM {table}")) == 1, table
+            profile = s.get(m.Profile, 1)
+            assert profile is not None
+            assert {c: getattr(profile, c) for c in _STYLE_DEFAULTS} == _STYLE_DEFAULTS
+            s.add(m.TrackChoice(profile_id=1, film_id=1, audio_language="eng"))
+        with database.write_engine.connect() as conn:
+            cfg.attributes["connection"] = conn
+            command.downgrade(cfg, "0006")
+            conn.commit()
+        insp = inspect(database.read_engine)
+        assert "track_choice" not in set(insp.get_table_names())
+        assert not set(_STYLE_DEFAULTS) & {c["name"] for c in insp.get_columns("profile")}
+        with database.read_session() as s:
+            for table in tables:
+                assert s.scalar(text(f"SELECT count(*) FROM {table}")) == 1, table
     finally:
         database.dispose()
