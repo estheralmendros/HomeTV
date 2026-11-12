@@ -63,6 +63,31 @@ describe('PlayerPage subtitles', () => {
     ]);
   });
 
+  // Firefox keeps painting the active cue of a showing <track> removed from the DOM (a frozen line after
+  // "Desactivados"): the track must already be disabled when React takes the element out.
+  it('a removed <track> (Off, or another track) is disabled before it leaves the <video>', async () => {
+    answerPlayback(f.playbackDirect({ subtitle_tracks: SUBS }));
+    const p = renderPlayer('/watch/film/12');
+    await p.startDirect(0);
+    const video = p.video();
+    const modesAtRemoval: string[] = [];
+    const removeChild = video.removeChild.bind(video);
+    vi.spyOn(video, 'removeChild').mockImplementation(<T extends Node>(child: T): T => {
+      if (child instanceof HTMLTrackElement) modesAtRemoval.push(child.track.mode);
+      return removeChild(child);
+    });
+
+    fireEvent.click(within(openMenu()).getByRole('menuitemradio', { name: 'Español' }));
+    await until(() => expect(trackEl(p)?.track.mode).toBe('showing'));
+    fireEvent.click(within(openMenu()).getByRole('menuitemradio', { name: 'Inglés · Externo' }));
+    await until(() => expect(trackEl(p)?.getAttribute('src')).toBe('blob:http://localhost:3000/mock-2'));
+    await until(() => expect(trackEl(p)?.track.mode).toBe('showing'));
+    fireEvent.click(within(openMenu()).getByRole('menuitemradio', { name: 'Desactivados' }));
+    await until(() => expect(trackEl(p)).toBeNull());
+
+    expect(modesAtRemoval).toEqual(['disabled', 'disabled']);
+  });
+
   it('lifts auto-positioned cues above the control bar once the <track> loads (positioned cues are kept)', async () => {
     answerPlayback(f.playbackDirect({ subtitle_tracks: SUBS }));
     const p = renderPlayer('/watch/film/12');

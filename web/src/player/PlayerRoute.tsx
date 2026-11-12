@@ -3,7 +3,7 @@
 // and the single <video playsinline preload="metadata"> survive them. PlayerPage (all per-playback
 // state) is keyed by pathname + `file` only, never by `t`.
 // The shell also owns the subtitle look: one generated `::cue` rule (the panel draft while it is
-// open, else the profile's saved style), the draft store and `--video-h` (the sample line's size).
+// open, else the profile's saved style), the draft store and `--video-h` (the phone sample line's raise).
 import { createContext, useContext, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { useMeQuery } from '@/auth/useCurrentProfile';

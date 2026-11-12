@@ -238,7 +238,7 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     `matchTrackChoice`, `audioChoiceOf`/`subtitleChoiceOf`, `withAudio`/`withSubtitles`, `sameAudioChoice`,
     `defaultAudio`; `trackChoice.test.ts` runs `shared/track-choice-cases.json`), `subtitleStyle` (`COLOR_HEX`,
     `EDGE_COLOR_HEX`, `subtitleStyleOf` (each field checked against `STYLE_VALUES`, an unknown value = that
-    field's default), `effectiveEdgeColor`, `textShadow`, `cueCss`, `cueLine` -3/-4/-5,
+    field's default), `effectiveEdgeColor`, `textShadow`, `cueFontSize` (`calc(5vmin * factor)`, never a `%`: Firefox resolves a `::cue` percentage against 16 px; the panel's sample uses it too), `cueCss`, `cueLine` -3/-4/-5,
     `isDisabled`/`step`/`choose`/`edge` typed per row by `StyleValue<R>`), `subtitleStyleDraft` (the panel draft store on `PlayerShellContext`),
     `trackChoiceSession` (tab-lifetime overrides `pendingChoice`/`rememberPick`/`settlePick`, per-title
     `enqueueWrite(profileId, kind, id, send)` → `{outcome: ok|failed|superseded|dropped, error?}`, `setProfileGetter`,
@@ -484,7 +484,9 @@ is a contract shared by the web and TV clients: change it deliberately and updat
     `ExoCaptionSpec` (+ top-level `toCaptionStyle()`: opaque colours, `EDGE_TYPE_*`, effective edge colour,
     `DEFAULT_TEXT_SIZE_FRACTION` × factor, position fraction; transparent background/window), `SubtitleFileCache`
     (`get` answers from an in-memory index, no disk I/O), `ExoPlayerController` (the ExoPlayer is
-    private; `attach/detach(PlayerView)` only set `view.player`), `ExoTrackMapper`; libVLC (types only here and in
+    private; `attach/detach(PlayerView)` only set `view.player` to its `CuePlacementPlayer`: `ExoCuePlacement.kt`, a
+    `ForwardingPlayer` whose `onCues`/`currentCues` unset Media3's WebVTT `line:auto` = `-1` so `setBottomPaddingFraction`
+    (Posición) applies; listeners wrapped by a `java.lang.reflect.Proxy`, `Player$Listener` kept in `proguard-rules.pro`), `ExoTrackMapper`; libVLC (types only here and in
     `PlayerScreen`'s VLC surface): `VlcAvailability` + `LibVlcProvider<T>(abis, factory: (List<String>) -> T, release, log)`
     (`availability`: ARM ABI and no failed first creation, never creates; `get(options)`/`getOrOld(options)` → `(T, applied)` lazy
     on the main thread: equal options reuse the instance, other options build a new one then `release(old)`; a first-creation

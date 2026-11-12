@@ -7,6 +7,7 @@ import {
   EDGE_COLOR_HEX,
   choose,
   cueCss,
+  cueFontSize,
   cueLine,
   effectiveEdgeColor,
   isDisabled,
@@ -83,12 +84,16 @@ describe('text-shadow and the ::cue rule', () => {
     expect(effectiveEdgeColor(style({ color: 'yellow', edge_color: 'white' }))).toBe('white');
   });
 
+  // An absolute size tied to the video (it fills the viewport): Firefox resolves a `::cue` percentage
+  // against 16 px, not the video-relative default, so `130%` drew small cues (and low auto lines).
   it.each([
-    ['small', '80%'],
-    ['medium', '100%'],
-    ['large', '130%'],
-  ] as const)('size %s → font-size %s', (size, percent) => {
-    expect(cueCss(style({ size }), '.video')).toContain(`font-size: ${percent}`);
+    ['small', 'calc(5vmin * 0.8)'],
+    ['medium', 'calc(5vmin * 1)'],
+    ['large', 'calc(5vmin * 1.3)'],
+  ] as const)('size %s → font-size %s', (size, css) => {
+    expect(cueFontSize(size)).toBe(css);
+    expect(cueCss(style({ size }), '.video')).toContain(`font-size: ${css};`);
+    expect(cueCss(style({ size }), '.video')).not.toMatch(/font-size: [\d.]+%/);
   });
 
   it.each(Object.entries(COLOR_HEX))('colour %s → %s', (color, hex) => {
@@ -97,7 +102,7 @@ describe('text-shadow and the ::cue rule', () => {
 
   it('one rule for the selector with a transparent background', () => {
     expect(cueCss(style({ edge: 'none' }), '.video')).toBe(
-      '.video::cue { color: #FFFFFF; font-size: 100%; text-shadow: none; background: transparent; }',
+      '.video::cue { color: #FFFFFF; font-size: calc(5vmin * 1); text-shadow: none; background: transparent; }',
     );
   });
 });

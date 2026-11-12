@@ -49,6 +49,14 @@ export function usePlayerSubtitles({ video, getChoice, fileId, tracks, attachSeq
   const [shownTrack, setShownTrack] = useState<TextTrack | null>(null);
   const defaultFor = useRef<number | null>(null);
   const trackRef = useRef<HTMLTrackElement | null>(null);
+  // React clears a ref before it takes the node out of the DOM: our <track> is disabled first (Off,
+  // another track, another file, unmount). Firefox keeps painting the active cue of a showing <track>
+  // removed from the <video>, which froze the last line on screen after "Desactivados".
+  const setTrackEl = useCallback((el: HTMLTrackElement | null) => {
+    const leaving = trackRef.current;
+    if (!el && leaving) leaving.track.mode = 'disabled';
+    trackRef.current = el;
+  }, []);
   const latest = useRef({ notify, tracks, audioTrack, getChoice, onPick });
   latest.current = { notify, tracks, audioTrack, getChoice, onPick };
 
@@ -188,7 +196,7 @@ export function usePlayerSubtitles({ video, getChoice, fileId, tracks, attachSeq
       ? createPortal(
           <track
             key={blobUrl}
-            ref={trackRef}
+            ref={setTrackEl}
             kind="subtitles"
             src={blobUrl}
             srcLang={toBcp47(track.language) ?? undefined}

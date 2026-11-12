@@ -13,6 +13,7 @@ import { API, apiError } from '../../tests/msw/handlers';
 import { server } from '../../tests/msw/server';
 import { answerPlayback, renderPlayer, type PlayerHarness } from '../../tests/player';
 import { setViewportWidth } from '../../tests/viewport';
+import { cueFontSize } from './subtitleStyle';
 
 vi.mock('hls.js', () => import('../../tests/fakeHls'));
 
@@ -127,13 +128,13 @@ describe('opening and the keyboard (W-AC-11)', () => {
 describe('live preview (W-AC-12)', () => {
   it('each change rewrites the ::cue rule at once', async () => {
     await start();
-    expect(styleText()).toContain('color: #FFFFFF; font-size: 100%');
+    expect(styleText()).toContain('color: #FFFFFF; font-size: calc(5vmin * 1);');
     expect(styleText()).toContain('background: transparent');
     openPanel();
     fireEvent.click(radio('Color', 'Amarillo'));
     expect(styleText()).toContain('color: #FFFF00');
     fireEvent.click(radio('Tamaño', 'Grande'));
-    expect(styleText()).toContain('font-size: 130%');
+    expect(styleText()).toContain('font-size: calc(5vmin * 1.3);');
     fireEvent.click(radio('Contorno', 'Sombra'));
     expect(styleText()).toContain('text-shadow: 0.07em 0.07em 0.07em #000000');
     fireEvent.click(radio('Color del contorno', 'Blanco'));
@@ -241,14 +242,18 @@ describe('the sample line (W-AC-14, W-AC-16)', () => {
     expect(screen.getByTestId('subtitle-style-sample').style.bottom).toContain('0.06');
   });
 
-  it('the sample is drawn with the draft colour and size factor', async () => {
+  it('the sample is drawn with the draft colour and the size of the cues', async () => {
     await start();
     openPanel();
     fireEvent.click(radio('Color', 'Cian'));
     fireEvent.click(radio('Tamaño', 'Pequeño'));
     const sample = screen.getByTestId('subtitle-style-sample');
     expect(sample.style.color).toBe('rgb(0, 255, 255)');
-    expect(sample.style.fontSize).toContain('0.8');
+    // The same size as the live cues' `::cue` rule (the preview never differs from the applied look).
+    const cues = document.createElement('p');
+    cues.style.fontSize = cueFontSize('small'); // normalised the same way (jsdom folds the calc)
+    expect(sample.style.fontSize).toBe(cues.style.fontSize);
+    expect(styleText()).toContain('font-size: calc(5vmin * 0.8);');
     expect(sample).toHaveAttribute('aria-hidden', 'true');
   });
 });

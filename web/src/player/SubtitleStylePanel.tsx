@@ -17,10 +17,10 @@ import { usePlayerShell } from './PlayerRoute';
 import {
   COLOR_HEX,
   EDGE_COLOR_HEX,
-  SIZE_FACTOR,
   STYLE_ROWS,
   STYLE_VALUES,
   choose,
+  cueFontSize,
   edge,
   effectiveEdgeColor,
   isDisabled,
@@ -190,7 +190,7 @@ export function SubtitleStylePanel({ onClose, onSave, shownTrack }: SubtitleStyl
   const sampleStyle: CSSProperties = {
     color: COLOR_HEX[current.color],
     textShadow: textShadow(current),
-    fontSize: `calc(var(--video-h, 0px) * 0.05 * ${SIZE_FACTOR[current.size]})`,
+    fontSize: cueFontSize(current.size),
     bottom: phone
       ? // The sheet sits on the control bar (`bottom: var(--player-controls-h)`): clear both.
         `calc(var(--player-controls-h) + var(--style-sheet-h) + 8px + var(--video-h, 0px) * ${SAMPLE_RAISE[current.position]})`

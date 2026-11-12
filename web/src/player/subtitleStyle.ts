@@ -84,10 +84,19 @@ export function textShadow(style: SubtitleStyle): string {
   return 'none';
 }
 
+/**
+ * The cue text size: 5 % of the video's smaller side (Chromium's own cue default; the <video> fills
+ * the viewport) × the size factor. Absolute on purpose: Firefox resolves a `::cue` percentage against
+ * 16 px instead of its video-relative default, so `130%` drew small cues and low auto lines. The
+ * style panel's sample line uses the same value, so the preview is the applied size.
+ */
+export function cueFontSize(size: SubtitleSize): string {
+  return `calc(5vmin * ${SIZE_FACTOR[size]})`;
+}
+
 /** The one generated rule: colour, size, edge and no background box. */
 export function cueCss(style: SubtitleStyle, selector: string): string {
-  const size = `${Math.round(SIZE_FACTOR[style.size] * 100)}%`;
-  return `${selector}::cue { color: ${COLOR_HEX[style.color]}; font-size: ${size}; text-shadow: ${textShadow(style)}; background: transparent; }`;
+  return `${selector}::cue { color: ${COLOR_HEX[style.color]}; font-size: ${cueFontSize(style.size)}; text-shadow: ${textShadow(style)}; background: transparent; }`;
 }
 
 const CUE_LINES: Record<SubtitlePosition, number> = { low: -3, middle: -4, high: -5 };
