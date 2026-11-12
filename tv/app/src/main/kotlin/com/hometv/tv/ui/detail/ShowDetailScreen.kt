@@ -1,7 +1,9 @@
 package com.hometv.tv.ui.detail
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,11 +21,14 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,6 +42,8 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -56,10 +63,11 @@ import com.hometv.tv.ui.components.ActionButton
 import com.hometv.tv.ui.components.Artwork
 import com.hometv.tv.ui.components.ErrorAction
 import com.hometv.tv.ui.components.ErrorScreen
-import com.hometv.tv.ui.components.ListDialog
 import com.hometv.tv.ui.components.FocusRequesters
+import com.hometv.tv.ui.components.ListDialog
 import com.hometv.tv.ui.components.LoadingScreen
 import com.hometv.tv.ui.components.ProgressStrip
+import com.hometv.tv.ui.components.SafeAreaBringIntoViewSpec
 import com.hometv.tv.ui.components.ScreenErrorView
 import com.hometv.tv.ui.components.rememberFocusRequesters
 import com.hometv.tv.ui.components.requestFocusWhenReady
@@ -92,6 +100,7 @@ fun ShowDetailScreen(vm: ShowDetailViewModel, navigator: AppNavigator) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ShowContent(state: ShowDetailUiState.Content, vm: ShowDetailViewModel) {
     val show = state.show
@@ -122,6 +131,23 @@ private fun ShowContent(state: ShowDetailUiState.Content, vm: ShowDetailViewMode
         episodeList.scrollToItem(index)
         episodes[row.id].requestFocusWhenReady()
     }
+    // Another season in the pane: its list starts at the episode Right lands on (the next episode to
+    // watch when it is in that season, else E1). The same season (focus back from one of its episodes,
+    // a refetch) keeps the scroll; saved, so coming back from the Player does not scroll either.
+    var shownSeason by rememberSaveable { mutableStateOf<Int?>(null) }
+    // Until focus enters the list, a resize (the Mi lista error line) scrolls it to that episode again: a
+    // last episode pinned above the bottom safe area would otherwise slide into it.
+    var atEntry by remember { mutableStateOf(false) }
+    var listHeight by remember { mutableIntStateOf(0) }
+    val paneSeason = state.season
+    suspend fun scrollToEntry(pane: SeasonPaneUi) = episodeList.scrollToItem(pane.entryIndex.coerceIn(0, (pane.episodes.size - 1).coerceAtLeast(0)))
+    LaunchedEffect(paneSeason?.number) {
+        if (paneSeason == null || paneSeason.number == shownSeason) return@LaunchedEffect
+        shownSeason = paneSeason.number
+        scrollToEntry(paneSeason)
+        atEntry = true
+    }
+    LaunchedEffect(listHeight) { if (atEntry) paneSeason?.let { scrollToEntry(it) } }
     LaunchedEffect(state.episodeActions == null) {
         if (state.episodeActions == null) opener?.let { episodes[it].requestFocusWhenReady() }
     }
@@ -129,7 +155,8 @@ private fun ShowContent(state: ShowDetailUiState.Content, vm: ShowDetailViewMode
     Backdrop(show.backdrop?.large, 360.dp)
     Column(
         Modifier.fillMaxSize().onFocusChanged { contentHasFocus = it.hasFocus }
-            .padding(horizontal = HomeTvDimens.SafeHorizontal, vertical = HomeTvDimens.SafeVertical),
+            // No bottom padding: the panes run to the screen's bottom edge (no empty strip under the lists).
+            .padding(start = HomeTvDimens.SafeHorizontal, end = HomeTvDimens.SafeHorizontal, top = HomeTvDimens.SafeVertical),
     ) {
         // 24 dp (was 96): room for the ratings block, the panes keep one full episode row.
         Spacer(Modifier.height(TOP_SPACER))
@@ -191,47 +218,64 @@ private fun ShowContent(state: ShowDetailUiState.Content, vm: ShowDetailViewMode
             onMineDown = if (hasMore) null else downToSeason,
             onMoreDown = downToSeason,
         )
-        Row(Modifier.fillMaxWidth().weight(1f)) {
-            LazyColumn(Modifier.width(260.dp).fillMaxSize(), state = seasonList, contentPadding = PaddingValues(vertical = 4.dp)) {
-                itemsIndexed(state.seasons, key = { _, s -> s.number }) { index, season ->
-                    ListItem(
-                        selected = season.number == state.selectedSeason,
-                        onClick = { vm.onSeasonFocused(season.number) },
-                        headlineContent = { Text(season.title.resolve(), maxLines = 1) },
-                        modifier = Modifier
-                            .focusRequester(seasons[season.number])
-                            .focusProperties { if (index == 0) up = ratingMine }
-                            .testTag("season_${season.number}")
-                            .onFocusChanged { if (it.isFocused) vm.onSeasonFocused(season.number) }
-                            .onPreviewKeyEvent { event ->
-                                val pane = state.season
-                                if (event.type != KeyEventType.KeyDown || event.key != Key.DirectionRight || pane == null || pane.number != season.number || pane.episodes.isEmpty()) {
-                                    return@onPreviewKeyEvent false
-                                }
-                                val target = pane.episodes[pane.entryIndex.coerceIn(0, pane.episodes.lastIndex)]
-                                scope.launch {
-                                    episodeList.scrollToItem(pane.entryIndex)
-                                    episodes[target.id].requestFocusWhenReady()
-                                }
-                                true
-                            },
-                    )
-                }
-            }
-            Column(Modifier.padding(start = 24.dp).fillMaxSize()) {
-                val pane = state.season
-                if (pane == null) {
-                    LoadingScreen(Modifier.height(120.dp))
-                } else {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
-                        Text(stringResource(R.string.pair_dot, pane.title.resolve(), pane.count.resolve()), style = MaterialTheme.typography.titleMedium)
-                        Spacer(Modifier.weight(1f))
-                        ActionButton(pane.watchedButton.resolve(), vm::onSeasonWatched, Modifier.testTag("season_watched"))
+        // The lists end at the screen edge; their last item and focus scrolling stop 27 dp above it (the safe area).
+        val density = LocalDensity.current
+        val platformSpec = LocalBringIntoViewSpec.current
+        val listSpec = remember(density, platformSpec) { SafeAreaBringIntoViewSpec(0f, with(density) { HomeTvDimens.SafeVertical.toPx() }, base = platformSpec) }
+        CompositionLocalProvider(LocalBringIntoViewSpec provides listSpec) {
+            Row(Modifier.fillMaxWidth().weight(1f)) {
+                LazyColumn(
+                    Modifier.width(260.dp).fillMaxSize().testTag("season_list"),
+                    state = seasonList,
+                    contentPadding = PaddingValues(top = 4.dp, bottom = 4.dp + HomeTvDimens.SafeVertical),
+                ) {
+                    itemsIndexed(state.seasons, key = { _, s -> s.number }) { index, season ->
+                        ListItem(
+                            selected = season.number == state.selectedSeason,
+                            onClick = { vm.onSeasonFocused(season.number) },
+                            headlineContent = { Text(season.title.resolve(), maxLines = 1) },
+                            modifier = Modifier
+                                .focusRequester(seasons[season.number])
+                                .focusProperties { if (index == 0) up = ratingMine }
+                                .testTag("season_${season.number}")
+                                .onFocusChanged { if (it.isFocused) vm.onSeasonFocused(season.number) }
+                                .onPreviewKeyEvent { event ->
+                                    val pane = state.season
+                                    if (event.type != KeyEventType.KeyDown || event.key != Key.DirectionRight || pane == null || pane.number != season.number || pane.episodes.isEmpty()) {
+                                        return@onPreviewKeyEvent false
+                                    }
+                                    val target = pane.episodes[pane.entryIndex.coerceIn(0, pane.episodes.lastIndex)]
+                                    scope.launch {
+                                        episodeList.scrollToItem(pane.entryIndex)
+                                        episodes[target.id].requestFocusWhenReady()
+                                    }
+                                    true
+                                },
+                        )
                     }
-                    LazyColumn(state = episodeList, verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(4.dp)) {
-                        itemsIndexed(pane.episodes, key = { _, e -> e.id }) { _, row ->
-                            EpisodeRow(row, episodes, onClick = { vm.onEpisodeClick(row) }, onLongClick = { opener = row.id; vm.onEpisodeLongClick(row) }) {
-                                seasons[state.selectedSeason].tryRequestFocus()
+                }
+                Column(Modifier.padding(start = 24.dp).fillMaxSize()) {
+                    val pane = state.season
+                    if (pane == null) {
+                        LoadingScreen(Modifier.height(120.dp))
+                    } else {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
+                            Text(stringResource(R.string.pair_dot, pane.title.resolve(), pane.count.resolve()), style = MaterialTheme.typography.titleMedium)
+                            Spacer(Modifier.weight(1f))
+                            ActionButton(pane.watchedButton.resolve(), vm::onSeasonWatched, Modifier.testTag("season_watched"))
+                        }
+                        LazyColumn(
+                            Modifier.fillMaxSize().testTag("episode_list")
+                                .onSizeChanged { listHeight = it.height }
+                                .onFocusChanged { if (it.hasFocus) atEntry = false },
+                            state = episodeList,
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(start = 4.dp, top = 4.dp, end = 4.dp, bottom = 4.dp + HomeTvDimens.SafeVertical),
+                        ) {
+                            itemsIndexed(pane.episodes, key = { _, e -> e.id }) { _, row ->
+                                EpisodeRow(row, episodes, onClick = { vm.onEpisodeClick(row) }, onLongClick = { opener = row.id; vm.onEpisodeLongClick(row) }) {
+                                    seasons[state.selectedSeason].tryRequestFocus()
+                                }
                             }
                         }
                     }

@@ -1,6 +1,8 @@
 package com.hometv.tv.ui.person
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -17,6 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -27,6 +30,7 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -45,6 +49,7 @@ import com.hometv.tv.ui.components.Artwork
 import com.hometv.tv.ui.components.LoadingScreen
 import com.hometv.tv.ui.components.PosterCard
 import com.hometv.tv.ui.components.RowSpacing
+import com.hometv.tv.ui.components.SafeAreaBringIntoViewSpec
 import com.hometv.tv.ui.components.ScreenErrorView
 import com.hometv.tv.ui.components.TextDialog
 import com.hometv.tv.ui.components.focusItem
@@ -79,6 +84,7 @@ fun PersonScreen(vm: PersonViewModel, navigator: AppNavigator) {
  * focus on the first card. D-pad moves are never reported to the VM: `state.focus` only
  * changes on OK, on closing the biography and on a refetch whose target is gone.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PersonContent(state: PersonUiState.Content, vm: PersonViewModel) {
     val bio = remember { FocusRequester() }
@@ -98,112 +104,122 @@ private fun PersonContent(state: PersonUiState.Content, vm: PersonViewModel) {
         }
     }
     val hasBio = state.biography != null
-    // The vertical safe area is outside the scroll: focus scrolling stops 27 dp above the edge (as Film detail).
-    Column(
-        Modifier.fillMaxSize().padding(vertical = HomeTvDimens.SafeVertical).verticalScroll(rememberScrollState())
-            .testTag("person_page").padding(horizontal = HomeTvDimens.SafeHorizontal),
-    ) {
-        Row {
-            Artwork(
-                state.photo,
-                null,
-                Modifier.size(PHOTO_WIDTH, PHOTO_HEIGHT).clip(RoundedCornerShape(8.dp)),
-                placeholder = {
-                    // Decorative (as the photo): not read by TalkBack.
-                    Text(
-                        state.initial,
-                        style = MaterialTheme.typography.displaySmall.copy(fontSize = 56.sp),
-                        color = HomeTvColors.Muted,
-                        modifier = Modifier.testTag("person_initial").clearAndSetSemantics {},
-                    )
-                },
-            )
-            Column(Modifier.padding(start = 32.dp).fillMaxWidth()) {
-                Text(
-                    state.name,
-                    style = MaterialTheme.typography.displaySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.testTag("person_name"),
-                )
-                state.lifeSpan?.let {
-                    Text(it.resolve(), style = MaterialTheme.typography.titleMedium, color = DetailText.secondary, modifier = Modifier.padding(top = 8.dp))
-                }
-                state.placeOfBirth?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = HomeTvColors.Muted,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
-                }
-                // Not focusable, so it sits above the row: focus scrolling only reveals the focused card.
-                if (state.incomplete) {
-                    Text(
-                        stringResource(R.string.person_incomplete),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = HomeTvColors.Muted,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 8.dp).testTag("person_incomplete"),
-                    )
-                }
-                state.biography?.let { text ->
-                    BiographyBlock(
-                        text,
-                        onClick = vm::openBio,
-                        modifier = Modifier.padding(top = BIO_TOP_GAP).focusRequester(bio).focusProperties {
-                            up = FocusRequester.Cancel
-                            left = FocusRequester.Cancel
-                            right = FocusRequester.Cancel
+    // The page runs to the screen edges (no empty strip at the bottom); the vertical safe area is padding inside
+    // the scroll, and focus scrolling stops 27 dp from the edges (as Film detail). The rows keep the platform spec.
+    val platformSpec = LocalBringIntoViewSpec.current
+    val density = LocalDensity.current
+    val pageSpec = remember(density, platformSpec) {
+        with(density) { SafeAreaBringIntoViewSpec(HomeTvDimens.SafeVertical.toPx(), HomeTvDimens.SafeVertical.toPx(), base = platformSpec) }
+    }
+    CompositionLocalProvider(LocalBringIntoViewSpec provides pageSpec) {
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                .testTag("person_page").padding(horizontal = HomeTvDimens.SafeHorizontal, vertical = HomeTvDimens.SafeVertical),
+        ) {
+            CompositionLocalProvider(LocalBringIntoViewSpec provides platformSpec) {
+                Row {
+                    Artwork(
+                        state.photo,
+                        null,
+                        Modifier.size(PHOTO_WIDTH, PHOTO_HEIGHT).clip(RoundedCornerShape(8.dp)),
+                        placeholder = {
+                            // Decorative (as the photo): not read by TalkBack.
+                            Text(
+                                state.initial,
+                                style = MaterialTheme.typography.displaySmall.copy(fontSize = 56.sp),
+                                color = HomeTvColors.Muted,
+                                modifier = Modifier.testTag("person_initial").clearAndSetSemantics {},
+                            )
                         },
                     )
+                    Column(Modifier.padding(start = 32.dp).fillMaxWidth()) {
+                        Text(
+                            state.name,
+                            style = MaterialTheme.typography.displaySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.testTag("person_name"),
+                        )
+                        state.lifeSpan?.let {
+                            Text(it.resolve(), style = MaterialTheme.typography.titleMedium, color = DetailText.secondary, modifier = Modifier.padding(top = 8.dp))
+                        }
+                        state.placeOfBirth?.let {
+                            Text(
+                                it,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = HomeTvColors.Muted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = 4.dp),
+                            )
+                        }
+                        // Not focusable, so it sits above the row: focus scrolling only reveals the focused card.
+                        if (state.incomplete) {
+                            Text(
+                                stringResource(R.string.person_incomplete),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = HomeTvColors.Muted,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = 8.dp).testTag("person_incomplete"),
+                            )
+                        }
+                        state.biography?.let { text ->
+                            BiographyBlock(
+                                text,
+                                onClick = vm::openBio,
+                                modifier = Modifier.padding(top = BIO_TOP_GAP).focusRequester(bio).focusProperties {
+                                    up = FocusRequester.Cancel
+                                    left = FocusRequester.Cancel
+                                    right = FocusRequester.Cancel
+                                },
+                            )
+                        }
+                    }
                 }
-            }
-        }
-        // Not SectionTitle: its 16 dp top padding costs the 8 dp the vertical budget needs (same typography).
-        Text(stringResource(R.string.person_in_catalog), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp, bottom = 8.dp))
-        if (state.cards.isEmpty()) {
-            Text(
-                stringResource(R.string.person_empty),
-                style = MaterialTheme.typography.bodyMedium,
-                color = HomeTvColors.Muted,
-                modifier = Modifier.testTag("person_empty"),
-            )
-        } else {
-            // As Film detail's cast row: shifted left by its content padding, so the first card starts on the
-            // margin and the focus scale is not clipped.
-            // focusRestorer redirects any focus entering the row (a requestFocus included) to its last focused
-            // card, else to the fallback: after Back from a detail nothing is remembered, so the fallback is
-            // the card of `state.focus` itself.
-            val remembered = (state.focus as? PersonFocus.Card)?.key?.takeIf { key -> state.cards.any { it.item.key == key } }
-            LazyRow(
-                state = row,
-                modifier = Modifier.offset(x = -ROW_PADDING).focusRestorer(cardRequesters[remembered ?: state.cards.first().item.key]),
-                contentPadding = PaddingValues(horizontal = ROW_PADDING, vertical = 8.dp),
-                horizontalArrangement = RowSpacing,
-            ) {
-                items(state.cards, key = { it.item.key }) { card ->
-                    val key = card.item.key
-                    PosterCard(
-                        title = card.item.title,
-                        year = card.item.year,
-                        image = card.item.image,
-                        progress = card.item.progress,
-                        watched = card.item.watched,
-                        badge = card.item.badge,
-                        onClick = { vm.onCardSelected(card) },
-                        modifier = Modifier
-                            .testTag("appearance_$key")
-                            .focusRequester(cardRequesters[key])
-                            .then(focusedCard.track(key))
-                            .focusProperties { up = if (hasBio) bio else FocusRequester.Cancel },
-                        subtitle = card.subtitle?.resolve(),
-                        subtitleTestTag = "appearance_${key}_subtitle",
-                        myRating = card.item.myRating,
+                // Not SectionTitle: its 16 dp top padding costs the 8 dp the vertical budget needs (same typography).
+                Text(stringResource(R.string.person_in_catalog), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp, bottom = 8.dp))
+                if (state.cards.isEmpty()) {
+                    Text(
+                        stringResource(R.string.person_empty),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = HomeTvColors.Muted,
+                        modifier = Modifier.testTag("person_empty"),
                     )
+                } else {
+                    // As Film detail's cast row: shifted left by its content padding, so the first card starts on the
+                    // margin and the focus scale is not clipped.
+                    // focusRestorer redirects any focus entering the row (a requestFocus included) to its last focused
+                    // card, else to the fallback: after Back from a detail nothing is remembered, so the fallback is
+                    // the card of `state.focus` itself.
+                    val remembered = (state.focus as? PersonFocus.Card)?.key?.takeIf { key -> state.cards.any { it.item.key == key } }
+                    LazyRow(
+                        state = row,
+                        modifier = Modifier.offset(x = -ROW_PADDING).focusRestorer(cardRequesters[remembered ?: state.cards.first().item.key]),
+                        contentPadding = PaddingValues(horizontal = ROW_PADDING, vertical = 8.dp),
+                        horizontalArrangement = RowSpacing,
+                    ) {
+                        items(state.cards, key = { it.item.key }) { card ->
+                            val key = card.item.key
+                            PosterCard(
+                                title = card.item.title,
+                                year = card.item.year,
+                                image = card.item.image,
+                                progress = card.item.progress,
+                                watched = card.item.watched,
+                                badge = card.item.badge,
+                                onClick = { vm.onCardSelected(card) },
+                                modifier = Modifier
+                                    .testTag("appearance_$key")
+                                    .focusRequester(cardRequesters[key])
+                                    .then(focusedCard.track(key))
+                                    .focusProperties { up = if (hasBio) bio else FocusRequester.Cancel },
+                                subtitle = card.subtitle?.resolve(),
+                                subtitleTestTag = "appearance_${key}_subtitle",
+                                myRating = card.item.myRating,
+                            )
+                        }
+                    }
                 }
             }
         }

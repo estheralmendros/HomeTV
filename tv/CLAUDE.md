@@ -49,7 +49,10 @@ root `CLAUDE.md`.
   - Media session for both engines: `ControllerSessionPlayer` + `PlayerMediaSession`.
 - `ui/`: `HomeTvRoot` (NavHost + the one root `ratings/RatingPromptHost`), `navigation/` (`Route`, `NavRequest`,
   `AppNavigator`), `text/` (`UiText`, `UiFormat`, `StringResolver`), `components/` (`TopNav`, `PosterCard`,
-  `ActionButton`, `ConfirmDialog`, `TextDialog`, `Artwork`, `FocusRestorer.kt`), `common/ScreenError`, theme
+  `ActionButton`, `ConfirmDialog`, `TextDialog`, `Artwork`, `FocusRestorer.kt`, `OkKeyGuard` (drops the OK events of a
+  press that began elsewhere: the release of a long press never clicks on the screen/dialog it opened; keyed per screen on
+  the NavHost, chained on `EpisodeActionsDialog`), `SafeAreaBringIntoViewSpec` (scroll viewports run to the screen
+  edge, the 27 dp safe area is padding inside them and this spec stops focus scrolling there)), `common/ScreenError`, theme
   (`HomeTvColors`, `HomeTvDimens`), one package per screen:
   - `home` (Back -> exit dialog -> sign out), `settings` (admin force-VLC toggle, licences), `browse`
     (`PosterGridPane`, shared with Mi lista), `watchlist`, `activity`, `person`.

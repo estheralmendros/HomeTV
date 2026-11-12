@@ -323,7 +323,7 @@ class WatchlistFocusTest : UiTestBase() {
         assertCardTitle("grid_0", "Show 7")
         press(Key.DirectionCenter)
         assertFocused("button_RESUME")
-        press(Key.DirectionRight, times = 2)
+        press(Key.DirectionRight, times = 3)
         assertFocused("button_WATCHLIST")
         press(Key.DirectionCenter)
         assertEquals(1, api.count("DELETE /api/watchlist/shows/7"))

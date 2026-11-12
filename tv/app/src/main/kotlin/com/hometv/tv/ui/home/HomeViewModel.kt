@@ -140,6 +140,13 @@ class HomeViewModel(
 
     private var payload: HomePayload? = null
     private var focusedKey: String? = null
+
+    /**
+     * The card the app put focus on at entry (cold start, coming back to the app) while the user has not
+     * moved since: fresh data then focuses the new first card instead of following this one by key.
+     */
+    private var entryKey: String? = null
+    private var leftApp = false
     private var focusVersion = 0
     private var job: Job? = null
 
@@ -152,18 +159,42 @@ class HomeViewModel(
 
     fun retry() = load(initial = false)
 
-    /** Home became visible again (back from the Player or a detail screen). */
+    /** Home became visible again: back from the Player or a detail screen, or back to the app ([onAppLeft]). */
     fun onVisible() {
-        if (refresh.consumeStale()) load(initial = false)
+        val stale = refresh.consumeStale()
+        if (leftApp) {
+            leftApp = false
+            onAppReturned()
+        } else if (stale) {
+            load(initial = false)
+        }
+    }
+
+    /** The app stopped while Home was on screen (Home, the TV's launcher): the next [onVisible] is an entry. */
+    fun onAppLeft() {
+        leftApp = true
     }
 
     fun onCardFocused(card: ItemCard) {
+        if (card.key != entryKey) entryKey = null
         focusedKey = card.key
         focused.value = card
     }
 
     fun onSeeAllFocused(card: SeeAllCard) {
+        entryKey = null
         focusedKey = card.key
+    }
+
+    /** Back to the app: focus the first card at once, reload, then the first card of the fresh rows unless the user moved meanwhile. */
+    private fun onAppReturned() {
+        val first = _state.value.rows.firstOrNull()?.cards?.firstOrNull()
+        if (first != null && _state.value.exitDialog == null) {
+            focusedKey = first.key
+            entryKey = first.key
+            _state.update { it.copy(focus = FocusTarget(first.key, 0, 0, ++focusVersion)) }
+        }
+        load(initial = false)
     }
 
     /** The card to focus when Home is shown again (Back from a detail): the last focused card, if still there. */
@@ -179,6 +210,7 @@ class HomeViewModel(
     /** Focus is on the top navigation bar. */
     fun onNavFocused() {
         focusedKey = null
+        entryKey = null
     }
 
     /**
@@ -234,6 +266,7 @@ class HomeViewModel(
     }
 
     fun onCardClick(card: HomeCard) {
+        entryKey = null
         val request = when (card) {
             is SeeAllCard -> NavRequest.Browse(card.library)
             is ItemCard -> when (val s = card.summary) {
@@ -248,6 +281,7 @@ class HomeViewModel(
 
     /** Long-press on a Continue Watching card (in progress or Next Up) → the detail of the film or show. */
     fun onCardLongClick(card: HomeCard) {
+        entryKey = null
         val item = card as? ItemCard ?: return
         val request = when (val s = item.summary) {
             is EpisodeSummary -> NavRequest.Detail("show", s.show_id)
@@ -296,10 +330,16 @@ class HomeViewModel(
         }
     }
 
-    /** Same item by key when still present, else the same index of its row (clamped), else the first card. */
+    /**
+     * The first card at entry (nothing focused yet, or still the entry card); else the same item by key
+     * when still present, else the same index of its row (clamped), else the first card.
+     */
     private fun focusAfter(old: List<HomeRow>, new: List<HomeRow>): FocusTarget? {
         if (new.isEmpty()) return null
         val key = focusedKey
+        if (old.isEmpty() || (entryKey != null && key == entryKey)) {
+            return target(new, 0, 0).also { entryKey = it.key }
+        }
         if (key != null) {
             new.forEachIndexed { r, row -> row.cards.indexOfFirst { it.key == key }.takeIf { it >= 0 }?.let { return target(new, r, it) } }
             old.forEachIndexed { r, row ->

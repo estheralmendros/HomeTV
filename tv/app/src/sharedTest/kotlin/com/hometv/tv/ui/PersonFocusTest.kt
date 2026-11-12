@@ -113,6 +113,13 @@ class PersonFocusTest : UiTestBase() {
     // ---- Layout fit (written before the layout) -------------------------------------------------
 
     @Test
+    fun thePageRunsToTheBottomEdge() {
+        openPerson()
+        assertFocused("appearance_film:12")
+        assertReachesBottomEdge("person_page")
+    }
+
+    @Test
     fun theNameAndTheFirstCardsSubtitleFitTheSafeAreaWithFocusOnTheFirstCard() {
         openPerson()
         assertFocused("appearance_film:12")

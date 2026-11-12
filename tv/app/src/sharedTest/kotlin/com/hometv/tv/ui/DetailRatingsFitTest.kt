@@ -92,16 +92,17 @@ class DetailRatingsFitTest : UiTestBase() {
         press(Key.DirectionDown)
         press(Key.DirectionCenter)
         assertFocused("button_RESUME")
-        press(Key.DirectionRight, times = 2)
+        press(Key.DirectionRight, times = 3)
         assertFocused("button_WATCHLIST")
         press(Key.DirectionCenter)
         node("watchlist_error").assertExists()
         assertBlockFits()
-        assertFullyVisible("episode_201")
+        // The list opens at the episode Right lands on (T2 E3, the next one to watch).
+        assertFullyVisible("episode_203")
         assertInsideSafeArea("season_watched")
         press(Key.DirectionDown)
         assertFocused("rating_mine")
         assertBlockFits()
-        assertFullyVisible("episode_201")
+        assertFullyVisible("episode_203")
     }
 }

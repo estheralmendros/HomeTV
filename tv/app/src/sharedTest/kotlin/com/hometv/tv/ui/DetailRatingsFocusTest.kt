@@ -254,7 +254,7 @@ class DetailRatingsFocusTest : UiTestBase() {
         back()
         assertFocused("rating_mine")
         press(Key.DirectionUp)
-        press(Key.DirectionRight)
+        press(Key.DirectionRight, times = 2)
         assertFocused("button_WATCHED")
         press(Key.DirectionCenter)
         UiTestPlatform.advance(300)
