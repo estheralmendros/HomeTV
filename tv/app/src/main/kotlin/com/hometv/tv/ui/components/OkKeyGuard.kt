@@ -27,7 +27,19 @@ private data class OkKeyGuardElement(val key: Any?) : ModifierNodeElement<OkKeyG
 private class OkKeyGuardNode : Modifier.Node(), KeyInputModifierNode {
     var tracker = OkPressTracker()
 
-    override fun onPreKeyEvent(event: ComposeKeyEvent): Boolean = tracker.drop(event.nativeKeyEvent)
+    override fun onPreKeyEvent(event: ComposeKeyEvent): Boolean {
+        val e = event.nativeKeyEvent
+        val drop = tracker.drop(e)
+        // TEMPORARY (long-press diagnosis): the guard's decision. Remove once diagnosed.
+        if (e.keyCode in OK_KEYS_DIAG) {
+            android.util.Log.i("HomeTvKeys", "  guard@${System.identityHashCode(tracker).toString(16)} ${if (e.action == KeyEvent.ACTION_DOWN) "DOWN" else "UP"} rc=${e.repeatCount} down=${e.downTime} drop=$drop")
+        }
+        return drop
+    }
+
+    private companion object {
+        val OK_KEYS_DIAG = setOf(KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER)
+    }
 
     override fun onKeyEvent(event: ComposeKeyEvent): Boolean = false
 }
