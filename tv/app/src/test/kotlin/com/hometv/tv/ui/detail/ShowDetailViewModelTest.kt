@@ -83,12 +83,15 @@ class ShowDetailViewModelTest {
         assertEquals(listOf("GET /api/shows/7", "GET /api/shows/7/seasons/2"), repos.api.calls)
         val content = vm.content()
         assertEquals(2, content.selectedSeason)
-        assertEquals(listOf(ButtonId.RESUME, ButtonId.WATCHED, ButtonId.WATCHLIST), content.buttons.map { it.id })
+        assertEquals(listOf(ButtonId.RESUME, ButtonId.PLAY_FROM_START, ButtonId.WATCHED, ButtonId.WATCHLIST), content.buttons.map { it.id })
         assertEquals(UiText.Res(R.string.show_resume_episode, listOf(EpisodeCode(2, 3))), content.buttons[0].text)
-        assertEquals(UiText.Res(R.string.mark_show_watched), content.buttons[1].text)
+        assertEquals(UiText.Res(R.string.show_play_episode_from_start, listOf(EpisodeCode(2, 3))), content.buttons[1].text)
+        assertEquals(UiText.Res(R.string.mark_show_watched), content.buttons[2].text)
         assertEquals(2, content.season!!.entryIndex, "Right from the season list lands on T2 E3")
         vm.onButton(ButtonId.RESUME)
         assertEquals(NavRequest.Play(PlayRequest("episode", 203)), vm.navigation.first())
+        vm.onButton(ButtonId.PLAY_FROM_START)
+        assertEquals(NavRequest.Play(PlayRequest("episode", 203, fromStart = true)), vm.navigation.first())
     }
 
     @Test
@@ -97,7 +100,7 @@ class ShowDetailViewModelTest {
         val vm = vm()
         advanceUntilIdle()
         assertEquals(UiText.Res(R.string.show_play_episode, listOf(EpisodeCode(2, 3))), vm.content().buttons[0].text)
-        assertEquals(ButtonId.PLAY, vm.content().buttons[0].id)
+        assertEquals(listOf(ButtonId.PLAY, ButtonId.WATCHED, ButtonId.WATCHLIST), vm.content().buttons.map { it.id }, "not started: no from-start button")
 
         show = show.copy(next_episode = null, unwatched_episode_count = 0)
         val done = vm()
@@ -226,8 +229,9 @@ class ShowDetailViewModelTest {
         assertEquals(2, repos.api.count("GET /api/shows/7/seasons/2"), "the selected season is refetched")
         val content = vm.content()
         assertEquals(2, content.selectedSeason, "the selected season is kept")
-        assertEquals(listOf(ButtonId.RESUME, ButtonId.WATCHED, ButtonId.WATCHLIST), content.buttons.map { it.id })
+        assertEquals(listOf(ButtonId.RESUME, ButtonId.PLAY_FROM_START, ButtonId.WATCHED, ButtonId.WATCHLIST), content.buttons.map { it.id })
         assertEquals(UiText.Res(R.string.show_resume_episode, listOf(EpisodeCode(3, 1))), content.buttons[0].text)
+        assertEquals(UiText.Res(R.string.show_play_episode_from_start, listOf(EpisodeCode(3, 1))), content.buttons[1].text)
         assertTrue(content.season!!.episodes[2].watched, "T2 E3 shows its watched mark")
         vm.onButton(ButtonId.RESUME)
         assertEquals(NavRequest.Play(PlayRequest("episode", 301)), vm.navigation.first())

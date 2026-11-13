@@ -1,6 +1,7 @@
 package com.hometv.tv.ui.home
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
@@ -43,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.MaterialTheme
@@ -80,6 +82,11 @@ fun HomeScreen(vm: HomeViewModel, navigator: AppNavigator, avatar: AvatarUi?, sh
 
     LaunchedEffect(vm) { vm.navigation.collect(navigator::handle) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.onVisible() }
+    // Home stops with the activity (the user left the app), not because another screen covered it.
+    val activity = LocalActivity.current as? LifecycleOwner
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        if (activity != null && !activity.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) vm.onAppLeft()
+    }
     BackHandler { vm.onBack() }
 
     // Back from Browse / Search / Settings: focus the tab of the screen we came from.
@@ -172,7 +179,7 @@ private fun Hero(hero: HeroUi?) {
 /**
  * The rows under the hero: the focused row is pinned to the top of this area, so no
  * part of an earlier row stays visible, the space after the last row lets it be pinned too, and the
- * area stops at the bottom safe area.
+ * area runs to the screen's bottom edge.
  * Only the vertical container pins; the rows' own horizontal scrolling keeps the inherited behavior.
  */
 @OptIn(ExperimentalFoundationApi::class)
@@ -185,8 +192,9 @@ private fun HomeRows(rows: List<HomeRow>, vm: HomeViewModel, cards: FocusRequest
     var lastRowPx by remember { mutableIntStateOf(0) }
     val pinRows = remember { PinRowToTop { headerPx } }
     CompositionLocalProvider(LocalBringIntoViewSpec provides pinRows) {
-        // The scroll viewport (and its clip) ends at the bottom safe area: a peeking next row never reaches the screen edge.
-        Column(Modifier.fillMaxWidth().padding(bottom = HomeTvDimens.SafeVertical).onSizeChanged { viewportPx = it.height }.verticalScroll(scroll).testTag("home_rows")) {
+        // The scroll viewport runs to the screen's bottom edge: the next row peeks down to it (no empty strip). The
+        // focused row is pinned under the hero and fits above the bottom safe area (HERO_HEIGHT).
+        Column(Modifier.fillMaxWidth().onSizeChanged { viewportPx = it.height }.verticalScroll(scroll).testTag("home_rows")) {
             CompositionLocalProvider(LocalBringIntoViewSpec provides inherited) {
                 rows.forEachIndexed { index, row ->
                     HomeRowView(

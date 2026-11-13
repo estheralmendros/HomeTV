@@ -146,6 +146,44 @@ abstract class UiTestBase {
         }
     }
 
+    /**
+     * Holds OK as a remote does: the first down, the repeat that tv-material reads as a long press
+     * (`repeatCount == 1`), a later repeat, then the release. Each event goes to the window that has
+     * focus at that moment (a long press may open another screen or a dialog before the release).
+     */
+    protected fun holdOk() {
+        val code = android.view.KeyEvent.KEYCODE_DPAD_CENTER
+        sendToFocusedWindow(android.view.KeyEvent(0L, 0L, android.view.KeyEvent.ACTION_DOWN, code, 0))
+        sendToFocusedWindow(android.view.KeyEvent(0L, 500L, android.view.KeyEvent.ACTION_DOWN, code, 1, 0, 0, 0, android.view.KeyEvent.FLAG_LONG_PRESS))
+        sendToFocusedWindow(android.view.KeyEvent(0L, 550L, android.view.KeyEvent.ACTION_DOWN, code, 2))
+        sendToFocusedWindow(android.view.KeyEvent(0L, 600L, android.view.KeyEvent.ACTION_UP, code, 0))
+    }
+
+    /**
+     * Holds OK as a TV remote forwarded over HDMI-CEC does (seen on a Samsung TV driving a Chromecast): one down, no
+     * repeats, and a release [heldMs] later that Android injects itself (after its ~550 ms CEC timeout for a hold),
+     * with its own `downTime`. Each event goes to the window that has focus at that moment.
+     */
+    protected fun holdOkOverHdmi(heldMs: Long = 550) {
+        val code = android.view.KeyEvent.KEYCODE_DPAD_CENTER
+        sendToFocusedWindow(cecKey(android.view.KeyEvent.ACTION_DOWN, code, 1_000L))
+        UiTestPlatform.advance(heldMs)
+        settle()
+        sendToFocusedWindow(cecKey(android.view.KeyEvent.ACTION_UP, code, 1_000L + heldMs))
+    }
+
+    private fun cecKey(action: Int, code: Int, time: Long) = android.view.KeyEvent(
+        time, time, action, code, 0, 0, -1, 0, android.view.KeyEvent.FLAG_FROM_SYSTEM, android.view.InputDevice.SOURCE_HDMI,
+    )
+
+    private fun sendToFocusedWindow(event: android.view.KeyEvent) {
+        val focused = rule.onAllNodes(androidx.compose.ui.test.isFocused(), useUnmergedTree = true).fetchSemanticsNodes().lastOrNull()
+        val root = focused?.root ?: rule.onAllNodes(isRoot()).fetchSemanticsNodes().last().root
+        checkNotNull(root) { "no window to send $event to" }
+        rule.runOnUiThread { root.sendKeyEvent(androidx.compose.ui.input.key.KeyEvent(event)) }
+        settle()
+    }
+
     /** Runs a player callback (READY, ENDED, a failure) on the main thread, as ExoPlayer does. */
     protected fun onPlayer(block: FakePlayerController.() -> Unit) {
         rule.runOnUiThread { player.block() }
@@ -208,6 +246,19 @@ abstract class UiTestBase {
         assertTrue("'$tag' spans x $left..$right dp, outside the ${root.width / density} dp screen", left >= 0f && right <= root.width / density)
         assertTrue("'$tag' starts at $top dp, above $minTop dp", top >= minTop - 0.5f)
         assertTrue("'$tag' ends at $bottom dp, below the safe area ($safeBottom dp)", bottom <= safeBottom + 0.5f)
+    }
+
+    /**
+     * The scroll viewport [tag] runs down to the screen's bottom edge (decision C of
+     * `specs/tv-improvements/idea.md`): no empty strip under it; the safe area is padding inside it.
+     */
+    protected fun assertReachesBottomEdge(tag: String) {
+        val node = node(tag).fetchSemanticsNode()
+        val density = node.layoutInfo.density.density
+        val root = rule.onAllNodes(isRoot()).fetchSemanticsNodes().first().size
+        val bottom = node.boundsInRoot.bottom / density
+        val screen = root.height / density
+        assertTrue("'$tag' ends at $bottom dp, ${screen - bottom} dp above the screen's bottom edge ($screen dp)", bottom >= screen - 0.5f)
     }
 
     /** [assertFullyVisible] with the top safe area too (top ≥ 27 dp). */

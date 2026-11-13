@@ -15,17 +15,18 @@ import androidx.compose.ui.window.Dialog
 import com.hometv.tv.R
 import com.hometv.tv.ui.components.ActionButton
 import com.hometv.tv.ui.components.RequestFocus
+import com.hometv.tv.ui.components.okKeyGuard
 import com.hometv.tv.ui.components.rememberFocusRequesters
 import com.hometv.tv.ui.text.resolve
 import com.hometv.tv.ui.theme.HomeTvColors
 
-/** Long-press on an episode: [Ver desde el principio] [Marcar como visto | no visto]. */
+/** Long-press on an episode: [Ver desde el principio] [Marcar como visto | no visto]; the long press's release is dropped. */
 @Composable
 fun EpisodeActionsDialog(actions: EpisodeActionsUi, onPlayFromStart: () -> Unit, onToggleWatched: () -> Unit, onDismiss: () -> Unit) {
     val requesters = rememberFocusRequesters<Int>()
     Dialog(onDismissRequest = onDismiss) {
         Row(
-            Modifier.background(HomeTvColors.Surface, RoundedCornerShape(12.dp)).padding(24.dp).testTag("episode_actions"),
+            Modifier.okKeyGuard().background(HomeTvColors.Surface, RoundedCornerShape(12.dp)).padding(24.dp).testTag("episode_actions"),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             ActionButton(stringResource(R.string.detail_play_from_start), onPlayFromStart, Modifier.focusRequester(requesters[0]).testTag("episode_play_from_start"), icon = R.drawable.ic_play)

@@ -169,6 +169,96 @@ class HomeViewModelTest {
         assertEquals(listOf("show:7"), cache.read(5)!!.home.recently_added.map { it.key })
     }
 
+    // ---- Focus on entry (decision B of specs/tv-improvements/idea.md) ----------------------
+
+    /** A cached Home whose newest item is Alien, and a server that answers [fresh] after 2 s. */
+    private suspend fun cachedAlienThen(fresh: HomeResponse): HomeViewModel {
+        cache.write(5, HomePayload(HomeResponse(recently_added = listOf(alien)), films = listOf(dune, alien)))
+        repos.api.onHome = { delay(2_000); fresh }
+        return vm()
+    }
+
+    /** The UI lands focus on the target it was given. */
+    private fun HomeViewModel.landOnFocus() {
+        val target = state.value.focus!!
+        onCardFocused(state.value.rows[target.rowIndex].cards[target.cardIndex] as ItemCard)
+    }
+
+    @Test
+    fun `a cold start focuses the newest card when the fresh list puts a new one in front of the cached first card`() = runTest(main.dispatcher) {
+        val vm = cachedAlienThen(HomeResponse(recently_added = listOf(dune, alien)))
+        runCurrent()
+        assertEquals("recent:film:13", vm.state.value.focus!!.key)
+        vm.landOnFocus()
+        advanceUntilIdle()
+        val focus = vm.state.value.focus!!
+        assertEquals("recent:film:12", focus.key, "the newest item, not the one the cache had first")
+        assertEquals(0 to 0, focus.rowIndex to focus.cardIndex)
+    }
+
+    @Test
+    fun `a cold start leaves the focus where the user moved it before the fresh list arrived`() = runTest(main.dispatcher) {
+        val vm = cachedAlienThen(HomeResponse(recently_added = listOf(dune, alien)))
+        runCurrent()
+        vm.landOnFocus()
+        vm.onCardFocused(vm.state.value.row(HomeRowId.FILMS).cards[0] as ItemCard)
+        advanceUntilIdle()
+        assertEquals("films:film:12", vm.state.value.focus!!.key)
+    }
+
+    @Test
+    fun `a card opened from the entry focus is restored by key after fresh data`() = runTest(main.dispatcher) {
+        val vm = cachedAlienThen(HomeResponse(recently_added = listOf(alien)))
+        advanceUntilIdle()
+        vm.landOnFocus()
+        val alienCard = vm.state.value.row(HomeRowId.RECENT).cards[0]
+        vm.onCardClick(alienCard)
+        repos.api.onHome = { HomeResponse(recently_added = listOf(dune, alien)) }
+        refresh.markStale()
+        vm.onVisible()
+        advanceUntilIdle()
+        assertEquals("recent:film:13", vm.state.value.focus!!.key, "Back from the detail: the card that opened it")
+        assertEquals("recent:film:13", vm.restoreTarget()!!.key)
+    }
+
+    @Test
+    fun `coming back to the app focuses the first card at once, reloads, then focuses the newest card`() = runTest(main.dispatcher) {
+        repos.api.onHome = { HomeResponse(recently_added = listOf(alien)) }
+        val vm = vm()
+        advanceUntilIdle()
+        vm.landOnFocus()
+        vm.onCardFocused(vm.state.value.row(HomeRowId.FILMS).cards[1] as ItemCard)
+        val before = vm.state.value.focus!!.version
+        repos.api.onHome = { delay(2_000); HomeResponse(recently_added = listOf(dune, alien)) }
+
+        vm.onAppLeft()
+        vm.onVisible()
+        runCurrent()
+        assertEquals("recent:film:13", vm.state.value.focus!!.key, "the first card of what is on screen")
+        assertTrue(vm.state.value.focus!!.version > before)
+        vm.landOnFocus()
+        advanceUntilIdle()
+        assertEquals(2, repos.api.count("GET /api/home?limit=20"))
+        assertEquals("recent:film:12", vm.state.value.focus!!.key)
+        assertEquals("recent:film:12", vm.restoreTarget()!!.key)
+    }
+
+    @Test
+    fun `coming back to the app keeps a move made while the reload runs`() = runTest(main.dispatcher) {
+        repos.api.onHome = { HomeResponse(recently_added = listOf(alien)) }
+        val vm = vm()
+        advanceUntilIdle()
+        vm.landOnFocus()
+        repos.api.onHome = { delay(2_000); HomeResponse(recently_added = listOf(dune, alien)) }
+        vm.onAppLeft()
+        vm.onVisible()
+        runCurrent()
+        vm.landOnFocus()
+        vm.onCardFocused(vm.state.value.row(HomeRowId.FILMS).cards[1] as ItemCard)
+        advanceUntilIdle()
+        assertEquals("films:film:13", vm.state.value.focus!!.key)
+    }
+
     @Test
     fun `a 401 on home renews the session silently and shows the content`() = runTest(main.dispatcher) {
         repos.recordEvents(backgroundScope)

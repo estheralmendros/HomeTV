@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.9.0] - Released on 2026-11-12 by Esther Almendros Pérez
+
+### Added
+
+#### TV app
+- On a TV show's page, "Ver TxEx desde el principio" appears next to "Reanudar TxEx" and plays that episode from the beginning. It only shows when the episode can be resumed (at least 30 seconds watched and not marked as watched).
+
+### Changed
+
+#### TV app
+- On a TV show's page, moving to another season scrolls its episode list to the episode that pressing Right will select: the season's next episode to watch, or its first episode. The list also opens at the next episode to watch. Going back from an episode to its own season keeps the list where it was.
+- Coming back to the app after leaving it (for example with the remote's Home button) reloads "Inicio" and selects the first card of the first row, so a newly added film is the one selected. Going back from a title's page or the player still returns to the card you opened.
+
+### Fixed
+
+#### TV app
+- Holding OK on a "Seguir viendo" card or on an episode opened its options and then also pressed their first button when OK was released (for example starting playback, or "Ver desde el principio").
+- Screens no longer leave an empty strip at the bottom: on Inicio, a film's or TV show's page, a person's page and Ajustes, the content now scrolls down to the bottom edge of the screen, and the selected item still stays clear of the edge.
+
 ## [0.8.2] - Released on 2026-11-12 by Esther Almendros Pérez
 
 ### Fixed

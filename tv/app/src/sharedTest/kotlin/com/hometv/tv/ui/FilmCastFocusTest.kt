@@ -46,6 +46,7 @@ class FilmCastFocusTest : UiTestBase() {
         press(Key.DirectionRight, times = 11)
         assertFocused("cast_12:11")
         assertFullyVisible("cast_12:11")
+        assertReachesBottomEdge("film_detail_page")
         press(Key.DirectionUp)
         assertFocused("rating_mine")
     }

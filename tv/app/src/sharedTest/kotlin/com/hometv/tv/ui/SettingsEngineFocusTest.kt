@@ -60,6 +60,7 @@ class SettingsEngineFocusTest : UiTestBase() {
         press(Key.DirectionDown)
         assertFocused("settings_licenses")
         assertFullyVisible("settings_licenses")
+        assertReachesBottomEdge("settings_page")
 
         // Up reverses the order.
         press(Key.DirectionUp)
