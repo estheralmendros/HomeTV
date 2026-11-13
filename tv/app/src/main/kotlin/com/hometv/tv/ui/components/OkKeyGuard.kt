@@ -49,7 +49,7 @@ internal class OkPressTracker {
     private var pressed = false
 
     fun drop(event: KeyEvent): Boolean {
-        if (event.keyCode !in OK_KEYS) return false
+        if (event.keyCode !in OkKeyCodes) return false
         return when (event.action) {
             KeyEvent.ACTION_DOWN -> {
                 if (event.repeatCount == 0) pressed = true
@@ -59,9 +59,7 @@ internal class OkPressTracker {
             else -> false
         }
     }
-
-    private companion object {
-        /** tv-material's click keys (`AcceptableEnterClickKeys`: DPAD_CENTER, ENTER, NUMPAD_ENTER). */
-        val OK_KEYS = setOf(KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER)
-    }
 }
+
+/** tv-material's click keys (`AcceptableEnterClickKeys`: DPAD_CENTER, ENTER, NUMPAD_ENTER). */
+internal val OkKeyCodes = setOf(KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER)

@@ -159,6 +159,23 @@ abstract class UiTestBase {
         sendToFocusedWindow(android.view.KeyEvent(0L, 600L, android.view.KeyEvent.ACTION_UP, code, 0))
     }
 
+    /**
+     * Holds OK as a TV remote forwarded over HDMI-CEC does (seen on a Samsung TV driving a Chromecast): one down, no
+     * repeats, and a release [heldMs] later that Android injects itself (after its ~550 ms CEC timeout for a hold),
+     * with its own `downTime`. Each event goes to the window that has focus at that moment.
+     */
+    protected fun holdOkOverHdmi(heldMs: Long = 550) {
+        val code = android.view.KeyEvent.KEYCODE_DPAD_CENTER
+        sendToFocusedWindow(cecKey(android.view.KeyEvent.ACTION_DOWN, code, 1_000L))
+        UiTestPlatform.advance(heldMs)
+        settle()
+        sendToFocusedWindow(cecKey(android.view.KeyEvent.ACTION_UP, code, 1_000L + heldMs))
+    }
+
+    private fun cecKey(action: Int, code: Int, time: Long) = android.view.KeyEvent(
+        time, time, action, code, 0, 0, -1, 0, android.view.KeyEvent.FLAG_FROM_SYSTEM, android.view.InputDevice.SOURCE_HDMI,
+    )
+
     private fun sendToFocusedWindow(event: android.view.KeyEvent) {
         val focused = rule.onAllNodes(androidx.compose.ui.test.isFocused(), useUnmergedTree = true).fetchSemanticsNodes().lastOrNull()
         val root = focused?.root ?: rule.onAllNodes(isRoot()).fetchSemanticsNodes().last().root

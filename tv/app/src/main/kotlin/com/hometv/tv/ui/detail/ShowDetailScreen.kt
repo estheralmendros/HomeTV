@@ -70,6 +70,7 @@ import com.hometv.tv.ui.components.ProgressStrip
 import com.hometv.tv.ui.components.SafeAreaBringIntoViewSpec
 import com.hometv.tv.ui.components.ScreenErrorView
 import com.hometv.tv.ui.components.rememberFocusRequesters
+import com.hometv.tv.ui.components.rememberOkLongPress
 import com.hometv.tv.ui.components.requestFocusWhenReady
 import com.hometv.tv.ui.components.tryRequestFocus
 import com.hometv.tv.ui.navigation.AppNavigator
@@ -302,10 +303,13 @@ private val RATINGS_BOTTOM_GAP = 12.dp
 
 @Composable
 private fun EpisodeRow(row: EpisodeRowUi, requesters: FocusRequesters<Long>, onClick: () -> Unit, onLongClick: () -> Unit, onLeft: () -> Boolean) {
+    // The long press works with every remote, including a TV remote over HDMI-CEC (no auto-repeat).
+    val press = rememberOkLongPress(onClick, onLongClick)
     Surface(
-        onClick = onClick,
-        onLongClick = onLongClick,
+        onClick = press.onClick,
+        interactionSource = press.interactionSource,
         modifier = Modifier
+            .then(press.modifier)
             .fillMaxWidth()
             .focusRequester(requesters[row.id])
             .testTag("episode_${row.id}")
