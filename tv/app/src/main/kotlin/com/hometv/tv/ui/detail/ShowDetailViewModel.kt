@@ -198,6 +198,7 @@ class ShowDetailViewModel(
         clearWatchlistError()
         when (id) {
             ButtonId.PLAY, ButtonId.RESUME -> s.next_episode?.let { play(it.id, fromStart = false) }
+            ButtonId.PLAY_FROM_START -> s.next_episode?.let { play(it.id, fromStart = true) }
             ButtonId.WATCHED -> changeWatched(WatchTarget.SHOW, showId, s.unwatched_episode_count > 0, clearCache = true)
             ButtonId.WATCHLIST -> toggleWatchlist(s)
             else -> Unit
@@ -457,9 +458,16 @@ class ShowDetailViewModel(
         val code = Format.episodeCode(next.season_number, next.episode_number)
         val progress = next.progress
         val resume = progress != null && !progress.watched && progress.position_seconds >= MIN_RESUME_SECONDS
-        val play = if (resume) DetailButton(ButtonId.RESUME, UiText.Res(R.string.show_resume_episode, listOf(code)))
-        else DetailButton(ButtonId.PLAY, UiText.Res(R.string.show_play_episode, listOf(code)))
-        return listOf(play, watched, list)
+        // Started (the "Reanudar" rule): also "Ver TxEx desde el principio", as the film's "Ver desde el principio".
+        val play = if (resume) {
+            listOf(
+                DetailButton(ButtonId.RESUME, UiText.Res(R.string.show_resume_episode, listOf(code))),
+                DetailButton(ButtonId.PLAY_FROM_START, UiText.Res(R.string.show_play_episode_from_start, listOf(code))),
+            )
+        } else {
+            listOf(DetailButton(ButtonId.PLAY, UiText.Res(R.string.show_play_episode, listOf(code))))
+        }
+        return play + listOf(watched, list)
     }
 
     private fun pane(s: ShowDetail, season: SeasonDetail): SeasonPaneUi {

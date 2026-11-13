@@ -12,8 +12,8 @@ import org.junit.runner.RunWith
 
 /**
  * Row framing: the focused Home row is pinned to the top of the rows area (no part
- * of an earlier row stays visible under the hero), and the whole row fits above the 27 dp bottom
- * safe area. Robolectric screen: 960×540 dp.
+ * of an earlier row stays visible under the hero), the whole row fits above the 27 dp bottom
+ * safe area, and the rows area runs to the screen's bottom edge. Robolectric screen: 960×540 dp.
  */
 @RunWith(AndroidJUnit4::class)
 class HomeFramingTest : UiTestBase() {
@@ -41,9 +41,11 @@ class HomeFramingTest : UiTestBase() {
         }
         val limit = screenBottom - HomeTvDimens.SafeVertical.value
         assertTrue("row '$focused' ends at ${row.endInclusive} dp, below the safe area ($limit dp)", row.endInclusive <= limit + 0.5f)
+        // The rows area runs to the screen edge: the next row peeks down to it, no empty strip.
+        assertReachesBottomEdge("home_rows")
         ROWS.forEach { id ->
             val visibleBottom = visibleBottom("home_row_$id")
-            assertTrue("row '$id' is visible down to $visibleBottom dp, inside the bottom safe area (> $limit dp)", visibleBottom <= limit + 0.5f)
+            assertTrue("row '$id' is visible down to $visibleBottom dp, past the screen ($screenBottom dp)", visibleBottom <= screenBottom + 0.5f)
         }
     }
 

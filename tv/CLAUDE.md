@@ -49,7 +49,13 @@ root `CLAUDE.md`.
   - Media session for both engines: `ControllerSessionPlayer` + `PlayerMediaSession`.
 - `ui/`: `HomeTvRoot` (NavHost + the one root `ratings/RatingPromptHost`), `navigation/` (`Route`, `NavRequest`,
   `AppNavigator`), `text/` (`UiText`, `UiFormat`, `StringResolver`), `components/` (`TopNav`, `PosterCard`,
-  `ActionButton`, `ConfirmDialog`, `TextDialog`, `Artwork`, `FocusRestorer.kt`), `common/ScreenError`, theme
+  `ActionButton`, `ConfirmDialog`, `TextDialog`, `Artwork`, `FocusRestorer.kt`, `OkKeyGuard` (drops the OK events of a
+  press that began elsewhere: the release of a long press never clicks on the screen/dialog it opened; keyed per screen on
+  the NavHost, chained on `EpisodeActionsDialog`), `OkLongPress` (`rememberOkLongPress`: the long press of the Continue
+  cards and episode rows, never tv-material's `onLongClick`: a 450 ms timer or the first repeat, so a TV remote over
+  HDMI-CEC, which never auto-repeats and is released by Android ~550 ms into a hold, long-presses too; the release's
+  click on the same element is swallowed), `SafeAreaBringIntoViewSpec` (scroll viewports run to the screen
+  edge, the 27 dp safe area is padding inside them and this spec stops focus scrolling there)), `common/ScreenError`, theme
   (`HomeTvColors`, `HomeTvDimens`), one package per screen:
   - `home` (Back -> exit dialog -> sign out), `settings` (admin force-VLC toggle, licences), `browse`
     (`PosterGridPane`, shared with Mi lista), `watchlist`, `activity`, `person`.

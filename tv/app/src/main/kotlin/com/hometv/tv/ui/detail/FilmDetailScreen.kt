@@ -2,7 +2,6 @@ package com.hometv.tv.ui.detail
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -62,6 +61,7 @@ import com.hometv.tv.ui.components.Artwork
 import com.hometv.tv.ui.components.ListDialog
 import com.hometv.tv.ui.components.LoadingScreen
 import com.hometv.tv.ui.components.RowSpacing
+import com.hometv.tv.ui.components.SafeAreaBringIntoViewSpec
 import com.hometv.tv.ui.components.ScreenErrorView
 import com.hometv.tv.ui.components.SectionTitle
 import com.hometv.tv.ui.components.focusItem
@@ -139,13 +139,16 @@ private fun FilmContent(state: FilmDetailUiState.Content, vm: FilmDetailViewMode
     // The page scrolls only as far as the focused element and its focus-scale room need (the viewport clips
     // the scaled card's ring); the cast row keeps the platform spec.
     val platformSpec = LocalBringIntoViewSpec.current
-    val focusRoomPx = with(LocalDensity.current) { CAST_ROW_PADDING.toPx() }
-    val pageSpec = remember(focusRoomPx) { FocusRoomBringIntoViewSpec(focusRoomPx) }
+    val density = LocalDensity.current
+    val pageSpec = remember(density) {
+        with(density) { SafeAreaBringIntoViewSpec(HomeTvDimens.SafeVertical.toPx(), HomeTvDimens.SafeVertical.toPx(), roomPx = CAST_ROW_PADDING.toPx()) }
+    }
     CompositionLocalProvider(LocalBringIntoViewSpec provides pageSpec) {
-        // The vertical safe area is outside the scroll: focus scrolling (the cast row) stops 27 dp above the edge.
+        // The page runs to the screen edges (no empty strip under the cast row); the vertical safe area is padding
+        // inside the scroll, and focus scrolling (the cast row) stops 27 dp above the edge.
         Column(
-            Modifier.fillMaxSize().padding(vertical = HomeTvDimens.SafeVertical).verticalScroll(page).testTag("film_detail_page")
-                .onFocusChanged { pageHasFocus = it.hasFocus }.padding(horizontal = HomeTvDimens.SafeHorizontal),
+            Modifier.fillMaxSize().verticalScroll(page).testTag("film_detail_page")
+                .onFocusChanged { pageHasFocus = it.hasFocus }.padding(horizontal = HomeTvDimens.SafeHorizontal, vertical = HomeTvDimens.SafeVertical),
         ) {
             CompositionLocalProvider(LocalBringIntoViewSpec provides platformSpec) {
                 Row(Modifier.padding(top = HEADER_TOP_GAP).onFocusChanged { headerFocused = it.hasFocus }) {
@@ -299,18 +302,6 @@ private fun buttonIcon(id: ButtonId, inList: Boolean): Int? = when (id) {
 private const val OVERVIEW_LINES = 3
 private const val OVERVIEW_LINES_COMPACT = 1
 private val BACKDROP_HEIGHT = 420.dp
-
-/**
- * Scrolls only by the distance that brings the element, plus [roomPx] above and below it, fully into view
- * (the non-TV default, widened by the room a focused card's scale draws outside its bounds).
- */
-@OptIn(ExperimentalFoundationApi::class)
-private class FocusRoomBringIntoViewSpec(private val roomPx: Float) : BringIntoViewSpec {
-    private val minimal = object : BringIntoViewSpec {}
-
-    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
-        minimal.calculateScrollDistance(offset - roomPx, size + 2 * roomPx, containerSize)
-}
 
 /**
  * Space above the header: small enough that the header and the whole cast row, including the focused card's

@@ -57,13 +57,15 @@ private fun FocusCard(
     onFocused: () -> Unit,
     content: @Composable () -> Unit,
 ) {
+    // The long press works with every remote, including a TV remote over HDMI-CEC (no auto-repeat).
+    val press = onLongClick?.let { rememberOkLongPress(onClick, it) }
     Card(
-        onClick = onClick,
-        onLongClick = onLongClick,
-        modifier = modifier.size(width, height).onFocusChanged { if (it.isFocused) onFocused() },
+        onClick = press?.onClick ?: onClick,
+        modifier = modifier.then(press?.modifier ?: Modifier).size(width, height).onFocusChanged { if (it.isFocused) onFocused() },
         scale = CardDefaults.scale(focusedScale = HomeTvDimens.FOCUSED_SCALE),
         border = CardDefaults.border(focusedBorder = HomeTvFocus.ring),
         shape = CardDefaults.shape(RoundedCornerShape(8.dp)),
+        interactionSource = press?.interactionSource,
     ) { content() }
 }
 

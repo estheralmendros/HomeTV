@@ -225,6 +225,7 @@
     <string name="show_status_pilot">Piloto</string>
     <string name="show_play_episode">Reproducir %1$s</string>
     <string name="show_resume_episode">Reanudar %1$s</string>
+    <string name="show_play_episode_from_start">Ver %1$s desde el principio</string>
     <string name="mark_show_watched">Marcar serie como vista</string>
     <string name="mark_show_unwatched">Marcar serie como no vista</string>
     <string name="mark_season_watched">Marcar temporada como vista</string>

@@ -9,6 +9,8 @@ import androidx.compose.ui.test.hasText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.hometv.tv.core.api.CastMember
 import com.hometv.tv.core.api.FilmDetail
+import com.hometv.tv.core.api.SeasonSummary
+import com.hometv.tv.core.api.ShowDetail
 import com.hometv.tv.core.data.FakeHomeTvApi.Companion.httpError
 import com.hometv.tv.core.playback.F
 import com.hometv.tv.testing.UiTestBase
@@ -88,11 +90,13 @@ class DetailWatchlistTest : UiTestBase() {
     fun onShowDetailTheButtonFollowsWatchedAndTheRowFits() {
         openShow()
         press(Key.DirectionRight)
+        assertFocused("button_PLAY_FROM_START")
+        press(Key.DirectionRight)
         assertFocused("button_WATCHED")
         press(Key.DirectionRight)
         assertFocused("button_WATCHLIST")
         node("button_WATCHLIST").assert(hasContentDescription("Añadir a Mi lista"))
-        listOf("button_RESUME", "button_WATCHED", "button_WATCHLIST").forEach { assertInsideSafeArea(it) }
+        listOf("button_RESUME", "button_PLAY_FROM_START", "button_WATCHED", "button_WATCHLIST").forEach { assertInsideSafeArea(it) }
         press(Key.DirectionCenter)
         assertFocused("button_WATCHLIST")
         assertLabel("button_WATCHLIST", "En Mi lista")
@@ -103,11 +107,33 @@ class DetailWatchlistTest : UiTestBase() {
     fun aFailedShowWriteShowsTheInlineLineInsideTheSafeArea() {
         api.onWatchlistWrite = { _, _, _ -> throw java.net.ConnectException("refused") }
         openShow()
-        press(Key.DirectionRight, times = 2)
+        press(Key.DirectionRight, times = 3)
         press(Key.DirectionCenter)
         assertFocused("button_WATCHLIST")
         rule.onNode(hasTestTag("watchlist_error") and hasText("No se ha podido actualizar Mi lista."), useUnmergedTree = true).assertExists()
         assertInsideSafeArea("watchlist_error")
+    }
+
+    @Test
+    fun theWidestShowRowKeepsEveryButtonInsideTheSafeAreaWhenFocused() {
+        // Reanudar T10 E12 / Ver T10 E12 desde el principio / Marcar serie como vista / Mi lista.
+        useLibrary()
+        val next = olympics.copy(season_number = 10, episode_number = 12)
+        api.onShow = {
+            ShowDetail(
+                id = 7, title = "The Office", year = 2005, status = "Ended", unwatched_episode_count = 3, next_episode = next,
+                seasons = listOf(SeasonSummary(1, 10, null, unwatched_episode_count = 3)),
+            )
+        }
+        launch()
+        press(Key.DirectionDown)
+        press(Key.DirectionCenter)
+        val buttons = listOf("button_RESUME", "button_PLAY_FROM_START", "button_WATCHED", "button_WATCHLIST")
+        buttons.forEachIndexed { i, tag ->
+            assertFocused(tag)
+            buttons.forEach { assertInsideSafeArea(it) }
+            if (i < buttons.lastIndex) press(Key.DirectionRight)
+        }
     }
 
     @Test

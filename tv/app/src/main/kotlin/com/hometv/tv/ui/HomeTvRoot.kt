@@ -14,6 +14,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.hometv.tv.di.AppContainer
@@ -23,6 +24,7 @@ import com.hometv.tv.ui.components.AvatarUi
 import com.hometv.tv.ui.components.LocalAppImageLoader
 import com.hometv.tv.ui.components.LocalArtwork
 import com.hometv.tv.ui.components.NavTab
+import com.hometv.tv.ui.components.okKeyGuard
 import com.hometv.tv.ui.detail.FilmDetailScreen
 import com.hometv.tv.ui.detail.ShowDetailScreen
 import com.hometv.tv.ui.home.HomeScreen
@@ -95,7 +97,9 @@ private fun AppNavHost(container: AppContainer, onExit: () -> Unit) {
     // If this fails (server unreachable), `HomeViewModel` retries via `AccountState.ensureLoaded` after its next fresh load.
     LaunchedEffect(session.token != null) { if (session.token != null && profile == null) container.account.refresh() }
 
-    NavHost(nav, startDestination = start, modifier = Modifier.fillMaxSize().background(HomeTvColors.Background)) {
+    // A new tracker per screen: the release of a long press that navigated never clicks on the next screen.
+    val entry by nav.currentBackStackEntryAsState()
+    NavHost(nav, startDestination = start, modifier = Modifier.fillMaxSize().background(HomeTvColors.Background).okKeyGuard(entry?.id)) {
         composable<Route.Setup> { entry ->
             val route = entry.toRoute<Route.Setup>()
             SetupScreen(
