@@ -34,7 +34,7 @@ Web notes, read on demand. Project overview, commands and shared conventions: th
     `useWatchlistToggle` (optimistic, pending survives a remount).
   - `admin/`: `AdminLayout` (tabs; the one scan poll), `ScanPage`, `LibrariesPage` (pure `libraryDraft` reducer;
     plan -> server-built confirmation -> PUT), `FolderBrowser`.
-- `src/components/`: shared UI (`PosterCard`/`SummaryCard`/`WideCard`, `PosterGrid`, `LoadMoreFooter`, `Artwork`,
+- `src/components/`: shared UI (`PosterCard`/`SummaryCard`/`WideCard`, `SeeAllCard` (the "Ver todo" card ending a Home row), `PosterGrid`, `LoadMoreFooter`, `Artwork`,
   `StarRating` = `StarDisplay` + `StarInput` slider, `CastRow`, `WatchlistToggle`, `NavBar` + `MobileTabBar`).
   `styles/tokens.test.ts` checks the `--color-rating` contrast; `NavBar.styles.test.ts` checks the CSS source.
 - `src/lib/`: `format` (es-ES dates and numbers, `formatActivityTime`), pure `stars`, `routerLocation`,

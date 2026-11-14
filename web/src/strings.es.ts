@@ -403,6 +403,11 @@ export const S = {
   home: {
     continueWatching: 'Seguir viendo',
     recentlyAdded: 'Añadidos recientemente',
+    watchlist: 'Mi lista',
+    films: 'Películas',
+    shows: 'Series',
+    seeAll: 'Ver todo',
+    seeAllOf: (row: string) => `Ver todo: ${row}`,
     details: 'Detalles',
     detailsOf: (title: string) => `Detalles de ${title}`,
     emptyAdmin: 'Tu biblioteca está vacía. Añade las carpetas de tus vídeos en Administración → Bibliotecas o ejecuta un escaneo.',
