@@ -99,11 +99,12 @@ fun HomeScreen(vm: HomeViewModel, navigator: AppNavigator, avatar: AvatarUi?, sh
     // Entry (Back from a detail: the card that opened it), fresh data (same key), Back to the first card.
     LaunchedEffect(state.focus?.version, state.rows.isEmpty()) {
         if (pendingTab != null) return@LaunchedEffect
-        val target = vm.restoreTarget() ?: state.focus ?: return@LaunchedEffect
+        val target = vm.focusTarget() ?: return@LaunchedEffect
         val row = state.rows.getOrNull(target.rowIndex) ?: return@LaunchedEffect
         if (target.rowIndex == 0) scroll.scrollTo(0)
         listStates.getValue(row.id).scrollToItem(target.cardIndex)
-        cards[target.key].requestFocusWhenReady()
+        // A target replaced while this one waits for its card (cached rows, then fresh ones) never lands.
+        cards[target.key].requestFocusWhenReady { vm.state.value.focus?.version == state.focus?.version }
     }
 
     val error = state.error

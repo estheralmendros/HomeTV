@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.9.2] - Released on 2026-11-14 by Esther Almendros Pérez
+
+### Fixed
+
+#### TV app
+- Opening the app again after leaving it with "Salir" sometimes selected the film that was newest the last time instead of a newly added one: "Inicio" now selects the first card of the fresh rows, unless you moved before they arrived.
+
 ## [0.9.1] - Released on 2026-11-14 by Esther Almendros Pérez
 
 ### Changed

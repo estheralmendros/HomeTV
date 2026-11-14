@@ -197,6 +197,32 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun `a cold start focuses the newest card when the cached first card's focus lands after the fresh list`() = runTest(main.dispatcher) {
+        // The device's order: the first frame with the cached rows is slow, so the fresh list arrives
+        // before the request for the cached first card (Alien) lands.
+        val vm = cachedAlienThen(HomeResponse(recently_added = listOf(dune, alien)))
+        runCurrent()
+        assertEquals("recent:film:13", vm.focusTarget()!!.key)
+        advanceUntilIdle()
+        assertEquals("recent:film:12", vm.focusTarget()!!.key)
+        vm.onCardFocused(vm.state.value.row(HomeRowId.RECENT).cards[1] as ItemCard)
+        assertEquals("recent:film:12", vm.focusTarget()!!.key, "the newest item, not the late cached one")
+    }
+
+    @Test
+    fun `Back from a detail focuses the card that opened it, wherever the last target was`() = runTest(main.dispatcher) {
+        repos.api.onHome = { HomeResponse(recently_added = listOf(dune, alien)) }
+        val vm = vm()
+        advanceUntilIdle()
+        vm.landOnFocus()
+        val alienCard = vm.state.value.row(HomeRowId.RECENT).cards[1] as ItemCard
+        vm.onCardFocused(alienCard)
+        vm.onCardClick(alienCard)
+        vm.onVisible()
+        assertEquals("recent:film:13", vm.focusTarget()!!.key)
+    }
+
+    @Test
     fun `a cold start leaves the focus where the user moved it before the fresh list arrived`() = runTest(main.dispatcher) {
         val vm = cachedAlienThen(HomeResponse(recently_added = listOf(dune, alien)))
         runCurrent()
@@ -218,7 +244,7 @@ class HomeViewModelTest {
         vm.onVisible()
         advanceUntilIdle()
         assertEquals("recent:film:13", vm.state.value.focus!!.key, "Back from the detail: the card that opened it")
-        assertEquals("recent:film:13", vm.restoreTarget()!!.key)
+        assertEquals("recent:film:13", vm.focusTarget()!!.key)
     }
 
     @Test
@@ -240,7 +266,7 @@ class HomeViewModelTest {
         advanceUntilIdle()
         assertEquals(2, repos.api.count("GET /api/home?limit=20"))
         assertEquals("recent:film:12", vm.state.value.focus!!.key)
-        assertEquals("recent:film:12", vm.restoreTarget()!!.key)
+        assertEquals("recent:film:12", vm.focusTarget()!!.key)
     }
 
     @Test
