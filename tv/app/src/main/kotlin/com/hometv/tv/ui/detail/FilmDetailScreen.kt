@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -182,7 +183,9 @@ private fun FilmContent(state: FilmDetailUiState.Content, vm: FilmDetailViewMode
                                     enabled = button.enabled,
                                     icon = buttonIcon(button.id, film.in_watchlist),
                                     contentDescription = button.description?.resolve(),
+                                    singleLine = button.id in VERSION_BUTTONS,
                                     modifier = Modifier
+                                        .then(if (button.id in VERSION_BUTTONS) Modifier.widthIn(max = VERSION_BUTTON_MAX_WIDTH) else Modifier)
                                         .focusRequester(buttons[button.id])
                                         .onPlaced { buttonTops[button.id] = it.positionInParent().y }
                                         .focusProperties {
@@ -287,6 +290,10 @@ private val CAST_CARD_WIDTH = 108.dp
 private val CAST_ROW_PADDING = 8.dp
 
 private val PLAY_BUTTONS = setOf(ButtonId.RESUME, ButtonId.PLAY, ButtonId.PLAY_PART)
+
+/** "Versión: <file name>" / "Versión de la parte: <file name>": one line, cut with "…" at this width. */
+internal val VERSION_BUTTON_MAX_WIDTH = 480.dp
+private val VERSION_BUTTONS = setOf(ButtonId.VERSION, ButtonId.PART_VERSION)
 
 /** The play icon, the "Mi lista" check / "+", else none. */
 private fun buttonIcon(id: ButtonId, inList: Boolean): Int? = when (id) {

@@ -15,6 +15,7 @@ import com.hometv.tv.core.data.FakeHomeTvApi.Companion.httpError
 import com.hometv.tv.core.playback.F
 import com.hometv.tv.testing.UiTestBase
 import com.hometv.tv.ui.detail.ButtonId
+import com.hometv.tv.ui.detail.VERSION_BUTTON_MAX_WIDTH
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -179,6 +180,55 @@ class DetailWatchlistTest : UiTestBase() {
         assertFocused("button_WATCHLIST")
         assertInsideSafeArea("watchlist_error")
         assertInsideSafeArea("button_WATCHLIST")
+    }
+
+    private val longName = "Dune.Part.Two.2024.Extended.Edition.2160p.UHD.BluRay.REMUX.DV.HDR10.HEVC.TrueHD.Atmos.7.1-FraMeSToR"
+
+    /** Film 13 with long file names: a standalone version + two parts (part 1 in two versions); progress on [progressFileId]. */
+    private fun openFilmWithLongNames(progressFileId: Long) {
+        useLibrary()
+        api.onFilm = { id ->
+            FilmDetail(
+                id = id, title = "Dune", year = 2021, match_status = "matched",
+                media_files = listOf(
+                    F.file(1, duration = 9000.0, fileName = "$longName.mkv"),
+                    F.part(11, 1, fileName = "$longName.cd1.mkv"), F.part(12, 1, fileName = "$longName.alt.cd1.mkv"),
+                    F.part(21, 2, fileName = "$longName.cd2.mkv"),
+                ),
+                progress = F.progress(progressFileId, position = 600.0, duration = if (progressFileId == 1L) 9000.0 else 3000.0),
+            )
+        }
+        launch()
+        press(Key.DirectionDown)
+        press(Key.DirectionRight)
+        press(Key.DirectionCenter)
+        assertFocused("button_RESUME")
+    }
+
+    /** [tag] is one line high (as tall as "Marcar como visto"), capped in width, and inside the safe area when focused. */
+    private fun assertCappedOneLine(tag: String) {
+        val (left, top, right, bottom) = dpBounds(tag).toList()
+        val watched = dpBounds("button_WATCHED")
+        assertEquals("$tag stays on one line", watched[3] - watched[1], bottom - top, 0.5f)
+        assertTrue("$tag is ${right - left} dp wide", right - left <= VERSION_BUTTON_MAX_WIDTH.value + 0.5f)
+        assertFocused(tag)
+        assertInsideSafeArea(tag)
+    }
+
+    @Test
+    fun aLongFileNameKeepsTheVersionButtonOnOneCappedLine() {
+        openFilmWithLongNames(progressFileId = 1)
+        assertLabel("button_VERSION", "Versión: $longName")
+        press(Key.DirectionRight, times = 4)
+        assertCappedOneLine("button_VERSION")
+    }
+
+    @Test
+    fun aLongFileNameKeepsThePartVersionButtonOnOneCappedLine() {
+        openFilmWithLongNames(progressFileId = 11)
+        assertLabel("button_PART_VERSION", "Versión de la parte: $longName.cd1")
+        press(Key.DirectionRight, times = 6)
+        assertCappedOneLine("button_PART_VERSION")
     }
 
     private fun overviewLines(): Int {

@@ -110,7 +110,7 @@ class PlayerViewModelTest : PlayerTestBase() {
 
     @Test
     fun `an unsupported answer shows the Spanish reason and offers the other playable versions`() = playerTest {
-        film(F.hevc(1), F.file(2))
+        film(F.hevc(1), F.file(2, fileName = "Dune 1080p.mkv"))
         codecs.inventory = codecs.inventory.copy(video = codecs.inventory.video.map { it.copy(maxWidth = 3840, maxHeight = 2160) })
         answerWith(unsupported("video_codec_unsupported"), direct(fileId = 2))
         val vm = vm(mediaFileId = 1)
@@ -120,7 +120,7 @@ class PlayerViewModelTest : PlayerTestBase() {
         assertEquals(UiText.Res(R.string.reason_video_codec_unsupported, listOf("HEVC")), error.reason)
         assertEquals(listOf(PlayerAction.TRY_OTHER_VERSION, PlayerAction.BACK), error.actions)
         vm.onErrorAction(PlayerAction.TRY_OTHER_VERSION)
-        assertEquals(PlayerDialog.Versions(listOf("1080p H264 · AAC 2.0")), vm.state.value.dialog)
+        assertEquals(PlayerDialog.Versions(listOf(UiText.Data("Dune 1080p"))), vm.state.value.dialog)
         vm.onVersionChosen(0)
         runCurrent()
         assertEquals("POST /api/media-files/2/playback", posts().last())

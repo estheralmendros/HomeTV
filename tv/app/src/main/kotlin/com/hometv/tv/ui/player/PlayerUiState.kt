@@ -65,8 +65,8 @@ data class TrackDialogUi(val audio: List<TrackOption>, val subtitles: List<Track
 sealed interface PlayerDialog {
     data class Tracks(val tracks: TrackDialogUi) : PlayerDialog
 
-    /** [Probar otra versión]: the playable labels. */
-    data class Versions(val labels: List<String>) : PlayerDialog
+    /** [Probar otra versión]: the playable versions' names (file names without extension). */
+    data class Versions(val labels: List<UiText>) : PlayerDialog
 
     /** "Formato de los subtítulos" (opened from "Audio y subtítulos"). */
     data class SubtitleStyle(val ui: SubtitleStyleUi) : PlayerDialog

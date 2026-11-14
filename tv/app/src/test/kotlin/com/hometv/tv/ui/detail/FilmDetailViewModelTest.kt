@@ -132,8 +132,8 @@ class FilmDetailViewModelTest {
 
     @Test
     fun `another cut starts at 0 with Play, and picking a non-matching version turns Resume into Play`() = runTest(main.dispatcher) {
-        val uhd = F.hevc(1, duration = 9360.0)
-        val cut = F.file(2, duration = 8100.0, label = "1080p H264 · AC3 5.1")
+        val uhd = F.hevc(1, duration = 9360.0, fileName = "Dune 2160p.mkv")
+        val cut = F.file(2, duration = 8100.0, label = "1080p H264 · AC3 5.1", fileName = "Dune extended.mp4")
         withFiles(uhd, cut, progress = F.progress(1, position = 3723.0, duration = 9360.0))
         val noHevc = vm()
         advanceUntilIdle()
@@ -143,10 +143,10 @@ class FilmDetailViewModelTest {
         val vm = vm()
         advanceUntilIdle()
         assertEquals(listOf(ButtonId.RESUME, ButtonId.PLAY_FROM_START, ButtonId.WATCHED, ButtonId.WATCHLIST, ButtonId.VERSION), vm.buttons())
-        assertEquals(UiText.Res(R.string.detail_version, listOf("2160p HEVC HDR10 · EAC3 5.1")), vm.text(ButtonId.VERSION))
+        assertEquals(UiText.Res(R.string.detail_version, listOf("Dune 2160p")), vm.text(ButtonId.VERSION))
         vm.onButton(ButtonId.VERSION)
         val dialog = vm.content().dialog!!
-        assertEquals(listOf<UiText>(UiText.Data("2160p HEVC HDR10 · EAC3 5.1"), UiText.Data("1080p H264 · AC3 5.1")), dialog.items)
+        assertEquals(listOf<UiText>(UiText.Data("Dune 2160p"), UiText.Data("Dune extended")), dialog.items)
         assertEquals(0, dialog.selected)
         vm.onDialogSelect(1)
         assertEquals(null, vm.content().dialog)
@@ -158,24 +158,24 @@ class FilmDetailViewModelTest {
 
     @Test
     fun `the version button lists standalone versions and In N parts, parts get their own buttons`() = runTest(main.dispatcher) {
-        val standalone = F.file(1, label = "2160p H264")
-        val p1a = F.part(11, 1, label = "1080p H264 · AC3 5.1")
-        val p1b = F.part(12, 1, label = "720p H264 · AAC 2.0").copy(video = F.H264.copy(height = 720))
-        val p2a = F.part(21, 2, label = "1080p H264 · AC3 5.1")
+        val standalone = F.file(1, label = "2160p H264", fileName = "Dune 2160p.mkv")
+        val p1a = F.part(11, 1, label = "1080p H264 · AC3 5.1", fileName = "Dune.cd1.mkv")
+        val p1b = F.part(12, 1, label = "720p H264 · AAC 2.0", fileName = "Dune 720p.cd1.avi").copy(video = F.H264.copy(height = 720))
+        val p2a = F.part(21, 2, label = "1080p H264 · AC3 5.1", fileName = "Dune.cd2.mkv")
         withFiles(p2a, p1b, standalone, p1a)
         val vm = vm()
         advanceUntilIdle()
         assertEquals(listOf(ButtonId.PLAY, ButtonId.WATCHED, ButtonId.WATCHLIST, ButtonId.VERSION), vm.buttons(), "no progress: the standalone version")
         vm.onButton(ButtonId.VERSION)
-        assertEquals(listOf<UiText>(UiText.Data("2160p H264"), UiText.Res(R.string.detail_in_parts, listOf("2"))), vm.content().dialog!!.items)
+        assertEquals(listOf<UiText>(UiText.Data("Dune 2160p"), UiText.Res(R.string.detail_in_parts, listOf("2"))), vm.content().dialog!!.items)
         vm.onDialogSelect(1)
         assertEquals(listOf(ButtonId.PLAY, ButtonId.WATCHED, ButtonId.WATCHLIST, ButtonId.VERSION, ButtonId.PART, ButtonId.PART_VERSION), vm.buttons())
         assertEquals(UiText.Res(R.string.detail_version, listOf(UiText.Res(R.string.detail_in_parts, listOf("2")))), vm.text(ButtonId.VERSION))
         assertEquals(UiText.Res(R.string.detail_part_of, listOf("1", "2")), vm.text(ButtonId.PART))
-        assertEquals(UiText.Res(R.string.detail_part_version, listOf("1080p H264 · AC3 5.1")), vm.text(ButtonId.PART_VERSION))
+        assertEquals(UiText.Res(R.string.detail_part_version, listOf("Dune.cd1")), vm.text(ButtonId.PART_VERSION))
 
         vm.onButton(ButtonId.PART_VERSION)
-        assertEquals(listOf<UiText>(UiText.Data("1080p H264 · AC3 5.1"), UiText.Data("720p H264 · AAC 2.0")), vm.content().dialog!!.items)
+        assertEquals(listOf<UiText>(UiText.Data("Dune.cd1"), UiText.Data("Dune 720p.cd1")), vm.content().dialog!!.items)
         vm.onDialogSelect(1)
         vm.onButton(ButtonId.PLAY)
         assertEquals(NavRequest.Play(PlayRequest("film", 12, mediaFileId = 12)), vm.navigation.first())
@@ -186,6 +186,16 @@ class FilmDetailViewModelTest {
         assertEquals(listOf(ButtonId.PLAY, ButtonId.WATCHED, ButtonId.WATCHLIST, ButtonId.VERSION, ButtonId.PART), vm.buttons(), "part 2 has one version")
         vm.onButton(ButtonId.PLAY)
         assertEquals(NavRequest.Play(PlayRequest("film", 12, mediaFileId = 21)), vm.navigation.first())
+    }
+
+    @Test
+    fun `a version with a blank file name is named Desconocido, never by its technical label`() = runTest(main.dispatcher) {
+        withFiles(F.file(1, label = "2160p H264", fileName = " "), F.file(2, label = "1080p H264", fileName = "Dune.mkv"))
+        val vm = vm()
+        advanceUntilIdle()
+        assertEquals(UiText.Res(R.string.detail_version, listOf(UiText.Res(R.string.version_label_unknown))), vm.text(ButtonId.VERSION))
+        vm.onButton(ButtonId.VERSION)
+        assertEquals(listOf(UiText.Res(R.string.version_label_unknown), UiText.Data("Dune")), vm.content().dialog!!.items)
     }
 
     @Test
@@ -258,8 +268,8 @@ class FilmDetailViewModelTest {
 
     @Test
     fun `back from the Player keeps an explicit version choice while its file still exists`() = runTest(main.dispatcher) {
-        val uhd = F.file(1, duration = 9360.0, label = "2160p H264")
-        val cut = F.file(2, duration = 8100.0, label = "1080p H264 · AC3 5.1")
+        val uhd = F.file(1, duration = 9360.0, label = "2160p H264", fileName = "Dune 2160p.mkv")
+        val cut = F.file(2, duration = 8100.0, label = "1080p H264 · AC3 5.1", fileName = "Dune extended.mp4")
         withFiles(uhd, cut, progress = F.progress(1, position = 3723.0, duration = 9360.0))
         val vm = vm()
         advanceUntilIdle()
@@ -271,7 +281,7 @@ class FilmDetailViewModelTest {
 
         returnFromPlayer(vm)
         advanceUntilIdle()
-        assertEquals(UiText.Res(R.string.detail_version, listOf("1080p H264 · AC3 5.1")), vm.text(ButtonId.VERSION))
+        assertEquals(UiText.Res(R.string.detail_version, listOf("Dune extended")), vm.text(ButtonId.VERSION))
         assertEquals(ButtonId.VERSION, vm.content().focus, "focus stays where it was")
         vm.onButton(ButtonId.PLAY)
         assertEquals(NavRequest.Play(PlayRequest("film", 12, mediaFileId = 2)), vm.navigation.first())

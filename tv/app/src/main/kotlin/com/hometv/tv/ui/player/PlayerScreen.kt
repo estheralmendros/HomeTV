@@ -130,7 +130,7 @@ fun PlayerScreen(vm: PlayerViewModel, onExit: () -> Unit) {
         )
         is PlayerDialog.SubtitleStyle -> SubtitleStyleDialog(dialog.ui, onStep = vm::onStyleStep, onClose = vm::onStyleDialogClosed)
         // None of the alternatives is the current version: no check mark (focus starts on the first).
-        is PlayerDialog.Versions -> ListDialog(stringResource(R.string.detail_versions_title), dialog.labels, -1, vm::onVersionChosen, vm::onDialogDismiss)
+        is PlayerDialog.Versions -> ListDialog(stringResource(R.string.detail_versions_title), dialog.labels.map { it.resolve() }, -1, vm::onVersionChosen, vm::onDialogDismiss)
         null -> Unit
     }
 }

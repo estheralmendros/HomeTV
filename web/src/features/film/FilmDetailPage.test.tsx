@@ -66,21 +66,21 @@ describe('FilmDetailPage', () => {
 
   describe('versions (capability-aware default)', () => {
     const hevcFirst: MediaFile[] = [
-      f.mediaFile({ id: 91, video: HEVC, label: '2160p HEVC HDR10 · EAC3 5.1', size_bytes: 58_100_000_000, duration_seconds: 9360 }),
-      f.mediaFile({ id: 92, label: '1080p H264 · AAC 2.0', size_bytes: 23_400_000_000, duration_seconds: 9350 }),
-      f.mediaFile({ id: 93, label: '720p H264 · AAC 2.0', size_bytes: 4_000_000_000, duration_seconds: 8000 }),
-      f.mediaFile({ id: 94, label: 'Desconocido', size_bytes: 1_000_000_000, probe_error: 'moov atom not found' }),
+      f.mediaFile({ id: 91, file_name: 'Dune 2160p HDR.mkv', video: HEVC, label: '2160p HEVC HDR10 · EAC3 5.1', size_bytes: 58_100_000_000, duration_seconds: 9360 }),
+      f.mediaFile({ id: 92, file_name: 'Dune 1080p.mp4', label: '1080p H264 · AAC 2.0', size_bytes: 23_400_000_000, duration_seconds: 9350 }),
+      f.mediaFile({ id: 93, file_name: 'Dune 720p.mp4', label: '720p H264 · AAC 2.0', size_bytes: 4_000_000_000, duration_seconds: 8000 }),
+      f.mediaFile({ id: 94, file_name: 'Dune broken.mp4', label: 'Desconocido', size_bytes: 1_000_000_000, probe_error: 'moov atom not found' }),
     ];
 
-    it('lists the versions with suffixes and defaults to the first playable one (HEVC skipped)', async () => {
+    it('lists the versions by file name with suffixes and defaults to the first playable one (HEVC skipped)', async () => {
       serveFilm({ media_files: hevcFirst });
       renderFilm();
       const picker = await screen.findByLabelText('Versión');
       expect(within(picker).getAllByRole('option').map((o) => o.textContent)).toEqual([
-        '2160p HEVC HDR10 · EAC3 5.1 · 58,1 GB (puede que no se reproduzca en este navegador)',
-        '1080p H264 · AAC 2.0 · 23,4 GB',
-        '720p H264 · AAC 2.0 · 4 GB',
-        'Desconocido · 1 GB (ilegible)',
+        'Dune 2160p HDR (puede que no se reproduzca en este navegador)',
+        'Dune 1080p',
+        'Dune 720p',
+        'Dune broken (ilegible)',
       ]);
       expect(picker).toHaveValue('92');
       expect(link('Reproducir')).toHaveAttribute('href', '/watch/film/12?file=92');
@@ -114,18 +114,15 @@ describe('FilmDetailPage', () => {
 
   describe('multi-part films', () => {
     const parts: MediaFile[] = [
-      f.mediaFile({ id: 201, part_number: 1, label: '1080p H264 · AAC 2.0', size_bytes: 2_100_000_000, duration_seconds: 3000 }),
-      f.mediaFile({ id: 202, part_number: 2, label: '1080p H264 · AAC 2.0', size_bytes: 2_000_000_000, duration_seconds: 3100 }),
+      f.mediaFile({ id: 201, part_number: 1, file_name: 'Dune.cd1.avi', label: '1080p H264 · AAC 2.0', size_bytes: 2_100_000_000, duration_seconds: 3000 }),
+      f.mediaFile({ id: 202, part_number: 2, file_name: 'Dune.cd2.avi', label: '1080p H264 · AAC 2.0', size_bytes: 2_000_000_000, duration_seconds: 3100 }),
     ];
 
-    it('labels the versions "Parte N · …" and defaults to Part 1', async () => {
+    it('labels the versions "Parte N · <file name>" and defaults to Part 1', async () => {
       serveFilm({ media_files: parts });
       renderFilm();
       const picker = await screen.findByLabelText('Versión');
-      expect(within(picker).getAllByRole('option').map((o) => o.textContent)).toEqual([
-        'Parte 1 · 1080p H264 · AAC 2.0 · 2,1 GB',
-        'Parte 2 · 1080p H264 · AAC 2.0 · 2 GB',
-      ]);
+      expect(within(picker).getAllByRole('option').map((o) => o.textContent)).toEqual(['Parte 1 · Dune.cd1', 'Parte 2 · Dune.cd2']);
       expect(link('Reproducir parte 1')).toHaveAttribute('href', '/watch/film/12?file=201');
     });
 

@@ -398,6 +398,7 @@ describe('another version after settled picks (W-AC-24)', () => {
     const file1 = f.mediaFile({ id: 91, audio_tracks: TRACKS, subtitle_tracks: subsFor(91) });
     const file2 = f.mediaFile({
       id: 92,
+      file_name: 'Dune 720p.mp4',
       label: '720p H264 · AAC 2.0',
       audio_tracks: [f.audioTrack({ index: 4, language: 'spa', default: true }), f.audioTrack({ index: 7, language: 'eng', default: false })],
       subtitle_tracks: subsFor(92),
@@ -424,7 +425,7 @@ describe('another version after settled picks (W-AC-24)', () => {
     p.at(333);
     FakeHls.last?.fatal();
     const alert = await screen.findByRole('alert');
-    fireEvent.click(within(alert).getByRole('button', { name: /Probar 720p/ }));
+    fireEvent.click(within(alert).getByRole('button', { name: 'Probar Dune 720p' }));
     await until(() => expect(p.posts().at(-1)?.url.pathname).toBe('/api/media-files/92/playback'));
     expect((await p.postBodies()).at(-1)).toMatchObject({ audio_stream_index: 7 });
     await p.startHls(0);

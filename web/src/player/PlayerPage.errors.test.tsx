@@ -114,7 +114,7 @@ describe('500 transcoder_failed', () => {
   });
 
   it('keyframe_index_failed: friendly message, no detail, no Retry; [Probar …] sends exactly one POST for the sibling; the failed file is never re-requested', async () => {
-    serveFilm(f.filmDetail({ media_files: [f.mediaFile({ id: 91 }), f.mediaFile({ id: 92, label: '720p H264 · AAC 2.0', size_bytes: 4e9 })] }));
+    serveFilm(f.filmDetail({ media_files: [f.mediaFile({ id: 91 }), f.mediaFile({ id: 92, file_name: 'Dune 720p.mp4', label: '720p H264 · AAC 2.0', size_bytes: 4e9 })] }));
     answerPlayback((fileId) =>
       fileId === 91
         ? apiError(500, 'transcoder_failed', { details: { detail: 'keyframe_index_failed: stalled' } })
@@ -126,7 +126,7 @@ describe('500 transcoder_failed', () => {
     expect(alert).not.toHaveTextContent('keyframe_index_failed');
     expect(within(alert).queryByText('Detalles técnicos')).not.toBeInTheDocument();
     expect(within(alert).queryByRole('button', { name: 'Reintentar' })).not.toBeInTheDocument();
-    fireEvent.click(within(alert).getByRole('button', { name: 'Probar 720p H264 · AAC 2.0 · 4 GB' }));
+    fireEvent.click(within(alert).getByRole('button', { name: 'Probar Dune 720p' }));
     await until(() => expect(p.posts()).toHaveLength(2));
     await p.startDirect(0, /\/api\/media-files\/92\/stream/);
     expect(p.posts().map((c) => c.url.pathname)).toEqual(['/api/media-files/91/playback', '/api/media-files/92/playback']);
@@ -172,7 +172,7 @@ describe('unsupported', () => {
       f.filmDetail({
         media_files: [
           f.mediaFile({ id: 90, video: HEVC, label: '2160p HEVC' }),
-          f.mediaFile({ id: 91 }),
+          f.mediaFile({ id: 91, file_name: 'Dune 1080p.mp4' }),
           f.mediaFile({ id: 93, probe_error: 'moov atom not found', label: 'Roto' }),
           f.mediaFile({ id: 94, video: HEVC, label: '1080p HEVC' }),
         ],
@@ -185,7 +185,7 @@ describe('unsupported', () => {
     expect(await screen.findByRole('heading', { name: /No se puede reproducir este vídeo en este navegador/ })).toBeInTheDocument();
     expect(screen.getByText(/no admite el códec de vídeo HEVC/)).toBeInTheDocument();
     const group = screen.getByRole('group', { name: 'Otras versiones' });
-    expect(within(group).getAllByRole('button').map((b) => b.textContent)).toEqual(['Probar 1080p H264 · AAC 2.0 · 23,5 GB']);
+    expect(within(group).getAllByRole('button').map((b) => b.textContent)).toEqual(['Probar Dune 1080p']);
     fireEvent.click(within(group).getByRole('button'));
     await until(() => expect(p.posts()).toHaveLength(2));
     expect(p.posts()[1]?.url.pathname).toBe('/api/media-files/91/playback');

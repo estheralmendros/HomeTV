@@ -9,6 +9,7 @@ import {
   selectVersion,
   startPosition,
   versionLabel,
+  versionName,
   versionOptionLabel,
 } from './versions';
 
@@ -153,22 +154,38 @@ describe('nextPart', () => {
   });
 });
 
+describe('versionName', () => {
+  it('is the file name without its extension', () => {
+    expect(versionName(file(1, { file_name: 'Dune (2021) 4K.mkv' }))).toBe('Dune (2021) 4K');
+    expect(versionName(file(1, { file_name: 'Dune.Part.Two.2024.2160p.HEVC.mp4' }))).toBe('Dune.Part.Two.2024.2160p.HEVC');
+    expect(versionName(file(1, { file_name: 'Dune.tar.mkv' }))).toBe('Dune.tar');
+  });
+
+  it('keeps a name with no extension, or whose only dot leads it, as is', () => {
+    expect(versionName(file(1, { file_name: 'Dune' }))).toBe('Dune');
+    expect(versionName(file(1, { file_name: '.mkv' }))).toBe('.mkv');
+    expect(versionName(file(1, { file_name: 'Dune.' }))).toBe('Dune.');
+  });
+
+  it('falls back to "Desconocido" for a blank name', () => {
+    expect(versionName(file(1, { file_name: '' }))).toBe('Desconocido');
+    expect(versionName(file(1, { file_name: '  ' }))).toBe('Desconocido');
+  });
+});
+
 describe('versionLabel / versionOptionLabel', () => {
-  it('reads "label · size", with a "Parte N" prefix for parts only', () => {
-    expect(versionLabel(file(1, { label: '1080p H264 · AAC 2.0', size_bytes: 23_456_789_012 }))).toBe('1080p H264 · AAC 2.0 · 23,5 GB');
-    expect(versionLabel(part(2, 2, { label: '1080p H264 · AAC 2.0', size_bytes: 2_100_000_000 }))).toBe(
-      'Parte 2 · 1080p H264 · AAC 2.0 · 2,1 GB',
-    );
+  it('reads the file name without extension, with a "Parte N" prefix for parts only', () => {
+    expect(versionLabel(file(1, { file_name: 'Dune (2021).mkv', label: '1080p H264 · AAC 2.0' }))).toBe('Dune (2021)');
+    expect(versionLabel(part(2, 2, { file_name: 'Dune.cd2.avi', label: '1080p H264 · AAC 2.0' }))).toBe('Parte 2 · Dune.cd2');
   });
 
   it('adds "(ilegible)" and the browser warning in the picker', () => {
-    const size = { size_bytes: 58_100_000_000 };
-    expect(versionOptionLabel(file(1, { label: 'Desconocido', probe_error: 'x', ...size }), caps)).toBe('Desconocido · 58,1 GB (ilegible)');
-    expect(versionOptionLabel(hevc(2, size), caps)).toBe('2160p HEVC HDR10 · 58,1 GB (puede que no se reproduzca en este navegador)');
-    expect(versionOptionLabel(file(3, { video: null, label: 'Solo audio', ...size }), caps)).toBe(
-      'Solo audio · 58,1 GB (puede que no se reproduzca en este navegador)',
+    expect(versionOptionLabel(file(1, { file_name: 'broken.mkv', label: 'Desconocido', probe_error: 'x' }), caps)).toBe('broken (ilegible)');
+    expect(versionOptionLabel(hevc(2, { file_name: 'Dune 4K.mkv' }), caps)).toBe('Dune 4K (puede que no se reproduzca en este navegador)');
+    expect(versionOptionLabel(file(3, { file_name: 'audio.mka', video: null, label: 'Solo audio' }), caps)).toBe(
+      'audio (puede que no se reproduzca en este navegador)',
     );
-    expect(versionOptionLabel(file(4, { label: '1080p H264', ...size }), caps)).toBe('1080p H264 · 58,1 GB');
+    expect(versionOptionLabel(file(4, { file_name: 'Dune 1080p.mp4', label: '1080p H264' }), caps)).toBe('Dune 1080p');
   });
 });
 

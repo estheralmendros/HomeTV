@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Border
 import androidx.tv.material3.Button
@@ -22,6 +23,7 @@ import com.hometv.tv.ui.theme.HomeTvFocus
 /**
  * A tv-material button with the app's focus visuals (scale + 3 dp ring) and an optional leading icon.
  * [contentDescription] replaces the accessible name when it differs from [text] ("Mi lista" → "Añadir a Mi lista").
+ * [singleLine] cuts a text wider than the button's width constraint with "…" instead of wrapping it.
  */
 @Composable
 fun ActionButton(
@@ -32,6 +34,7 @@ fun ActionButton(
     @DrawableRes icon: Int? = null,
     onLongClick: (() -> Unit)? = null,
     contentDescription: String? = null,
+    singleLine: Boolean = false,
 ) {
     Button(
         onClick = onClick,
@@ -45,6 +48,6 @@ fun ActionButton(
             Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
         }
-        Text(text)
+        if (singleLine) Text(text, maxLines = 1, overflow = TextOverflow.Ellipsis) else Text(text)
     }
 }

@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.9.1] - Released on 2026-11-14 by Esther Almendros Pérez
+
+### Changed
+
+#### Web app
+- A film's versions are now listed by their file name (without the extension) instead of their resolution, codecs and size, in the "Versión" list of the film's page and in the "Otras versiones" buttons of the player. Parts keep their "Parte N ·" prefix and the "(ilegible)" and "(puede que no se reproduzca en este navegador)" notes stay.
+
+#### TV app
+- A film's versions are now listed by their file name (without the extension) instead of their resolution and codecs: in the "Versión" and "Versión de la parte" buttons and lists of the film's page, and in the player's list of other versions. A long name is cut with "…" on the button; the list shows it in full.
+
 ## [0.9.0] - Released on 2026-11-12 by Esther Almendros Pérez
 
 ### Added
