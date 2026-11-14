@@ -1,11 +1,12 @@
 // Query option builders shared by screens (key + fetcher + staleTime in one place).
 import { queryOptions } from '@tanstack/react-query';
-import { getEpisode, getFilm, getGenres, getHome, getSeason, getShow, search } from './catalog';
+import { HOME_LIMIT, getEpisode, getFilm, getGenres, getHome, getSeason, getShow, listFilms, listShows, search } from './catalog';
 import { getPerson } from './people';
 import { getMe, listProfiles } from './profiles';
 import { queryKeys, staleTimes } from './queryKeys';
 import { getInfo } from './system';
-import type { LibraryType } from './types';
+import type { FilmSummary, LibraryQuery, LibraryType, Page, ShowSummary } from './types';
+import { getWatchlist } from './watchlist';
 
 export const infoQuery = () =>
   queryOptions({ queryKey: queryKeys.info(), queryFn: ({ signal }) => getInfo(signal), staleTime: staleTimes.info });
@@ -22,6 +23,25 @@ export const meQuery = () =>
 
 export const homeQuery = () =>
   queryOptions({ queryKey: queryKeys.home(), queryFn: ({ signal }) => getHome(signal), staleTime: staleTimes.home });
+
+/** Home row: the newest HOME_LIMIT titles of a library (one plain page, not infinite). */
+export const libraryHomeRowQuery = (type: LibraryType) =>
+  queryOptions({
+    queryKey: queryKeys.libraryHomeRow(type),
+    queryFn: ({ signal }): Promise<Page<FilmSummary> | Page<ShowSummary>> => {
+      const query: LibraryQuery = { sort: 'added', order: 'desc', page: 1, page_size: HOME_LIMIT };
+      return type === 'films' ? listFilms(query, signal) : listShows(query, signal);
+    },
+    staleTime: staleTimes.library,
+  });
+
+/** Home "Mi lista" row: the newest HOME_LIMIT entries (all types, watched omitted). */
+export const watchlistHomeRowQuery = () =>
+  queryOptions({
+    queryKey: queryKeys.watchlistHomeRow(),
+    queryFn: ({ signal }) => getWatchlist({ sort: 'added', page: 1, page_size: HOME_LIMIT }, signal),
+    staleTime: staleTimes.watchlist,
+  });
 
 export const genresQuery = (type: LibraryType) =>
   queryOptions({

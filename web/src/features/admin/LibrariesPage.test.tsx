@@ -833,6 +833,8 @@ describe('LibrariesPage', () => {
       expect(rec.find('POST', '/api/admin/libraries/plan')).toHaveLength(0);
 
       await router.navigate('/admin/libraries');
+      // Typing before the keypad is on screen loses the keys (flaky under full-suite load).
+      await screen.findByRole('dialog', { name: 'Introduce el PIN de administrador' });
       await user.keyboard('1234');
       await loaded();
       expect(within(section('Películas')).queryByRole('listitem', { name: '/media/Docs' })).not.toBeInTheDocument();

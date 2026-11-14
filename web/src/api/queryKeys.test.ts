@@ -33,6 +33,9 @@ describe('queryKeys', () => {
       { type: 'films', sort: 'title', watched: false },
     ]);
     expect(queryKeys.watchlistAll()).toEqual(['watchlist']);
+    expect(queryKeys.libraryHomeRow('films')).toEqual(['films', 'list', 'homeRow']);
+    expect(queryKeys.libraryHomeRow('shows')).toEqual(['shows', 'list', 'homeRow']);
+    expect(queryKeys.watchlistHomeRow()).toEqual(['watchlist', 'homeRow']);
     expect(queryKeys.activity()).toEqual(['activity', 'list']);
     expect(queryKeys.activityAll()).toEqual(['activity']);
     expect(queryKeys.admin.scan()).toEqual(['admin', 'scan']);
@@ -122,6 +125,29 @@ describe('invalidateAfter', () => {
 
   it('profile create / edit / delete', () => {
     expect(invalidateAfter({ type: 'profilesChanged' })).toEqual([['profiles'], ['me']]);
+  });
+});
+
+describe('Home row keys are covered by the invalidation table', () => {
+  const isPrefix = (prefix: readonly unknown[], key: readonly unknown[]) =>
+    prefix.length <= key.length && prefix.every((segment, i) => JSON.stringify(segment) === JSON.stringify(key[i]));
+  const covers = (event: Parameters<typeof invalidateAfter>[0], key: readonly unknown[]) =>
+    invalidateAfter(event).some((prefix) => isPrefix(prefix, key));
+  const films = queryKeys.libraryHomeRow('films');
+  const shows = queryKeys.libraryHomeRow('shows');
+  const list = queryKeys.watchlistHomeRow();
+
+  it.each([
+    ['watchlistChanged', { type: 'watchlistChanged', kind: 'film', id: 12 }, [list], [films, shows]],
+    ['ratingChanged film', { type: 'ratingChanged', kind: 'film', id: 12 }, [films, list], [shows]],
+    ['ratingChanged show', { type: 'ratingChanged', kind: 'show', id: 7 }, [shows, list], [films]],
+    ['playerExit', { type: 'playerExit', item: { type: 'film', id: 12 } }, [films, shows, list], []],
+    ['watchedFilm', { type: 'watchedFilm', id: 12 }, [films, list], [shows]],
+    ['watchedEpisodes', { type: 'watchedEpisodes', showId: 7 }, [shows, list], [films]],
+    ['catalogChanged', { type: 'catalogChanged' }, [films, shows, list], []],
+  ] as const)('%s', (_name, event, covered, notCovered) => {
+    for (const key of covered) expect(covers(event, key)).toBe(true);
+    for (const key of notCovered) expect(covers(event, key)).toBe(false);
   });
 });
 

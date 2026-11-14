@@ -1,6 +1,7 @@
-import { screen, within } from '@testing-library/react';
-import { delay, http, HttpResponse } from 'msw';
+import { screen, waitFor, within } from '@testing-library/react';
+import { delay, http, HttpResponse, type JsonBodyType } from 'msw';
 import { describe, expect, it } from 'vitest';
+import { runInvalidation } from '@/api/queryClient';
 import type { MediaFile } from '@/api/types';
 import { getClientCaps } from '@/player/capabilities';
 import { selectVersion, startPosition } from '@/player/versions';
@@ -18,14 +19,57 @@ function serveHome(body: ReturnType<typeof f.homeResponse>) {
   server.use(http.get(`${API}/home`, () => HttpResponse.json(body)));
 }
 
+type Endpoint = 'films' | 'shows' | 'watchlist';
+
+function serveEndpoint(endpoint: Endpoint, body: JsonBodyType) {
+  server.use(http.get(`${API}/${endpoint}`, () => HttpResponse.json(body)));
+}
+
+function holdEndpoint(endpoint: Endpoint) {
+  server.use(
+    http.get(`${API}/${endpoint}`, async () => {
+      await delay('infinite');
+      return HttpResponse.json({});
+    }),
+  );
+}
+
+function failEndpoint(endpoint: Endpoint) {
+  server.use(http.get(`${API}/${endpoint}`, () => apiError(500, 'internal_error')));
+}
+
+/** A non-empty Mi lista: a film and a show entry. */
+function serveWatchlist() {
+  serveEndpoint('watchlist', f.page([f.watchlistFilmEntry(), f.watchlistShowEntry()]));
+}
+
+/** Waits until the given Home rows are rendered (each request answers independently). */
+async function rowsRendered(...names: string[]) {
+  for (const name of names) await screen.findByRole('region', { name });
+}
+
+function headings() {
+  return screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
+}
+
+const ALL_ROWS = ['Seguir viendo', 'Mi lista', 'Añadidos recientemente', 'Películas', 'Series'];
+
 const HEVC = f.video({ codec: 'hevc', width: 3840, height: 2160 });
 
 describe('HomePage', () => {
-  it('renders the non-empty rows in order and sets the title', async () => {
+  it('renders the non-empty rows in order and sets the title (empty list: no Mi lista)', async () => {
     renderHome();
-    const headings = await screen.findAllByRole('heading', { level: 2 });
-    expect(headings.map((h) => h.textContent)).toEqual(['Seguir viendo', 'Añadidos recientemente']);
+    await rowsRendered('Seguir viendo', 'Añadidos recientemente', 'Películas', 'Series');
+    await waitFor(() => expect(screen.queryByRole('progressbar', { name: 'Cargando…' })).not.toBeInTheDocument());
+    expect(headings()).toEqual(['Seguir viendo', 'Añadidos recientemente', 'Películas', 'Series']);
     expect(document.title).toBe('Inicio · HomeTV');
+  });
+
+  it('renders all five rows in order when the list has entries', async () => {
+    serveWatchlist();
+    renderHome();
+    await rowsRendered(...ALL_ROWS);
+    expect(headings()).toEqual(ALL_ROWS);
   });
 
   it('hides empty rows', async () => {
@@ -45,7 +89,7 @@ describe('HomePage', () => {
     expect(screen.getAllByTestId('skeleton-card')).toHaveLength(16);
   });
 
-  it('empty library: admins get the folders/scan hint and both links, without list requests', async () => {
+  it('empty library: admins get the folders/scan hint and both links, and nothing else', async () => {
     serveHome(f.emptyHomeResponse());
     const rec = recordRequests();
     renderHome({ profile: f.adminProfile() });
@@ -59,9 +103,10 @@ describe('HomePage', () => {
     expect(libraries).toHaveAttribute('href', '/admin/libraries');
     expect(scan).toHaveAttribute('href', '/admin/scan');
     expect(libraries.compareDocumentPosition(scan) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await waitFor(() => expect(rec.calls).toHaveLength(4));
     await rec.settled();
-    expect(rec.find('GET', '/api/films')).toHaveLength(0);
-    expect(rec.find('GET', '/api/shows')).toHaveLength(0);
+    expect(screen.queryByRole('heading', { level: 2 })).not.toBeInTheDocument();
+    expect(screen.queryByRole('progressbar', { name: 'Cargando…' })).not.toBeInTheDocument();
     rec.dispose();
   });
 
@@ -185,7 +230,6 @@ describe('HomePage', () => {
       expect(within(row).getAllByRole('progressbar')).toHaveLength(1);
       expect(within(row).getByRole('link', { name: 'Detalles de The Office' })).toHaveAttribute('href', '/shows/7');
       expect(screen.queryByRole('heading', { name: 'A continuación' })).not.toBeInTheDocument();
-      expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(['Seguir viendo', 'Añadidos recientemente']);
       await user.click(card);
       expect(await findProbedLocation()).toBe('/watch/episode/346');
     });
@@ -212,5 +256,255 @@ describe('HomePage', () => {
     renderHome();
     const row = await screen.findByRole('region', { name: 'Añadidos recientemente' });
     expect(within(row).getByRole('link', { name: 'The Office (2005)' })).not.toHaveTextContent('sin ver');
+  });
+  describe('Mi lista, Películas and Series rows', () => {
+    it('requests the four endpoints once each, with the documented params', async () => {
+      const rec = recordRequests();
+      renderHome();
+      await waitFor(() => expect(rec.calls).toHaveLength(4));
+      await rec.settled();
+      for (const path of ['/api/home', '/api/films', '/api/shows', '/api/watchlist']) {
+        expect(rec.find('GET', path), path).toHaveLength(1);
+      }
+      for (const path of ['/api/films', '/api/shows']) {
+        const params = rec.find('GET', path)[0]!.url.searchParams;
+        expect(params.get('sort')).toBe('added');
+        expect(params.get('order')).toBe('desc');
+        expect(params.get('page')).toBe('1');
+        expect(params.get('page_size')).toBe('20');
+      }
+      const list = rec.find('GET', '/api/watchlist')[0]!.url.searchParams;
+      expect(list.get('sort')).toBe('added');
+      expect(list.get('page')).toBe('1');
+      expect(list.get('page_size')).toBe('20');
+      expect(list.has('type')).toBe(false);
+      expect(list.has('watched')).toBe(false);
+      rec.dispose();
+    });
+
+    it('the three rows start while /api/home is still pending', async () => {
+      server.use(http.get(`${API}/home`, async () => {
+        await delay('infinite');
+        return HttpResponse.json(f.homeResponse());
+      }));
+      const rec = recordRequests();
+      renderHome();
+      await waitFor(() =>
+        expect(rec.calls.map((c) => c.url.pathname).sort()).toEqual(['/api/films', '/api/home', '/api/shows', '/api/watchlist']),
+      );
+      rec.dispose();
+    });
+
+    it('Mi lista shows both kinds, keeps a watched film, and ends with "Ver todo" to /watchlist', async () => {
+      serveEndpoint('watchlist', f.page([f.watchlistFilmEntry({ item: f.filmSummary({ progress: f.progress({ watched: true }) }) }), f.watchlistShowEntry()]));
+      renderHome();
+      const row = await screen.findByRole('region', { name: 'Mi lista' });
+      expect(within(row).getByRole('link', { name: 'Dune (2021)' })).toHaveAttribute('href', '/films/12');
+      const show = within(row).getByRole('link', { name: 'The Office (2005)' });
+      expect(show).toHaveAttribute('href', '/shows/7');
+      expect(show).toHaveTextContent('150 sin ver');
+      const seeAll = within(row).getByRole('link', { name: 'Ver todo: Mi lista' });
+      expect(seeAll).toHaveAttribute('href', '/watchlist');
+      expect(seeAll).toHaveTextContent('Ver todo');
+      expect(within(row).getByText('✓')).toBeInTheDocument();
+      expect(within(row).getByTestId('row-track').lastElementChild).toBe(seeAll);
+    });
+
+    it('Películas and Series show their cards and end with "Ver todo" to the added-sorted screens', async () => {
+      renderHome();
+      const films = await screen.findByRole('region', { name: 'Películas' });
+      expect(within(films).getByRole('link', { name: 'Dune (2021)' })).toHaveAttribute('href', '/films/12');
+      const filmsAll = within(films).getByRole('link', { name: 'Ver todo: Películas' });
+      expect(filmsAll).toHaveAttribute('href', '/films?sort=added');
+      expect(within(films).getByTestId('row-track').lastElementChild).toBe(filmsAll);
+      const shows = await screen.findByRole('region', { name: 'Series' });
+      expect(within(shows).getByRole('link', { name: 'The Office (2005)' })).toHaveAttribute('href', '/shows/7');
+      const showsAll = within(shows).getByRole('link', { name: 'Ver todo: Series' });
+      expect(showsAll).toHaveAttribute('href', '/shows?sort=added');
+      expect(within(shows).getByTestId('row-track').lastElementChild).toBe(showsAll);
+    });
+
+    it('Seguir viendo and Añadidos recientemente have no "Ver todo"', async () => {
+      renderHome();
+      await rowsRendered('Películas', 'Series');
+      expect(within(screen.getByRole('region', { name: 'Seguir viendo' })).queryByRole('link', { name: /Ver todo/ })).not.toBeInTheDocument();
+      expect(within(screen.getByRole('region', { name: 'Añadidos recientemente' })).queryByRole('link', { name: /Ver todo/ })).not.toBeInTheDocument();
+    });
+
+    it('"Ver todo" is shown when total equals the item count (1 of 1)', async () => {
+      serveEndpoint('films', f.page([f.filmSummary()], { total: 1 }));
+      renderHome();
+      const row = await screen.findByRole('region', { name: 'Películas' });
+      expect(within(row).getByRole('link', { name: 'Ver todo: Películas' })).toBeInTheDocument();
+    });
+
+    it('"Ver todo" navigates', async () => {
+      const { user } = renderHome();
+      const row = await screen.findByRole('region', { name: 'Películas' });
+      await user.click(within(row).getByRole('link', { name: 'Ver todo: Películas' }));
+      expect(await findProbedLocation()).toBe('/films?sort=added');
+    });
+
+    it.each([
+      ['Mi lista', 'watchlist'],
+      ['Películas', 'films'],
+      ['Series', 'shows'],
+    ] as const)('hides %s when it has no items; the other rows stay', async (title, endpoint) => {
+      serveWatchlist();
+      serveEndpoint(endpoint, f.page([]));
+      renderHome();
+      await rowsRendered(...ALL_ROWS.filter((n) => n !== title));
+      await waitFor(() => expect(screen.queryByRole('progressbar', { name: 'Cargando…' })).not.toBeInTheDocument());
+      expect(screen.queryByRole('heading', { name: title })).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: `Ver todo: ${title}` })).not.toBeInTheDocument();
+    });
+
+    it.each([
+      ['Mi lista', 'watchlist'],
+      ['Películas', 'films'],
+      ['Series', 'shows'],
+    ] as const)('hides %s when its request fails, without an alert', async (title, endpoint) => {
+      serveWatchlist();
+      failEndpoint(endpoint);
+      renderHome();
+      await rowsRendered(...ALL_ROWS.filter((n) => n !== title));
+      await waitFor(() => expect(screen.queryByRole('progressbar', { name: 'Cargando…' })).not.toBeInTheDocument());
+      expect(screen.queryByRole('heading', { name: title })).not.toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it.each([
+      ['Mi lista', 'watchlist'],
+      ['Películas', 'films'],
+      ['Series', 'shows'],
+    ] as const)('a pending %s shows one skeleton row while the others render', async (title, endpoint) => {
+      serveWatchlist();
+      holdEndpoint(endpoint);
+      renderHome();
+      await rowsRendered(...ALL_ROWS.filter((n) => n !== title));
+      const skeleton = screen.getByRole('progressbar', { name: 'Cargando…' });
+      expect(screen.queryByRole('heading', { name: title })).not.toBeInTheDocument();
+      const after = (n: string) => screen.getByRole('region', { name: n }).compareDocumentPosition(skeleton) & Node.DOCUMENT_POSITION_FOLLOWING;
+      const before = (n: string) => skeleton.compareDocumentPosition(screen.getByRole('region', { name: n })) & Node.DOCUMENT_POSITION_FOLLOWING;
+      const slot = {
+        'Mi lista': { after: 'Seguir viendo', before: 'Añadidos recientemente' },
+        Películas: { after: 'Añadidos recientemente', before: 'Series' },
+        Series: { after: 'Películas', before: null },
+      }[title];
+      expect(after(slot.after)).toBeTruthy();
+      if (slot.before) expect(before(slot.before)).toBeTruthy();
+    });
+
+    it('nothingToShow: no new rows and no skeletons, even when the new rows have items', async () => {
+      serveHome(f.homeResponse({ continue_watching: [], recently_added: [] }));
+      serveWatchlist();
+      const rec = recordRequests();
+      renderHome();
+      expect(await screen.findByRole('link', { name: 'Películas' })).toHaveAttribute('href', '/films');
+      await waitFor(() => expect(rec.calls).toHaveLength(4));
+      await rec.settled();
+      expect(screen.queryByRole('heading', { level: 2 })).not.toBeInTheDocument();
+      expect(screen.queryByRole('progressbar', { name: 'Cargando…' })).not.toBeInTheDocument();
+      rec.dispose();
+    });
+
+    it('while /api/home is pending: two skeleton rows only, even when the new rows answered', async () => {
+      server.use(http.get(`${API}/home`, async () => {
+        await delay('infinite');
+        return HttpResponse.json(f.homeResponse());
+      }));
+      const { queryClient } = renderHome();
+      await waitFor(() => expect(queryClient.getQueryData(['films', 'list', 'homeRow'])).toBeDefined());
+      await waitFor(() => expect(queryClient.getQueryData(['shows', 'list', 'homeRow'])).toBeDefined());
+      await waitFor(() => expect(queryClient.getQueryData(['watchlist', 'homeRow'])).toBeDefined());
+      expect(screen.getAllByRole('progressbar')).toHaveLength(2);
+      expect(screen.getAllByTestId('skeleton-card')).toHaveLength(16);
+      expect(screen.queryByRole('heading', { level: 2 })).not.toBeInTheDocument();
+    });
+
+    it('/api/home failing hides the rows even when the new rows answered', async () => {
+      server.use(http.get(`${API}/home`, () => apiError(500, 'internal_error')));
+      const { queryClient } = renderHome();
+      expect(await screen.findByRole('alert')).toBeInTheDocument();
+      await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+      expect(queryClient.getQueryData(['films', 'list', 'homeRow'])).toBeDefined();
+      expect(screen.queryByRole('heading', { level: 2 })).not.toBeInTheDocument();
+    });
+
+    it('Reintentar after a total outage refetches the four endpoints and restores five rows', async () => {
+      const calls: Record<string, number> = { home: 0, films: 0, shows: 0, watchlist: 0 };
+      const success: Record<string, JsonBodyType> = {
+        home: f.homeResponse(),
+        films: f.page([f.filmSummary()]),
+        shows: f.page([f.showSummary()]),
+        watchlist: f.page([f.watchlistFilmEntry()]),
+      };
+      for (const endpoint of Object.keys(calls)) {
+        server.use(
+          http.get(`${API}/${endpoint}`, () =>
+            ++calls[endpoint]! === 1 ? apiError(500, 'internal_error') : HttpResponse.json(success[endpoint]!),
+          ),
+        );
+      }
+      const rec = recordRequests();
+      const { user, queryClient } = renderHome();
+      await screen.findByRole('alert');
+      await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+      await user.click(screen.getByRole('button', { name: 'Reintentar' }));
+      await rowsRendered(...ALL_ROWS);
+      for (const path of ['/api/home', '/api/films', '/api/shows', '/api/watchlist']) {
+        expect(rec.find('GET', path), path).toHaveLength(2);
+      }
+      rec.dispose();
+    });
+
+    it('Reintentar with only /api/home failed refetches only /api/home', async () => {
+      let homeCalls = 0;
+      server.use(http.get(`${API}/home`, () => (++homeCalls === 1 ? apiError(500, 'internal_error') : HttpResponse.json(f.homeResponse()))));
+      const rec = recordRequests();
+      const { user, queryClient } = renderHome();
+      await screen.findByRole('alert');
+      await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+      await user.click(screen.getByRole('button', { name: 'Reintentar' }));
+      await rowsRendered('Seguir viendo', 'Películas', 'Series');
+      await rec.settled();
+      expect(rec.find('GET', '/api/home')).toHaveLength(2);
+      expect(rec.find('GET', '/api/films')).toHaveLength(1);
+      expect(rec.find('GET', '/api/shows')).toHaveLength(1);
+      expect(rec.find('GET', '/api/watchlist')).toHaveLength(1);
+      rec.dispose();
+    });
+
+    it('a failed refetch keeps the row and its cards', async () => {
+      const { queryClient } = renderHome();
+      await rowsRendered('Películas');
+      await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+      failEndpoint('films');
+      await queryClient.invalidateQueries({ queryKey: ['films'] });
+      await waitFor(() => expect(queryClient.getQueryState(['films', 'list', 'homeRow'])?.status).toBe('error'));
+      const row = screen.getByRole('region', { name: 'Películas' });
+      expect(within(row).getByRole('link', { name: 'Dune (2021)' })).toBeInTheDocument();
+      expect(within(row).getByRole('link', { name: 'Ver todo: Películas' })).toBeInTheDocument();
+    });
+
+    it('watchlistChanged refetches the list: Mi lista appears when it was empty', async () => {
+      const { queryClient } = renderHome();
+      await rowsRendered('Películas', 'Series');
+      await waitFor(() => expect(screen.queryByRole('progressbar', { name: 'Cargando…' })).not.toBeInTheDocument());
+      expect(screen.queryByRole('heading', { name: 'Mi lista' })).not.toBeInTheDocument();
+      serveWatchlist();
+      await runInvalidation(queryClient, { type: 'watchlistChanged', kind: 'film', id: 12 });
+      expect(await screen.findByRole('region', { name: 'Mi lista' })).toBeInTheDocument();
+    });
+
+    it('watchlistChanged refetches the list: Mi lista hides when it was emptied', async () => {
+      serveWatchlist();
+      const { queryClient } = renderHome();
+      await rowsRendered(...ALL_ROWS);
+      await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+      serveEndpoint('watchlist', f.page([]));
+      await runInvalidation(queryClient, { type: 'watchlistChanged', kind: 'film', id: 12 });
+      await waitFor(() => expect(screen.queryByRole('heading', { name: 'Mi lista' })).not.toBeInTheDocument());
+    });
   });
 });
