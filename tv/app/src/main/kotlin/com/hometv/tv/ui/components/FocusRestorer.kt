@@ -43,10 +43,15 @@ fun RequestFocus(key: Any?, enabled: Boolean = true, target: () -> FocusRequeste
 
 private const val FRAMES = 5
 
-/** Requests focus on the next frames until the target is attached (lazy items being scrolled in). */
-suspend fun FocusRequester.requestFocusWhenReady(frames: Int = FRAMES): Boolean {
+/**
+ * Requests focus on the next frames until the target is attached (lazy items being scrolled in).
+ * Gives up once [stillWanted] is false: a newer target was chosen while this one waited for a frame
+ * (the effect that asked is cancelled only at the next recomposition, after the frame resumed it).
+ */
+suspend fun FocusRequester.requestFocusWhenReady(frames: Int = FRAMES, stillWanted: () -> Boolean = { true }): Boolean {
     repeat(frames) {
         awaitFrame()
+        if (!stillWanted()) return false
         if (tryRequestFocus()) return true
     }
     return false

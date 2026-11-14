@@ -146,6 +146,9 @@ class HomeViewModel(
      * moved since: fresh data then focuses the new first card instead of following this one by key.
      */
     private var entryKey: String? = null
+
+    /** The card that opened another screen (a detail, the Player): Back focuses it again, until a newer target. */
+    private var openedKey: String? = null
     private var leftApp = false
     private var focusVersion = 0
     private var job: Job? = null
@@ -192,19 +195,31 @@ class HomeViewModel(
         if (first != null && _state.value.exitDialog == null) {
             focusedKey = first.key
             entryKey = first.key
-            _state.update { it.copy(focus = FocusTarget(first.key, 0, 0, ++focusVersion)) }
+            _state.update { it.copy(focus = FocusTarget(first.key, 0, 0, nextFocusVersion())) }
         }
         load(initial = false)
     }
 
-    /** The card to focus when Home is shown again (Back from a detail): the last focused card, if still there. */
-    fun restoreTarget(): FocusTarget? {
-        val key = focusedKey ?: return null
+    /**
+     * The card the screen focuses now: after Back from a screen a card opened, that card (if still there);
+     * else the latest target. Never the card that merely had focus last: a late focus of a replaced
+     * target (the cached first card after the fresh rows arrived) must not win over the newer one.
+     */
+    fun focusTarget(): FocusTarget? = openedTarget() ?: _state.value.focus
+
+    private fun openedTarget(): FocusTarget? {
+        val key = openedKey ?: return null
         _state.value.rows.forEachIndexed { r, row ->
             val index = row.cards.indexOfFirst { it.key == key }
             if (index >= 0) return FocusTarget(key, r, index, focusVersion)
         }
         return null
+    }
+
+    /** A new focus target replaces the card to restore on Back. */
+    private fun nextFocusVersion(): Int {
+        openedKey = null
+        return ++focusVersion
     }
 
     /** Focus is on the top navigation bar. */
@@ -223,7 +238,7 @@ class HomeViewModel(
         val first = current.rows.firstOrNull()?.cards?.firstOrNull()
         if (current.error == null && first != null && focusedKey != first.key) {
             focusedKey = first.key
-            _state.update { it.copy(focus = FocusTarget(first.key, 0, 0, ++focusVersion)) }
+            _state.update { it.copy(focus = FocusTarget(first.key, 0, 0, nextFocusVersion())) }
             return
         }
         holdPrompts(true)
@@ -276,6 +291,7 @@ class HomeViewModel(
                 else -> return
             }
         }
+        openedKey = card.key
         _navigation.trySend(request)
     }
 
@@ -289,6 +305,7 @@ class HomeViewModel(
             is ShowSummary -> NavRequest.Detail("show", s.id)
             else -> return
         }
+        openedKey = card.key
         _navigation.trySend(request)
     }
 
@@ -331,13 +348,14 @@ class HomeViewModel(
     }
 
     /**
-     * The first card at entry (nothing focused yet, or still the entry card); else the same item by key
-     * when still present, else the same index of its row (clamped), else the first card.
+     * The first card at entry (no rows yet, or an entry target the user has not moved from: its card not
+     * focused yet, or still focused); else the same item by key when still present, else the same index
+     * of its row (clamped), else the first card.
      */
     private fun focusAfter(old: List<HomeRow>, new: List<HomeRow>): FocusTarget? {
         if (new.isEmpty()) return null
         val key = focusedKey
-        if (old.isEmpty() || (entryKey != null && key == entryKey)) {
+        if (old.isEmpty() || (entryKey != null && (key == null || key == entryKey))) {
             return target(new, 0, 0).also { entryKey = it.key }
         }
         if (key != null) {
@@ -356,7 +374,7 @@ class HomeViewModel(
     private fun target(rows: List<HomeRow>, row: Int, card: Int): FocusTarget {
         val key = rows[row].cards[card].key
         focusedKey = focusedKey?.let { key }
-        return FocusTarget(key, row, card, ++focusVersion)
+        return FocusTarget(key, row, card, nextFocusVersion())
     }
 
     private fun rowsOf(data: HomePayload): List<HomeRow> = listOfNotNull(
