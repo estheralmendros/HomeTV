@@ -19,8 +19,3 @@
 .card:hover .label {
   text-decoration: underline;
 }
-
-.card:focus-visible .frame {
-  outline: 3px solid var(--color-focus);
-  outline-offset: 2px;
-}

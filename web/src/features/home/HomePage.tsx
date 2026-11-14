@@ -61,6 +61,8 @@ interface HomeRowsProps {
   shows: UseQueryResult<Page<FilmSummary> | Page<ShowSummary>>;
 }
 
+const summaryCard = (item: FilmSummary | ShowSummary) => <SummaryCard key={`${item.type}-${item.id}`} item={item} />;
+
 function HomeRows({ home, watchlist, films, shows }: HomeRowsProps) {
   if (home.library.empty) return <EmptyLibrary />;
   const { continue_watching, recently_added } = home;
@@ -94,16 +96,14 @@ function HomeRows({ home, watchlist, films, shows }: HomeRowsProps) {
       </ExtraRow>
       {recently_added.length > 0 && (
         <Row title={S.home.recentlyAdded}>
-          {recently_added.map((item) => (
-            <SummaryCard key={`${item.type}-${item.id}`} item={item} />
-          ))}
+          {recently_added.map(summaryCard)}
         </Row>
       )}
       <ExtraRow<FilmSummary | ShowSummary> title={S.home.films} to="/films?sort=added" query={films}>
-        {(item) => <SummaryCard key={`${item.type}-${item.id}`} item={item} />}
+        {summaryCard}
       </ExtraRow>
       <ExtraRow<FilmSummary | ShowSummary> title={S.home.shows} to="/shows?sort=added" query={shows}>
-        {(item) => <SummaryCard key={`${item.type}-${item.id}`} item={item} />}
+        {summaryCard}
       </ExtraRow>
     </>
   );
