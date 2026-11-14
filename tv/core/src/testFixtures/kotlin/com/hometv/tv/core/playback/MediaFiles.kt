@@ -29,11 +29,18 @@ object F {
         probe_error = probeError,
     )
 
-    fun hevc(id: Long, duration: Double? = 7200.0, part: Int? = null, label: String = "2160p HEVC HDR10 · EAC3 5.1") =
-        file(id, video = HEVC, duration = duration, part = part, label = label)
+    fun hevc(id: Long, duration: Double? = 7200.0, part: Int? = null, label: String = "2160p HEVC HDR10 · EAC3 5.1", fileName: String = "file$id.mkv") =
+        file(id, video = HEVC, duration = duration, part = part, label = label, fileName = fileName)
 
-    fun part(id: Long, n: Int, duration: Double? = 3000.0, video: VideoInfo? = H264, label: String = "1080p H264 · AAC 2.0", probeError: String? = null) =
-        file(id, video = video, duration = duration, part = n, label = label, probeError = probeError)
+    fun part(
+        id: Long,
+        n: Int,
+        duration: Double? = 3000.0,
+        video: VideoInfo? = H264,
+        label: String = "1080p H264 · AAC 2.0",
+        probeError: String? = null,
+        fileName: String = "file$id.mkv",
+    ) = file(id, video = video, duration = duration, part = n, label = label, probeError = probeError, fileName = fileName)
 
     fun progress(fileId: Long?, position: Double = 1000.0, duration: Double? = 7200.0, watched: Boolean = false) =
         Progress(position_seconds = position, duration_seconds = duration, watched = watched, media_file_id = fileId)

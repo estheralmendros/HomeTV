@@ -162,7 +162,7 @@ describe('in-mount releases', () => {
 
   it('(e) PLAY_FILE to a sibling starting at 0 after the old file played to 400 s → no old-file report carries 0; the new file reports from its own start', async () => {
     useFakePlayerTimers();
-    serveFilm([f.mediaFile({ id: 91 }), f.mediaFile({ id: 92, label: '720p H264 · AAC 2.0', size_bytes: 4e9 })], null);
+    serveFilm([f.mediaFile({ id: 91 }), f.mediaFile({ id: 92, file_name: 'Dune 720p.mp4', label: '720p H264 · AAC 2.0', size_bytes: 4e9 })], null);
     answerPlayback(
       hls(1),
       apiError(500, 'transcoder_failed', { details: { detail: 'keyframe_index_failed: stalled' } }),
@@ -174,7 +174,7 @@ describe('in-mount releases', () => {
     await advance(10_000);
     FakeHls.last?.fatal();
     const alert = await vi.waitUntil(() => screen.queryByRole('alert'));
-    fireEvent.click(within(alert).getByRole('button', { name: 'Probar 720p H264 · AAC 2.0 · 4 GB' }));
+    fireEvent.click(within(alert).getByRole('button', { name: 'Probar Dune 720p' }));
     await until(() => expect(p.posts()).toHaveLength(3));
     expect((await p.postBodies())[2]).toMatchObject({ start_position_seconds: 0 });
     await p.startDirect(0, /\/api\/media-files\/92\/stream/);

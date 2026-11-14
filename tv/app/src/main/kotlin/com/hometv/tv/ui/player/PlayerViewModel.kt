@@ -70,6 +70,7 @@ import com.hometv.tv.core.playback.TrackRules
 import com.hometv.tv.core.playback.UnsupportedReason
 import com.hometv.tv.core.playback.VersionCaps
 import com.hometv.tv.core.playback.VersionGroup
+import com.hometv.tv.core.playback.VersionNames
 import com.hometv.tv.core.playback.VersionSelector
 import com.hometv.tv.core.util.Format
 import com.hometv.tv.core.util.ServerUrl
@@ -1446,7 +1447,7 @@ class PlayerViewModel(
         val f = requestedFile ?: file ?: return
         otherVersions = otherVersionsFor(f)
         if (otherVersions.isEmpty()) return
-        dialog = PlayerDialog.Versions(otherVersions.map { it.label.ifBlank { it.file_name } })
+        dialog = PlayerDialog.Versions(otherVersions.map { VersionNames.name(it)?.let(UiText::Data) ?: UiText.Res(R.string.version_label_unknown) })
         render()
     }
 

@@ -22,6 +22,7 @@ import com.hometv.tv.core.playback.Grouping
 import com.hometv.tv.core.playback.TieredVersions
 import com.hometv.tv.core.playback.VersionCaps
 import com.hometv.tv.core.playback.VersionGroup
+import com.hometv.tv.core.playback.VersionNames
 import com.hometv.tv.core.playback.VersionSelector
 import com.hometv.tv.core.util.Format
 import com.hometv.tv.data.DetailRefresh
@@ -527,9 +528,10 @@ class FilmDetailViewModel(
 
     private fun inParts(grouping: Grouping): UiText = UiText.Res(R.string.detail_in_parts, listOf(grouping.parts.size.toString()))
 
-    private fun labelArg(file: MediaFile): Any = file.label.ifBlank { null } ?: UiText.Res(R.string.version_label_unknown)
+    /** A version is named by its file name ([VersionNames]); "Desconocido" when blank. */
+    private fun labelArg(file: MediaFile): Any = VersionNames.name(file) ?: UiText.Res(R.string.version_label_unknown)
 
-    private fun labelText(file: MediaFile): UiText = if (file.label.isBlank()) UiText.Res(R.string.version_label_unknown) else UiText.Data(file.label)
+    private fun labelText(file: MediaFile): UiText = VersionNames.name(file)?.let(UiText::Data) ?: UiText.Res(R.string.version_label_unknown)
 
     companion object {
         /** "2021 · 2 h 35 min · ★ 7,8 · Ciencia ficción, Aventura" (missing parts are skipped). */

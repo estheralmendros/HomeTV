@@ -3,7 +3,6 @@
 // order and are never re-sorted, so "first … in media_files order" picks the
 // same file as the TV app.
 import type { ClientCaps, MediaFile, Progress } from '@/api/types';
-import { formatBytes } from '@/lib/format';
 import { S } from '@/strings.es';
 
 export interface StartPosition {
@@ -140,10 +139,21 @@ export function startPosition(f: MediaFile, files: readonly MediaFile[], progres
   return { seconds: 0, differentVersion: true };
 }
 
-/** "label · 23,4 GB", or "Parte N · label · 23,4 GB" for a part. */
+/**
+ * The file name without its extension (a leading or trailing dot is not one); "Desconocido" when
+ * blank. The TV app's `VersionNames.name` (`tv/core/.../playback/VersionNames.kt`) applies the same rule.
+ */
+export function versionName(file: MediaFile): string {
+  const name = file.file_name.trim();
+  if (name === '') return S.common.unknown;
+  const dot = name.lastIndexOf('.');
+  return dot > 0 && dot < name.length - 1 ? name.slice(0, dot) : name;
+}
+
+/** The version's name, or "Parte N · name" for a part. */
 export function versionLabel(file: MediaFile): string {
-  const base = `${file.label} · ${formatBytes(file.size_bytes)}`;
-  return file.part_number === null ? base : `${S.versions.part(file.part_number)} · ${base}`;
+  const name = versionName(file);
+  return file.part_number === null ? name : `${S.versions.part(file.part_number)} · ${name}`;
 }
 
 /** VersionPicker option: versionLabel plus "(ilegible)" or the may-not-play warning. */

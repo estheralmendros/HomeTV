@@ -64,7 +64,7 @@ describe('PlayerErrorScreen', () => {
   });
 
   it('version_failed: no Retry, no detail; one button per alternative plus [Volver]', async () => {
-    const alt = f.mediaFile({ id: 92 });
+    const alt = f.mediaFile({ id: 92, file_name: 'Dune 1080p.mkv' });
     const { onTry } = renderScreen({
       error: error({ kind: 'version_failed', code: 'transcoder_failed', message: 'El servidor no puede preparar esta versión para reproducirla.' }),
       alternatives: [alt],
@@ -73,7 +73,7 @@ describe('PlayerErrorScreen', () => {
     expect(screen.queryByRole('button', { name: 'Reintentar' })).not.toBeInTheDocument();
     expect(screen.queryByText('Detalles técnicos')).not.toBeInTheDocument();
     const group = screen.getByRole('group', { name: 'Otras versiones' });
-    await userEvent.click(within(group).getByRole('button', { name: 'Probar 1080p H264 · AAC 2.0 · 23,5 GB' }));
+    await userEvent.click(within(group).getByRole('button', { name: 'Probar Dune 1080p' }));
     expect(onTry).toHaveBeenCalledWith(alt);
     expect(screen.getByRole('button', { name: 'Volver' })).toBeInTheDocument();
   });

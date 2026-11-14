@@ -19,6 +19,7 @@ root `CLAUDE.md`.
 - `playback/` (pure rules): `TrackChoiceRules` (the matching rule of `specs/subtitles-improvements/prd.md`
   FR-3..FR-5a; its test reads `shared/track-choice-cases.json` through the `hometv.trackChoiceCases` system property),
   `SubtitleStyles.kt` (style enums, `SubtitleLook`, `SubtitleStyleEditor`), `ClientCapsBuilder`, `VersionSelector`,
+  `VersionNames` (a version is shown by its file name without extension, the web's `versionName` rule; null when blank),
   `TieredVersions` (Exo-first version choice), `EngineSelector` (EXO unless libVLC is available and forced, or the file
   has a codec outside the Exo caps or already failed on Exo; never chosen by container), `TrackRules`,
   `PlaybackErrorMapper` (incl. the fall back to VLC), `PlaybackPlanner`, `SeekAccumulator`, `ProgressReporter`, the

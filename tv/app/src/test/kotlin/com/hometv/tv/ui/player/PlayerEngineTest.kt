@@ -225,15 +225,15 @@ class PlayerEngineTest : PlayerTestBase() {
     @Test
     fun `AC-3_7 other versions list Exo-playable versions first, a VLC-only one attaches to VLC`() = playerTest {
         vlcAvailable = true
-        val main = F.file(1, label = "1080p H264")
-        val small = F.file(3, video = F.H264.copy(height = 720), label = "720p H264")
-        val avi = F.file(2, video = mpeg4.copy(height = 1080), container = "avi", label = "1080p MPEG4")
+        val main = F.file(1, label = "1080p H264", fileName = "Dune.mkv")
+        val small = F.file(3, video = F.H264.copy(height = 720), label = "720p H264", fileName = " ")
+        val avi = F.file(2, video = mpeg4.copy(height = 1080), container = "avi", label = "1080p MPEG4", fileName = "Dune.Xvid.avi")
         val vm = startFilm(direct(), main, avi, small)
         // An error screen that keeps [Probar otra versión] with libVLC available (a generic one now tries VLC first).
         controller.fail(PlayerFailure(PlaybackErrorCodes.IO_BAD_HTTP_STATUS, httpStatus = 404, urlKind = UrlKind.STREAM))
         runCurrent()
         vm.onErrorAction(PlayerAction.TRY_OTHER_VERSION)
-        assertEquals(PlayerDialog.Versions(listOf("720p H264", "1080p MPEG4")), vm.state.value.dialog)
+        assertEquals(PlayerDialog.Versions(listOf(UiText.Res(R.string.version_label_unknown), UiText.Data("Dune.Xvid"))), vm.state.value.dialog)
         answerWith(direct(fileId = 2))
         vm.onVersionChosen(1)
         runCurrent()

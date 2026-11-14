@@ -70,10 +70,10 @@ describe('UnsupportedMessage', () => {
   });
 
   it('lists the alternatives under "Otras versiones" and re-requests the chosen one', async () => {
-    const alt = f.mediaFile({ id: 92 });
+    const alt = f.mediaFile({ id: 92, file_name: 'Dune 1080p.mkv' });
     const { onTry, onBack } = renderMessage({ alternatives: [alt] });
     const group = screen.getByRole('group', { name: 'Otras versiones' });
-    await userEvent.click(within(group).getByRole('button', { name: 'Probar 1080p H264 · AAC 2.0 · 23,5 GB' }));
+    await userEvent.click(within(group).getByRole('button', { name: 'Probar Dune 1080p' }));
     expect(onTry).toHaveBeenCalledWith(alt);
     await userEvent.click(screen.getByRole('button', { name: 'Volver' }));
     expect(onBack).toHaveBeenCalled();
