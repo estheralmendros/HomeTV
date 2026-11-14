@@ -105,14 +105,15 @@ fun HomeScreen(vm: HomeViewModel, navigator: AppNavigator, avatar: AvatarUi?, sh
     LaunchedEffect(state.focus?.version, state.rows.isEmpty()) {
         focusLog("effect version=${state.focus?.version} stateFocus=${state.focus} rowsEmpty=${state.rows.isEmpty()} pendingTab=$pendingTab")
         if (pendingTab != null) return@LaunchedEffect
-        val target = vm.restoreTarget() ?: state.focus ?: return@LaunchedEffect
+        val target = vm.focusTarget() ?: return@LaunchedEffect
         val row = state.rows.getOrNull(target.rowIndex) ?: run {
             focusLog("effect no row ${target.rowIndex}")
             return@LaunchedEffect
         }
         if (target.rowIndex == 0) scroll.scrollTo(0)
         listStates.getValue(row.id).scrollToItem(target.cardIndex)
-        val ok = cards[target.key].requestFocusWhenReady()
+        // A target replaced while this one waits for its card (cached rows, then fresh ones) never lands.
+        val ok = cards[target.key].requestFocusWhenReady { vm.state.value.focus?.version == state.focus?.version }
         focusLog("effect requested ${target.key} ok=$ok")
     }
 
