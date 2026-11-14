@@ -308,6 +308,12 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+.files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
 @media (max-width: 719px) {
   .row {
     grid-template-columns: 1fr;

@@ -3,11 +3,21 @@ from pathlib import PurePosixPath
 
 import pytest
 
-from hometv.parser import Ignored, MultiPart, ParsedEpisode, ParsedFilm, Unparseable, parse
+from hometv import parser as parser_module
+from hometv.parser import (
+    EDITION_TAGS,
+    PARSER_VERSION,
+    Ignored,
+    MultiPart,
+    ParsedEpisode,
+    ParsedFilm,
+    Unparseable,
+    parse,
+)
 
 F, S = "films", "shows"
 
-# (row, library_type, relative_path, siblings, expected) — the filename-parsing table, rows 1-38.
+# (row, library_type, relative_path, siblings, expected) — the filename-parsing table, rows 1-64.
 ROWS = [
     (1, F, "Dune (2021)/Dune (2021).mkv", (), ParsedFilm("Dune", 2021)),
     (2, F, "Dune.2021.2160p.UHD.BluRay.x265-GROUP.mkv", (), ParsedFilm("Dune", 2021)),
@@ -107,7 +117,7 @@ ROWS = [
         F,
         "The Hunger Games Mockingjay - Part 2 (2015).mkv",
         (),
-        ParsedFilm("The Hunger Games Mockingjay Part 2", 2015),
+        ParsedFilm("The Hunger Games Mockingjay - Part 2", 2015),
     ),
     (
         34,
@@ -132,6 +142,74 @@ ROWS = [
         ParsedEpisode("One Piece", None, 5, (105,)),
     ),
     (38, S, "Lost/Season 3/Lost.S03E07.mkv", (), ParsedEpisode("Lost", None, 3, (7,))),
+    (39, F, "Blade Runner 2049 (2017).mkv", (), ParsedFilm("Blade Runner 2049", 2017)),
+    (40, F, "1917 (2019).mkv", (), ParsedFilm("1917", 2019)),
+    (
+        41,
+        F,
+        "2001 Una odisea del espacio (1968).mkv",
+        (),
+        ParsedFilm("2001 Una odisea del espacio", 1968),
+    ),
+    (42, F, "Te doy mis ojos (2003).mkv", (), ParsedFilm("Te doy mis ojos", 2003)),
+    (43, F, "Es por tu bien (2017).mkv", (), ParsedFilm("Es por tu bien", 2017)),
+    (44, F, "Ta ra ra (2000).mkv", (), ParsedFilm("Ta ra ra", 2000)),
+    (
+        45,
+        F,
+        "Mission Impossible - Fallout (2018).mkv",
+        (),
+        ParsedFilm("Mission Impossible - Fallout", 2018),
+    ),
+    (46, F, "Spider-Man.2002.1080p.mkv", (), ParsedFilm("Spider-Man", 2002)),
+    (
+        47,
+        F,
+        "El señor de los anillos - La comunidad del anillo V.E. (2001).mkv",
+        (),
+        ParsedFilm("El señor de los anillos - La comunidad del anillo", 2001),
+    ),
+    (
+        48,
+        F,
+        "El señor de los anillos La comunidad del anillo V.E. (2001).mkv",
+        (),
+        ParsedFilm("El señor de los anillos La comunidad del anillo", 2001),
+    ),
+    (
+        49,
+        F,
+        "El señor de los anillos La comunidad del anillo (V.E.) (2001).mkv",
+        (),
+        ParsedFilm("El señor de los anillos La comunidad del anillo", 2001),
+    ),
+    (
+        50,
+        F,
+        "El señor de los anillos. La comunidad del anillo (2001).mkv",
+        (),
+        ParsedFilm("El señor de los anillos. La comunidad del anillo", 2001),
+    ),
+    (
+        51,
+        F,
+        "Te doy mis ojos (2003)/Te doy mis ojos.mkv",
+        (),
+        ParsedFilm("Te doy mis ojos", 2003),
+    ),
+    (52, F, "Te doy mis ojos.mkv", (), ParsedFilm("Te doy mis ojos", None)),
+    (53, F, "Es por tu bien.mkv", (), ParsedFilm("Es por tu bien", None)),
+    (54, F, "Spider-Man.1080p.mkv", (), ParsedFilm("Spider-Man", None)),
+    (55, S, "Es por tu bien S01E02.mkv", (), ParsedEpisode("Es por tu bien", None, 1, (2,))),
+    (56, F, "Dune (2021) [Castellano] 1080p x265.mkv", (), ParsedFilm("Dune", 2021)),
+    (57, F, "Gladiator Extended Edition (2000).mkv", (), ParsedFilm("Gladiator", 2000)),
+    (58, F, "Blade Runner Director's Cut (1982).mkv", (), ParsedFilm("Blade Runner", 1982)),
+    (59, F, "Te.doy.mis.ojos.2003.720p.mkv", (), ParsedFilm("Te doy mis ojos", 2003)),
+    (60, F, "S.W.A.T. (2003).mkv", (), ParsedFilm("S.W.A.T.", 2003)),
+    (61, F, "S.W.A.T.2003.720p.mkv", (), ParsedFilm("S.W.A.T.", 2003)),
+    (62, F, "L.A.Confidential.1997.1080p.mkv", (), ParsedFilm("L.A. Confidential", 1997)),
+    (63, F, "The.A.Team.2010.mkv", (), ParsedFilm("The A Team", 2010)),
+    (64, F, "Title.V.E.2001.mkv", (), ParsedFilm("Title", 2001)),
 ]
 
 
@@ -154,8 +232,8 @@ def test_parse_table(library_type, path, siblings, expected):
     _compare(result, expected)
 
 
-def test_table_has_38_rows():
-    assert [r[0] for r in ROWS] == list(range(1, 39))
+def test_table_has_64_rows():
+    assert [r[0] for r in ROWS] == list(range(1, 65))
 
 
 # --- Additional behavior beyond the table -------------------------------------------------
@@ -301,3 +379,114 @@ def test_root_folder_name_does_not_influence_parsing():
     # relative_path excludes the root: the first component is always the show folder.
     result = parse(PurePosixPath("Lost/Season 3/Lost.S03E07.mkv"), "shows")
     assert result.show_title == "Lost"
+
+
+# --- Edition tags -----------------------------------------------------------------------------
+
+# (path, expected title, expected year)
+EDITION_ROWS = [
+    ("Title Versión extendida (2001).mkv", "Title", 2001),
+    ("Title Version extendida (2001).mkv", "Title", 2001),
+    ("Title Edición extendida (2001).mkv", "Title", 2001),
+    ("Title Edicion extendida (2001).mkv", "Title", 2001),
+    ("Title Montaje del director (2001).mkv", "Title", 2001),
+    ("Title Extended Edition (2001).mkv", "Title", 2001),
+    ("Title Extended Cut (2001).mkv", "Title", 2001),
+    ("Title [Extended Cut] (2001).mkv", "Title", 2001),
+    ("Title (Extended Cut) (2001).mkv", "Title", 2001),
+    ("Title Director's Cut (2001).mkv", "Title", 2001),
+    ("Title Directors Cut (2001).mkv", "Title", 2001),
+    ("Title (Director's Cut) (2001).mkv", "Title", 2001),
+    ("Title Remastered (2001).mkv", "Title", 2001),
+    ("Title Remasterizada (2001).mkv", "Title", 2001),
+    ("Title Extended (2001).mkv", "Title", 2001),
+    ("Title Unrated (2001).mkv", "Title", 2001),
+    ("Title Theatrical (2001).mkv", "Title", 2001),
+    ("Title V.E. (2001).mkv", "Title", 2001),
+    ("Title v.e. (2001).mkv", "Title", 2001),
+    ("Title VE (2001).mkv", "Title", 2001),
+    ("Title (V.E.) (2001).mkv", "Title", 2001),
+    ("Title [VE] (2001).mkv", "Title", 2001),
+    ("Title [ve] (2001).mkv", "Title", 2001),
+    ("Title.V.E.2001.mkv", "Title", 2001),
+    ("Gladiator.Extended.Edition.2000.mkv", "Gladiator", 2000),
+    ("Title.Directors.Cut.2001.1080p.mkv", "Title", 2001),
+    ("X Unrated Extended (2001).mkv", "X", 2001),
+    ("X.Unrated.Extended.2001.mkv", "X", 2001),
+    ("Dave (2010).mkv", "Dave", 2010),
+    ("Extended Family (2019).mkv", "Extended Family", 2019),
+    ("Unrated (2009).mkv", "Unrated", 2009),
+    ("Unrated Extended (2009).mkv", "Unrated", 2009),
+    ("Lo que el ojo no ve (2010).mkv", "Lo que el ojo no ve", 2010),
+    ("Lo.que.el.ojo.no.ve.2010.mkv", "Lo que el ojo no ve", 2010),
+    ("Title Ve (2001).mkv", "Title Ve", 2001),
+]
+
+
+@pytest.mark.parametrize(
+    ("path", "title", "year"), [pytest.param(p, t, y, id=p) for p, t, y in EDITION_ROWS]
+)
+def test_edition_rows(path, title, year):
+    assert parse(PurePosixPath(path), "films") == ParsedFilm(title, year)
+
+
+def test_edition_tags_is_a_tuple_of_strings():
+    assert isinstance(EDITION_TAGS, tuple)
+    assert "V.E." in EDITION_TAGS
+    assert "Director's Cut" in EDITION_TAGS
+
+
+def test_edition_tag_without_year_is_stripped_after_guessit():
+    result = parse(PurePosixPath("Gladiator Extended Edition.mkv"), "films")
+    assert result == ParsedFilm("Gladiator", None)
+
+
+def test_parser_version_is_2():
+    assert PARSER_VERSION == 2
+
+
+def test_name_with_a_year_never_calls_guessit(monkeypatch):
+    def boom(*_a, **_k):
+        raise AssertionError("guessit called")
+
+    monkeypatch.setattr(parser_module, "guessit", boom)
+    for name in (
+        "Te doy mis ojos (2003).mkv",
+        "Spider-Man.2002.1080p.mkv",
+        "Te doy mis ojos (2003)/Te doy mis ojos.mkv",
+        "Heat (1995)/Heat (1995) - Part 2.mkv",
+        "Kill Bill Vol 1 (2003)/Kill.Bill.Vol.1.2003.CD2.avi",
+    ):
+        assert isinstance(parse(PurePosixPath(name), "films"), ParsedFilm | MultiPart)
+
+
+def test_guessit_fallback_is_called_with_excludes(monkeypatch):
+    calls = []
+
+    def fake(name, options):
+        calls.append(options)
+        return {"title": "Te doy mis ojos", "season": 1, "episode": 2}
+
+    monkeypatch.setattr(parser_module, "guessit", fake)
+    parse(PurePosixPath("Te doy mis ojos.mkv"), "films")
+    excludes = ["language", "subtitle_language", "release_group"]
+    assert calls[-1] == {"type": "movie", "excludes": excludes}
+    parse(PurePosixPath("Es por tu bien S01E02.mkv"), "shows")
+    assert calls[-1]["type"] == "episode"
+    assert calls[-1]["excludes"] == excludes
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("Apollo 13 (1995).mkv", ParsedFilm("Apollo 13", 1995)),
+        ("Blade.Runner.2049.2017.1080p.mkv", ParsedFilm("Blade Runner 2049", 2017)),
+        ("Title Part 2 (2001).mkv", ParsedFilm("Title Part 2", 2001)),
+        ("Title (2001) Pt 2.mkv", ParsedFilm("Title Part 2", 2001)),
+        ("Title (2001) Vol 2.mkv", ParsedFilm("Title Vol 2", 2001)),
+        ("Title (2001) Remux 1080p.mkv", ParsedFilm("Title", 2001)),
+        ("Title (1999) (2001).mkv", ParsedFilm("Title (1999)", 2001)),
+    ],
+)
+def test_year_rule(name, expected):
+    assert parse(PurePosixPath(name), "films") == expected

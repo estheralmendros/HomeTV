@@ -12,6 +12,7 @@ from hometv.api.errors import ApiError
 from hometv.db import models as m
 from hometv.metadata.tmdb import TMDB_BASE_URL, TmdbClient
 from hometv.scanner import Scanner
+from tests.stubs import capture_selects
 
 from .conftest import MediaTree
 
@@ -112,6 +113,8 @@ async def test_unmatched_entries_have_exact_shapes_and_filters(
         "detail",
         "target",
         "parsed",
+        "files",
+        "files_total",
         "created_at",
     }
     created = [i.created_at for i in page.items]
@@ -159,7 +162,7 @@ async def test_unmatched_page_loads_show_parses_in_one_query(
     finally:
         event.remove(mdb.read_engine, "before_cursor_execute", capture)
     selects = [st for st in statements if st.lstrip().upper().startswith(("SELECT", "WITH"))]
-    assert len(selects) == 3  # total, page, show parses (batched, not one per show)
+    assert len(selects) == 4  # total, page, show parse, show files (batched, not one per show)
     assert page.total == 4
     for item in page.items:
         assert item.parsed is not None
@@ -167,6 +170,79 @@ async def test_unmatched_page_loads_show_parses_in_one_query(
         assert dumped["parsed"]["show_title"] == dumped["target"]["title"]
         assert dumped["parsed"]["season"] == 1
         assert dumped["parsed"]["episodes"] in ([1], [2])
+
+
+def _unmatched_files_page(mdb):
+    """A film with 3 present + 1 missing files, a show with 5 episode files, a lone file."""
+    from tests.factories import add_episode, add_file, add_film, add_show
+
+    with mdb.write_session() as s:
+        film = add_film(s, "Dune", files=0, match_status="unmatched")
+        for rel in ("z/Dune b.mkv", "a/Dune a.mkv", "m/Dune m.mkv"):
+            add_file(s, film_id=film.id, rel=rel)
+        add_file(s, film_id=film.id, rel="b/gone.mkv", missing=True)
+        show, _eps = add_show(s, "Lost", episodes={1: 0}, match_status="unmatched")
+        for i, rel in enumerate(("L/e5.mkv", "L/e2.mkv", "L/e4.mkv", "L/e1.mkv", "L/e3.mkv"), 1):
+            ep = add_episode(s, show, 1, i, with_file=False)
+            add_file(s, episode_ids=[ep.id], rel=rel)
+        ep = add_episode(s, show, 1, 9, with_file=False)
+        add_file(s, episode_ids=[ep.id], rel="L/missing.mkv", missing=True)
+        lone = add_file(s, rel="lone/Lone.mkv", library="films")
+        s.add_all(
+            [
+                m.UnmatchedEntry(film_id=film.id, reason="low_confidence"),
+                m.UnmatchedEntry(show_id=show.id, reason="low_confidence"),
+                m.UnmatchedEntry(media_file_id=lone.id, reason="no_title"),
+            ]
+        )
+
+
+def test_unmatched_files_per_target(mdb):
+    _unmatched_files_page(mdb)
+    with mdb.read_session() as s:
+        items = {i.target.type: i for i in list_unmatched(s).items}
+    film, show, lone = items["film"], items["show"], items["media_file"]
+    assert film.files == ["a/Dune a.mkv", "m/Dune m.mkv", "z/Dune b.mkv"]  # sorted, missing out
+    assert film.files_total == 3
+    assert show.files == ["L/e1.mkv", "L/e2.mkv", "L/e3.mkv"]  # capped at 3, by path
+    assert show.files_total == 5  # full count, missing excluded
+    assert lone.files == ["lone/Lone.mkv"]
+    assert lone.files_total == 1
+
+
+def test_unmatched_film_without_present_files_has_none(mdb):
+    from tests.factories import add_film
+
+    with mdb.write_session() as s:
+        film = add_film(s, "Dune", files=0, match_status="unmatched")
+        s.add(m.UnmatchedEntry(film_id=film.id, reason="low_confidence"))
+    with mdb.read_session() as s:
+        [item] = list_unmatched(s).items
+    assert (item.files, item.files_total) == ([], 0)
+
+
+def test_unmatched_files_page_of_50_mixed_entries_runs_at_most_5_selects(mdb):
+    from tests.factories import add_file, add_film, add_show
+
+    with mdb.write_session() as s:
+        for i in range(20):
+            film = add_film(s, f"Film {i}", files=2, match_status="unmatched")
+            s.add(m.UnmatchedEntry(film_id=film.id, reason="low_confidence"))
+        for i in range(20):
+            show, _ = add_show(s, f"Show {i}", episodes={1: 4}, match_status="unmatched")
+            s.add(m.UnmatchedEntry(show_id=show.id, reason="low_confidence"))
+        for i in range(10):
+            f = add_file(s, rel=f"lone/{i}.mkv", library="films")
+            s.add(m.UnmatchedEntry(media_file_id=f.id, reason="no_title"))
+    with mdb.read_session() as s, capture_selects(mdb) as selects:
+        page = list_unmatched(s)
+    assert len(page.items) == 50
+    assert len(selects) <= 5
+    assert all(i.files_total >= 1 for i in page.items)
+    # Skipped when the page has no such target: only a media-file entry -> count + page.
+    with mdb.read_session() as s, capture_selects(mdb) as selects:
+        list_unmatched(s, reason="no_title")
+    assert len(selects) == 2
 
 
 @respx.mock

@@ -167,6 +167,19 @@ async def test_first_scan_creates_items_versions_and_sidecars(
     assert libs == {"films", "shows"}
 
 
+async def test_edition_tagged_file_joins_the_same_film(
+    mdb, media: MediaTree, media_settings, stub_probe: StubProbe
+):
+    media.add("La comunidad del anillo (2001).mkv")
+    media.add("La comunidad del anillo V.E. (2001).mkv")
+
+    await _scan(mdb, media_settings(), stub_probe)
+
+    films = _all(mdb, m.Film)
+    assert [f.title for f in films] == ["La comunidad del anillo"]
+    assert _count(mdb, m.MediaFile) == 2
+
+
 async def test_second_scan_without_changes_runs_no_probe(
     mdb, media: MediaTree, media_settings, stub_probe
 ):

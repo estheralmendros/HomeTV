@@ -36,8 +36,8 @@ from datetime import timedelta
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from sqlalchemy import delete, func, select, update
-from sqlalchemy.orm import Session
+from sqlalchemy import delete, exists, func, select, update
+from sqlalchemy.orm import Session, aliased
 
 from hometv.changes.scope import ScanScope, merge_scopes, within
 from hometv.config import Settings
@@ -45,6 +45,7 @@ from hometv.db import models as m
 from hometv.db.engine import Database
 from hometv.libraries import LibraryFolderSet, LibraryType
 from hometv.parser import (
+    PARSER_VERSION,
     SIDECAR_EXTENSIONS,
     VIDEO_EXTENSIONS,
     Ignored,
@@ -57,6 +58,23 @@ from hometv.parser import (
     parse_sidecar,
 )
 from hometv.probe import ProbeError, ProbeResult, probe
+from hometv.reparse import (
+    Alias,
+    Conflict,
+    Defer,
+    FilmState,
+    Keep,
+    Key,
+    Member,
+    MergeInto,
+    MergePending,
+    Rename,
+    Retitle,
+    Skip,
+    Split,
+    plan_film_upgrade,
+    plan_protected_key,
+)
 from hometv.scan_report import ScanReport
 from hometv.text import normalize_title, search_text, sort_title, undecodable
 
@@ -126,6 +144,7 @@ class _Row:
     probe_error: bool
     root_path: str
     library_id: int
+    parser_version: int | None
 
 
 @dataclass
@@ -137,6 +156,50 @@ class _Work:
     restore: bool
     needs_probe: bool
     parsed: ParseResult | None = None
+    protect_film: int | None = None  # protected film whose key is kept before the parse is applied
+
+
+@dataclass
+class _Upgrade:
+    """What ``_diff`` decided for the rows written by an older parser (applied after the chunks)."""
+
+    stamp_ids: list[int] = field(default_factory=list)  # stamp only
+    protected: list[tuple[int, int, ParsedFilm]] = field(default_factory=list)  # row, film, parse
+    groups: dict[int, dict[int, ParseResult]] = field(default_factory=dict)  # film -> row -> parse
+    stats: dict[str, int] = field(
+        default_factory=lambda: dict.fromkeys(
+            (
+                "stamped",
+                "aliased",
+                "reparsed",
+                "renamed",
+                "merged",
+                "split",
+                "deferred",
+                "conflicts",
+            ),
+            0,
+        )
+    )
+
+
+@dataclass
+class _Candidate:
+    row: _Row
+    video: _Video
+    parsed: ParseResult
+    changed: bool
+    work: _Work | None
+
+
+@dataclass
+class _Eligibility:
+    film_id: int | None
+    film_status: str | None
+    film_key: Key | None
+    film_manual: bool  # the film has a present file with a manual match
+    row_manual: bool
+    parse_entry: bool  # the row has a file-level entry with a parse reason
 
 
 @dataclass
@@ -170,6 +233,10 @@ def serialize_parse(result: ParseResult) -> dict[str, Any] | None:
     return None
 
 
+def _key_of(parsed: ParsedFilm) -> Key:
+    return (normalize_title(parsed.title), parsed.year)
+
+
 def _chunks[T](items: Sequence[T], size: int) -> Iterable[Sequence[T]]:
     for start in range(0, len(items), size):
         yield items[start : start + size]
@@ -182,8 +249,12 @@ def _year_clause(column: Any, year: int | None) -> Any:
     return column.is_(None) if year is None else column == year
 
 
-def find_or_create_film(session: Session, library_id: int, title: str, year: int | None) -> int:
-    norm = normalize_title(title)
+def find_film(session: Session, library_id: int, title: str, year: int | None) -> int | None:
+    """The film a parsed ``(title, year)`` resolves to (alias, then lowest id), or None."""
+    return _find_film_by_key(session, library_id, normalize_title(title), year)
+
+
+def _find_film_by_key(session: Session, library_id: int, norm: str, year: int | None) -> int | None:
     alias_film = session.scalar(
         select(m.ItemAlias.film_id).where(
             m.ItemAlias.library_id == library_id,
@@ -194,7 +265,7 @@ def find_or_create_film(session: Session, library_id: int, title: str, year: int
     )
     if alias_film is not None:
         return alias_film
-    film_id = session.scalar(
+    return session.scalar(
         select(m.Film.id)
         .where(
             m.Film.library_id == library_id,
@@ -204,8 +275,13 @@ def find_or_create_film(session: Session, library_id: int, title: str, year: int
         .order_by(m.Film.id)
         .limit(1)
     )
+
+
+def find_or_create_film(session: Session, library_id: int, title: str, year: int | None) -> int:
+    film_id = find_film(session, library_id, title, year)
     if film_id is not None:
         return film_id
+    norm = normalize_title(title)
     film = m.Film(
         library_id=library_id,
         match_status="pending",
@@ -392,6 +468,7 @@ class Scanner:
         self._report = ScanReport()
         self._run_id: int | None = None
         self._libraries: dict[str, int] = {}
+        self._upgrade = _Upgrade()
 
     async def run(self, report: ScanReport | None = None, run_id: int | None = None) -> ScanReport:
         """Scan every configured root. Updates ``report`` (and ``scan_run`` row ``run_id``)."""
@@ -418,6 +495,7 @@ class Scanner:
             ids = await asyncio.to_thread(self._apply_chunk, list(chunk), list(outcomes))
             touched.update(ids)
 
+        await asyncio.to_thread(self._apply_upgrades)
         await asyncio.to_thread(self._sync_sidecars, walks)
         if self.keyframe_hook is not None:
             queue = await asyncio.to_thread(self._keyframe_candidates, touched)
@@ -655,6 +733,8 @@ class Scanner:
 
     def _diff(self, walks: list[_RootWalk]) -> tuple[list[_Work], list[int]]:
         rep = self._report
+        self._upgrade = _Upgrade()
+        candidates: list[_Candidate] = []
         with self.db.read_session() as session:
             rows = self._load_rows(session, walks)
             if self.scope is None:
@@ -712,20 +792,31 @@ class Scanner:
                     continue
                 if row.missing:
                     rep.count("restored")
+                stale = walk.library_type == "films" and (row.parser_version or 1) < PARSER_VERSION
                 if changed:
                     parsed = self._parse(walk, video)
                     if isinstance(parsed, Ignored):
                         rep.count("ignored")
                     else:
                         rep.count("changed")
-                    work.append(_Work(video, row.id, True, True, row.missing, True, parsed))
+                    item = _Work(video, row.id, True, True, row.missing, True, parsed)
+                    work.append(item)
+                    if stale and not isinstance(parsed, Ignored):
+                        candidates.append(_Candidate(row, video, parsed, True, item))
                     continue
                 rep.count("unchanged")
                 reroot = row.root_path != walk.root  # same Películas library: path only
+                kept: _Work | None = None
                 if row.probe_error or row.missing or reroot:
-                    work.append(_Work(video, row.id, False, False, row.missing, row.probe_error))
+                    kept = _Work(video, row.id, False, False, row.missing, row.probe_error)
+                    work.append(kept)
+                if stale:
+                    parsed = self._parse(walk, video)
+                    if not isinstance(parsed, Ignored):
+                        candidates.append(_Candidate(row, video, parsed, False, kept))
         for root_path, walk_root in pending:
             rep.add_error(f"relink_pending: {root_path} -> {walk_root}")
+        self._classify_upgrade(candidates, work)
 
         configured = {w.root: w for w in walks}
         missing_ids: list[int] = []
@@ -753,6 +844,7 @@ class Scanner:
         m.MediaFile.probe_error,
         m.MediaFile.root_path,
         m.MediaFile.library_id,
+        m.MediaFile.parser_version,
     )
 
     def _load_rows(self, session: Session, walks: list[_RootWalk]) -> dict[str, _Row]:
@@ -790,6 +882,7 @@ class Scanner:
             r.probe_error is not None,
             r.root_path,
             r.library_id,
+            r.parser_version,
         )
 
     def _scoped_root_guards(self, session: Session, walks: list[_RootWalk]) -> None:
@@ -869,8 +962,9 @@ class Scanner:
         with self.db.write_session() as session:
             for work, outcome in zip(chunk, outcomes, strict=True):
                 row_id = self._apply_one(session, work, outcome)
-                if row_id is not None and work.reparse:
-                    touched.add(row_id)
+                if row_id is not None:
+                    if work.changed or work.reparse:
+                        touched.add(row_id)
                     if work.changed:
                         stale_caches.append(row_id)
             self._report.processed += len(chunk)
@@ -913,6 +1007,8 @@ class Scanner:
             self._apply_probe(session, row, outcome)
         if work.reparse:
             assert work.parsed is not None
+            if work.protect_film is not None and isinstance(work.parsed, ParsedFilm):
+                self._protect_key(session, work.protect_film, work.parsed)
             self._apply_parse(session, row, work.parsed, video.library_type)
         return row.id
 
@@ -960,6 +1056,7 @@ class Scanner:
     ) -> None:
         row.parsed = serialize_parse(parsed)
         row.part_number = parsed.part if isinstance(parsed, MultiPart) else None
+        row.parser_version = PARSER_VERSION
         unlink_file(session, row)
 
         reason: str | None = None
@@ -994,6 +1091,313 @@ class Scanner:
         session.flush()
         if reason is not None:
             self._ensure_entry(session, row.id, reason, detail)
+
+    # -- parse upgrade: rows written by an older parser (PARSER_VERSION) --
+
+    def _classify_upgrade(self, candidates: list[_Candidate], work: list[_Work]) -> None:
+        """Decide, per candidate row (the row-state table of the PRD), what the upgrade does."""
+        if not candidates:
+            return
+        candidates.sort(key=lambda c: c.row.id)
+        eligibility: dict[int, _Eligibility] = {}
+        with self.db.read_session() as session:
+            for chunk in _chunks([c.row.id for c in candidates], 500):
+                eligibility.update(self._read_eligibility(session, chunk))
+        up = self._upgrade
+        for cand in candidates:
+            info = eligibility.get(cand.row.id)
+            if info is None:
+                continue  # gone since the walk
+            row, parsed, work_item = cand.row, cand.parsed, cand.work
+            if info.row_manual:
+                if not cand.changed:
+                    up.stamp_ids.append(row.id)
+            elif info.film_id is not None and info.film_status is not None:
+                if info.film_status == "matched" or info.film_manual:
+                    if not (isinstance(parsed, ParsedFilm) and info.film_key != _key_of(parsed)):
+                        if not cand.changed:
+                            up.stamp_ids.append(row.id)
+                    elif cand.changed:
+                        assert work_item is not None
+                        work_item.protect_film = info.film_id
+                    else:
+                        up.protected.append((row.id, info.film_id, parsed))
+                else:
+                    up.groups.setdefault(info.film_id, {})[row.id] = parsed
+                    if work_item is not None and cand.changed:
+                        work_item.reparse = False  # the group applies the parse
+            elif info.parse_entry and not cand.changed:
+                if work_item is None:
+                    work_item = _Work(
+                        cand.video, row.id, True, False, row.missing, row.probe_error, parsed
+                    )
+                    work.append(work_item)
+                else:
+                    work_item.reparse, work_item.parsed = True, parsed
+                up.stats["reparsed"] += 1
+            elif not cand.changed:
+                up.stamp_ids.append(row.id)
+
+    @staticmethod
+    def _has_manual(column: Any) -> Any:
+        """``manual_match`` is set (SQL NULL and JSON ``null`` both count as unset)."""
+        return func.coalesce(func.json_type(column), "null") != "null"
+
+    def _read_eligibility(self, session: Session, ids: Sequence[int]) -> dict[int, _Eligibility]:
+        """One query for a chunk of candidate ids: the film state the row table needs."""
+        mf = m.MediaFile
+        sibling = aliased(m.MediaFile)
+        film_manual = (
+            exists()
+            .where(
+                sibling.film_id == mf.film_id,
+                sibling.missing_since.is_(None),
+                self._has_manual(sibling.manual_match),
+            )
+            .label("film_manual")
+        )
+        parse_entry = (
+            exists()
+            .where(
+                m.UnmatchedEntry.media_file_id == mf.id,
+                m.UnmatchedEntry.reason.in_(PARSE_REASONS),
+            )
+            .label("parse_entry")
+        )
+        query = (
+            select(
+                mf.id,
+                mf.film_id,
+                m.Film.match_status,
+                m.Film.parsed_title_norm,
+                m.Film.parsed_year,
+                film_manual,
+                self._has_manual(mf.manual_match).label("row_manual"),
+                parse_entry,
+            )
+            .outerjoin(m.Film, m.Film.id == mf.film_id)
+            .where(mf.id.in_(ids))
+        )
+        result: dict[int, _Eligibility] = {}
+        for r in session.execute(query):
+            key = (r.parsed_title_norm, r.parsed_year) if r.film_id is not None else None
+            result[r.id] = _Eligibility(
+                r.film_id,
+                r.match_status,
+                key,
+                bool(r.film_manual),
+                bool(r.row_manual),
+                bool(r.parse_entry),
+            )
+        return result
+
+    def _is_protected(self, session: Session, film: m.Film) -> bool:
+        """Matched, or one of its present files carries a manual match."""
+        return film.match_status == "matched" or self._film_has_manual_file(session, film.id)
+
+    def _film_has_manual_file(self, session: Session, film_id: int) -> bool:
+        return bool(
+            session.scalar(
+                select(
+                    exists().where(
+                        m.MediaFile.film_id == film_id,
+                        m.MediaFile.missing_since.is_(None),
+                        self._has_manual(m.MediaFile.manual_match),
+                    )
+                )
+            )
+        )
+
+    def _protect_key(self, session: Session, film_id: int, parsed: ParsedFilm) -> bool:
+        """Keep the v2 key of a protected film resolving to it (alias, merge a pending duplicate,
+        or log a conflict). False when the film is gone or no longer protected (re-checked here)."""
+        from hometv.metadata.enrich import merge_items  # enrich imports this module
+
+        film = session.get(m.Film, film_id)
+        if film is None or not self._is_protected(session, film):
+            return False
+        key = _key_of(parsed)
+        found = _find_film_by_key(session, film.library_id, key[0], key[1])
+        other = session.get(m.Film, found) if found is not None and found != film_id else None
+        action = plan_protected_key(
+            film_id,
+            (film.parsed_title_norm, film.parsed_year),
+            key,
+            found=found,
+            found_protected=other is not None and self._is_protected(session, other),
+        )
+        stats = self._upgrade.stats
+        if isinstance(action, Alias):
+            session.add(
+                m.ItemAlias(
+                    library_id=film.library_id,
+                    parsed_title_norm=key[0],
+                    parsed_year=key[1],
+                    film_id=film_id,
+                )
+            )
+            session.flush()
+            stats["aliased"] += 1
+        elif isinstance(action, MergePending):
+            assert other is not None
+            merge_items(session, "film", other, film)
+            stats["merged"] += 1
+        elif isinstance(action, Conflict):
+            stats["conflicts"] += 1
+        return True
+
+    def _apply_upgrades(self) -> None:
+        """Stamp-only rows, protected keys, then the film groups (after the normal chunks)."""
+        up = self._upgrade
+        for chunk in _chunks(up.stamp_ids, 500):
+            with self.db.write_session() as session:
+                session.execute(self._stamp(m.MediaFile.id.in_(chunk)))
+            up.stats["stamped"] += len(chunk)
+        for protected in _chunks(up.protected, BATCH_SIZE):
+            with self.db.write_session() as session:
+                for row_id, film_id, parsed in protected:
+                    if self._protect_key(session, film_id, parsed):
+                        session.execute(self._stamp(m.MediaFile.id == row_id))
+                        up.stats["stamped"] += 1
+        pack: list[tuple[int, dict[int, ParseResult]]] = []
+        size = 0
+        for film_id in sorted(up.groups):
+            parses = up.groups[film_id]
+            if pack and size + len(parses) > BATCH_SIZE:
+                self._apply_film_group(pack)
+                pack, size = [], 0
+            pack.append((film_id, parses))
+            size += len(parses)
+        if pack:
+            self._apply_film_group(pack)
+        logger.info(
+            "parse upgrade: %s", ", ".join(f"{name}={count}" for name, count in up.stats.items())
+        )
+
+    @staticmethod
+    def _stamp(where: Any) -> Any:
+        # updated_at is set to itself: a stamp is not a change of the file
+        return (
+            update(m.MediaFile)
+            .where(where)
+            .values(parser_version=PARSER_VERSION, updated_at=m.MediaFile.updated_at)
+        )
+
+    def _apply_film_group(self, groups: Sequence[tuple[int, dict[int, ParseResult]]]) -> None:
+        """One write transaction for a pack of film groups (``(film id, {row id: new parse})``);
+        a group is never split across transactions."""
+        with self.db.write_session() as session:
+            for film_id, parses in groups:
+                self._upgrade_group(session, film_id, parses)
+
+    def _upgrade_group(
+        self, session: Session, film_id: int, parses: dict[int, ParseResult]
+    ) -> None:
+        """Re-check the film inside the transaction, plan, and apply (rename / merge / split)."""
+        from hometv.metadata.enrich import merge_items  # enrich imports this module
+
+        stats = self._upgrade.stats
+        session.expire_all()  # earlier groups moved rows with bulk statements
+        film = session.get(m.Film, film_id)
+        if film is None:
+            stats["deferred"] += 1
+            return
+        eligible = film.match_status in ("pending", "unmatched") and not self._film_has_manual_file(
+            session, film_id
+        )
+        files = list(
+            session.scalars(
+                select(m.MediaFile)
+                .where(m.MediaFile.film_id == film_id, m.MediaFile.missing_since.is_(None))
+                .order_by(m.MediaFile.id)
+            )
+        )
+        members: list[Member] = []
+        complete = True
+        for row in files:
+            if row.id in parses:
+                parsed: ParseResult | None = parses[row.id]
+            elif (row.parser_version or 1) >= PARSER_VERSION:
+                stored = row.parsed or {}
+                is_film = stored.get("kind") == "film" and stored.get("part") is None
+                parsed = ParsedFilm(stored["title"], stored.get("year")) if is_film else None
+            else:
+                complete = False
+                continue
+            if isinstance(parsed, ParsedFilm):
+                members.append(Member(row.id, _key_of(parsed), parsed.title))
+            else:
+                members.append(Member(row.id, None, None))
+        library_id = film.library_id
+
+        def lookup(key: Key) -> int | None:
+            return _find_film_by_key(session, library_id, key[0], key[1])
+
+        state = FilmState(
+            film_id, (film.parsed_title_norm, film.parsed_year), film.parsed_title, eligible
+        )
+        plan = plan_film_upgrade(state, members, lookup, complete=complete)
+        if isinstance(plan, Defer | Skip):
+            stats["deferred"] += 1
+            return
+        if isinstance(plan, Keep):  # nothing parses as a film: stamp only, keep the links
+            for row in files:
+                if row.id in parses:
+                    row.parser_version = PARSER_VERSION
+            stats["deferred"] += 1
+            return
+
+        def stamp(row: m.MediaFile) -> None:
+            parsed = parses[row.id]
+            row.parsed = serialize_parse(parsed)
+            row.part_number = parsed.part if isinstance(parsed, MultiPart) else None
+            row.parser_version = PARSER_VERSION
+
+        if not isinstance(plan, Split):
+            for row in files:
+                if row.id in parses:
+                    stamp(row)
+            if isinstance(plan, Retitle | Rename):
+                film.parsed_title = film.title = plan.title
+                film.sort_title = sort_title(plan.title)
+                film.search_text = search_text(plan.title, film.original_title)
+                stats["renamed"] += 1
+            if isinstance(plan, Rename):
+                film.parsed_title_norm = normalize_title(plan.title)
+                film.parsed_year = film.year = plan.year
+                film.match_status = "pending"
+                session.execute(delete(m.UnmatchedEntry).where(m.UnmatchedEntry.film_id == film_id))
+            session.flush()
+            if isinstance(plan, MergeInto):
+                target = session.get(m.Film, plan.film_id)
+                assert target is not None
+                merge_items(session, "film", film, target)
+                stats["merged"] += 1
+            return
+
+        by_id = {row.id: row for row in files}
+        member_of = {mem.file_id: mem for mem in members}
+        for file_id in plan.stay:
+            if file_id in parses:
+                stamp(by_id[file_id])
+        for file_id in plan.moves:
+            row = by_id[file_id]
+            if file_id in parses:
+                self._apply_parse(session, row, parses[file_id], "films")
+            else:  # already upgraded: relink by its stored parse
+                mem = member_of[file_id]
+                assert mem.key is not None and mem.title is not None
+                row.film_id = find_or_create_film(session, library_id, mem.title, mem.key[1])
+        for file_id in plan.detached:
+            if file_id in parses:
+                self._apply_parse(session, by_id[file_id], parses[file_id], "films")
+        session.flush()
+        stats["split"] += 1
+        if plan.merge_into is not None:
+            target_id = lookup(plan.merge_into)
+            target = session.get(m.Film, target_id) if target_id is not None else None
+            if target is not None and target.id != film_id:
+                merge_items(session, "film", film, target)
 
     # -- step 7: purge --
 

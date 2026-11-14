@@ -360,6 +360,8 @@ export const S = {
       probeFailedHint:
         'El archivo no se puede leer. Repáralo o sustitúyelo; esta entrada desaparecerá en el próximo escaneo correcto.',
       parsedLabel: 'Detectado',
+      filesLabel: 'Archivos',
+      filesMore: (n: number) => `y ${countFormat.format(n)} más`,
       createdAt: (date: string) => `Añadida el ${date}`,
       pageOf: (page: number, pages: number) => `Página ${countFormat.format(page)} de ${countFormat.format(pages)}`,
       pagination: 'Paginación',

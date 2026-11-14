@@ -337,6 +337,9 @@ in `docker-compose.yml`; see [`deploy/README.md`](../deploy/README.md).
 - **A film or episode is missing or misnamed.** Look in *Administración → Sin identificar*,
   rename the file following step 2 and rescan, or use **Corregir identificación** (needs a TMDB
   key).
+  Each film or series entry lists the file(s) on disk, so you can see which one to rename. After
+  an update that changes how names are read, `docker compose exec app python -m hometv.parse_report`
+  lists the film files whose title would change (read-only; the next scan applies the change).
 - **New files do not appear by themselves.** New, renamed or deleted files normally reach the
   catalog about a minute after the copy ends. Open *Administración → Escaneo* and read the
   **Detección de cambios** line at the bottom of the card:

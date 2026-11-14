@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.10.0] - Released on 2026-11-14 by Esther Almendros Pérez
+
+### Added
+
+#### Server
+- `python -m hometv.parse_report` (in production: `docker compose exec app python -m hometv.parse_report` in `deploy/`) lists the film files whose detected title or year would change with the new filename rules, with their current status and both readings. It only reads the database, never the media folders, and works on a database not yet upgraded, so it can be run with the new image before deploying it.
+- `GET /api/admin/unmatched` entries carry `files` (relative paths of the entry's files on disk: all of a film's, the first 3 episode files of a show, a file entry's own path) and `files_total`.
+
+#### Web app
+- "Sin identificar": film and show entries list their files on disk under "Detectado", one path per line, ready to select and copy; a show lists 3 episode files and "y N más". File entries already show their path, so they get no list.
+
+### Changed
+
+#### Server
+- Film titles are read from hand-made file names much more reliably. The year (`Title (Year)`, `Title.Year.1080p…`) now marks the end of the title, so every word before it is kept: leading words such as "Te" or "Es" are no longer dropped (`Te doy mis ojos (2003)`), ` - ` no longer cuts the title (`Mission Impossible - Fallout`), hyphenated and dotted names keep their full title (`Spider-Man.2002.1080p` → "Spider-Man", `L.A.Confidential.1997` → "L.A. Confidential"), and numbers in a title stay (`1917 (2019)`, `Blade Runner 2049 (2017)`). Without a year in the file name, the folder's year is used; names without any year are read as before, minus the dropping of leading words.
+- Edition tags at the end of a title (`V.E.`, `Versión extendida`, `Extended Edition`, `Director's Cut`, `Remastered`, `Unrated`…) are removed, so the editions of a film join it as versions instead of becoming separate, unidentified films.
+- The first scan after updating corrects the films that read the old way and are not yet identified: they get the new title and are looked up on TMDB again, merged into the film that already has that title, or split when their files now name different films. Identified films and manual identifications keep their identity, and every profile's progress, watched marks, ratings, "Mi lista" entries and audio/subtitle choices are kept. The server log shows one `parse upgrade:` line per scan with what it did; later scans find nothing more to do. This upgrade adds a database migration.
+
+#### Documentation
+- The Linux installation guide's troubleshooting entry for a missing or misnamed title explains the files shown in "Sin identificar" and the parse report.
+
 ## [0.9.2] - Released on 2026-11-14 by Esther Almendros Pérez
 
 ### Fixed

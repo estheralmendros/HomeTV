@@ -734,6 +734,9 @@ export interface UnmatchedEntry {
   detail: string | null;
   target: UnmatchedTarget;
   parsed: UnmatchedParsed | null;
+  /** Relative paths inside the library folder, present files only. */
+  files: string[];
+  files_total: number;
   created_at: Timestamp;
 }
 

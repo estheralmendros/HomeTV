@@ -21,7 +21,7 @@ function serveUnmatched(items: UnmatchedEntry[], overrides: { total?: number } =
 }
 
 const list = () => screen.getByRole('list', { name: 'Sin identificar' });
-const rows = () => within(list()).getAllByRole('listitem');
+const rows = () => within(list()).getAllByRole('listitem').filter((li) => li.parentElement === list());
 const rowOf = (text: string | RegExp) => rows().find((r) => within(r).queryAllByText(text).length > 0)!;
 const query = (call: { url: URL }) => Object.fromEntries(call.url.searchParams);
 
@@ -88,6 +88,59 @@ describe('UnmatchedPage', () => {
     const call = rec.find('GET', '/api/admin/unmatched')[0]!;
     expect(query(call)).toEqual({ page: '1', page_size: '50' });
     expect(call.headers.get('x-admin-token')).toBe('admin-token-1');
+  });
+
+  it('a film entry lists every file, in order, under "Detectado", in a list named "Archivos"', async () => {
+    const paths = ['Tierra Española (1937)/Tierra Española (1937).mkv', 'Tierra Española (1937)/Tierra Española (1937) 4K.mkv'];
+    serveUnmatched([
+      f.unmatchedEntry({
+        id: 20,
+        library: 'films',
+        reason: 'no_tmdb_results',
+        detail: null,
+        target: { type: 'film', id: 12, title: 'Tierra Española', year: 1937 },
+        parsed: { kind: 'film', title: 'Tierra Española', year: 1937, part: null },
+        files: paths,
+        files_total: 2,
+      }),
+    ]);
+    renderUnmatched();
+    await screen.findByRole('list', { name: 'Sin identificar' });
+    const row = rows()[0]!;
+    const files = within(row).getByRole('list', { name: 'Archivos' });
+    expect(within(files).getAllByRole('listitem').map((li) => li.textContent)).toEqual(paths);
+    expect(within(row).queryByText(/^y \d+ más$/)).not.toBeInTheDocument();
+    const detected = within(row).getByText('Detectado:').parentElement!;
+    expect(detected.compareDocumentPosition(files) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(files.compareDocumentPosition(within(row).getByText(/^Añadida el/)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('a show entry with more files than listed shows "y N más"', async () => {
+    const paths = [1, 2, 3].map((n) => `The Office/Season 01/The Office S01E0${n}.mkv`);
+    serveUnmatched([f.unmatchedEntry({ files: paths, files_total: 8 })]);
+    renderUnmatched();
+    await screen.findByRole('list', { name: 'Sin identificar' });
+    const row = rows()[0]!;
+    expect(within(within(row).getByRole('list', { name: 'Archivos' })).getAllByRole('listitem')).toHaveLength(3);
+    expect(within(row).getByText('y 5 más')).toBeInTheDocument();
+  });
+
+  it('a media_file entry shows its path once and no files list', async () => {
+    serveUnmatched([f.unmatchedFileEntry()]);
+    renderUnmatched();
+    await screen.findByRole('list', { name: 'Sin identificar' });
+    const row = rows()[0]!;
+    expect(within(row).getAllByText('Kill Bill Vol 1 (2003)/Kill.Bill.Vol.1.2003.cd1.avi')).toHaveLength(1);
+    expect(within(row).queryByRole('list', { name: 'Archivos' })).not.toBeInTheDocument();
+  });
+
+  it('an entry without files renders no list, and rows() still counts one item per entry', async () => {
+    serveUnmatched([f.unmatchedEntry({ files: [], files_total: 0 }), f.unmatchedEntry({ id: 21 })]);
+    renderUnmatched();
+    await screen.findByRole('list', { name: 'Sin identificar' });
+    expect(rows()).toHaveLength(2);
+    expect(within(rows()[0]!).queryByRole('list', { name: 'Archivos' })).not.toBeInTheDocument();
+    expect(within(rows()[1]!).getByRole('list', { name: 'Archivos' })).toBeInTheDocument();
   });
 
   it('filters by library and reason through the URL and the request params', async () => {

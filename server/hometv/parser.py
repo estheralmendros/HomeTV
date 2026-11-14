@@ -10,6 +10,7 @@ Parsing decisions:
 """
 
 import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import date
 from pathlib import PurePosixPath
@@ -87,6 +88,34 @@ _EPISODE_RANGE_RE = re.compile(r"(?i)\bs\d{1,3}[ ._\-]?e(\d{1,4})-e?(\d{1,4})\b"
 _SHOW_FOLDER_YEAR_RE = re.compile(r"^(?P<title>.*?)\s*\((?P<year>\d{4})\)$")
 _SPACES_RE = re.compile(r"\s+")
 
+PARSER_VERSION = 2
+
+# Edition tags stripped from the end of a film title (words matched across [ ._-]+, dots inside
+# abbreviations and apostrophes optional, accents folded). An abbreviation without dots or
+# brackets ("VE") matches uppercase only: lowercase "ve" is a Spanish word.
+EDITION_TAGS: tuple[str, ...] = (
+    "Versión extendida",
+    "Edición extendida",
+    "Montaje del director",
+    "Extended Edition",
+    "Extended Cut",
+    "Director's Cut",
+    "Directors Cut",
+    "Remastered",
+    "Remasterizada",
+    "Extended",
+    "Unrated",
+    "Theatrical",
+    "V.E.",
+)
+
+_GUESSIT_EXCLUDES = ["language", "subtitle_language", "release_group"]
+_TITLE_TRIM = " ._-[("
+_YEAR_CANDIDATE_RE = re.compile(r"(?<![^ ._\-\[(])(?P<y>\d{4})(?![^ ._\-\])])")
+_TAIL_PART_RE = re.compile(r"(?i)(?:^|[ ._\-\[(])(part|pt|vol)[ ._\-]?(\d{1,2})(?=$|[ ._\-\])])")
+_ACRONYM_RE = re.compile(r"(?<![^\W_])(?:[^\W\d_]\.){2,}")
+_ACRONYM_TAIL_RE = re.compile(r"(?<![^\W_])(?:[^\W\d_]\.)+[^\W\d_]$")
+
 
 def parse(
     relative_path: PurePosixPath,
@@ -157,18 +186,94 @@ def _has_part_sibling(stem: str, m: re.Match[str], sibling_stems: frozenset[str]
 
 
 def _film_title_year(path: PurePosixPath) -> ParsedFilm | Unparseable:
-    g = guessit(path.name, {"type": "movie"})
-    title, year = _title(g), _valid_year(g.get("year"))
-    if title and year is not None:
-        return ParsedFilm(title, year)
-    if len(path.parts) >= 2:
-        f = guessit(path.parts[-2], {"type": "movie"})
-        folder_title, folder_year = _title(f), _valid_year(f.get("year"))
-        if folder_title and folder_year is not None:
-            return ParsedFilm(folder_title, folder_year)
+    found = _title_year_from_text(path.stem)
+    if found is None and len(path.parts) >= 2:
+        found = _title_year_from_text(path.parts[-2])
+    if found is not None:
+        return ParsedFilm(*found)
+    g = guessit(path.name, {"type": "movie", "excludes": _GUESSIT_EXCLUDES})
+    title = _title(g)
+    if title:
+        title = _strip_edition(title)
     if not title:
         return Unparseable("no_title", f"no title in {path.name!r}")
     return ParsedFilm(title, None)
+
+
+def _title_year_from_text(text: str) -> tuple[str, int] | None:
+    """FR-1.1: the last year candidate with title text before it, or None."""
+    for m in reversed(list(_YEAR_CANDIDATE_RE.finditer(text))):
+        year = int(m.group("y"))
+        if not 1900 <= year <= date.today().year + 1:
+            continue
+        before = text[: m.start()].rstrip(_TITLE_TRIM).lstrip()
+        if not before:
+            continue
+        title = _display_title(_strip_edition(before))
+        if not title:
+            continue
+        tail = _TAIL_PART_RE.findall(text[m.end() :])
+        if tail:
+            tok, n = tail[-1]
+            title = f"{title} {'Vol' if tok.lower() == 'vol' else 'Part'} {int(n)}"
+        return title, year
+    return None
+
+
+def _display_title(raw: str) -> str:
+    """Dotted names (no space) lose their dots and underscores, except in acronyms."""
+    raw = _ACRONYM_TAIL_RE.sub(lambda m: m.group(0) + ".", raw)
+    if " " not in raw:
+        pieces: list[str] = []
+        pos = 0
+        for m in _ACRONYM_RE.finditer(raw):
+            pieces.append(raw[pos : m.start()].replace("_", " ").replace(".", " "))
+            pieces.append(m.group(0) + " ")
+            pos = m.end()
+        pieces.append(raw[pos:].replace("_", " ").replace(".", " "))
+        raw = "".join(pieces)
+    return _SPACES_RE.sub(" ", raw).strip()
+
+
+def _fold(text: str) -> str:
+    """Accent-fold one character at a time, so offsets stay valid in the original."""
+    return "".join(unicodedata.normalize("NFD", c)[0] for c in text)
+
+
+def _tag_pattern(tag: str, bracketed: bool) -> str:
+    words = []
+    for word in _fold(tag).split():
+        if "." in word:  # abbreviation: dots optional once bracketed, else dotted or UPPERCASE
+            letters = [re.escape(c) for c in word.replace(".", "")]
+            dotted = r"\.".join(letters) + r"\.?"
+            if bracketed:
+                words.append(f"(?i:{dotted}|{''.join(letters)})")
+            else:
+                words.append(f"(?i:{dotted})|{''.join(letters)}")
+        else:
+            words.append("(?i:" + re.escape(word).replace("'", "['’]?") + ")")
+    return r"[ ._\-]+".join(words)
+
+
+def _edition_regex() -> re.Pattern[str]:
+    plain = "|".join(f"(?:{_tag_pattern(t, False)})" for t in EDITION_TAGS)
+    bracketed = "|".join(f"(?:{_tag_pattern(t, True)})" for t in EDITION_TAGS)
+    return re.compile(rf"[ ._\-]+(?:[(\[][ ]*(?:{bracketed})[ ]*[)\]]|(?:{plain}))[ ._\-]*$")
+
+
+_EDITION_RE = _edition_regex()
+
+
+def _strip_edition(title: str) -> str:
+    """Strip edition tags from the end, repeatedly; a strip that empties the title is skipped."""
+    while True:
+        m = _EDITION_RE.search(_fold(title))
+        if m is None:
+            return title
+        rest = title[: m.start()].rstrip(_TITLE_TRIM).lstrip()
+        if not rest:
+            return title
+        title = rest
 
 
 def _title(g: dict[str, Any]) -> str | None:
@@ -207,6 +312,8 @@ def _parse_episode(path: PurePosixPath) -> ParseResult:
     name = path.name
     explicit_season = bool(_EXPLICIT_SEASON_RE.search(name))
     options: dict[str, Any] = {"type": "episode"}
+    if len(path.parts) < 2:
+        options["excludes"] = _GUESSIT_EXCLUDES
     if not explicit_season:
         options["episode_prefer_number"] = True
     g = guessit(name, options)

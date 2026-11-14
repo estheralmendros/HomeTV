@@ -407,6 +407,22 @@ async def test_unmatched_list_filters_and_count(client, db, admin):
     assert status["unmatched_count"] == 2
 
 
+async def test_unmatched_items_carry_files_and_openapi_requires_them(client, db, admin):
+    _seed_unmatched(db)
+    with db.write_session() as s:
+        film = s.scalars(select(m.Film)).one()
+        add_file(s, film_id=film.id, rel="Dune/Dune (2021).mkv")
+    page = (await client.get("/api/admin/unmatched", headers=admin.admin_headers)).json()
+    by_type = {i["target"]["type"]: i for i in page["items"]}
+    assert by_type["film"]["files"] == ["Dune/Dune (2021).mkv"]
+    assert by_type["film"]["files_total"] == 1
+    assert by_type["show"]["files"] == [] and by_type["show"]["files_total"] == 0
+    schema = (await client.get("/api/openapi.json")).json()["components"]["schemas"][
+        "UnmatchedEntry"
+    ]
+    assert {"files", "files_total"} <= set(schema["required"])
+
+
 async def test_resolve_errors_via_api(client, db, admin):
     film_id, _ = _seed_unmatched(db)
     with db.read_session() as s:

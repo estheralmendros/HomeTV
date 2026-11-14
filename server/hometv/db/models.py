@@ -145,6 +145,7 @@ class MediaFile(Base):
     manual_match: Mapped[dict[str, Any] | None]
     film_id: Mapped[int | None] = _fk("film.id", ondelete="SET NULL", nullable=True)
     part_number: Mapped[int | None] = mapped_column(Integer)
+    parser_version: Mapped[int | None] = mapped_column(Integer)  # NULL = version 1 (before 0008)
     missing_since: Mapped[datetime | None]
     added_at: Mapped[datetime] = _now_col()
     updated_at: Mapped[datetime] = _now_col(onupdate=utcnow)

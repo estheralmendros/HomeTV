@@ -201,6 +201,18 @@ function UnmatchedRow({ entry, onFix }: { entry: UnmatchedEntry; onFix: () => vo
             <span>{summary}</span>
           </p>
         )}
+        {target.type !== 'media_file' && entry.files.length > 0 && (
+          <>
+            <ul className={`${styles.muted} ${styles.detail} ${styles.files}`} aria-label={T.filesLabel}>
+              {entry.files.map((path) => (
+                <li key={path}>{path}</li>
+              ))}
+            </ul>
+            {entry.files_total > entry.files.length && (
+              <p className={styles.muted}>{T.filesMore(entry.files_total - entry.files.length)}</p>
+            )}
+          </>
+        )}
         {entry.detail && <p className={`${styles.muted} ${styles.detail}`}>{entry.detail}</p>}
         <p className={styles.muted}>{T.createdAt(formatDate(entry.created_at))}</p>
       </div>
