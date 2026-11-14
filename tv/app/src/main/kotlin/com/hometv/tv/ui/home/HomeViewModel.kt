@@ -154,6 +154,7 @@ class HomeViewModel(
         viewModelScope.launch {
             events.collect { if (it is AppEvent.ItemGone) onItemGone(it.type, it.id) }
         }
+        focusLog("vm created")
         load(initial = true)
     }
 
@@ -162,6 +163,7 @@ class HomeViewModel(
     /** Home became visible again: back from the Player or a detail screen, or back to the app ([onAppLeft]). */
     fun onVisible() {
         val stale = refresh.consumeStale()
+        focusLog("onVisible leftApp=$leftApp stale=$stale focused=$focusedKey entry=$entryKey")
         if (leftApp) {
             leftApp = false
             onAppReturned()
@@ -172,16 +174,19 @@ class HomeViewModel(
 
     /** The app stopped while Home was on screen (Home, the TV's launcher): the next [onVisible] is an entry. */
     fun onAppLeft() {
+        focusLog("onAppLeft focused=$focusedKey entry=$entryKey")
         leftApp = true
     }
 
     fun onCardFocused(card: ItemCard) {
+        focusLog("onCardFocused ${card.key} focused=$focusedKey entry=$entryKey${if (card.key != entryKey && entryKey != null) " -> clears entry" else ""}")
         if (card.key != entryKey) entryKey = null
         focusedKey = card.key
         focused.value = card
     }
 
     fun onSeeAllFocused(card: SeeAllCard) {
+        focusLog("onSeeAllFocused ${card.key} focused=$focusedKey entry=$entryKey")
         entryKey = null
         focusedKey = card.key
     }
@@ -189,6 +194,7 @@ class HomeViewModel(
     /** Back to the app: focus the first card at once, reload, then the first card of the fresh rows unless the user moved meanwhile. */
     private fun onAppReturned() {
         val first = _state.value.rows.firstOrNull()?.cards?.firstOrNull()
+        focusLog("onAppReturned first=${first?.key} rows=${_state.value.rows.size} exitDialog=${_state.value.exitDialog != null} focused=$focusedKey")
         if (first != null && _state.value.exitDialog == null) {
             focusedKey = first.key
             entryKey = first.key
@@ -199,16 +205,18 @@ class HomeViewModel(
 
     /** The card to focus when Home is shown again (Back from a detail): the last focused card, if still there. */
     fun restoreTarget(): FocusTarget? {
-        val key = focusedKey ?: return null
+        val key = focusedKey ?: return null.also { focusLog("restoreTarget none (no focused key)") }
         _state.value.rows.forEachIndexed { r, row ->
             val index = row.cards.indexOfFirst { it.key == key }
-            if (index >= 0) return FocusTarget(key, r, index, focusVersion)
+            if (index >= 0) return FocusTarget(key, r, index, focusVersion).also { focusLog("restoreTarget $it") }
         }
+        focusLog("restoreTarget none ($key not in rows)")
         return null
     }
 
     /** Focus is on the top navigation bar. */
     fun onNavFocused() {
+        focusLog("onNavFocused focused=$focusedKey entry=$entryKey")
         focusedKey = null
         entryKey = null
     }
@@ -298,8 +306,11 @@ class HomeViewModel(
         _state.update { it.copy(error = null, loading = it.rows.isEmpty() && !it.libraryEmpty) }
         job = viewModelScope.launch {
             val profileId = store.session.value.profileId
+            focusLog("load start initial=$initial")
             if (initial && payload == null && profileId != null) {
-                cache.read(profileId)?.let { apply(it, fromCache = true) }
+                val cached = cache.read(profileId)
+                focusLog("cache ${if (cached == null) "miss" else "hit"}")
+                cached?.let { apply(it, fromCache = true) }
             }
             try {
                 val fresh = coroutineScope {
@@ -312,6 +323,7 @@ class HomeViewModel(
                 profileId?.let { cache.write(it, fresh) }
                 onFreshLoad()
             } catch (e: ApiException) {
+                focusLog("load failed: ${e.message}")
                 _state.update { it.copy(loading = false, error = ScreenError.from(e, store.session.value.serverUrl)) }
             }
         }
@@ -325,6 +337,7 @@ class HomeViewModel(
     private fun apply(data: HomePayload, fromCache: Boolean) {
         payload = data
         val rows = rowsOf(data)
+        focusLog("apply fromCache=$fromCache firstRow=${rows.firstOrNull()?.id} firstCards=${rows.firstOrNull()?.cards?.take(3)?.map { it.key }}")
         _state.update {
             it.copy(rows = rows, libraryEmpty = data.home.library.empty, loading = false, fromCache = fromCache, error = null, focus = focusAfter(it.rows, rows))
         }
@@ -334,9 +347,13 @@ class HomeViewModel(
      * The first card at entry (nothing focused yet, or still the entry card); else the same item by key
      * when still present, else the same index of its row (clamped), else the first card.
      */
-    private fun focusAfter(old: List<HomeRow>, new: List<HomeRow>): FocusTarget? {
+    private fun focusAfter(old: List<HomeRow>, new: List<HomeRow>): FocusTarget? =
+        focusAfterRule(old, new).also { focusLog("focusAfter -> $it (focusedKey now=$focusedKey entry now=$entryKey)") }
+
+    private fun focusAfterRule(old: List<HomeRow>, new: List<HomeRow>): FocusTarget? {
         if (new.isEmpty()) return null
         val key = focusedKey
+        focusLog("focusAfter oldEmpty=${old.isEmpty()} focused=$key entry=$entryKey entryRule=${old.isEmpty() || (entryKey != null && key == entryKey)}")
         if (old.isEmpty() || (entryKey != null && key == entryKey)) {
             return target(new, 0, 0).also { entryKey = it.key }
         }

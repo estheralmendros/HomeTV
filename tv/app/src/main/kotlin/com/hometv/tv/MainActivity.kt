@@ -7,6 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import com.hometv.tv.ui.HomeTvRoot
 import com.hometv.tv.ui.KeyDispatch
+import com.hometv.tv.ui.home.focusLog
 
 /**
  * Single activity. Every key event is first offered to [keyDispatch] (the Player registers its
@@ -20,12 +21,40 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        focusLog("activity onCreate savedState=${savedInstanceState != null} instance=${System.identityHashCode(this)}")
         setContent { HomeTvRoot(container, onExit = ::finish, keyDispatch = keyDispatch) }
     }
 
     override fun onStart() {
         super.onStart()
+        focusLog("activity onStart")
         container.onActivityStart()
+    }
+
+    // TEMPORARY (Home entry focus diagnosis, `adb logcat -s HomeTvFocus`): the activity's lifecycle and window focus.
+    override fun onResume() {
+        super.onResume()
+        focusLog("activity onResume")
+    }
+
+    override fun onPause() {
+        focusLog("activity onPause")
+        super.onPause()
+    }
+
+    override fun onStop() {
+        focusLog("activity onStop")
+        super.onStop()
+    }
+
+    override fun onDestroy() {
+        focusLog("activity onDestroy finishing=$isFinishing changingConfig=$isChangingConfigurations")
+        super.onDestroy()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        focusLog("activity windowFocus=$hasFocus")
     }
 
     // `Activity.dispatchKeyEvent` is public framework API; androidx.core's ComponentActivity only marks
@@ -33,6 +62,7 @@ class MainActivity : ComponentActivity() {
     @SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val handled = keyDispatch.dispatch(event) || super.dispatchKeyEvent(event)
+        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) focusLog("key ${KeyEvent.keyCodeToString(event.keyCode)}")
         // TEMPORARY (long-press diagnosis): every OK event as the app receives it. Remove once diagnosed.
         if (event.keyCode in DIAG_OK_KEYS) {
             android.util.Log.i(
