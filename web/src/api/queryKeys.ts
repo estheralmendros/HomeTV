@@ -12,6 +12,8 @@ export const queryKeys = {
   /** Infinite list; `params` excludes `page`. */
   library: (type: LibraryType, params: Omit<LibraryQuery, 'page' | 'page_size'>) => [type, 'list', params] as const,
   libraryAll: (type: LibraryType) => [type, 'list'] as const,
+  /** Home row: first HOME_LIMIT titles by `added` desc (plain query, not infinite). Under libraryAll(type). */
+  libraryHomeRow: (type: LibraryType) => [type, 'list', 'homeRow'] as const,
   genres: (type: LibraryType) => ['genres', type] as const,
   search: (q: string) => ['search', q] as const,
   searchAll: () => ['search'] as const,
@@ -27,6 +29,8 @@ export const queryKeys = {
   /** "Mi lista" infinite list; `params` excludes `page`/`page_size`. */
   watchlist: (params: { type: WatchlistType; sort: WatchlistSort; watched: boolean | null }) => ['watchlist', 'list', params] as const,
   watchlistAll: () => ['watchlist'] as const,
+  /** Home "Mi lista" row: first HOME_LIMIT entries, sort=added, all types, watched omitted. Under watchlistAll(). */
+  watchlistHomeRow: () => ['watchlist', 'homeRow'] as const,
   /** /activity infinite list (always refetched on mount). */
   activity: () => ['activity', 'list'] as const,
   activityAll: () => ['activity'] as const,

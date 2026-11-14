@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.10.0] - Released on 2026-11-14 by Esther Almendros Pérez
+
+### Added
+
+#### Web app
+- "Inicio" has three new rows: "Mi lista" (your list, latest additions first) after "Seguir viendo", and "Películas" and "Series" (the 20 newest of each) after "Añadidos recientemente". Each one ends with a "Ver todo" card that opens Mi lista, or Películas / Series sorted by "Añadido". A row with nothing in it is not shown, and a row that fails to load is left out without affecting the rest of the page.
+
 ## [0.9.2] - Released on 2026-11-14 by Esther Almendros Pérez
 
 ### Fixed

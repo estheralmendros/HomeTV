@@ -189,6 +189,11 @@ describe('UI string catalog', () => {
   });
 
   it('uses the exact Spanish texts', () => {
+    expect(S.home.watchlist).toBe('Mi lista');
+    expect(S.home.films).toBe('Películas');
+    expect(S.home.shows).toBe('Series');
+    expect(S.home.seeAll).toBe('Ver todo');
+    expect(S.home.seeAllOf('Películas')).toBe('Ver todo: Películas');
     expect(errorMessage(new ApiError({ status: 0, code: 'network_error' }))).toBe(
       'No se puede conectar con el servidor.',
     );
