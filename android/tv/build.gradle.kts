@@ -100,9 +100,6 @@ android {
     // Compose focus/navigation tests shared by Robolectric (JVM, `src/test`) and the emulator (`androidTest`).
     sourceSets {
         getByName("test").kotlin.srcDir("src/sharedTest/kotlin")
-        // Temporary (until `:testing`): FakeVlcPort and FakePlayerController, shared with the `:playback` tests.
-        getByName("test").kotlin.srcDir("../playback/src/testFakes/kotlin")
-        getByName("androidTest").kotlin.srcDir("../playback/src/testFakes/kotlin")
         getByName("androidTest").kotlin.srcDir("src/sharedTest/kotlin")
     }
 }
@@ -144,6 +141,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.coil.compose)
 
+    testImplementation(project(":testing"))
     testImplementation(testFixtures(project(":core")))
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
@@ -160,6 +158,7 @@ dependencies {
     testImplementation(libs.compose.ui.test.junit4)
     debugImplementation(libs.compose.ui.test.manifest)
 
+    androidTestImplementation(project(":testing"))
     androidTestImplementation(testFixtures(project(":core")))
     androidTestImplementation(libs.junit4)
     androidTestImplementation(libs.kotlinx.coroutines.test)

@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "hometv-android"
-include(":core", ":playback", ":tv")
+include(":core", ":playback", ":testing", ":tv")

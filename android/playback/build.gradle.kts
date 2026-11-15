@@ -44,11 +44,6 @@ android {
             }
         }
     }
-
-    // Temporary (until `:testing` exists): FakeVlcPort and FakePlayerController are shared with `:tv`'s tests, which add this same directory.
-    sourceSets {
-        getByName("test").kotlin.srcDir("src/testFakes/kotlin")
-    }
 }
 
 kotlin {
@@ -76,6 +71,7 @@ dependencies {
     implementation(libs.compose.foundation)
     implementation(libs.androidx.lifecycle.runtime.compose)
 
+    testImplementation(project(":testing"))
     testImplementation(testFixtures(project(":core")))
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
