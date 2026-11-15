@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.hometv.tv.R
+import com.hometv.tv.shared.R as SharedR
 import com.hometv.tv.ui.common.PosterItem
 import com.hometv.tv.ui.components.ActionButton
 import com.hometv.tv.ui.components.PosterCard
@@ -93,7 +94,7 @@ fun PosterGridPane(
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text(stringResource(R.string.browse_load_more_failed), style = MaterialTheme.typography.bodyMedium, color = HomeTvColors.Error)
-                    ActionButton(stringResource(R.string.action_retry), onRetry, Modifier.testTag(retryTag))
+                    ActionButton(stringResource(SharedR.string.action_retry), onRetry, Modifier.testTag(retryTag))
                 }
             }
         }

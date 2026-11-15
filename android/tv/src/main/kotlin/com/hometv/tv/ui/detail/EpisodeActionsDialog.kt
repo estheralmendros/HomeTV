@@ -13,6 +13,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.hometv.tv.R
+import com.hometv.tv.shared.R as SharedR
 import com.hometv.tv.ui.components.ActionButton
 import com.hometv.tv.ui.components.RequestFocus
 import com.hometv.tv.ui.components.okKeyGuard
@@ -29,7 +30,7 @@ fun EpisodeActionsDialog(actions: EpisodeActionsUi, onPlayFromStart: () -> Unit,
             Modifier.okKeyGuard().background(HomeTvColors.Surface, RoundedCornerShape(12.dp)).padding(24.dp).testTag("episode_actions"),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            ActionButton(stringResource(R.string.detail_play_from_start), onPlayFromStart, Modifier.focusRequester(requesters[0]).testTag("episode_play_from_start"), icon = R.drawable.ic_play)
+            ActionButton(stringResource(SharedR.string.detail_play_from_start), onPlayFromStart, Modifier.focusRequester(requesters[0]).testTag("episode_play_from_start"), icon = R.drawable.ic_play)
             ActionButton(actions.watchedText.resolve(), onToggleWatched, Modifier.focusRequester(requesters[1]).testTag("episode_toggle_watched"))
         }
     }

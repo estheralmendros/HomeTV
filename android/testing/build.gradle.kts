@@ -30,7 +30,7 @@ kotlin {
 }
 
 dependencies {
-    api(project(":playback"))
+    api(project(":shared"))
     api(testFixtures(project(":core")))
     api(platform(libs.junit.bom))
     api(libs.junit.jupiter)

@@ -59,6 +59,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import com.hometv.tv.R
+import com.hometv.tv.shared.R as SharedR
 import com.hometv.tv.ui.components.ActionButton
 import com.hometv.tv.ui.components.Artwork
 import com.hometv.tv.ui.components.ErrorAction
@@ -93,7 +94,7 @@ fun ShowDetailScreen(vm: ShowDetailViewModel, navigator: AppNavigator) {
             is ShowDetailUiState.Error -> ScreenErrorView(s.error, vm::retry, onBack = navigator::back)
             is ShowDetailUiState.Content -> if (s.seasonGone) {
                 BackHandler { vm.onSeasonGoneBack() }
-                ErrorScreen(stringResource(R.string.item_gone), listOf(ErrorAction(stringResource(R.string.action_back), vm::onSeasonGoneBack)))
+                ErrorScreen(stringResource(SharedR.string.item_gone), listOf(ErrorAction(stringResource(SharedR.string.action_back), vm::onSeasonGoneBack)))
             } else {
                 ShowContent(s, vm)
             }
@@ -261,7 +262,7 @@ private fun ShowContent(state: ShowDetailUiState.Content, vm: ShowDetailViewMode
                         LoadingScreen(Modifier.height(120.dp))
                     } else {
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
-                            Text(stringResource(R.string.pair_dot, pane.title.resolve(), pane.count.resolve()), style = MaterialTheme.typography.titleMedium)
+                            Text(stringResource(SharedR.string.pair_dot, pane.title.resolve(), pane.count.resolve()), style = MaterialTheme.typography.titleMedium)
                             Spacer(Modifier.weight(1f))
                             ActionButton(pane.watchedButton.resolve(), vm::onSeasonWatched, Modifier.testTag("season_watched"))
                         }
@@ -327,7 +328,7 @@ private fun EpisodeRow(row: EpisodeRowUi, requesters: FocusRequesters<Long>, onC
             Column(Modifier.padding(start = 16.dp).weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(row.title.resolve(), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                    if (row.watched) Icon(painterResource(R.drawable.ic_check), contentDescription = stringResource(R.string.watched), modifier = Modifier.padding(start = 8.dp).size(20.dp))
+                    if (row.watched) Icon(painterResource(SharedR.drawable.ic_check), contentDescription = stringResource(R.string.watched), modifier = Modifier.padding(start = 8.dp).size(20.dp))
                 }
                 Text(row.meta.resolve(), style = MaterialTheme.typography.bodySmall, color = HomeTvColors.Muted)
                 row.overview?.let { Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis) }

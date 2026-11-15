@@ -224,8 +224,9 @@ private fun PersonContent(state: PersonUiState.Content, vm: PersonViewModel) {
             }
         }
     }
-    if (state.bioDialogOpen && state.biography != null) {
-        TextDialog(stringResource(R.string.person_biography), state.biography, vm::closeBio, textTestTag = "person_bio_dialog")
+    val biography = state.biography
+    if (state.bioDialogOpen && biography != null) {
+        TextDialog(stringResource(R.string.person_biography), biography, vm::closeBio, textTestTag = "person_bio_dialog")
     }
 }
 

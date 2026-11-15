@@ -1,7 +1,5 @@
 package com.hometv.tv.ui.components
 
-import android.content.Context
-import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +23,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.hometv.tv.R
+import com.hometv.tv.shared.R as SharedR
 import com.hometv.tv.ui.common.ScreenError
 import com.hometv.tv.ui.theme.HomeTvColors
 
@@ -58,14 +57,6 @@ fun LoadingScreen(modifier: Modifier = Modifier, text: String = stringResource(R
     }
 }
 
-/** Tailscale's TV launch intent, or null when the app is not installed. */
-fun tailscaleIntent(context: Context): Intent? {
-    val pm = context.packageManager
-    return pm.getLeanbackLaunchIntentForPackage(TAILSCALE_PACKAGE) ?: pm.getLaunchIntentForPackage(TAILSCALE_PACKAGE)
-}
-
-const val TAILSCALE_PACKAGE = "com.tailscale.ipn"
-
 /**
  * Connection Error: [Reintentar] (focused), [Abrir Tailscale] (only when installed). No
  * [Cambiar servidor]: it needs the admin PIN, which can't be checked while the server is unreachable.
@@ -74,9 +65,9 @@ const val TAILSCALE_PACKAGE = "com.tailscale.ipn"
 fun ConnectionErrorScreen(error: ScreenError.Connection, onRetry: () -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val tailscale = remember { tailscaleIntent(context) }
-    val message = if (error.tls) stringResource(R.string.setup_error_tls) else stringResource(R.string.error_connection, error.host)
+    val message = if (error.tls) stringResource(SharedR.string.setup_error_tls) else stringResource(SharedR.string.error_connection, error.host)
     val actions = buildList {
-        add(ErrorAction(stringResource(R.string.action_retry), onRetry))
+        add(ErrorAction(stringResource(SharedR.string.action_retry), onRetry))
         if (tailscale != null) add(ErrorAction(stringResource(R.string.error_open_tailscale)) { runCatching { context.startActivity(tailscale) } })
     }
     ErrorScreen(message, actions, modifier)
@@ -87,11 +78,11 @@ fun ConnectionErrorScreen(error: ScreenError.Connection, onRetry: () -> Unit, mo
 fun ScreenErrorView(error: ScreenError, onRetry: () -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier) {
     when (error) {
         is ScreenError.Connection -> ConnectionErrorScreen(error, onRetry, modifier)
-        ScreenError.ItemGone -> ErrorScreen(stringResource(R.string.item_gone), listOf(ErrorAction(stringResource(R.string.action_back), onBack)), modifier)
-        ScreenError.PersonGone -> ErrorScreen(stringResource(R.string.person_gone), listOf(ErrorAction(stringResource(R.string.action_back), onBack)), modifier)
-        ScreenError.SignIn -> ErrorScreen(stringResource(R.string.error_sign_in), listOf(ErrorAction(stringResource(R.string.action_retry), onRetry)), modifier)
-        is ScreenError.Unexpected -> ErrorScreen(stringResource(R.string.error_unexpected, error.code), listOf(ErrorAction(stringResource(R.string.action_retry), onRetry)), modifier)
-        ScreenError.LoadFailed -> ErrorScreen(stringResource(R.string.error_load_failed), listOf(ErrorAction(stringResource(R.string.action_retry), onRetry)), modifier)
+        ScreenError.ItemGone -> ErrorScreen(stringResource(SharedR.string.item_gone), listOf(ErrorAction(stringResource(SharedR.string.action_back), onBack)), modifier)
+        ScreenError.PersonGone -> ErrorScreen(stringResource(R.string.person_gone), listOf(ErrorAction(stringResource(SharedR.string.action_back), onBack)), modifier)
+        ScreenError.SignIn -> ErrorScreen(stringResource(SharedR.string.error_sign_in), listOf(ErrorAction(stringResource(SharedR.string.action_retry), onRetry)), modifier)
+        is ScreenError.Unexpected -> ErrorScreen(stringResource(SharedR.string.error_unexpected, error.code), listOf(ErrorAction(stringResource(SharedR.string.action_retry), onRetry)), modifier)
+        ScreenError.LoadFailed -> ErrorScreen(stringResource(SharedR.string.error_load_failed), listOf(ErrorAction(stringResource(SharedR.string.action_retry), onRetry)), modifier)
         ScreenError.ProfileGone -> LoadingScreen(modifier)
     }
 }

@@ -34,6 +34,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.hometv.tv.R
+import com.hometv.tv.shared.R as SharedR
 import com.hometv.tv.ui.components.ActionButton
 import com.hometv.tv.ui.components.AvatarUi
 import com.hometv.tv.ui.components.NavTab
@@ -95,7 +96,7 @@ fun SettingsScreen(vm: SettingsViewModel, navigator: AppNavigator, avatar: Avata
                             stringResource(R.string.settings_force_vlc),
                             vm::onToggleForceVlc,
                             Modifier.focusRequester(focus["vlc"]).testTag("settings_force_vlc"),
-                            icon = if (state.forceVlc) R.drawable.ic_check else null,
+                            icon = if (state.forceVlc) SharedR.drawable.ic_check else null,
                             contentDescription = stringResource(R.string.settings_force_vlc_description, value),
                         )
                         Text(value, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 16.dp).testTag("settings_force_vlc_value"))

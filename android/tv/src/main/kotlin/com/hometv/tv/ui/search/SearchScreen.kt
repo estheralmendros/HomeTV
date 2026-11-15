@@ -34,6 +34,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.hometv.tv.R
+import com.hometv.tv.shared.R as SharedR
 import com.hometv.tv.ui.common.PosterItem
 import com.hometv.tv.ui.common.TvTextField
 import com.hometv.tv.ui.components.AvatarUi
@@ -100,8 +101,8 @@ fun SearchScreen(vm: SearchViewModel, navigator: AppNavigator, avatar: AvatarUi?
                     modifier = Modifier.padding(horizontal = HomeTvDimens.SafeHorizontal, vertical = 24.dp).testTag("search_no_results"),
                 )
                 else -> {
-                    ResultRow(stringResource(R.string.nav_films), state.films, vm, focus)
-                    ResultRow(stringResource(R.string.nav_shows), state.shows, vm, focus)
+                    ResultRow(stringResource(SharedR.string.nav_films), state.films, vm, focus)
+                    ResultRow(stringResource(SharedR.string.nav_shows), state.shows, vm, focus)
                 }
             }
         }

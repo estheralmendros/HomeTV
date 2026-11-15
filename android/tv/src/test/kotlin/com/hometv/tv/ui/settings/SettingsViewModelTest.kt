@@ -1,6 +1,6 @@
 package com.hometv.tv.ui.settings
 
-import com.hometv.tv.R
+import com.hometv.tv.shared.R
 import com.hometv.tv.core.api.Me
 import com.hometv.tv.core.api.Profile
 import com.hometv.tv.core.api.ServerInfo

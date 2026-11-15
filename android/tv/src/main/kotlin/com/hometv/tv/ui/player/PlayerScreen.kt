@@ -33,6 +33,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.hometv.tv.R
+import com.hometv.tv.shared.R as SharedR
 import com.hometv.tv.playback.VideoSurface
 import com.hometv.tv.playback.ControllerSessionPlayer
 import com.hometv.tv.playback.PlayerMediaSession
@@ -114,7 +115,7 @@ fun PlayerScreen(vm: PlayerViewModel, onExit: () -> Unit) {
         )
         is PlayerDialog.SubtitleStyle -> SubtitleStyleDialog(dialog.ui, onStep = vm::onStyleStep, onClose = vm::onStyleDialogClosed)
         // None of the alternatives is the current version: no check mark (focus starts on the first).
-        is PlayerDialog.Versions -> ListDialog(stringResource(R.string.detail_versions_title), dialog.labels.map { it.resolve() }, -1, vm::onVersionChosen, vm::onDialogDismiss)
+        is PlayerDialog.Versions -> ListDialog(stringResource(SharedR.string.detail_versions_title), dialog.labels.map { it.resolve() }, -1, vm::onVersionChosen, vm::onDialogDismiss)
         null -> Unit
     }
 }
@@ -171,7 +172,7 @@ private fun PreparingView(title: UiText?, screen: PlayerScreenUi.Loading, onCanc
             title?.let { Text(it.resolve(), style = MaterialTheme.typography.headlineSmall) }
             val estimate = screen.preparing
             if (estimate == null) {
-                Text(stringResource(R.string.player_preparing), style = MaterialTheme.typography.titleMedium, color = HomeTvColors.Muted)
+                Text(stringResource(SharedR.string.player_preparing), style = MaterialTheme.typography.titleMedium, color = HomeTvColors.Muted)
             } else {
                 Text(UiText.Value(PreparingText(estimate)).resolve(), style = MaterialTheme.typography.titleMedium)
                 Text(stringResource(R.string.player_preparing_body), color = HomeTvColors.Muted, textAlign = TextAlign.Center)
@@ -186,8 +187,8 @@ private fun PreparingView(title: UiText?, screen: PlayerScreenUi.Loading, onCanc
 @Composable
 private fun PlayerEndScreen(screen: PlayerScreenUi.EndScreen, onRetry: () -> Unit, onBack: () -> Unit) {
     val actions = buildList {
-        if (screen.canRetry) add(ErrorAction(stringResource(R.string.action_retry), onRetry))
-        add(ErrorAction(stringResource(R.string.action_back), onBack))
+        if (screen.canRetry) add(ErrorAction(stringResource(SharedR.string.action_retry), onRetry))
+        add(ErrorAction(stringResource(SharedR.string.action_back), onBack))
     }
     ErrorScreen(screen.message.resolve(), actions, Modifier.background(HomeTvColors.Background).testTag("player_end_screen"), detail = screen.detail?.resolve())
 }

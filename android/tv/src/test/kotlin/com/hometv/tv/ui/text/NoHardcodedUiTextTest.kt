@@ -21,8 +21,9 @@ class NoHardcodedUiTextTest {
 
     @Test
     fun `no hard-coded UI text in app main sources`() {
-        val root = listOf(File("src/main/kotlin"), File("app/src/main/kotlin")).first { it.isDirectory }
-        val files = root.walkTopDown().filter { it.extension == "kt" }.toList()
+        // `:tv` plus the ViewModels and UiText moved to `:shared` (slice 4 moves this scan into each module).
+        val roots = listOf(File("src/main/kotlin"), File("../shared/src/main/kotlin")).filter { it.isDirectory }
+        val files = roots.flatMap { root -> root.walkTopDown().filter { it.extension == "kt" }.toList() }
         assertTrue(files.size > 10, "app sources not found")
         val offenders = files.flatMap { file ->
             file.readLines().mapIndexedNotNull { index, line ->

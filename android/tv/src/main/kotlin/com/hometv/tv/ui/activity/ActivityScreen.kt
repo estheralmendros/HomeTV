@@ -30,6 +30,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.hometv.tv.R
+import com.hometv.tv.shared.R as SharedR
 import com.hometv.tv.ui.common.ScreenError
 import com.hometv.tv.ui.components.ActionButton
 import com.hometv.tv.ui.components.AvatarUi
@@ -115,7 +116,7 @@ fun ActivityScreen(vm: ActivityViewModel, navigator: AppNavigator, avatar: Avata
                     item {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                             Text(stringResource(R.string.browse_load_more_failed), style = MaterialTheme.typography.bodyMedium, color = HomeTvColors.Error)
-                            ActionButton(stringResource(R.string.action_retry), vm::retry, Modifier.testTag("activity_retry"))
+                            ActionButton(stringResource(SharedR.string.action_retry), vm::retry, Modifier.testTag("activity_retry"))
                         }
                     }
                 }

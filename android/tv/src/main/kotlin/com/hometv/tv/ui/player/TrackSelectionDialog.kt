@@ -34,6 +34,7 @@ import androidx.tv.material3.ListItem
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.hometv.tv.R
+import com.hometv.tv.shared.R as SharedR
 import com.hometv.tv.ui.components.ActionButton
 import com.hometv.tv.ui.components.RequestFocus
 import com.hometv.tv.ui.components.rememberFocusRequesters
@@ -95,10 +96,10 @@ private fun TrackColumn(
                     onClick = { onSelect(option.key) },
                     headlineContent = { Text(option.label.resolve()) },
                     supportingContent = if (option.pending) {
-                        { Text(stringResource(R.string.player_subtitles_preparing), color = HomeTvColors.Muted) }
+                        { Text(stringResource(SharedR.string.player_subtitles_preparing), color = HomeTvColors.Muted) }
                     } else null,
                     trailingContent = if (option.selected) {
-                        { Icon(painterResource(R.drawable.ic_check), contentDescription = null, modifier = Modifier.size(20.dp)) }
+                        { Icon(painterResource(SharedR.drawable.ic_check), contentDescription = null, modifier = Modifier.size(20.dp)) }
                     } else null,
                     modifier = Modifier.focusRequester(requesters[tag]).onFocusChanged { if (it.isFocused) onFocused(tag) }.testTag(tag),
                 )

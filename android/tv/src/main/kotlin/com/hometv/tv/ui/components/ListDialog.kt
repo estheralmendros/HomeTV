@@ -21,7 +21,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.ListItem
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import com.hometv.tv.R
+import com.hometv.tv.shared.R
 import com.hometv.tv.ui.theme.HomeTvColors
 
 /**

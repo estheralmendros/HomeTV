@@ -73,10 +73,10 @@ compose-config: ## Validate deploy/docker-compose.yml with the example env
 	docker compose -f deploy/docker-compose.yml --env-file deploy/.env.example config -q
 
 tv-test: ## TV app JVM tests (core: JUnit 5 + MockWebServer + coroutines-test; app unit tests)
-	cd $(ANDROID_DIR) && ./gradlew :core:test :playback:testDebugUnitTest :tv:testDebugUnitTest
+	cd $(ANDROID_DIR) && ./gradlew :core:test :playback:testDebugUnitTest :shared:testDebugUnitTest :tv:testDebugUnitTest
 
 tv-lint: ## TV app Android lint (HardcodedText/SetTextI18n are errors)
-	cd $(ANDROID_DIR) && ./gradlew :tv:lintDebug :playback:lintDebug
+	cd $(ANDROID_DIR) && ./gradlew :tv:lintDebug :shared:lintDebug :playback:lintDebug
 
 tv-build: ## Signed release APK (needs android/keystore.properties) -> android/tv/build/outputs/apk/release/
 	cd $(ANDROID_DIR) && ./gradlew :tv:assembleRelease

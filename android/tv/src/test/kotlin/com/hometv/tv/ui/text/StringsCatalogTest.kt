@@ -13,8 +13,18 @@ class StringsCatalogTest {
 
     @Test
     fun `no values-lang folder exists`() {
-        val localized = catalog.resDir.listFiles().orEmpty().filter { it.isDirectory && Regex("^values-[a-z]{2}(-r[A-Z]{2})?$").matches(it.name) }
+        val localized = catalog.resDirs.flatMap { it.listFiles().orEmpty().toList() }
+            .filter { it.isDirectory && Regex("^values-[a-z]{2}(-r[A-Z]{2})?$").matches(it.name) }
         assertEquals(emptyList<String>(), localized.map { it.name })
+    }
+
+    @Test
+    fun `no TV override of a shared string`() {
+        assertTrue(catalog.files.size >= 2, "the TV test classpath reads the shared and the tv catalogs: ${catalog.files}")
+        val names = catalog.files.map { f -> Regex("""<(?:string|plurals) name="(\w+)"""").findAll(f.readText()).map { it.groupValues[1] }.toList() }
+        val seen = mutableSetOf<String>()
+        val duplicated = names.flatMap { inFile -> inFile.filter { !seen.add(it) } }
+        assertEquals(emptyList<String>(), duplicated)
     }
 
     @Test
@@ -167,17 +177,17 @@ class StringsCatalogTest {
 
     @Test
     fun `plurals texts`() {
-        assertEquals("1 episodio", catalog.plural(com.hometv.tv.R.plurals.episode_count, 1, "1"))
-        assertEquals("22 episodios", catalog.plural(com.hometv.tv.R.plurals.episode_count, 22, "22"))
-        assertEquals("150 sin ver", catalog.plural(com.hometv.tv.R.plurals.unwatched_count, 150, "150"))
-        assertEquals("quedan unos 3 min", catalog.plural(com.hometv.tv.R.plurals.minutes_left, 3, "3"))
-        assertEquals("1 año", catalog.plural(com.hometv.tv.R.plurals.person_age, 1, "1"))
-        assertEquals("30 años", catalog.plural(com.hometv.tv.R.plurals.person_age, 30, "30"))
-        assertEquals("1 estrella", catalog.plural(com.hometv.tv.R.plurals.rating_stars, 1, "1"))
-        assertEquals("4,5 estrellas", catalog.plural(com.hometv.tv.R.plurals.rating_stars, 2, "4,5"))
-        assertEquals("hace 1 minuto", catalog.plural(com.hometv.tv.R.plurals.time_minutes_ago, 1, "1"))
-        assertEquals("hace 5 minutos", catalog.plural(com.hometv.tv.R.plurals.time_minutes_ago, 5, "5"))
-        assertEquals("hace 1 hora", catalog.plural(com.hometv.tv.R.plurals.time_hours_ago, 1, "1"))
-        assertEquals("hace 3 horas", catalog.plural(com.hometv.tv.R.plurals.time_hours_ago, 3, "3"))
+        assertEquals("1 episodio", catalog.plural(com.hometv.tv.shared.R.plurals.episode_count, 1, "1"))
+        assertEquals("22 episodios", catalog.plural(com.hometv.tv.shared.R.plurals.episode_count, 22, "22"))
+        assertEquals("150 sin ver", catalog.plural(com.hometv.tv.shared.R.plurals.unwatched_count, 150, "150"))
+        assertEquals("quedan unos 3 min", catalog.plural(com.hometv.tv.shared.R.plurals.minutes_left, 3, "3"))
+        assertEquals("1 año", catalog.plural(com.hometv.tv.shared.R.plurals.person_age, 1, "1"))
+        assertEquals("30 años", catalog.plural(com.hometv.tv.shared.R.plurals.person_age, 30, "30"))
+        assertEquals("1 estrella", catalog.plural(com.hometv.tv.shared.R.plurals.rating_stars, 1, "1"))
+        assertEquals("4,5 estrellas", catalog.plural(com.hometv.tv.shared.R.plurals.rating_stars, 2, "4,5"))
+        assertEquals("hace 1 minuto", catalog.plural(com.hometv.tv.shared.R.plurals.time_minutes_ago, 1, "1"))
+        assertEquals("hace 5 minutos", catalog.plural(com.hometv.tv.shared.R.plurals.time_minutes_ago, 5, "5"))
+        assertEquals("hace 1 hora", catalog.plural(com.hometv.tv.shared.R.plurals.time_hours_ago, 1, "1"))
+        assertEquals("hace 3 horas", catalog.plural(com.hometv.tv.shared.R.plurals.time_hours_ago, 3, "3"))
     }
 }

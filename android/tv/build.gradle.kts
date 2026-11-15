@@ -90,6 +90,13 @@ android {
             // Robolectric's native graphics measure text like a device (legacy mode gives text no size) and run
             // Compose focus like a device: the Back-to-tab focus and PIN dialog fit bugs only showed there.
             it.systemProperty("robolectric.graphicsMode", "NATIVE")
+            // CatalogStrings: the catalogs and R classes of the modules in this test classpath, library first.
+            it.systemProperty(
+                "hometv.catalogs",
+                listOf(project(":shared").file("src/main/res/values/strings.xml"), file("src/main/res/values/strings.xml"))
+                    .joinToString(File.pathSeparator) { f -> f.absolutePath },
+            )
+            it.systemProperty("hometv.rClasses", "com.hometv.tv.shared.R,com.hometv.tv.R")
             it.testLogging {
                 events("failed")
                 exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
@@ -128,6 +135,7 @@ gradle.taskGraph.whenReady {
 dependencies {
     implementation(project(":core"))
     implementation(project(":playback"))
+    implementation(project(":shared"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.compose.bom))

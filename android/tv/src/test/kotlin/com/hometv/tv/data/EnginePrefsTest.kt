@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.emptyPreferences
 import com.hometv.tv.testing.ScriptedApi
 import com.hometv.tv.testing.testContainer
+import com.hometv.tv.testing.WINDOWS_DATASTORE_RENAME
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files

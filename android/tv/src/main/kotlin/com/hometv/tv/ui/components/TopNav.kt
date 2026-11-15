@@ -41,8 +41,7 @@ import androidx.tv.material3.Tab
 import androidx.tv.material3.TabRow
 import androidx.tv.material3.Text
 import com.hometv.tv.R
-import com.hometv.tv.core.api.Avatar
-import com.hometv.tv.data.ProfileAvatar
+import com.hometv.tv.shared.R as SharedR
 import com.hometv.tv.ui.theme.HomeTvColors
 import com.hometv.tv.ui.theme.HomeTvDimens
 import com.hometv.tv.ui.theme.HomeTvFocus
@@ -51,8 +50,8 @@ import com.hometv.tv.ui.theme.HomeTvFocus
 enum class NavTab(@param:StringRes val label: Int, @param:DrawableRes val icon: Int? = null) {
     SEARCH(R.string.nav_search, R.drawable.ic_search),
     HOME(R.string.nav_home),
-    FILMS(R.string.nav_films),
-    SHOWS(R.string.nav_shows),
+    FILMS(SharedR.string.nav_films),
+    SHOWS(SharedR.string.nav_shows),
     WATCHLIST(R.string.nav_watchlist),
     ACTIVITY(R.string.nav_activity),
     SETTINGS(R.string.nav_settings),
@@ -61,19 +60,6 @@ enum class NavTab(@param:StringRes val label: Int, @param:DrawableRes val icon: 
     companion object {
         /** The tabs a profile sees: "Ajustes" only for admins. */
         fun visible(showSettings: Boolean): List<NavTab> = if (showSettings) entries else entries - SETTINGS
-    }
-}
-
-/** The signed-in profile's avatar on the right of the top nav (opens the Profile Picker). */
-data class AvatarUi(val initial: String, val color: String?) {
-    companion object {
-        /** [ProfileAvatar.initial]. */
-        fun initial(name: String): String = ProfileAvatar.initial(name)
-
-        /** [ProfileAvatar.color]. */
-        fun color(avatarId: String?, avatars: List<Avatar>?): String? = ProfileAvatar.color(avatarId, avatars)
-
-        fun of(name: String, avatarId: String?, avatars: List<Avatar>?): AvatarUi = AvatarUi(initial(name), color(avatarId, avatars))
     }
 }
 

@@ -40,6 +40,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import com.hometv.tv.R
+import com.hometv.tv.shared.R as SharedR
 import com.hometv.tv.core.util.Format
 import com.hometv.tv.ui.components.ActionButton
 import com.hometv.tv.ui.components.Artwork
@@ -138,7 +139,7 @@ fun RatingDialog(
                     val up = Modifier.focusProperties { up = starsFocus }
                     val failed = ui.phase == Phase.FAILED
                     ActionButton(
-                        stringResource(if (failed) R.string.action_retry else R.string.rating_save),
+                        stringResource(if (failed) SharedR.string.action_retry else R.string.rating_save),
                         onSave,
                         up.focusRequester(firstButton).testTag(if (failed) "rating_retry" else "rating_save"),
                         enabled = ui.stars != null && !saving,

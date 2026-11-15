@@ -39,6 +39,7 @@ import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.hometv.tv.R
+import com.hometv.tv.shared.R as SharedR
 import com.hometv.tv.core.util.Format
 import com.hometv.tv.ui.components.parseColor
 import com.hometv.tv.ui.ratings.StarRow
@@ -80,7 +81,7 @@ fun RatingsBlock(
                 modifier = Modifier.focusRequester(mine).focusProperties(mineFocus).onDown(onMineDown).semantics { contentDescription = description }.testTag("rating_mine"),
             ) {
                 if (row.mine == null) {
-                    Text(stringResource(R.string.rating_rate))
+                    Text(stringResource(SharedR.string.rating_rate))
                 } else {
                     Text(stringResource(R.string.rating_mine), maxLines = 1)
                     StarRow(
@@ -91,7 +92,7 @@ fun RatingsBlock(
                         emptyColor = DETAIL_EMPTY_STAR,
                         described = false,
                     )
-                    Text(stringResource(R.string.rating_change), maxLines = 1)
+                    Text(stringResource(SharedR.string.rating_change), maxLines = 1)
                 }
             }
             row.average?.let { average ->

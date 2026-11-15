@@ -33,6 +33,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.hometv.tv.R
+import com.hometv.tv.shared.R as SharedR
 import com.hometv.tv.core.util.Format
 import com.hometv.tv.core.util.Stars
 import com.hometv.tv.ui.text.resolve
@@ -183,7 +184,7 @@ private fun androidx.compose.foundation.layout.BoxScope.CardBadges(progress: Flo
     if (progress != null) ProgressStrip(progress, Modifier.align(Alignment.BottomStart))
     if (watched) {
         Icon(
-            painterResource(R.drawable.ic_check),
+            painterResource(SharedR.drawable.ic_check),
             contentDescription = stringResource(R.string.watched),
             modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).size(24.dp).background(HomeTvColors.Primary, RoundedCornerShape(12.dp)).padding(3.dp),
             tint = HomeTvColors.OnPrimary,

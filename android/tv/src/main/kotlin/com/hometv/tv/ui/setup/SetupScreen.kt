@@ -24,6 +24,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.hometv.tv.R
+import com.hometv.tv.shared.R as SharedR
 import com.hometv.tv.ui.common.TvTextField
 import com.hometv.tv.ui.components.ActionButton
 import com.hometv.tv.ui.components.RequestFocus
@@ -55,7 +56,7 @@ fun SetupScreen(vm: SetupViewModel, onConnected: (changed: Boolean) -> Unit, onB
             state.error?.let { Text(it.resolve(), color = HomeTvColors.Error, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) }
             val label = when {
                 state.validating -> stringResource(R.string.setup_validating)
-                state.needsBootstrap -> stringResource(R.string.action_retry)
+                state.needsBootstrap -> stringResource(SharedR.string.action_retry)
                 else -> stringResource(R.string.setup_connect)
             }
             ActionButton(label, vm::submit, Modifier.padding(top = 24.dp).testTag("setup_connect"), enabled = !state.validating)
