@@ -374,6 +374,8 @@ class UnmatchedEntry(BaseModel):
     parsed: Annotated[ParsedEpisodeShape | ParsedFilmShape, Field(discriminator="kind")] | None = (
         None
     )
+    files: list[str]  # relative paths of present files (film: all, show: first 3, file: itself)
+    files_total: int  # present files of the target (>= len(files))
     created_at: UtcDateTime
 
 

@@ -123,6 +123,10 @@ describe('invalidateAfter', () => {
     expect(invalidateAfter({ type: 'trackChoiceChanged', kind: 'show', id: 7 })).toEqual([['episode'], ['home']]);
   });
 
+  it('unmatched entry removed: the unmatched list and the scan status (badge count)', () => {
+    expect(invalidateAfter({ type: 'unmatchedChanged' })).toEqual([['admin', 'unmatched'], ['admin', 'scan']]);
+  });
+
   it('profile create / edit / delete', () => {
     expect(invalidateAfter({ type: 'profilesChanged' })).toEqual([['profiles'], ['me']]);
   });

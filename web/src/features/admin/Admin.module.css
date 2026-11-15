@@ -308,6 +308,12 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+.files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
 @media (max-width: 719px) {
   .row {
     grid-template-columns: 1fr;
@@ -346,6 +352,13 @@
   display: flex;
   gap: var(--space-2);
   margin-left: auto;
+}
+
+/* Square icon-only button (".button" sets min-height 40px). */
+.iconButton {
+  width: 40px;
+  min-width: 40px;
+  padding: 0;
 }
 
 .error {

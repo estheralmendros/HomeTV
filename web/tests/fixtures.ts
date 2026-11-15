@@ -617,6 +617,8 @@ export function unmatchedEntry(overrides: Partial<UnmatchedEntry> = {}): Unmatch
     detail: '2 exact-title candidates: 2316, 2996',
     target: { type: 'show', id: 7, title: 'The Office', year: null },
     parsed: { kind: 'episode', show_title: 'The Office', show_year: null, season: 2, episodes: [3] },
+    files: ['The Office/Season 02/The Office S02E03.mkv'],
+    files_total: 1,
     created_at: T0,
     ...overrides,
   };
@@ -630,6 +632,8 @@ export function unmatchedFileEntry(overrides: Partial<UnmatchedEntry> = {}): Unm
     detail: null,
     target: { type: 'media_file', id: 91, relative_path: 'Kill Bill Vol 1 (2003)/Kill.Bill.Vol.1.2003.cd1.avi' },
     parsed: { kind: 'film', title: 'Kill Bill Vol 1', year: 2003, part: 1 },
+    files: ['Kill Bill Vol 1 (2003)/Kill.Bill.Vol.1.2003.cd1.avi'],
+    files_total: 1,
     ...overrides,
   });
 }

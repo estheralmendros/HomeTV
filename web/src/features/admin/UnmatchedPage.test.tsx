@@ -21,7 +21,7 @@ function serveUnmatched(items: UnmatchedEntry[], overrides: { total?: number } =
 }
 
 const list = () => screen.getByRole('list', { name: 'Sin identificar' });
-const rows = () => within(list()).getAllByRole('listitem');
+const rows = () => within(list()).getAllByRole('listitem').filter((li) => li.parentElement === list());
 const rowOf = (text: string | RegExp) => rows().find((r) => within(r).queryAllByText(text).length > 0)!;
 const query = (call: { url: URL }) => Object.fromEntries(call.url.searchParams);
 
@@ -88,6 +88,59 @@ describe('UnmatchedPage', () => {
     const call = rec.find('GET', '/api/admin/unmatched')[0]!;
     expect(query(call)).toEqual({ page: '1', page_size: '50' });
     expect(call.headers.get('x-admin-token')).toBe('admin-token-1');
+  });
+
+  it('a film entry lists every file, in order, under "Detectado", in a list named "Archivos"', async () => {
+    const paths = ['Tierra Española (1937)/Tierra Española (1937).mkv', 'Tierra Española (1937)/Tierra Española (1937) 4K.mkv'];
+    serveUnmatched([
+      f.unmatchedEntry({
+        id: 20,
+        library: 'films',
+        reason: 'no_tmdb_results',
+        detail: null,
+        target: { type: 'film', id: 12, title: 'Tierra Española', year: 1937 },
+        parsed: { kind: 'film', title: 'Tierra Española', year: 1937, part: null },
+        files: paths,
+        files_total: 2,
+      }),
+    ]);
+    renderUnmatched();
+    await screen.findByRole('list', { name: 'Sin identificar' });
+    const row = rows()[0]!;
+    const files = within(row).getByRole('list', { name: 'Archivos' });
+    expect(within(files).getAllByRole('listitem').map((li) => li.textContent)).toEqual(paths);
+    expect(within(row).queryByText(/^y \d+ más$/)).not.toBeInTheDocument();
+    const detected = within(row).getByText('Detectado:').parentElement!;
+    expect(detected.compareDocumentPosition(files) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(files.compareDocumentPosition(within(row).getByText(/^Añadida el/)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('a show entry with more files than listed shows "y N más"', async () => {
+    const paths = [1, 2, 3].map((n) => `The Office/Season 01/The Office S01E0${n}.mkv`);
+    serveUnmatched([f.unmatchedEntry({ files: paths, files_total: 8 })]);
+    renderUnmatched();
+    await screen.findByRole('list', { name: 'Sin identificar' });
+    const row = rows()[0]!;
+    expect(within(within(row).getByRole('list', { name: 'Archivos' })).getAllByRole('listitem')).toHaveLength(3);
+    expect(within(row).getByText('y 5 más')).toBeInTheDocument();
+  });
+
+  it('a media_file entry shows its path once and no files list', async () => {
+    serveUnmatched([f.unmatchedFileEntry()]);
+    renderUnmatched();
+    await screen.findByRole('list', { name: 'Sin identificar' });
+    const row = rows()[0]!;
+    expect(within(row).getAllByText('Kill Bill Vol 1 (2003)/Kill.Bill.Vol.1.2003.cd1.avi')).toHaveLength(1);
+    expect(within(row).queryByRole('list', { name: 'Archivos' })).not.toBeInTheDocument();
+  });
+
+  it('an entry without files renders no list, and rows() still counts one item per entry', async () => {
+    serveUnmatched([f.unmatchedEntry({ files: [], files_total: 0 }), f.unmatchedEntry({ id: 21 })]);
+    renderUnmatched();
+    await screen.findByRole('list', { name: 'Sin identificar' });
+    expect(rows()).toHaveLength(2);
+    expect(within(rows()[0]!).queryByRole('list', { name: 'Archivos' })).not.toBeInTheDocument();
+    expect(within(rows()[1]!).getByRole('list', { name: 'Archivos' })).toBeInTheDocument();
   });
 
   it('filters by library and reason through the URL and the request params', async () => {
@@ -265,6 +318,79 @@ describe('UnmatchedPage', () => {
       season_number: 1,
       episode_numbers: [1],
     });
+  });
+
+  it('"Quitar" asks for confirmation, sends DELETE and the row and the badge go away', async () => {
+    let removed = false;
+    server.use(
+      http.get(`${API}/admin/unmatched`, () =>
+        HttpResponse.json(f.page(removed ? [f.unmatchedEntry()] : [FILM_TARGET, f.unmatchedEntry()], { page_size: 50 })),
+      ),
+      http.get(`${API}/admin/scan`, () => HttpResponse.json(f.scanStatus({ unmatched_count: removed ? 1 : 2 }))),
+      http.delete(`${API}/admin/unmatched/:id`, () => {
+        removed = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    const rec = recordRequests();
+    const { user } = renderUnmatched();
+    await screen.findByRole('list', { name: 'Sin identificar' });
+    expect(await screen.findByRole('link', { name: 'Sin identificar 2' })).toBeInTheDocument();
+    await user.click(within(rows()[0]!).getByRole('button', { name: 'Quitar de la lista: Dune Part 3 (2027)' }));
+    const dialog = await screen.findByRole('dialog', { name: '¿Quitar de la lista?' });
+    expect(
+      within(dialog).getByText(
+        'La entrada desaparece de esta lista; no se borra ningún archivo ni contenido. Si el problema sigue ahí, volverá a aparecer en el próximo escaneo.',
+      ),
+    ).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Quitar' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(rows()).toHaveLength(1));
+    expect(screen.queryByText('Dune Part 3 (2027)')).not.toBeInTheDocument();
+    expect(rec.find('DELETE', '/api/admin/unmatched/13')).toHaveLength(1);
+    expect(await screen.findByRole('link', { name: 'Sin identificar 1' })).toBeInTheDocument();
+  });
+
+  it('the row\'s remove button is a trash icon: no visible text, a tooltip, and the full accessible name', async () => {
+    serveUnmatched([FILM_TARGET]);
+    renderUnmatched();
+    await screen.findByRole('list', { name: 'Sin identificar' });
+    const remove = within(rows()[0]!).getByRole('button', { name: 'Quitar de la lista: Dune Part 3 (2027)' });
+    expect(remove).toHaveTextContent(/^$/);
+    expect(remove).toHaveAttribute('title', 'Quitar de la lista');
+    expect(remove.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+  });
+
+  it('"Quitar" is available on probe_failed and file rows, named after the file; Cancelar sends nothing', async () => {
+    serveUnmatched([PROBE_FAILED]);
+    const rec = recordRequests();
+    const { user } = renderUnmatched();
+    await screen.findByRole('list', { name: 'Sin identificar' });
+    const remove = within(rows()[0]!).getByRole('button', { name: 'Quitar de la lista: broken.mkv' });
+    expect(remove).toBeEnabled();
+    await user.click(remove);
+    const dialog = await screen.findByRole('dialog', { name: '¿Quitar de la lista?' });
+    await user.click(within(dialog).getByRole('button', { name: 'Cancelar' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await rec.settled();
+    expect(rec.find('DELETE', /unmatched/)).toHaveLength(0);
+  });
+
+  it('"Quitar": a not_found answer counts as removed; another error stays in the dialog', async () => {
+    let status = 500;
+    server.use(
+      http.delete(`${API}/admin/unmatched/:id`, () => apiError(status, status === 404 ? 'not_found' : 'internal_error')),
+    );
+    const { user } = renderUnmatched();
+    await screen.findByRole('list', { name: 'Sin identificar' });
+    await user.click(within(rows()[0]!).getByRole('button', { name: 'Quitar de la lista: The Office' }));
+    let dialog = await screen.findByRole('dialog', { name: '¿Quitar de la lista?' });
+    await user.click(within(dialog).getByRole('button', { name: 'Quitar' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Se ha producido un error inesperado (internal_error).');
+    status = 404;
+    dialog = screen.getByRole('dialog', { name: '¿Quitar de la lista?' });
+    await user.click(within(dialog).getByRole('button', { name: 'Quitar' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
   it('empty: "Todo está identificado." and, with filters, "No hay entradas sin identificar con estos filtros."', async () => {

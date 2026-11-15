@@ -56,7 +56,7 @@ def test_migration_creates_every_table(db):
 def test_migration_is_at_head_and_idempotent(db):
     run_migrations(db)
     with db.read_engine.connect() as conn:
-        assert MigrationContext.configure(conn).get_current_revision() == HEAD_REVISION == "0007"
+        assert MigrationContext.configure(conn).get_current_revision() == HEAD_REVISION == "0008"
 
 
 @pytest.mark.filterwarnings("ignore:.*expression-based index:UserWarning")
@@ -1123,5 +1123,40 @@ def test_upgrade_from_0006_keeps_profile_rows_and_downgrade_drops_choices(tmp_pa
         with database.read_session() as s:
             for table in tables:
                 assert s.scalar(text(f"SELECT count(*) FROM {table}")) == 1, table
+    finally:
+        database.dispose()
+
+
+def test_upgrade_from_0007_leaves_parser_version_null_and_downgrade_drops_it(tmp_path):
+    from alembic import command
+
+    from hometv.db.engine import alembic_config
+
+    database = Database(tmp_path / "old.db")
+    try:
+        cfg = alembic_config(database)
+        with database.write_engine.connect() as conn:
+            cfg.attributes["connection"] = conn
+            command.upgrade(cfg, "0007")
+            conn.exec_driver_sql("INSERT INTO library (id, type) VALUES (1, 'films')")
+            conn.exec_driver_sql(
+                "INSERT INTO media_file (id, library_id, root_path, path, relative_path,"
+                " size_bytes, mtime_ns) VALUES (1, 1, '/m', '/m/a.mkv', 'a.mkv', 1, 1)"
+            )
+            conn.commit()
+        run_migrations(database)
+        with database.write_session() as s:
+            row = s.get(m.MediaFile, 1)
+            assert row is not None
+            assert row.parser_version is None
+            row.parser_version = 2
+        with database.write_engine.connect() as conn:
+            cfg.attributes["connection"] = conn
+            command.downgrade(cfg, "0007")
+            conn.commit()
+        insp = inspect(database.read_engine)
+        assert "parser_version" not in {c["name"] for c in insp.get_columns("media_file")}
+        with database.read_session() as s:
+            assert s.scalar(text("SELECT count(*) FROM media_file")) == 1
     finally:
         database.dispose()
