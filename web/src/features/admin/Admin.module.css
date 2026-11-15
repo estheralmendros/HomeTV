@@ -354,6 +354,13 @@
   margin-left: auto;
 }
 
+/* Square icon-only button (".button" sets min-height 40px). */
+.iconButton {
+  width: 40px;
+  min-width: 40px;
+  padding: 0;
+}
+
 .error {
   margin: 0;
   color: var(--color-danger);

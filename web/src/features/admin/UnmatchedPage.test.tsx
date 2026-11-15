@@ -351,6 +351,16 @@ describe('UnmatchedPage', () => {
     expect(await screen.findByRole('link', { name: 'Sin identificar 1' })).toBeInTheDocument();
   });
 
+  it('the row\'s remove button is a trash icon: no visible text, a tooltip, and the full accessible name', async () => {
+    serveUnmatched([FILM_TARGET]);
+    renderUnmatched();
+    await screen.findByRole('list', { name: 'Sin identificar' });
+    const remove = within(rows()[0]!).getByRole('button', { name: 'Quitar de la lista: Dune Part 3 (2027)' });
+    expect(remove).toHaveTextContent(/^$/);
+    expect(remove).toHaveAttribute('title', 'Quitar de la lista');
+    expect(remove.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+  });
+
   it('"Quitar" is available on probe_failed and file rows, named after the file; Cancelar sends nothing', async () => {
     serveUnmatched([PROBE_FAILED]);
     const rec = recordRequests();

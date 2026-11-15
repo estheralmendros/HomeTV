@@ -1,6 +1,6 @@
 // /admin/unmatched: filterable, paginated list of unmatched entries with a
 // parsed summary, "Corregir identificación" (film/show rows → match, media_file rows → resolve) and
-// "Quitar" (confirmed DELETE of the entry only, for entries stuck after a file was removed or renamed).
+// "Quitar" (a square trash-icon button, named by aria-label; confirmed DELETE of the entry only, for entries stuck after a file was removed or renamed).
 // Filters and page live in the URL (`?library=&reason=&page=`).
 import { useQueryClient } from '@tanstack/react-query';
 import { useId, useState } from 'react';
@@ -267,11 +267,37 @@ function UnmatchedRow({ entry, onFix, onRemove }: { entry: UnmatchedEntry; onFix
             </span>
           )}
         </span>
-        <button type="button" className="button" aria-label={T.removeLabel(entryName(entry))} onClick={onRemove}>
-          {T.removeAction}
+        <button
+          type="button"
+          className={`button ${styles.iconButton}`}
+          aria-label={T.removeLabel(entryName(entry))}
+          title={T.removeHint}
+          onClick={onRemove}
+        >
+          <TrashIcon />
         </button>
       </span>
     </li>
+  );
+}
+
+/** Inline SVG trash bin (decorative: its button carries the name). */
+function TrashIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={20}
+      height={20}
+      aria-hidden="true"
+      focusable="false"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" />
+    </svg>
   );
 }
 

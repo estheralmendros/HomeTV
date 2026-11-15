@@ -365,6 +365,7 @@ export const S = {
       createdAt: (date: string) => `Añadida el ${date}`,
       removeAction: 'Quitar',
       removeLabel: (name: string) => `Quitar de la lista: ${name}`,
+      removeHint: 'Quitar de la lista',
       removeTitle: '¿Quitar de la lista?',
       removeBody:
         'La entrada desaparece de esta lista; no se borra ningún archivo ni contenido. Si el problema sigue ahí, volverá a aparecer en el próximo escaneo.',
