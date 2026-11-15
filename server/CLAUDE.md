@@ -47,7 +47,8 @@ Python 3.12 uv project (FastAPI, SQLAlchemy 2 sync, Alembic, guessit). Package `
 - `metadata/`: `tmdb.py` (`TmdbClient`: limiter, retries, language fallback, `person_details`), `matching.py` (pure
   `choose_match`), `enrich.py` (`Enricher`; `merge_items` moves every per-profile row through `_merge_per_profile` with
   one keep rule per table; admin `match_item`/`resolve_unmatched`), `artwork.py` (`ArtworkCache`, lazy sizes).
-- `admin.py` (unmatched list with `files`/`files_total` per target, batched; `TmdbProxy`), `profiles.py` (PIN hashing,
+- `admin.py` (unmatched list with `files`/`files_total` per target, batched; `delete_unmatched` drops one entry
+  only; `TmdbProxy`), `profiles.py` (PIN hashing,
   `TokenService` with injectable `clock`, `UnlockLimiter`, profile CRUD).
 - `watch.py`: pure watched rules (90 %, last part, in-progress, `next_up`, `last_episode`/`is_title_finished`) +
   `report_progress` / `mark_watched`. They return a `rating_prompt` only when the request finishes the title (film, or

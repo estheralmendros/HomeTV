@@ -320,6 +320,69 @@ describe('UnmatchedPage', () => {
     });
   });
 
+  it('"Quitar" asks for confirmation, sends DELETE and the row and the badge go away', async () => {
+    let removed = false;
+    server.use(
+      http.get(`${API}/admin/unmatched`, () =>
+        HttpResponse.json(f.page(removed ? [f.unmatchedEntry()] : [FILM_TARGET, f.unmatchedEntry()], { page_size: 50 })),
+      ),
+      http.get(`${API}/admin/scan`, () => HttpResponse.json(f.scanStatus({ unmatched_count: removed ? 1 : 2 }))),
+      http.delete(`${API}/admin/unmatched/:id`, () => {
+        removed = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    const rec = recordRequests();
+    const { user } = renderUnmatched();
+    await screen.findByRole('list', { name: 'Sin identificar' });
+    expect(await screen.findByRole('link', { name: 'Sin identificar 2' })).toBeInTheDocument();
+    await user.click(within(rows()[0]!).getByRole('button', { name: 'Quitar de la lista: Dune Part 3 (2027)' }));
+    const dialog = await screen.findByRole('dialog', { name: '¿Quitar de la lista?' });
+    expect(
+      within(dialog).getByText(
+        'La entrada desaparece de esta lista; no se borra ningún archivo ni contenido. Si el problema sigue ahí, volverá a aparecer en el próximo escaneo.',
+      ),
+    ).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Quitar' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(rows()).toHaveLength(1));
+    expect(screen.queryByText('Dune Part 3 (2027)')).not.toBeInTheDocument();
+    expect(rec.find('DELETE', '/api/admin/unmatched/13')).toHaveLength(1);
+    expect(await screen.findByRole('link', { name: 'Sin identificar 1' })).toBeInTheDocument();
+  });
+
+  it('"Quitar" is available on probe_failed and file rows, named after the file; Cancelar sends nothing', async () => {
+    serveUnmatched([PROBE_FAILED]);
+    const rec = recordRequests();
+    const { user } = renderUnmatched();
+    await screen.findByRole('list', { name: 'Sin identificar' });
+    const remove = within(rows()[0]!).getByRole('button', { name: 'Quitar de la lista: broken.mkv' });
+    expect(remove).toBeEnabled();
+    await user.click(remove);
+    const dialog = await screen.findByRole('dialog', { name: '¿Quitar de la lista?' });
+    await user.click(within(dialog).getByRole('button', { name: 'Cancelar' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await rec.settled();
+    expect(rec.find('DELETE', /unmatched/)).toHaveLength(0);
+  });
+
+  it('"Quitar": a not_found answer counts as removed; another error stays in the dialog', async () => {
+    let status = 500;
+    server.use(
+      http.delete(`${API}/admin/unmatched/:id`, () => apiError(status, status === 404 ? 'not_found' : 'internal_error')),
+    );
+    const { user } = renderUnmatched();
+    await screen.findByRole('list', { name: 'Sin identificar' });
+    await user.click(within(rows()[0]!).getByRole('button', { name: 'Quitar de la lista: The Office' }));
+    let dialog = await screen.findByRole('dialog', { name: '¿Quitar de la lista?' });
+    await user.click(within(dialog).getByRole('button', { name: 'Quitar' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Se ha producido un error inesperado (internal_error).');
+    status = 404;
+    dialog = screen.getByRole('dialog', { name: '¿Quitar de la lista?' });
+    await user.click(within(dialog).getByRole('button', { name: 'Quitar' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
   it('empty: "Todo está identificado." and, with filters, "No hay entradas sin identificar con estos filtros."', async () => {
     serveUnmatched([]);
     const { unmount } = renderUnmatched();

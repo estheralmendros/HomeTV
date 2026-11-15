@@ -100,6 +100,8 @@ export type InvalidationEvent =
   | { type: 'watchlistChanged'; kind: WatchlistKind; id: number }
   /** PUT /api/admin/libraries success (folders saved, a `libraries` scan may have started). */
   | { type: 'librariesChanged' }
+  /** DELETE /api/admin/unmatched/{id} success (or `not_found`: already gone). */
+  | { type: 'unmatchedChanged' }
   /** Profile create / edit / delete. */
   | { type: 'profilesChanged' }
   /** PUT /api/track-choices/... answered 204 (the remembered audio/subtitle pick). */
@@ -168,6 +170,8 @@ export function invalidateAfter(event: InvalidationEvent): QueryKey[] {
       return [queryKeys.title(event.kind, event.id), queryKeys.watchlistAll()];
     case 'librariesChanged':
       return [queryKeys.admin.libraries(), queryKeys.admin.scan()];
+    case 'unmatchedChanged':
+      return [queryKeys.admin.unmatchedAll(), queryKeys.admin.scan()];
     case 'profilesChanged':
       return [queryKeys.profiles(), queryKeys.me()];
     case 'trackChoiceChanged':

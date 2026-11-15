@@ -120,6 +120,7 @@ ADMIN_ROUTES = [
         "/api/admin/unmatched/1/resolve",
         {"tmdb_id": 1},
     ),
+    ("DELETE", "/api/admin/unmatched/{entry_id}", "/api/admin/unmatched/1", None),
     ("GET", "/api/admin/tmdb/search", "/api/admin/tmdb/search?type=movie&q=dune", None),
     ("GET", "/api/admin/tmdb/tv/{tmdb_id}/seasons", "/api/admin/tmdb/tv/2316/seasons", None),
     (
@@ -436,6 +437,23 @@ async def test_resolve_errors_via_api(client, db, admin):
     assert _err(r) == (409, "not_a_file_entry")
     r = await client.post(f"/api/admin/unmatched/{entry_id}/resolve", json={}, headers=h)
     assert _err(r) == (422, "validation_error")
+
+
+async def test_delete_unmatched_removes_only_the_entry(client, db, admin):
+    film_id, show_id = _seed_unmatched(db)
+    with db.read_session() as s:
+        entry_id = s.scalar(select(m.UnmatchedEntry.id).where(m.UnmatchedEntry.film_id == film_id))
+    h = admin.admin_headers
+    r = await client.delete(f"/api/admin/unmatched/{entry_id}", headers=h)
+    assert r.status_code == 204 and r.content == b""
+    page = (await client.get("/api/admin/unmatched", headers=h)).json()
+    assert [i["target"]["id"] for i in page["items"]] == [show_id]
+    assert (await client.get("/api/admin/scan", headers=h)).json()["unmatched_count"] == 1
+    with db.read_session() as s:
+        assert s.get(m.Film, film_id) is not None
+        assert s.get(m.Show, show_id) is not None
+    r = await client.delete(f"/api/admin/unmatched/{entry_id}", headers=h)
+    assert _err(r) == (404, "not_found")
 
 
 # --- TMDB proxies --------------------------------------------------------------------------------

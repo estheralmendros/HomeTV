@@ -2,6 +2,8 @@
 
 - ``list_unmatched(session, ...)`` / ``unmatched_count(session)``: sync, for ``def`` handlers
   with a ``ReadSession``. Entries of absent files (``missing_since`` set) are excluded.
+- ``delete_unmatched(db, entry_id)``: removes one entry, never its film/show/file; 404
+  ``not_found``.
 - ``TmdbProxy``: ``search`` / ``tv_seasons`` / ``tv_season`` (season lookups cached in memory
   10 min, LRU 100). Raise ``ApiError`` 404 ``tmdb_not_found`` / 422 ``validation_error`` /
   502 ``tmdb_unavailable`` / 503 ``tmdb_not_configured``.
@@ -29,6 +31,7 @@ from hometv.api.schemas import (
     UnmatchedEntry,
 )
 from hometv.db import models as m
+from hometv.db.engine import Database
 from hometv.metadata.artwork import image, tmdb_file_name
 from hometv.metadata.matching import result_year
 from hometv.metadata.tmdb import TmdbClient, TmdbError
@@ -209,6 +212,15 @@ def list_unmatched(
             )
         )
     return Page[UnmatchedEntry](items=items, page=page, page_size=page_size, total=total)
+
+
+def delete_unmatched(db: Database, entry_id: int) -> None:
+    """``DELETE /api/admin/unmatched/{id}``: drop the entry only; its target rows stay as is."""
+    with db.write_session() as session:
+        entry = session.get(m.UnmatchedEntry, entry_id)
+        if entry is None:
+            raise ApiError(404, "not_found", f"Unmatched entry {entry_id} not found")
+        session.delete(entry)
 
 
 # --- TMDB proxies --------------------------------------------------------------------------------

@@ -363,6 +363,11 @@ export const S = {
       filesLabel: 'Archivos',
       filesMore: (n: number) => `y ${countFormat.format(n)} más`,
       createdAt: (date: string) => `Añadida el ${date}`,
+      removeAction: 'Quitar',
+      removeLabel: (name: string) => `Quitar de la lista: ${name}`,
+      removeTitle: '¿Quitar de la lista?',
+      removeBody:
+        'La entrada desaparece de esta lista; no se borra ningún archivo ni contenido. Si el problema sigue ahí, volverá a aparecer en el próximo escaneo.',
       pageOf: (page: number, pages: number) => `Página ${countFormat.format(page)} de ${countFormat.format(pages)}`,
       pagination: 'Paginación',
       empty: 'Todo está identificado.',

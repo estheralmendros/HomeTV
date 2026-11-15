@@ -121,6 +121,7 @@ export const handlers = [
   http.post(`${API}/admin/films/:id/match`, ({ params }) => HttpResponse.json(f.filmDetail({ id: Number(params.id) }))),
   http.post(`${API}/admin/shows/:id/match`, ({ params }) => HttpResponse.json(f.showDetail({ id: Number(params.id) }))),
   http.post(`${API}/admin/unmatched/:id/resolve`, () => HttpResponse.json({ target: { type: 'film', id: 12 } })),
+  http.delete(`${API}/admin/unmatched/:id`, () => new HttpResponse(null, { status: 204 })),
   http.post(`${API}/admin/profiles`, async ({ request }) => {
     const body = (await request.json()) as { name: string; avatar_id: string; is_admin: boolean };
     return HttpResponse.json(f.profile({ id: 3, name: body.name, avatar_id: body.avatar_id, is_admin: body.is_admin }), {

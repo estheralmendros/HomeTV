@@ -216,6 +216,17 @@ def list_unmatched(
     )
 
 
+@router.delete(
+    "/unmatched/{entry_id}",
+    status_code=204,
+    response_class=Response,
+    responses={404: {"model": ErrorResponse, "description": "not_found"}},
+)
+def delete_unmatched(entry_id: int, db: Db) -> Response:
+    admin_service.delete_unmatched(db, entry_id)
+    return Response(status_code=204)
+
+
 @router.post(
     "/unmatched/{entry_id}/resolve",
     response_model=ResolveResponse,
