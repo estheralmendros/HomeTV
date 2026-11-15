@@ -14,7 +14,7 @@ val releaseVersionCode = releaseVersion.split(".").map(String::toInt).let { (maj
     major * 10_000 + minor * 100 + patch
 }
 
-// Release signing: tv/keystore.properties (gitignored).
+// Release signing: android/keystore.properties (gitignored).
 val keystoreFile = rootProject.file("keystore.properties")
 val keystore = Properties().apply { if (keystoreFile.exists()) keystoreFile.inputStream().use(::load) }
 
@@ -100,6 +100,9 @@ android {
     // Compose focus/navigation tests shared by Robolectric (JVM, `src/test`) and the emulator (`androidTest`).
     sourceSets {
         getByName("test").kotlin.srcDir("src/sharedTest/kotlin")
+        // Temporary (until `:testing`): FakeVlcPort and FakePlayerController, shared with the `:playback` tests.
+        getByName("test").kotlin.srcDir("../playback/src/testFakes/kotlin")
+        getByName("androidTest").kotlin.srcDir("../playback/src/testFakes/kotlin")
         getByName("androidTest").kotlin.srcDir("src/sharedTest/kotlin")
     }
 }
@@ -119,14 +122,15 @@ gradle.taskGraph.whenReady {
     val needsSigning = allTasks.any { it.project == project && it.name.contains("Release") && it.name.startsWith("package") }
     if (needsSigning && !keystoreFile.exists()) {
         throw GradleException(
-            "Missing tv/keystore.properties: copy keystore.properties.example and fill in storeFile, " +
-                "storePassword, keyAlias and keyPassword (see tv/README.md).",
+            "Missing android/keystore.properties: copy keystore.properties.example and fill in storeFile, " +
+                "storePassword, keyAlias and keyPassword (see android/README.md).",
         )
     }
 }
 
 dependencies {
     implementation(project(":core"))
+    implementation(project(":playback"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.compose.bom))
@@ -138,12 +142,6 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.kotlinx.coroutines.android)
-    implementation(libs.media3.exoplayer)
-    implementation(libs.media3.exoplayer.hls)
-    implementation(libs.media3.datasource.okhttp)
-    implementation(libs.media3.ui)
-    implementation(libs.media3.session)
-    implementation(libs.libvlc.all)
     implementation(libs.coil.compose)
 
     testImplementation(testFixtures(project(":core")))

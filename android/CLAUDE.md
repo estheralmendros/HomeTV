@@ -27,7 +27,11 @@ root `CLAUDE.md`.
 - `util/`: `ServerUrl`, `Format` (es-ES numbers and dates), `Stars`, `relativeTime`, `LanguageNames`.
 - `src/testFixtures`: `FakeHomeTvApi`, `TestServer` (MockWebServer routing), `F` media files.
 
-`app/` (`com.hometv.tv`):
+`playback/` (Android library, package `com.hometv.tv.playback`): the engines below (Media3, libVLC), `AndroidPlayback`
+(the one libVLC construction), `VideoSurface` (the video composables) and `consumer-rules.pro` (libVLC and
+`Player$Listener` R8 keeps). `FakeVlcPort`/`FakePlayerController` sit in `playback/src/testFakes` until `:testing`.
+
+`tv/` (was `app/`, `com.hometv.tv`):
 
 - `MainActivity`: offers every key to `KeyDispatch` before Compose focus; screens register a `KeyEventInterceptor`.
 - `di/AppContainer`: manual DI (store, `clients()` rebuilt per server URL, repositories, `appScope`, `account`, player
@@ -101,5 +105,5 @@ Tests:
   (`robolectric.graphicsMode=NATIVE` in `app/build.gradle.kts`): real text metrics, so layout and focus
   bugs that only show on a device fail here too. Drive the player through `FakePlayerController`; never touch
   ExoPlayer outside `ExoPlayerController`, nor libVLC's `MediaPlayer`/`Media` outside `LibVlcPort`: libVLC types live
-  only in `app/…/playback/` (`LibVlcPort`, the `LibVlcProvider` factory), `AppContainer.create` and `PlayerScreen.VlcSurface`.
+  only in `:playback` (`LibVlcPort`, `AndroidPlayback.create`, `VideoSurface`).
   JVM tests use `FakeVlcPort` (libVLC's native code can't load on Robolectric).

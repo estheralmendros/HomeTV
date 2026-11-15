@@ -25,7 +25,7 @@ dependencies {
     api(libs.retrofit)
     implementation(libs.retrofit.converter.kotlinx.serialization)
 
-    // Test fakes shared with :app tests (FakeHomeTvApi, TestServer, Fixtures, F, UsLocale).
+    // Test fakes shared with :tv tests (FakeHomeTvApi, TestServer, Fixtures, F, UsLocale).
     testFixturesApi(libs.okhttp.mockwebserver)
     testFixturesApi(platform(libs.junit.bom))
     testFixturesApi(libs.junit.jupiter.api)
@@ -47,7 +47,7 @@ tasks.test {
     useJUnitPlatform()
     // BrandAssetsTest checks the app's banner and launcher icon on a plain JVM (javax.imageio); the path
     // comes from Gradle, not from the working directory, and the files are inputs for up-to-date checks.
-    val appRes = rootProject.file("app/src/main/res")
+    val appRes = rootProject.file("tv/src/main/res")
     inputs.files(appRes.resolve("drawable-xhdpi/banner.png"), appRes.resolve("drawable/ic_launcher_foreground.xml"), appRes.resolve("values/colors.xml"))
         .withPropertyName("brandAssets").withPathSensitivity(PathSensitivity.RELATIVE)
     systemProperty("hometv.appRes", appRes.absolutePath)

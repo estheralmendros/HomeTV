@@ -10,11 +10,11 @@ import org.junit.jupiter.api.Test
  * notice names the exact pinned version, so a bump in `libs.versions.toml` without a notice update fails.
  */
 class ThirdPartyNoticesTest {
-    /** The working directory is the app module (Gradle) or the `tv/` root (some IDE runs). */
+    /** The working directory is the `:playback` module (Gradle) or the `android/` root (some IDE runs). */
     private fun file(fromApp: String, fromRoot: String): File =
         listOf(File(fromApp), File(fromRoot)).first { it.isFile }
 
-    private val notice = file("src/main/res/raw/third_party_notices.txt", "app/src/main/res/raw/third_party_notices.txt").readText()
+    private val notice = file("src/main/res/raw/third_party_notices.txt", "playback/src/main/res/raw/third_party_notices.txt").readText()
 
     private val libVlcVersion: String =
         Regex("""^libvlc\s*=\s*"([^"]+)"""", RegexOption.MULTILINE)

@@ -1,7 +1,7 @@
 # HomeTV — developer commands (server, web, tv).
 SERVER_DIR := server
 WEB_DIR := web
-TV_DIR := tv
+ANDROID_DIR := android
 DEV_DATA_DIR ?= $(CURDIR)/.dev-data
 
 # Android toolchain for the tv targets: defaults only when unset (or empty) in the environment.
@@ -73,10 +73,10 @@ compose-config: ## Validate deploy/docker-compose.yml with the example env
 	docker compose -f deploy/docker-compose.yml --env-file deploy/.env.example config -q
 
 tv-test: ## TV app JVM tests (core: JUnit 5 + MockWebServer + coroutines-test; app unit tests)
-	cd $(TV_DIR) && ./gradlew :core:test :app:testDebugUnitTest
+	cd $(ANDROID_DIR) && ./gradlew :core:test :playback:testDebugUnitTest :tv:testDebugUnitTest
 
 tv-lint: ## TV app Android lint (HardcodedText/SetTextI18n are errors)
-	cd $(TV_DIR) && ./gradlew :app:lintDebug
+	cd $(ANDROID_DIR) && ./gradlew :tv:lintDebug :playback:lintDebug
 
-tv-build: ## Signed release APK (needs tv/keystore.properties) -> tv/app/build/outputs/apk/release/
-	cd $(TV_DIR) && ./gradlew :app:assembleRelease
+tv-build: ## Signed release APK (needs android/keystore.properties) -> android/tv/build/outputs/apk/release/
+	cd $(ANDROID_DIR) && ./gradlew :tv:assembleRelease

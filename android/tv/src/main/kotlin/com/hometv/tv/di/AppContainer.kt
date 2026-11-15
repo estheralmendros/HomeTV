@@ -2,8 +2,6 @@ package com.hometv.tv.di
 
 import android.content.Context
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import coil.ImageLoader
 import coil.disk.DiskCache
@@ -55,14 +53,9 @@ import com.hometv.tv.data.SignOut
 import com.hometv.tv.data.SubtitleStyleStore
 import com.hometv.tv.data.TrackChoiceMemory
 import com.hometv.tv.playback.AndroidCodecInventory
+import com.hometv.tv.playback.AndroidPlayback
 import com.hometv.tv.playback.CodecSource
-import com.hometv.tv.playback.ExoPlayerController
-import com.hometv.tv.playback.LibVlcPort
-import com.hometv.tv.playback.LibVlcProvider
 import com.hometv.tv.playback.VlcAvailability
-import com.hometv.tv.playback.VlcOptions
-import com.hometv.tv.playback.VlcPlayerController
-import com.hometv.tv.playback.PlayerFactory
 import com.hometv.tv.playback.SubtitleFileCache
 import com.hometv.tv.playback.SubtitleStore
 import com.hometv.tv.core.playback.PlayerController
@@ -101,7 +94,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
-import org.videolan.libvlc.LibVLC
 
 data class AppConfig(
     val versionName: String,
@@ -392,11 +384,7 @@ class AppContainer(
             val subtitles = SubtitleFileCache(File(app.cacheDir, "subtitles"))
             appScope.launch { subtitles.clear() } // nothing survives a process
             val playerLog: (String, Throwable?) -> Unit = { msg, e -> runCatching { Log.i("HomeTvPlayer", msg, e) } }
-            // Nothing is created here: LibVLC loads its native code at the first VLC open (prd2 FR-5).
-            val heightPx = app.resources.displayMetrics.heightPixels
-            // One LibVLC per option list (the subtitle style is in the instance options); a restyle releases the old one.
-            val libVlc = LibVlcProvider<LibVLC>(Build.SUPPORTED_ABIS.toList(), { opts -> LibVLC(app, ArrayList(opts)) }, { it.release() }, playerLog)
-            val mainHandler = Handler(Looper.getMainLooper())
+            val playback = AndroidPlayback.create(app, token = { store.session.value.token }, log = playerLog, displayHeightPx = { app.resources.displayMetrics.heightPixels })
             return AppContainer(
                 store = store,
                 homeCache = HomeCache(File(app.filesDir, "home_cache")),
@@ -405,22 +393,11 @@ class AppContainer(
                 clientsFactory = { url -> ApiClientFactory.create(url, token = { store.session.value.token }, userAgent = userAgent, base = base) },
                 validationClient = ApiClientFactory.validationClient(userAgent, base),
                 codecs = AndroidCodecInventory(app, appScope),
-                playerControllers = { engine, streamClient, look ->
-                    when (engine) {
-                        PlaybackEngine.EXO -> ExoPlayerController(PlayerFactory.create(app, streamClient))
-                        PlaybackEngine.VLC -> VlcPlayerController(
-                            portFactory = { l -> libVlc.getOrOld(VlcOptions.libVlc(heightPx, l)).let { (lib, applied) -> LibVlcPort(lib) to applied } },
-                            token = { store.session.value.token },
-                            log = playerLog,
-                            post = { block -> mainHandler.post(block) },
-                            look = look,
-                        )
-                    }
-                },
-                vlcAvailability = libVlc.availability,
+                playerControllers = playback.controllers,
+                vlcAvailability = playback.vlcAvailability,
                 subtitleCache = subtitles,
                 enginePrefs = enginePrefs,
-                notices = { withContext(Dispatchers.IO) { app.resources.openRawResource(R.raw.third_party_notices).bufferedReader().use { it.readText() } } },
+                notices = { withContext(Dispatchers.IO) { app.resources.openRawResource(com.hometv.tv.playback.R.raw.third_party_notices).bufferedReader().use { it.readText() } } },
             )
         }
     }

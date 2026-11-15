@@ -15,7 +15,7 @@ import com.hometv.tv.core.playback.PlaybackEngine
 import com.hometv.tv.testing.FakePlayerController
 import com.hometv.tv.testing.UiTestBase
 import com.hometv.tv.testing.UiTestPlatform
-import com.hometv.tv.ui.player.ExoCaptionApplied
+import com.hometv.tv.playback.ExoCaptionApplied
 import kotlin.math.max
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals

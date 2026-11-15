@@ -2,7 +2,7 @@
 # HomeTV: local demo environment (server + web app, optionally the TV app).
 #
 # Usage: create-environment.sh [--tv]
-#   --tv  also builds the TV debug APK (tv/, JDK 21 + Android SDK) and installs it with
+#   --tv  also builds the TV debug APK (android/, JDK 21 + Android SDK) and installs it with
 #         `adb install -r` on every device `adb devices` lists (a TV over `adb connect`, or an
 #         emulator). Without --tv the summary still prints the commands to do it by hand.
 #
@@ -105,14 +105,14 @@ export JAVA_HOME="${JAVA_HOME:-/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/
 export ANDROID_HOME="${ANDROID_HOME:-/opt/homebrew/share/android-commandlinetools}"
 ADB="$ANDROID_HOME/platform-tools/adb"
 command -v adb >/dev/null 2>&1 && ADB="$(command -v adb)"
-TV_APK="$REPO_ROOT/tv/app/build/outputs/apk/debug/app-debug.apk"
+TV_APK="$REPO_ROOT/android/tv/build/outputs/apk/debug/tv-debug.apk"
 TV_INSTALLED=""
 if [[ "$BUILD_TV" == "1" ]]; then
   [[ -x "$JAVA_HOME/bin/java" ]] || die "--tv needs JDK 21 at \$JAVA_HOME ($JAVA_HOME): brew install openjdk@21"
-  [[ -d "$ANDROID_HOME/platforms" ]] || die "--tv needs the Android SDK at \$ANDROID_HOME ($ANDROID_HOME): see tv/README.md"
-  [[ -f "$REPO_ROOT/tv/local.properties" ]] || echo "sdk.dir=$ANDROID_HOME" > "$REPO_ROOT/tv/local.properties"
-  log "Building the TV debug APK (tv/: ./gradlew :app:assembleDebug)"
-  (cd "$REPO_ROOT/tv" && ./gradlew --quiet :app:assembleDebug >"$ENV_DIR/tv-build.log" 2>&1) \
+  [[ -d "$ANDROID_HOME/platforms" ]] || die "--tv needs the Android SDK at \$ANDROID_HOME ($ANDROID_HOME): see android/README.md"
+  [[ -f "$REPO_ROOT/android/local.properties" ]] || echo "sdk.dir=$ANDROID_HOME" > "$REPO_ROOT/android/local.properties"
+  log "Building the TV debug APK (android/: ./gradlew :tv:assembleDebug)"
+  (cd "$REPO_ROOT/android" && ./gradlew --quiet :tv:assembleDebug >"$ENV_DIR/tv-build.log" 2>&1) \
     || { tail -30 "$ENV_DIR/tv-build.log"; die "TV build failed (log: $ENV_DIR/tv-build.log)"; }
   if [[ -x "$ADB" ]]; then
     for serial in $("$ADB" devices | awk 'NR > 1 && $2 == "device" { print $1 }'); do
@@ -275,7 +275,7 @@ cat <<EOF
    export ADMIN_TOKEN=$ADMIN_TOKEN     # expires in 15 min; re-unlock with POST /api/admin/unlock
 
  TV app
-   APK           $( [[ -f "$TV_APK" ]] && echo "$TV_APK" || echo "not built (rerun with --tv, or: cd tv && ./gradlew :app:assembleDebug)" )
+   APK           $( [[ -f "$TV_APK" ]] && echo "$TV_APK" || echo "not built (rerun with --tv, or: cd android && ./gradlew :tv:assembleDebug)" )
    Installed on  ${TV_INSTALLED:-no device (adb connect <tv-ip>:5555, then adb install -r <apk>)}
    Server URL    emulator: http://10.0.2.2:$PORT  (debug builds only; 10.0.2.2 is this Mac's loopback)
                  real TV:  https://<this-mac>.<tailnet>.ts.net  (run: tailscale serve --bg $PORT;

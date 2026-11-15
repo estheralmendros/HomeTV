@@ -1,7 +1,7 @@
 ﻿package com.hometv.tv.testing
 
-import com.hometv.tv.ui.player.ExoCaptionApplied
-import com.hometv.tv.ui.player.LocalExoCaptionProbe
+import com.hometv.tv.playback.ExoCaptionApplied
+import com.hometv.tv.playback.LocalExoCaptionProbe
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.input.key.Key
@@ -37,7 +37,7 @@ import com.hometv.tv.data.EnginePrefs
 import com.hometv.tv.data.InMemoryEnginePrefs
 import com.hometv.tv.di.AppContainer
 import com.hometv.tv.ui.HomeTvRoot
-import com.hometv.tv.ui.player.LocalVideoSurfaceProbe
+import com.hometv.tv.playback.LocalVideoSurfaceProbe
 import com.hometv.tv.ui.theme.HomeTvDimens
 import java.time.Clock
 import java.time.Instant
