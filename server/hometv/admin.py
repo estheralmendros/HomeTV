@@ -2,6 +2,8 @@
 
 - ``list_unmatched(session, ...)`` / ``unmatched_count(session)``: sync, for ``def`` handlers
   with a ``ReadSession``. Entries of absent files (``missing_since`` set) are excluded.
+- ``delete_unmatched(db, entry_id)``: removes one entry, never its film/show/file; 404
+  ``not_found``.
 - ``TmdbProxy``: ``search`` / ``tv_seasons`` / ``tv_season`` (season lookups cached in memory
   10 min, LRU 100). Raise ``ApiError`` 404 ``tmdb_not_found`` / 422 ``validation_error`` /
   502 ``tmdb_unavailable`` / 503 ``tmdb_not_configured``.
@@ -29,6 +31,7 @@ from hometv.api.schemas import (
     UnmatchedEntry,
 )
 from hometv.db import models as m
+from hometv.db.engine import Database
 from hometv.metadata.artwork import image, tmdb_file_name
 from hometv.metadata.matching import result_year
 from hometv.metadata.tmdb import TmdbClient, TmdbError
@@ -88,6 +91,57 @@ def _shows_parsed(session: Session, show_ids: list[int]) -> dict[int, dict[str, 
     }
 
 
+SHOW_FILES_SHOWN = 3
+
+
+def _films_files(session: Session, film_ids: list[int]) -> dict[int, tuple[list[str], int]]:
+    """Each film's present files (all, by ``relative_path``) and their count, in one query."""
+    if not film_ids:
+        return {}
+    total = func.count().over(partition_by=m.MediaFile.film_id)
+    rows = session.execute(
+        select(m.MediaFile.film_id, m.MediaFile.relative_path, total)
+        .where(m.MediaFile.film_id.in_(film_ids), m.MediaFile.missing_since.is_(None))
+        .order_by(m.MediaFile.film_id, m.MediaFile.relative_path, m.MediaFile.id)
+    ).all()
+    result: dict[int, tuple[list[str], int]] = {}
+    for film_id, relative_path, count in rows:
+        assert film_id is not None
+        result.setdefault(film_id, ([], count))[0].append(relative_path)
+    return result
+
+
+def _shows_files(session: Session, show_ids: list[int]) -> dict[int, tuple[list[str], int]]:
+    """Each show's first ``SHOW_FILES_SHOWN`` present episode files (distinct, by path) + the
+    count of all of them, in one query."""
+    if not show_ids:
+        return {}
+    distinct = (
+        select(m.Episode.show_id.label("show_id"), m.MediaFile.id, m.MediaFile.relative_path)
+        .join(m.MediaFileEpisode, m.MediaFileEpisode.episode_id == m.Episode.id)
+        .join(m.MediaFile, m.MediaFile.id == m.MediaFileEpisode.media_file_id)
+        .where(m.Episode.show_id.in_(show_ids), m.MediaFile.missing_since.is_(None))
+        .distinct()
+        .subquery()
+    )
+    rank = (
+        func.row_number()
+        .over(partition_by=distinct.c.show_id, order_by=(distinct.c.relative_path, distinct.c.id))
+        .label("rank")
+    )
+    total = func.count().over(partition_by=distinct.c.show_id).label("total")
+    ranked = select(distinct.c.show_id, distinct.c.relative_path, rank, total).subquery()
+    rows = session.execute(
+        select(ranked.c.show_id, ranked.c.relative_path, ranked.c.total)
+        .where(ranked.c.rank <= SHOW_FILES_SHOWN)
+        .order_by(ranked.c.show_id, ranked.c.rank)
+    ).all()
+    result: dict[int, tuple[list[str], int]] = {}
+    for show_id, relative_path, count in rows:
+        result.setdefault(show_id, ([], count))[0].append(relative_path)
+    return result
+
+
 def list_unmatched(
     session: Session,
     *,
@@ -111,6 +165,13 @@ def list_unmatched(
         session,
         [show.id for _e, media_file, film, show, _l in rows if media_file is None and film is None],
     )
+    film_files = _films_files(
+        session, [film.id for _e, media_file, film, _s, _l in rows if media_file is None and film]
+    )
+    show_files = _shows_files(
+        session,
+        [show.id for _e, media_file, film, show, _l in rows if media_file is None and film is None],
+    )
     items: list[UnmatchedEntry] = []
     for entry, media_file, film, show, library_type in rows:
         target: dict[str, Any]
@@ -121,6 +182,7 @@ def list_unmatched(
                 "relative_path": media_file.relative_path,
             }
             parsed = media_file.parsed
+            files, files_total = [media_file.relative_path], 1
         elif film is not None:
             target = {"type": "film", "id": film.id, "title": film.title, "year": film.year}
             parsed = {
@@ -129,9 +191,11 @@ def list_unmatched(
                 "year": film.parsed_year,
                 "part": None,
             }
+            files, files_total = film_files.get(film.id, ([], 0))
         else:
             target = {"type": "show", "id": show.id, "title": show.title, "year": show.year}
             parsed = show_parses.get(show.id)
+            files, files_total = show_files.get(show.id, ([], 0))
         items.append(
             UnmatchedEntry.model_validate(
                 {
@@ -141,11 +205,22 @@ def list_unmatched(
                     "detail": entry.detail,
                     "target": target,
                     "parsed": parsed,
+                    "files": files,
+                    "files_total": files_total,
                     "created_at": entry.created_at,
                 }
             )
         )
     return Page[UnmatchedEntry](items=items, page=page, page_size=page_size, total=total)
+
+
+def delete_unmatched(db: Database, entry_id: int) -> None:
+    """``DELETE /api/admin/unmatched/{id}``: drop the entry only; its target rows stay as is."""
+    with db.write_session() as session:
+        entry = session.get(m.UnmatchedEntry, entry_id)
+        if entry is None:
+            raise ApiError(404, "not_found", f"Unmatched entry {entry_id} not found")
+        session.delete(entry)
 
 
 # --- TMDB proxies --------------------------------------------------------------------------------

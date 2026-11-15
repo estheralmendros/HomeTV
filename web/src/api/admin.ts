@@ -60,6 +60,10 @@ export const matchShow = (id: number, tmdbId: number) =>
 export const resolveUnmatched = (entryId: number, body: ResolveRequest) =>
   apiFetch<ResolveResponse>(`/api/admin/unmatched/${entryId}/resolve`, { method: 'POST', body, admin: true });
 
+/** Removes the entry only (its film, show or file stays); 404 `not_found` when already gone. */
+export const deleteUnmatched = (entryId: number) =>
+  apiFetch<void>(`/api/admin/unmatched/${entryId}`, { method: 'DELETE', admin: true });
+
 export const createProfile = (body: ProfileCreateRequest) =>
   apiFetch<Profile>('/api/admin/profiles', { method: 'POST', body, admin: true });
 

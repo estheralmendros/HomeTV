@@ -734,6 +734,12 @@ export interface UnmatchedEntry {
   detail: string | null;
   target: UnmatchedTarget;
   parsed: UnmatchedParsed | null;
+  /**
+   * Relative paths inside the library folder, present files only: a film lists all of them, a show
+   * the first 3 (see `files_total`), a file entry itself.
+   */
+  files: string[];
+  files_total: number;
   created_at: Timestamp;
 }
 
