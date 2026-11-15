@@ -56,6 +56,15 @@ data class PinUi(val entered: Int = 0, val message: UiText? = null, val locked: 
  * Settings / About: server, profile, app + server versions, TMDB notice and logo, caps
  * summary, and the server change (admin profiles only, behind the admin PIN, step 3).
  */
+/** Which Ajustes rules a [SettingsViewModel] follows. */
+enum class SettingsPolicy {
+    /** Shared TV: Cambiar servidor + Forzar VLC for admins only; the server change asks the admin PIN. */
+    TV,
+
+    /** Personal phone/tablet: every profile; Cambiar servidor asks a confirmation; Forzar VLC whenever libVLC runs. */
+    PERSONAL,
+}
+
 class SettingsViewModel(
     store: SessionStore,
     private val account: AccountState,
@@ -66,6 +75,8 @@ class SettingsViewModel(
     private val vlcAvailable: Boolean = false,
     private val notices: suspend () -> String = { "" },
     private val log: (String, Throwable?) -> Unit = { msg, e -> runCatching { Log.w("HomeTvSettings", msg, e) } },
+    /** Only [SettingsPolicy.TV] has behaviour so far. */
+    val policy: SettingsPolicy = SettingsPolicy.TV,
 ) : ViewModel() {
     private val _state = MutableStateFlow(
         SettingsUiState(serverUrl = store.session.value.serverUrl.orEmpty(), appVersion = UiText.Res(R.string.settings_app_version, listOf(versionName))),
