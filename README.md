@@ -5,7 +5,7 @@
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/server-FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![React 18](https://img.shields.io/badge/web-React%2018-61DAFB?logo=react&logoColor=black)](https://react.dev/)
-[![Android TV](https://img.shields.io/badge/TV-Kotlin%20%2B%20Compose-7F52FF?logo=kotlin&logoColor=white)](tv/README.md)
+[![Android TV](https://img.shields.io/badge/TV-Kotlin%20%2B%20Compose-7F52FF?logo=kotlin&logoColor=white)](android/README.md)
 [![Tailscale](https://img.shields.io/badge/network-Tailscale-242424?logo=tailscale&logoColor=white)](https://tailscale.com/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -169,10 +169,10 @@ debug APK.
 library).
 
 **TV app:** `make tv-test` (JVM tests, including the Robolectric focus tests), `make tv-lint`,
-`make tv-build` (signed release APK; needs `tv/keystore.properties`). Install it with
+`make tv-build` (signed release APK; needs `android/keystore.properties`). Install it with
 `adb install -r`; see the [TV app guide](docs/tv-app-installation.md).
 
-Contributor conventions (strict TDD, DB write rules, test layout) are in [`CLAUDE.md`](CLAUDE.md) and the per-area [`server/CLAUDE.md`](server/CLAUDE.md), [`web/CLAUDE.md`](web/CLAUDE.md) and [`tv/CLAUDE.md`](tv/CLAUDE.md).
+Contributor conventions (strict TDD, DB write rules, test layout) are in [`CLAUDE.md`](CLAUDE.md) and the per-area [`server/CLAUDE.md`](server/CLAUDE.md), [`web/CLAUDE.md`](web/CLAUDE.md) and [`android/CLAUDE.md`](android/CLAUDE.md).
 The release version lives in [`version.txt`](version.txt), the only file a version bump changes (the
 server, the Docker image and the TV app read it); changes are listed in
 [`CHANGELOG.md`](CHANGELOG.md).
@@ -203,7 +203,7 @@ seed them, then ignored. Full list: the
 | --- | --- |
 | [`server/`](server) | The HomeTV server: Python 3.12, FastAPI, SQLAlchemy + SQLite, Alembic, ffmpeg. REST API under `/api` (OpenAPI docs at `/api/docs`); also serves the web app. |
 | [`web/`](web) | The web app: React 18 + TypeScript + Vite, TanStack Query, hls.js. Built into `web/dist`. |
-| [`tv/`](tv) | The Android TV / Google TV app: Kotlin, Compose for TV, Media3 ExoPlayer + libVLC (ARM-only APK). Viewer-only. See [`tv/README.md`](tv/README.md). |
+| [`android/`](android) | The Android TV / Google TV app: Kotlin, Compose for TV, Media3 ExoPlayer + libVLC (ARM-only APK). Viewer-only. See [`tv/README.md`](android/README.md). |
 | [`deploy/`](deploy) | Docker image and Compose stack (the server plus a Tailscale sidecar). |
 | [`docs/`](docs) | User guides and the screenshots in this README. |
 | [`scripts/`](scripts) | `create-environment.sh`: local demo environment. |
@@ -217,7 +217,7 @@ seed them, then ignored. Full list: the
 | [Android TV app](docs/tv-app-installation.md) | Installing the APK and connecting it to the server. |
 | [iPad](docs/ipad-installation.md) | Using the web app in Safari over Tailscale (there is no iOS app). |
 | [Deployment reference](deploy/README.md) | Operator notes and every `HOMETV_*` setting. |
-| [TV app development](tv/README.md) | Building and testing the TV app. |
+| [TV app development](android/README.md) | Building and testing the TV app. |
 
 ## Acknowledgements and license
 
@@ -231,7 +231,7 @@ Built on [FastAPI](https://fastapi.tiangolo.com/), [SQLAlchemy](https://www.sqla
 The TV app bundles libVLC for Android (`org.videolan.android:libvlc-all`, © VideoLAN and VLC authors),
 unmodified and dynamically linked, under the GNU LGPL v2.1 or later. Its notice, source links and the
 licence text ship in the app: Ajustes → Acerca de → Licencias de código abierto
-(`tv/app/src/main/res/raw/third_party_notices.txt`).
+(`android/playback/src/main/res/raw/third_party_notices.txt`).
 
 <a href="https://www.themoviedb.org/"><img src="web/src/assets/tmdb-logo.svg" height="14" alt="TMDB"></a>
 This product uses the TMDB API but is not endorsed or certified by TMDB. Posters, artwork and

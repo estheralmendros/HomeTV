@@ -3,7 +3,7 @@
 Self-hosted, single-household media server (films + TV shows on a local disk, TMDB metadata,
 playback on web and Android TV over Tailscale). The REST API (`/api/openapi.json`, `/api/docs`)
 is a contract shared by the web and TV clients: change it deliberately and update
-`web/src/api/types.ts` and `tv/core/.../api/ApiModels.kt` in the same change.
+`web/src/api/types.ts` and `android/core/.../api/ApiModels.kt` in the same change.
 
 ## Layout
 
@@ -32,19 +32,20 @@ is a contract shared by the web and TV clients: change it deliberately and updat
   `server-installation-windows.md` (Docker
   Desktop + WSL 2; no native Windows: HLS throttling uses SIGSTOP/SIGCONT), `tv-app-installation.md`,
   `ipad-installation.md` (the web app in Safari over Tailscale; there is no iOS app).
-- `tv/`: Android TV app, Gradle 8.14 wrapper, AGP 8.13, Kotlin 2.2, compile/target SDK 35,
+- `android/`: one Gradle project (modules `:core`, `:playback`, `:shared`, `:testing`, `:tv`; `:mobile` in Part 2 of
+  `specs/apk-mobile-phone`), Android TV app today, Gradle 8.14 wrapper, AGP 8.13, Kotlin 2.2, compile/target SDK 35,
   minSdk 26, JDK 21 (bytecode 17). Versions in `gradle/libs.versions.toml` (Media3 1.5.1, libvlc-all 3.7.2 (libVLC 3
   API, never 4.x; 3.7.3+ AARs need compileSdk 36/37), Compose
   BOM, tv-material, Retrofit 3 + OkHttp 4.12, kotlinx.serialization, Coil 2, DataStore, JUnit 5,
   Robolectric). libVLC's native code limits the APK to `ndk.abiFilters` armeabi-v7a + arm64-v8a (one universal
   APK, ≈ 95 MB, `.so` stored uncompressed; no x86); `proguard-rules.pro` keeps `org.videolan.libvlc.**` (JNI; the
   AAR has no consumer rules). `local.properties` (sdk.dir) and `keystore.properties` are gitignored.
-  Module map and TV conventions: `tv/CLAUDE.md`.
+  Module map and TV conventions: `android/CLAUDE.md`.
 
-### Area notes (`server/CLAUDE.md`, `web/CLAUDE.md`, `tv/CLAUDE.md`)
+### Area notes (`server/CLAUDE.md`, `web/CLAUDE.md`, `android/CLAUDE.md`)
 
 Each area keeps its module map and conventions in its own `CLAUDE.md`, which is not loaded at
-startup. Before reading or changing code under `server/`, `web/` or `tv/`, read that folder's
+startup. Before reading or changing code under `server/`, `web/` or `android/`, read that folder's
 `CLAUDE.md` once with the Read tool (a shell `cat`/`grep` does not load it). Read only the areas the
 task touches. When a change alters what an area file describes, update that file, not this one.
 
@@ -59,11 +60,12 @@ task touches. When a change alters what an area file describes, update that file
   `server/pyproject.toml`, pydantic plugin, unused `# type: ignore` are errors) + web typecheck +
   `web-lint` (`npm run lint`: ESLint flat config `web/eslint.config.js`, react-hooks rules only) +
   `tv-lint`. `make format`: auto-fix (server).
-- TV: `make tv-test` (`./gradlew :core:test :app:testDebugUnitTest`), `make tv-lint`
-  (`:app:lintDebug`), `make tv-build` (`:app:assembleRelease`, needs `tv/keystore.properties`).
+- TV: `make tv-test` (`./gradlew :core:test :playback:testDebugUnitTest :shared:testDebugUnitTest
+  :tv:testDebugUnitTest`), `make tv-lint` (`:tv:lintDebug :shared:lintDebug :playback:lintDebug`), `make tv-build`
+  (`:tv:assembleRelease` -> `android/tv/build/outputs/apk/release/tv-release.apk`, needs `android/keystore.properties`).
   The Makefile defaults `JAVA_HOME` to `/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home`
   and `ANDROID_HOME` to `/opt/homebrew/share/android-commandlinetools` when unset; export both
-  before calling `./gradlew` directly. No emulator: `:app:assembleDebugAndroidTest` only compiles.
+  before calling `./gradlew` directly. No emulator: `:tv:assembleDebugAndroidTest` only compiles.
 - `make run`: dev server on 127.0.0.1:8000 with data in `.dev-data/`, serving `web/dist`.
 - Web: `make web-build` (`tsc -b && vite build`; initial JS ≤ 200 kB gzip, admin/player/hls.js
   are lazy chunks), `make web-dev` (Vite on :5173, `/api` proxied to `HOMETV_API_TARGET`),
@@ -71,10 +73,10 @@ task touches. When a change alters what an area file describes, update that file
   `npx playwright install chromium` once; `HOMETV_E2E_FILM=Dune` for the demo library).
 - Single test: `cd server && uv run pytest tests/unit/test_parser.py -k row11`;
   `cd web && npx vitest run src/player/versions.test.ts -t "nextPart"`;
-  `cd tv && ./gradlew :core:test --tests '*VersionSelectorTest*'`.
+  `cd android && ./gradlew :shared:testDebugUnitTest --tests '*HomeViewModelTest*'` (`:core:test` for core classes).
 
 - Release version: `version.txt` (repo root) is the only file a bump edits: no other file and no
-  command is part of a version bump. The TV app reads it in `tv/app/build.gradle.kts` (`versionCode` =
+  command is part of a version bump. The TV app reads it in `android/tv/build.gradle.kts` (`versionCode` =
   M×10000 + m×100 + p); the server package takes it at build time (`server/pyproject.toml`
   `dynamic = ["version"]` + `[tool.hatch.version] path = "../version.txt"`; `[tool.uv] cache-keys` makes
   the next `uv sync`/`uv run` reinstall, so `hometv.__version__`, shown in "Acerca de", follows; `uv.lock`

@@ -17,7 +17,7 @@ or [`server-installation-windows.md`](server-installation-windows.md). For an iP
    alone does not open port 5555, so `adb connect <tv-ip>:5555` is refused: use Wireless debugging.
 
 ## 2. Build the APK
-On your computer (JDK 21 and the Android SDK; see `tv/README.md`). Run the commands from the repo
+On your computer (JDK 21 and the Android SDK; see `android/README.md`). Run the commands from the repo
 root.
 
 ### First time only: the signing key
@@ -39,9 +39,9 @@ key is kept forever.
    - A separate key password, if asked: press Enter to reuse the keystore password.
 2. Tell the build where the key is (the file is gitignored):
    ```bash
-   cp tv/keystore.properties.example tv/keystore.properties
-   chmod 600 tv/keystore.properties ~/keys/hometv-tv.jks
-   nano tv/keystore.properties
+   cp android/keystore.properties.example android/keystore.properties
+   chmod 600 android/keystore.properties ~/keys/hometv-tv.jks
+   nano android/keystore.properties
    ```
    `storeFile` must be the **absolute** path (e.g. `/Users/<you>/keys/hometv-tv.jks`, not `~/…`,
    and not the example's `/Users/you/…`); `keyAlias=hometv`; `storePassword` and `keyPassword` =
@@ -54,7 +54,7 @@ key is kept forever.
 ```bash
 make tv-build
 ```
-The APK is `tv/app/build/outputs/apk/release/app-release.apk` (about 95 MB: it bundles libVLC, the
+The APK is `android/tv/build/outputs/apk/release/tv-release.apk` (about 95 MB: it bundles libVLC, the
 fallback player for files ExoPlayer can't decode, for ARM devices only (`armeabi-v7a` and `arm64-v8a`,
 which covers Chromecast with Google TV and Google TV Streamer); it doesn't install on an x86 emulator
 without ARM translation). Its version comes from
@@ -65,7 +65,7 @@ app is refused by `adb install -r`.
 If the build fails with `Keystore file '…' not found`, `storeFile` is wrong; with `Keystore was
 tampered with, or password was incorrect`, a password in `keystore.properties` is wrong.
 
-A debug build (`cd tv && ./gradlew :app:assembleDebug`, at `tv/app/build/outputs/apk/debug/app-debug.apk`)
+A debug build (`cd android && ./gradlew :tv:assembleDebug`, at `android/tv/build/outputs/apk/debug/tv-debug.apk`)
 needs no key. It also accepts `http://10.0.2.2:<port>` and `http://localhost:<port>`, which only
 help on an emulator. On a real TV, use the `https://….ts.net` address in both builds. A debug build
 and a release build are signed with different keys, so one cannot update the other.
@@ -98,7 +98,7 @@ network (not a guest network).
 3. Check that the TV is listed as `device`, then install / update:
    ```bash
    adb devices
-   adb -s <tv-ip>:<port> install -r tv/app/build/outputs/apk/release/app-release.apk
+   adb -s <tv-ip>:<port> install -r android/tv/build/outputs/apk/release/tv-release.apk
    ```
    It prints `Success`. `-s` picks the TV when another device (e.g. a running emulator) is also
    attached. `-r` replaces the installed app and keeps its data (server address, session).
@@ -178,7 +178,7 @@ After changing the code (the server is updated separately: `git pull && docker c
 REST API, update the server and the TV app in the same round.
 
 1. Bump `version.txt` if it is a new release, and commit.
-2. Make sure the key file (`~/keys/hometv-tv.jks`) and `tv/keystore.properties` are in place. On
+2. Make sure the key file (`~/keys/hometv-tv.jks`) and `android/keystore.properties` are in place. On
    a new or cleaned-up computer, restore the key from your backup and recreate
    `keystore.properties` (section 2, step 2); do **not** create a new key.
 3. Build: `make tv-build`.
@@ -187,7 +187,7 @@ REST API, update the server and the TV app in the same round.
 5. Connect and install:
    ```bash
    adb connect <tv-ip>:<connection-port>
-   adb -s <tv-ip>:<connection-port> install -r tv/app/build/outputs/apk/release/app-release.apk
+   adb -s <tv-ip>:<connection-port> install -r android/tv/build/outputs/apk/release/tv-release.apk
    ```
 6. Open HomeTV on the TV: the server address and the session are kept.
 

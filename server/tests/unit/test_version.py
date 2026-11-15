@@ -1,6 +1,6 @@
 """The repo-root ``version.txt`` is the release version and the only place it is written.
 
-The TV app reads it in ``tv/app/build.gradle.kts``; the server package takes it at build time
+The TV app reads it in ``android/tv/build.gradle.kts``; the server package takes it at build time
 (hatchling ``[tool.hatch.version]``); the web package carries no version. A bump edits
 ``version.txt`` only.
 """

@@ -141,7 +141,7 @@ export function startPosition(f: MediaFile, files: readonly MediaFile[], progres
 
 /**
  * The file name without its extension (a leading or trailing dot is not one); "Desconocido" when
- * blank. The TV app's `VersionNames.name` (`tv/core/.../playback/VersionNames.kt`) applies the same rule.
+ * blank. The TV app's `VersionNames.name` (`android/core/.../playback/VersionNames.kt`) applies the same rule.
  */
 export function versionName(file: MediaFile): string {
   const name = file.file_name.trim();
