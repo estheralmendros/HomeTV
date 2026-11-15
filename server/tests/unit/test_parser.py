@@ -1,3 +1,4 @@
+import re
 from datetime import date
 from pathlib import PurePosixPath
 
@@ -474,6 +475,24 @@ def test_guessit_fallback_is_called_with_excludes(monkeypatch):
     parse(PurePosixPath("Es por tu bien S01E02.mkv"), "shows")
     assert calls[-1]["type"] == "episode"
     assert calls[-1]["excludes"] == excludes
+    calls.clear()
+    parse(PurePosixPath("Es por tu bien/Season 1/Es por tu bien S01E02.mkv"), "shows")
+    assert calls and all("excludes" not in options for options in calls)
+
+
+@pytest.mark.parametrize(
+    ("tag", "good"),
+    [
+        ("V.E. Remasterizada", ["V.E. Remasterizada", "VE.remasterizada", "v.e._REMASTERIZADA"]),
+        ("Dir. Cut", ["Dir. Cut", "dir. cut"]),
+    ],
+)
+def test_multi_word_dotted_tag_pattern_stays_one_unit(tag, good):
+    pattern = re.compile(parser_module._tag_pattern(tag, False))
+    for text in good:
+        assert pattern.fullmatch(text), text
+    assert not pattern.fullmatch("VE")  # a branch of the tag is not the tag
+    assert not pattern.fullmatch("Dir")
 
 
 @pytest.mark.parametrize(

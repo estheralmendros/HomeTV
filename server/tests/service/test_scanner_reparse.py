@@ -130,9 +130,18 @@ def _attach(mdb, film_id: int) -> None:
 
 def _owned(mdb, film_id: int) -> tuple[int, int, int, int]:
     with mdb.read_session() as s:
-        return tuple(  # type: ignore[return-value]
-            s.scalar(select(func.count()).select_from(model).where(model.film_id == film_id))
-            for model in (m.PlaybackProgress, m.Rating, m.WatchlistEntry, m.TrackChoice)
+
+        def count(model) -> int:
+            return (
+                s.scalar(select(func.count()).select_from(model).where(model.film_id == film_id))
+                or 0
+            )
+
+        return (
+            count(m.PlaybackProgress),
+            count(m.Rating),
+            count(m.WatchlistEntry),
+            count(m.TrackChoice),
         )
 
 
@@ -693,7 +702,7 @@ async def test_interrupted_upgrade_completes_on_the_next_run(
     for film_id in ids:
         _attach(mdb, film_id)
     monkeypatch.setattr("hometv.scanner.BATCH_SIZE", 1)  # one group per transaction
-    original = Scanner._apply_film_group
+    original = Scanner._apply_pack
     calls: list[int] = []
 
     def killed_after_first(self, *args, **kwargs):
@@ -703,13 +712,13 @@ async def test_interrupted_upgrade_completes_on_the_next_run(
             raise RuntimeError("killed")
         return result
 
-    monkeypatch.setattr(Scanner, "_apply_film_group", killed_after_first)
+    monkeypatch.setattr(Scanner, "_apply_pack", killed_after_first)
     with pytest.raises(RuntimeError, match="killed"):
         await _scan(mdb, settings, stub_probe)
     assert [f.parsed_title for f in _films(mdb)] == ["Te quiero", "lo que hay"]
     assert [_file(mdb, p).parser_version for p in (first, second)] == [PARSER_VERSION, None]
 
-    monkeypatch.setattr(Scanner, "_apply_film_group", original)
+    monkeypatch.setattr(Scanner, "_apply_pack", original)
     await _scan(mdb, settings, stub_probe)
 
     assert [(f.id, f.parsed_title, f.match_status) for f in _films(mdb)] == [
@@ -824,6 +833,7 @@ async def test_film_whose_only_file_stops_parsing_as_a_film_is_kept_untouched(
         before.part_number,
     )
     assert row.parser_version == PARSER_VERSION
+    assert row.updated_at == before.updated_at  # a pure stamp is not a change of the file
     assert _owned(mdb, film_id) == (1, 1, 1, 1)
     with mdb.read_session() as s:
         assert s.scalar(select(func.count()).select_from(m.UnmatchedEntry)) == 0
@@ -836,3 +846,47 @@ async def test_film_whose_only_file_stops_parsing_as_a_film_is_kept_untouched(
         for s in statements
         if re.match(r"\s*(UPDATE|INSERT)", s, re.I) and re.search(r"(media_file|film)", s)
     ] == []
+
+
+async def test_upgrade_stamp_of_a_renamed_film_keeps_the_file_updated_at(
+    mdb, media: MediaTree, settings, stub_probe: StubProbe
+):
+    path = media.add("Te quiero (2020).mkv")
+    await _scan(mdb, settings, stub_probe)
+    _v1(mdb, path, title="quiero")
+    before = _file(mdb, path)
+
+    await _scan(mdb, settings, stub_probe)
+
+    row = _file(mdb, path)
+    assert row.parser_version == PARSER_VERSION and row.parsed["title"] == "Te quiero"
+    assert row.updated_at == before.updated_at
+
+
+async def test_a_failing_group_is_deferred_and_the_rest_of_the_scan_runs(
+    mdb, media: MediaTree, settings, stub_probe: StubProbe, monkeypatch, caplog
+):
+    first = media.add("Te quiero (2020).mkv")
+    second = media.add("Es lo que hay (2019).mkv")
+    await _scan(mdb, settings, stub_probe)
+    ids = (_v1(mdb, first, title="quiero"), _v1(mdb, second, title="lo que hay", year=2019))
+    monkeypatch.setattr("hometv.scanner.BATCH_SIZE", 1)  # one group per pack
+    original = Scanner._upgrade_group
+
+    def first_group_fails(self, session, film_id, parses):
+        if film_id == ids[0]:
+            raise RuntimeError("boom")
+        return original(self, session, film_id, parses)
+
+    monkeypatch.setattr(Scanner, "_upgrade_group", first_group_fails)
+    purged = []
+    monkeypatch.setattr(Scanner, "_purge", lambda self: purged.append(1))
+
+    await _scan(mdb, settings, stub_probe)
+
+    assert purged == [1]  # the scan went on past the failing group
+    assert [f.parsed_title for f in _films(mdb)] == ["quiero", "Es lo que hay"]
+    assert _file(mdb, first).parser_version is None
+    assert _file(mdb, second).parser_version == PARSER_VERSION
+    assert _upgrade_line(caplog)["deferred"] == 1
+    assert any("parse upgrade group failed" in r.getMessage() for r in caplog.records)

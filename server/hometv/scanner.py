@@ -36,8 +36,9 @@ from datetime import timedelta
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from sqlalchemy import delete, exists, func, select, update
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy import ColumnElement, Update, delete, exists, func, select, update
+from sqlalchemy.orm import QueryableAttribute, Session, aliased
+from sqlalchemy.orm.attributes import flag_modified
 
 from hometv.changes.scope import ScanScope, merge_scopes, within
 from hometv.config import Settings
@@ -1051,12 +1052,17 @@ class Scanner:
         else:
             existing.detail = detail
 
-    def _apply_parse(
-        self, session: Session, row: m.MediaFile, parsed: ParseResult, library_type: LibraryType
-    ) -> None:
+    @staticmethod
+    def _write_parse(row: m.MediaFile, parsed: ParseResult) -> None:
+        """The parse columns of a row; the one place a new parse column has to be added."""
         row.parsed = serialize_parse(parsed)
         row.part_number = parsed.part if isinstance(parsed, MultiPart) else None
         row.parser_version = PARSER_VERSION
+
+    def _apply_parse(
+        self, session: Session, row: m.MediaFile, parsed: ParseResult, library_type: LibraryType
+    ) -> None:
+        self._write_parse(row, parsed)
         unlink_file(session, row)
 
         reason: str | None = None
@@ -1139,7 +1145,7 @@ class Scanner:
                 up.stamp_ids.append(row.id)
 
     @staticmethod
-    def _has_manual(column: Any) -> Any:
+    def _has_manual(column: QueryableAttribute[Any]) -> ColumnElement[bool]:
         """``manual_match`` is set (SQL NULL and JSON ``null`` both count as unset)."""
         return func.coalesce(func.json_type(column), "null") != "null"
 
@@ -1147,15 +1153,7 @@ class Scanner:
         """One query for a chunk of candidate ids: the film state the row table needs."""
         mf = m.MediaFile
         sibling = aliased(m.MediaFile)
-        film_manual = (
-            exists()
-            .where(
-                sibling.film_id == mf.film_id,
-                sibling.missing_since.is_(None),
-                self._has_manual(sibling.manual_match),
-            )
-            .label("film_manual")
-        )
+        film_manual = self._manual_file_exists(mf.film_id, sibling).label("film_manual")
         parse_entry = (
             exists()
             .where(
@@ -1195,18 +1193,16 @@ class Scanner:
         """Matched, or one of its present files carries a manual match."""
         return film.match_status == "matched" or self._film_has_manual_file(session, film.id)
 
-    def _film_has_manual_file(self, session: Session, film_id: int) -> bool:
-        return bool(
-            session.scalar(
-                select(
-                    exists().where(
-                        m.MediaFile.film_id == film_id,
-                        m.MediaFile.missing_since.is_(None),
-                        self._has_manual(m.MediaFile.manual_match),
-                    )
-                )
-            )
+    def _manual_file_exists(self, film_id: Any, file: Any = m.MediaFile) -> ColumnElement[bool]:
+        """EXISTS: a present file of the film (``film_id`` column or value) has a manual match."""
+        return exists().where(
+            file.film_id == film_id,
+            file.missing_since.is_(None),
+            self._has_manual(file.manual_match),
         )
+
+    def _film_has_manual_file(self, session: Session, film_id: int) -> bool:
+        return bool(session.scalar(select(self._manual_file_exists(film_id))))
 
     def _protect_key(self, session: Session, film_id: int, parsed: ParsedFilm) -> bool:
         """Keep the v2 key of a protected film resolving to it (alias, merge a pending duplicate,
@@ -1264,24 +1260,35 @@ class Scanner:
         for film_id in sorted(up.groups):
             parses = up.groups[film_id]
             if pack and size + len(parses) > BATCH_SIZE:
-                self._apply_film_group(pack)
+                self._apply_pack(pack)
                 pack, size = [], 0
             pack.append((film_id, parses))
             size += len(parses)
         if pack:
-            self._apply_film_group(pack)
+            self._apply_pack(pack)
         logger.info(
             "parse upgrade: %s", ", ".join(f"{name}={count}" for name, count in up.stats.items())
         )
 
     @staticmethod
-    def _stamp(where: Any) -> Any:
+    def _stamp(where: ColumnElement[bool]) -> Update:
         # updated_at is set to itself: a stamp is not a change of the file
         return (
             update(m.MediaFile)
             .where(where)
             .values(parser_version=PARSER_VERSION, updated_at=m.MediaFile.updated_at)
         )
+
+    def _apply_pack(self, pack: Sequence[tuple[int, dict[int, ParseResult]]]) -> None:
+        """Apply a pack; a failure rolls the pack back and is retried by the next scan, it never
+        stops the rest of this one."""
+        try:
+            self._apply_film_group(pack)
+        except Exception:
+            logger.exception(
+                "parse upgrade group failed: films=%s", [film_id for film_id, _ in pack]
+            )
+            self._upgrade.stats["deferred"] += len(pack)
 
     def _apply_film_group(self, groups: Sequence[tuple[int, dict[int, ParseResult]]]) -> None:
         """One write transaction for a pack of film groups (``(film id, {row id: new parse})``);
@@ -1341,17 +1348,15 @@ class Scanner:
             stats["deferred"] += 1
             return
         if isinstance(plan, Keep):  # nothing parses as a film: stamp only, keep the links
-            for row in files:
-                if row.id in parses:
-                    row.parser_version = PARSER_VERSION
+            session.execute(
+                self._stamp(m.MediaFile.id.in_([r.id for r in files if r.id in parses]))
+            )
             stats["deferred"] += 1
             return
 
         def stamp(row: m.MediaFile) -> None:
-            parsed = parses[row.id]
-            row.parsed = serialize_parse(parsed)
-            row.part_number = parsed.part if isinstance(parsed, MultiPart) else None
-            row.parser_version = PARSER_VERSION
+            self._write_parse(row, parses[row.id])
+            flag_modified(row, "updated_at")  # a stamp is not a change of the file
 
         if not isinstance(plan, Split):
             for row in files:

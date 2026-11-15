@@ -240,16 +240,21 @@ def _fold(text: str) -> str:
     return "".join(unicodedata.normalize("NFD", c)[0] for c in text)
 
 
+_ABBREVIATION_RE = re.compile(r"(?:\w\.)+\w?\.?")
+
+
 def _tag_pattern(tag: str, bracketed: bool) -> str:
     words = []
     for word in _fold(tag).split():
-        if "." in word:  # abbreviation: dots optional once bracketed, else dotted or UPPERCASE
+        if _ABBREVIATION_RE.fullmatch(
+            word
+        ):  # dots optional once bracketed, else dotted or UPPERCASE
             letters = [re.escape(c) for c in word.replace(".", "")]
             dotted = r"\.".join(letters) + r"\.?"
             if bracketed:
                 words.append(f"(?i:{dotted}|{''.join(letters)})")
             else:
-                words.append(f"(?i:{dotted})|{''.join(letters)}")
+                words.append(f"(?:(?i:{dotted})|{''.join(letters)})")
         else:
             words.append("(?i:" + re.escape(word).replace("'", "['’]?") + ")")
     return r"[ ._\-]+".join(words)

@@ -71,6 +71,7 @@ def collect_rows(db: Database) -> list[ReportRow]:
     with db.read_session() as session:
         found = session.execute(
             select(
+                m.MediaFile.root_path,
                 m.MediaFile.relative_path,
                 m.MediaFile.parsed,
                 m.MediaFile.manual_match,
@@ -80,14 +81,15 @@ def collect_rows(db: Database) -> list[ReportRow]:
             .outerjoin(m.Film, m.Film.id == m.MediaFile.film_id)
             .where(m.Library.type == "films")
         ).all()
-    stems: dict[str, list[str]] = defaultdict(list)
-    for relative_path, *_rest in found:
+    # siblings are the files of one directory of one root, as the scanner groups them
+    stems: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for root_path, relative_path, *_rest in found:
         path = PurePosixPath(relative_path)
-        stems[str(path.parent)].append(path.stem)
+        stems[(root_path, str(path.parent))].append(path.stem)
     rows: list[ReportRow] = []
-    for relative_path, stored, manual_match, match_status in found:
+    for root_path, relative_path, stored, manual_match, match_status in found:
         path = PurePosixPath(relative_path)
-        siblings = list(stems[str(path.parent)])
+        siblings = list(stems[(root_path, str(path.parent))])
         siblings.remove(path.stem)  # the other rows only
         status = "manual" if manual_match else (match_status or "unlinked")
         new = serialize_parse(parse(path, "films", frozenset(siblings)))

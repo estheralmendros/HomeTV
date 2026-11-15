@@ -3,7 +3,7 @@
 from alembic import command
 
 from hometv.db.engine import Database, alembic_config, run_migrations
-from hometv.parse_report import main
+from hometv.parse_report import collect_rows, main
 from tests.factories import add_file, add_film
 from tests.stubs import capture_writes
 
@@ -100,3 +100,18 @@ def test_main_without_a_database_exits_1(make_settings, tmp_path):
     code, out = _run(settings)
     assert (code, out) == (1, [])
     assert not settings.db_path.exists()
+
+
+def test_siblings_are_grouped_per_root_like_the_scanner(make_settings, tmp_path):
+    settings = _settings(make_settings, tmp_path)
+    db = Database(settings.db_path)
+    try:
+        run_migrations(db)
+        with db.write_session() as s:
+            add_file(s, rel="Heat Part 1.mkv", root="/media/films", library="films")
+            add_file(s, rel="Heat Part 2.mkv", root="/media/films2", library="films")
+        rows = {r.path: r for r in collect_rows(db)}
+    finally:
+        db.dispose()
+    # different roots: neither file is the other's sibling, so neither is a part
+    assert [(r.new or {}).get("part") for r in rows.values()] == [None, None]

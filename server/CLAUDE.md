@@ -11,8 +11,9 @@ Python 3.12 uv project (FastAPI, SQLAlchemy 2 sync, Alembic, guessit). Package `
   (mkdir + wipe). `libraries.films|shows` / `HOMETV_FILMS_PATHS|SHOWS_PATHS` only seed the stored folders once;
   `libraries.browse_root` (`HOMETV_MEDIA_BROWSE_ROOT`, default `/media`) is the folder browser base.
   `scan.watch_enabled` / `scan.watch_quiet_seconds` (default on / 30 s, `ge=5`); `make_settings` turns watching off.
-- Pure modules (no I/O): `text.py` (incl. `undecodable(name)`), `parser.py` (`PARSER_VERSION`), `reparse.py` (parse-upgrade
-  plans: `plan_film_upgrade`, `plan_protected_key`), `subtitle_style.py` (the style `Literal`
+- Pure modules (no I/O): `text.py` (incl. `undecodable(name)`), `parser.py` (`PARSER_VERSION`; `EDITION_TAGS`: a new
+  edition tag = one tuple entry + one `EDITION_ROWS` test row), `reparse.py` (parse-upgrade plans:
+  `plan_film_upgrade`, `plan_protected_key`), `subtitle_style.py` (the style `Literal`
   aliases, `DEFAULT_STYLE`, `STYLE_FIELDS` = field -> `profile.subtitle_<field>` column; a test checks it equals
   `SubtitleStyle.model_fields`; the DB CHECKs are built from the aliases in `models.py`).
 - `probe.py`: ffprobe wrapper (injectable `runner`) + pure `normalize()`.
@@ -33,6 +34,8 @@ Python 3.12 uv project (FastAPI, SQLAlchemy 2 sync, Alembic, guessit). Package `
   the next scan (`_diff` classifies, `_apply_upgrades` runs after the chunks): pending/unmatched films are renamed,
   merged or split per `reparse.py` in `_apply_film_group`; matched / manual-match films only keep their key (alias or
   merge of a pending duplicate). `find_film` is the lookup without creation. Shows rows are never upgraded.
+  A `parser_version` stamp means "upgrade decided", not "`parsed` is current": stamp-only rows keep their old `parsed`.
+  A group that raises is rolled back, logged and counted `deferred`; the scan goes on.
 - `parse_report.py`: dev tool `python -m hometv.parse_report` (read session only, no migrations, never reads
   `parser_version`, so it runs on a 0007 DB): lists films-library files whose new parse differs from the stored one.
 - `changes/` (change-triggered scoped scans): `scope.py` (pure `ScanScope`, `within` is the one path-prefix helper,
@@ -44,8 +47,8 @@ Python 3.12 uv project (FastAPI, SQLAlchemy 2 sync, Alembic, guessit). Package `
 - `metadata/`: `tmdb.py` (`TmdbClient`: limiter, retries, language fallback, `person_details`), `matching.py` (pure
   `choose_match`), `enrich.py` (`Enricher`; `merge_items` moves every per-profile row through `_merge_per_profile` with
   one keep rule per table; admin `match_item`/`resolve_unmatched`), `artwork.py` (`ArtworkCache`, lazy sizes).
-- `admin.py` (unmatched list with `files`/`files_total` per target, batched; `TmdbProxy`), `profiles.py` (PIN hashing, `TokenService` with injectable `clock`,
-  `UnlockLimiter`, profile CRUD).
+- `admin.py` (unmatched list with `files`/`files_total` per target, batched; `TmdbProxy`), `profiles.py` (PIN hashing,
+  `TokenService` with injectable `clock`, `UnlockLimiter`, profile CRUD).
 - `watch.py`: pure watched rules (90 %, last part, in-progress, `next_up`, `last_episode`/`is_title_finished`) +
   `report_progress` / `mark_watched`. They return a `rating_prompt` only when the request finishes the title (film, or
   the show's last present episode) and the profile has neither a rating nor a dismissal.

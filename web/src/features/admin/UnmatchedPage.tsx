@@ -154,7 +154,7 @@ export function UnmatchedPage() {
         data.items.length === 0 ? (
           <EmptyState message={filtered ? T.emptyFiltered : T.empty} />
         ) : (
-          <ul className={styles.rows} aria-label={T.title}>
+          <ul className={styles.rows} role="list" aria-label={T.title}>
             {data.items.map((entry) => (
               <UnmatchedRow key={entry.id} entry={entry} onFix={() => openFix(entry)} />
             ))}
@@ -203,7 +203,11 @@ function UnmatchedRow({ entry, onFix }: { entry: UnmatchedEntry; onFix: () => vo
         )}
         {target.type !== 'media_file' && entry.files.length > 0 && (
           <>
-            <ul className={`${styles.muted} ${styles.detail} ${styles.files}`} aria-label={T.filesLabel}>
+            <ul
+              className={`${styles.muted} ${styles.detail} ${styles.files}`}
+              role="list"
+              aria-label={T.filesLabel}
+            >
               {entry.files.map((path) => (
                 <li key={path}>{path}</li>
               ))}
