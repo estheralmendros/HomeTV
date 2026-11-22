@@ -141,7 +141,7 @@ def get_media_file(media_file_id: int, session: ReadSession, _user: CurrentProfi
         500: {"model": ErrorResponse, "description": "transcoder_failed (keyframe_index_failed)"},
         503: {
             "model": ErrorResponse,
-            "description": "preparing | too_many_sessions | hls_disk_full",
+            "description": "preparing | too_many_sessions | transcode_busy | hls_disk_full",
         },
     },
 )
@@ -159,7 +159,12 @@ async def start_playback(
     if not await asyncio.to_thread(os.path.isfile, loaded.path):
         raise _file_missing()
     try:
-        decision = decide(loaded.probe, body.client_caps, body.audio_stream_index)
+        decision = decide(
+            loaded.probe,
+            body.client_caps,
+            body.audio_stream_index,
+            can_transcode=request.app.state.settings.playback.max_transcodes > 0,
+        )
     except InvalidAudioStream as exc:
         raise ApiError(
             422,
@@ -232,6 +237,7 @@ async def start_playback(
             audio_stream_index=decision.audio_stream_index,
             audio_action=decision.audio_action,
             start_position_seconds=min(body.start_position_seconds, duration),
+            video_action=decision.video_action,
         )
     )
     _subtitles(request).prefetch(loaded.subtitle_source())
@@ -240,6 +246,7 @@ async def start_playback(
         session_id=session.session_id,
         audio_stream_index=decision.audio_stream_index,
         audio_action=decision.audio_action,
+        video_action=decision.video_action,
         duration_seconds=duration,
         subtitle_tracks=loaded.subtitle_tracks,
     )
@@ -330,6 +337,7 @@ async def get_subtitles(
 
 _HLS_ERRORS: Responses = {
     404: {"model": ErrorResponse, "description": "session_not_found | segment_not_found"},
+    410: {"model": ErrorResponse, "description": "session_stopped"},
     500: {"model": ErrorResponse, "description": "transcoder_failed"},
     504: {"model": ErrorResponse, "description": "segment_timeout"},
 }
@@ -376,6 +384,7 @@ async def hls_segment(session_id: str, n: int, request: Request) -> Response:
     response_class=Response,
     responses={
         404: {"model": ErrorResponse, "description": "session_not_found"},
+        410: {"model": ErrorResponse, "description": "session_stopped"},
         500: {"model": ErrorResponse, "description": "transcoder_failed"},
     },
 )

@@ -50,6 +50,7 @@ from hometv.playback.subtitles import SubtitleService
 from hometv.profiles import TokenService, UnlockLimiter
 from hometv.scheduler import Scheduler
 from hometv.spa import install_spa
+from hometv.sysload import read_cpu_load
 
 logger = logging.getLogger("hometv.main")
 
@@ -96,6 +97,7 @@ def create_app(
             people = PersonService(db, tmdb)
             app.state.people = people
             app.state.hls = hls
+            app.state.cpu_load = read_cpu_load
             app.state.keyframes = keyframes
             app.state.subtitles = subtitles
             hls.start()

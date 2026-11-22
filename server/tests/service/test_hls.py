@@ -3,17 +3,26 @@
 import asyncio
 import logging
 import signal
+import time
+from dataclasses import FrozenInstanceError
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from hometv.api.errors import ApiError
-from hometv.playback.hls import HlsSessionManager, SessionSpec
+from hometv.playback.hls import (
+    MAX_TOMBSTONES,
+    TOMBSTONE_SECONDS,
+    HlsSessionManager,
+    Session,
+    SessionSpec,
+)
 from hometv.playback.segments import TS_OFFSET_SECONDS as T0
 from hometv.playback.segments import Segment, plan_segments
 from hometv.probe import AudioStream, ProbeResult, VideoStream
 from tests import fmp4_builder as fb
-from tests.stubs import FakeProc, Spawner, wait_until
+from tests.stubs import FakeProc, ScaledClock, Spawner, wait_until
 
 FRAME = 1 / 25
 KEYFRAMES = [float(t) for t in range(0, 60, 6)]
@@ -142,6 +151,7 @@ def spec(
     action="aac_stereo",
     video_index=0,
     codec="h264",
+    video_action="copy",
 ) -> SessionSpec:
     probe = ProbeResult(
         container="mkv",
@@ -161,6 +171,7 @@ def spec(
         audio_stream_index=video_index + 1,
         audio_action=action,
         start_position_seconds=start,
+        video_action=video_action,
     )
 
 
@@ -232,6 +243,38 @@ async def test_ffmpeg_argv_reference_command(manager, stub):
         "12.000000",
     ]
     assert manager.ffmpeg_argv(session, 9)[argv_k.index("-segment_times") + 1] == "999999"
+
+
+async def test_copy_argv_has_no_transcode_parts(manager, stub):
+    session = await manager.create_session(spec(codec="av1"))
+    argv = stub.procs[0].argv
+    assert argv[0] == manager.settings.ffmpeg.ffmpeg_path
+    assert argv[argv.index("-c:v") + 1] == "copy"
+    assert "-progress" not in argv and "nice" not in argv
+    assert session.spec.video_action == "copy"
+
+
+async def test_transcode_argv(manager, stub):
+    session = await manager.create_session(spec(codec="hevc", video_action="h264"))
+    argv = stub.procs[0].argv
+    assert argv[:4] == ["nice", "-n", "10", manager.settings.ffmpeg.ffmpeg_path]
+    assert "copy" not in argv[argv.index("-map") : argv.index("-c:a")]
+    assert "-tag:v" not in argv
+    i = argv.index("-c:v")
+    assert argv[i : i + 3] == ["-c:v", "libx264", "-preset"]
+    assert argv[argv.index("-preset") + 1] == "ultrafast"
+    assert argv[argv.index("-crf") + 1] == "23"
+    assert argv[argv.index("-maxrate") + 1] == "8000000"
+    assert argv[argv.index("-fps_mode") + 1] == "passthrough"
+    assert argv[argv.index("-force_key_frames") + 1] == "source"
+    assert argv[argv.index("-progress") + 1] == str(session.dir / "progress.txt")
+    assert argv[argv.index("-stats_period") + 1] == "1"
+    # Everything else is the remux argv: seek, timestamps, audio, segment muxer.
+    assert argv[argv.index("-copyts") + 1] == "-start_at_zero"
+    assert argv[argv.index("-f") + 1] == "segment"
+    assert argv[argv.index("-segment_times") + 1].split(",")[0] == f"{PLAN[1].start + 10:.6f}"
+    argv_k = manager.ffmpeg_argv(session, 4)
+    assert argv_k[argv_k.index("-ss") + 1] == f"{24.001 + 3 / 23:.6f}"
 
 
 async def test_audio_copy_and_none(manager, stub):
@@ -817,3 +860,407 @@ async def test_an_opened_segment_survives_its_eviction(manager, stub):
         manager._drop(session, 0).unlink()
     with opened.file as fh:
         assert fh.read()[4:8] == b"moof"
+
+
+# --- FR-S5: transcode limits, estimate, segment wait ------------------------------------------
+
+
+def limited_manager(make_settings, stub, clock, **playback):
+    settings = make_settings(playback=playback)
+    settings.hls_dir.mkdir(parents=True, exist_ok=True)
+    return new_manager(settings, stub, clock)
+
+
+async def test_transcode_limit_and_slot_release(make_settings, stub, clock):
+    mgr = limited_manager(make_settings, stub, clock, max_transcodes=2, max_sessions=10)
+    try:
+        first = await mgr.create_session(spec(video_action="h264"))
+        await mgr.create_session(spec(video_action="h264"))
+        err = await expect_error(
+            mgr.create_session(spec(video_action="h264")), 503, "transcode_busy"
+        )
+        assert err.details == {"max_transcodes": 2}
+        assert (await mgr.create_session(spec())).state == "running"  # a remux still starts
+        assert tuple(mgr.counts()) == (3, 2)
+        await mgr.delete(first.session_id)
+        assert (await mgr.create_session(spec(video_action="h264"))).state == "running"
+    finally:
+        await mgr.shutdown()
+
+
+async def test_failed_transcode_does_not_hold_a_slot(make_settings, stub, clock):
+    mgr = limited_manager(make_settings, stub, clock, max_transcodes=1)
+    try:
+        session = await mgr.create_session(spec(video_action="h264"))
+        async with session.lock:
+            await mgr._fail(session, "boom")
+        assert tuple(mgr.counts()) == (0, 0)
+        assert (await mgr.create_session(spec(video_action="h264"))).state == "running"
+    finally:
+        await mgr.shutdown()
+
+
+async def test_concurrent_transcode_creates_respect_max_transcodes(make_settings, stub, clock):
+    mgr = limited_manager(make_settings, stub, clock, max_transcodes=2, max_sessions=10)
+
+    def slow_free(path):
+        time.sleep(0.05)
+        return 10 * 1024**4
+
+    mgr.disk_free = slow_free
+    try:
+        results = await asyncio.gather(
+            *(mgr.create_session(spec(video_action="h264")) for _ in range(3)),
+            return_exceptions=True,
+        )
+        errors = [r for r in results if isinstance(r, ApiError)]
+        assert [e.code for e in errors] == ["transcode_busy"]
+        assert tuple(mgr.counts()) == (2, 2)
+        assert stub.count == 2
+    finally:
+        await mgr.shutdown()
+
+
+async def test_max_sessions_wins_over_free_transcode_slots(make_settings, stub, clock):
+    mgr = limited_manager(make_settings, stub, clock, max_transcodes=2, max_sessions=2)
+    try:
+        await mgr.create_session(spec())
+        await mgr.create_session(spec())
+        await expect_error(mgr.create_session(spec(video_action="h264")), 503, "too_many_sessions")
+    finally:
+        await mgr.shutdown()
+
+
+async def test_transcode_busy_comes_before_disk_full(make_settings, stub, clock):
+    mgr = limited_manager(make_settings, stub, clock, max_transcodes=1)
+    try:
+        await mgr.create_session(spec(video_action="h264"))
+        mgr.disk_free = lambda path: 0
+        await expect_error(mgr.create_session(spec(video_action="h264")), 503, "transcode_busy")
+        await expect_error(mgr.create_session(spec()), 503, "hls_disk_full")
+    finally:
+        await mgr.shutdown()
+
+
+@pytest.mark.parametrize(
+    ("video_action", "audio", "bitrate", "expected_bps"),
+    [
+        ("copy", "copy", 4_000_000, 4_000_000),
+        ("h264", "copy", 4_000_000, 8_000_000 + 640_000),
+        ("h264", "aac_5_1", 100, 8_000_000 + 384_000),
+        ("h264", "aac_stereo", None, 8_000_000 + 192_000),
+        ("h264", "none", None, 8_000_000),
+    ],
+)
+async def test_estimate_bytes_table(manager, video_action, audio, bitrate, expected_bps):
+    s = spec(video_action=video_action, action=audio, bitrate=bitrate, size=10**9)
+    window = manager.ahead + manager.behind
+    assert manager.estimate_bytes(s) == int(expected_bps / 8 * window)
+
+
+@pytest.mark.parametrize(
+    ("video_action", "segment_seconds", "expected"),
+    [
+        ("copy", 30, 20.0),
+        ("h264", 6, 20.0),
+        ("h264", 25, 35.0),
+        ("h264", 30, 40.0),
+        ("h264", 60, 40.0),
+    ],
+)
+async def test_segment_wait_table(
+    make_settings, stub, clock, video_action, segment_seconds, expected
+):
+    mgr = limited_manager(make_settings, stub, clock)
+    mgr.wait_seconds = 20.0  # production values; nothing is spawned
+    seg = float(segment_seconds)
+    plan = [Segment(0.0, seg), Segment(seg, seg)]
+    session = Session("s", spec(plan=plan, video_action=video_action), Path("."), 0.0)
+    assert (mgr.transcode_wait_start, mgr.transcode_wait_max) == (10.0, 40.0)
+    assert mgr.segment_wait(session, 1) == expected
+
+
+async def test_init_uses_the_wait_of_the_runs_first_segment(make_settings, stub, clock):
+    plan = plan_segments([0.0, 30.0], 60.0, 30)
+    stub.plan = plan
+    stub.stop_at = 0  # nothing is ever produced
+    mgr = limited_manager(make_settings, stub, clock)
+    mgr.wait_seconds, mgr.transcode_wait_start, mgr.transcode_wait_max = 0.1, 0.05, 0.4
+    try:
+        session = await mgr.create_session(
+            spec(plan=plan, keyframes=[0.0, 30.0], video_action="h264")
+        )
+        t0 = time.monotonic()
+        await expect_error(mgr.init_segment(session.session_id), 504, "segment_timeout")
+        assert 0.35 <= time.monotonic() - t0 < 0.9
+    finally:
+        await mgr.shutdown()
+
+
+async def test_slow_conversion_gets_the_longer_wait(make_settings, clock):
+    # A 30 s segment takes "30 s" at the stub's scaled speed: the copy wait is too short for it.
+    plan = plan_segments([0.0, 30.0], 60.0, 30)
+    slow = StubFfmpeg(plan, interval=0.6)
+    mgr = limited_manager(make_settings, slow, clock)
+    mgr.wait_seconds, mgr.transcode_wait_start, mgr.transcode_wait_max = 0.4, 0.2, 0.9
+    try:
+        copy = await mgr.create_session(spec(plan=plan, keyframes=[0.0, 30.0]))
+        await expect_error(read_segment(mgr, copy.session_id, 0), 504, "segment_timeout")
+        conv = await mgr.create_session(spec(plan=plan, keyframes=[0.0, 30.0], video_action="h264"))
+        assert await read_segment(mgr, conv.session_id, 0)
+    finally:
+        await mgr.shutdown()
+        await slow.spawner.close()
+
+
+# --- FR-S6: live encode speed -----------------------------------------------------------------
+
+
+def push_progress(session, seconds: float) -> None:
+    block = f"frame=1\nout_time_us={int(seconds * 1_000_000)}\nprogress=continue\n"
+    with open(session.dir / "progress.txt", "a") as fh:
+        fh.write(block)
+
+
+async def test_speed_from_progress_samples(manager, stub, clock):
+    session = await manager.create_session(spec(video_action="h264"))
+    assert session.speed is None
+    push_progress(session, 10.0)
+    await wait_until(lambda: len(session.speed_samples) == 1)
+    assert session.speed is None  # one sample is not enough
+    clock.now += 5
+    push_progress(session, 20.0)
+    await wait_until(lambda: len(session.speed_samples) == 2)
+    assert session.speed == pytest.approx(2.0)
+    clock.now += 20  # the first samples leave the 10 s window
+    push_progress(session, 70.0)
+    await wait_until(lambda: len(session.speed_samples) == 1)
+    clock.now += 5
+    push_progress(session, 75.0)
+    await wait_until(lambda: session.speed == pytest.approx(1.0))
+
+
+async def test_partial_progress_block_is_kept_for_the_next_poll(manager, stub, clock):
+    session = await manager.create_session(spec(video_action="h264"))
+    with open(session.dir / "progress.txt", "a") as fh:
+        fh.write("frame=1\nout_time_us=10000")
+    await asyncio.sleep(0.1)
+    assert len(session.speed_samples) == 0
+    with open(session.dir / "progress.txt", "a") as fh:
+        fh.write("00\nprogress=continue\n")
+    await wait_until(lambda: len(session.speed_samples) == 1)
+    assert session.speed_samples[0][1] == 1.0
+
+
+async def test_speed_is_kept_while_throttled_and_samples_restart_on_resume(manager, stub, clock):
+    stub.stop_at = 0  # no rows: the monitor never resumes the forced throttle
+    session = await manager.create_session(spec(video_action="h264"))
+    push_progress(session, 10.0)
+    await wait_until(lambda: len(session.speed_samples) == 1)
+    clock.now += 5
+    push_progress(session, 20.0)
+    await wait_until(lambda: session.speed == pytest.approx(2.0))
+    session.state = "throttled"
+    clock.now += 50
+    push_progress(session, 21.0)  # a block that was in flight at SIGSTOP
+    await asyncio.sleep(0.1)
+    assert session.speed == pytest.approx(2.0)
+    assert len(session.speed_samples) == 2
+    async with session.lock:
+        manager._resume(session)
+    assert session.state == "running" and len(session.speed_samples) == 0
+    assert session.speed == pytest.approx(2.0)  # last measured value until two new samples
+
+
+async def test_speed_resets_on_restart_and_is_none_for_copy(manager, stub, clock):
+    session = await manager.create_session(spec(video_action="h264"))
+    push_progress(session, 10.0)
+    await wait_until(lambda: len(session.speed_samples) == 1)
+    clock.now += 5
+    push_progress(session, 20.0)
+    await wait_until(lambda: session.speed is not None)
+    async with session.lock:
+        await manager._start_run(session, 5)
+    assert session.speed is None and not session.speed_samples
+    assert not (session.dir / "progress.txt").exists()
+    assert (session.progress_offset, session.progress_partial) == (0, "")
+    copy = await manager.create_session(spec())
+    push_progress(copy, 10.0)
+    clock.now += 5
+    push_progress(copy, 20.0)
+    await asyncio.sleep(0.1)
+    assert copy.speed is None and not copy.speed_samples
+
+
+async def test_speed_follows_a_stub_progress_rate(make_settings):
+    from tests.hls_stub import PlanFfmpeg
+
+    clk = ScaledClock(20)
+    plan = plan_segments([0.0, 30.0], 3600.0, 30)
+    plan_stub = PlanFfmpeg(3600.0, interval=0.3, progress_rate=2.0, clock=clk)
+    settings = make_settings(playback={})
+    settings.hls_dir.mkdir(parents=True, exist_ok=True)
+    mgr = HlsSessionManager(
+        settings,
+        spawn=plan_stub.spawner,
+        clock=clk,
+        disk_free=lambda path: 10 * 1024**4,
+        segment_times_mode="absolute",
+    )
+    mgr.poll_seconds = 0.01
+    mgr.kill_grace = 0.2
+    try:
+        session = await mgr.create_session(
+            spec(plan=plan, keyframes=[0.0, 30.0], video_action="h264")
+        )
+        await wait_until(lambda: session.speed is not None, timeout=10)
+        await asyncio.sleep(0.5)
+        assert session.speed == pytest.approx(2.0, rel=0.3)
+    finally:
+        await mgr.shutdown()
+        await plan_stub.spawner.close()
+
+
+# --- admin view: snapshot, stop_by_admin, tombstones (FR-S7 / FR-S8) ---------------------------
+
+
+async def test_snapshot_lists_non_stopped_sessions_with_wall_clock_start(
+    make_settings, stub, clock
+):
+    settings = make_settings()
+    settings.hls_dir.mkdir(parents=True, exist_ok=True)
+    mgr = new_manager(settings, stub, clock)
+    mgr.wall_clock = lambda: datetime(2030, 1, 2, 3, 4, 5, tzinfo=UTC)
+    try:
+        copy = await mgr.create_session(spec(profile_id=3))
+        conv = await mgr.create_session(spec(video_action="h264", action="none"))
+        await read_segment(mgr, copy.session_id, 2)
+        conv.speed = 1.5
+        async with conv.lock:
+            await mgr._fail(conv, "boom")
+        gone = await mgr.create_session(spec())
+        await mgr.delete(gone.session_id)
+        snaps = {s.session_id: s for s in mgr.snapshot()}
+        assert set(snaps) == {copy.session_id, conv.session_id}
+        c = snaps[copy.session_id]
+        assert (c.profile_id, c.media_file_id, c.video_action, c.audio_action) == (
+            3, 7, "copy", "aac_stereo",
+        )  # fmt: skip
+        assert c.started_at == datetime(2030, 1, 2, 3, 4, 5, tzinfo=UTC)
+        assert (c.last_segment, c.position_seconds, c.duration_seconds) == (2, 12.0, 60.0)
+        assert c.speed is None
+        v = snaps[conv.session_id]
+        assert (v.state, v.video_action, v.speed) == ("failed", "h264", 1.5)
+        assert v.last_segment is None and v.position_seconds is None
+        with pytest.raises(FrozenInstanceError):
+            c.state = "done"  # type: ignore[misc]
+    finally:
+        await mgr.shutdown()
+
+
+async def test_default_wall_clock_is_utc_now(manager, stub):
+    session = await manager.create_session(spec())
+    assert session.started_at.tzinfo is not None
+    assert abs((datetime.now(UTC) - session.started_at).total_seconds()) < 30
+
+
+@pytest.mark.parametrize("state", ["running", "throttled", "done", "failed"])
+async def test_stop_by_admin_stops_every_listed_state(manager, stub, state, caplog):
+    session = await manager.create_session(spec())
+    session.state = state
+    caplog.set_level(logging.INFO, logger="hometv.hls")
+    assert await manager.stop_by_admin(session.session_id) is True
+    assert session.stopped_by_admin and session.state == "stopped"
+    assert session.session_id not in manager.sessions
+    assert not session.dir.exists()
+    assert stub.procs[0].returncode is not None
+    assert manager.tombstones == {session.session_id: manager.clock()}
+    assert f"hls_session_stopped_by_admin: {session.session_id}" in caplog.text
+    assert manager.snapshot() == []
+    assert await manager.stop_by_admin(session.session_id) is False
+    assert await manager.stop_by_admin("nope") is False
+
+
+async def test_tombstoned_id_answers_410_everywhere(manager, stub):
+    session = await manager.create_session(spec())
+    sid = session.session_id
+    await manager.stop_by_admin(sid)
+    calls = [
+        lambda: manager.playlist(sid),
+        lambda: manager.keepalive(sid),
+        lambda: manager.init_segment(sid),
+        lambda: manager.open_segment(sid, 3),
+    ]
+    for call in calls:
+        with pytest.raises(ApiError) as exc:
+            result = call()
+            if asyncio.iscoroutine(result):
+                await result
+        assert (exc.value.status_code, exc.value.code) == (410, "session_stopped")
+    with pytest.raises(ApiError) as exc:
+        manager.playlist("0" * 32)
+    assert exc.value.status_code == 404
+    await manager.delete(sid)  # still a no-op
+    assert await manager.stop_owned(sid, session.profile_id) is False
+
+
+async def test_waiting_segment_request_gets_410_when_the_admin_stops(manager, stub):
+    stub.stop_at = 1
+    session = await manager.create_session(spec())
+    waiting = asyncio.create_task(manager.open_segment(session.session_id, 4))
+    await asyncio.sleep(0.1)
+    assert not waiting.done()
+    await manager.stop_by_admin(session.session_id)
+    with pytest.raises(ApiError) as exc:
+        await waiting
+    assert (exc.value.status_code, exc.value.code) == (410, "session_stopped")
+
+
+async def test_waiting_init_request_gets_410_when_the_admin_stops(manager, stub):
+    stub.stop_at = 0
+    session = await manager.create_session(spec())
+    waiting = asyncio.create_task(manager.init_segment(session.session_id))
+    await asyncio.sleep(0.1)
+    await manager.stop_by_admin(session.session_id)
+    with pytest.raises(ApiError) as exc:
+        await waiting
+    assert exc.value.code == "session_stopped"
+
+
+async def test_tombstones_expire_and_are_capped(manager, stub, clock):
+    first = await manager.create_session(spec())
+    await manager.stop_by_admin(first.session_id)
+    clock.now += TOMBSTONE_SECONDS - 1
+    await manager.sweep_idle()
+    with pytest.raises(ApiError) as exc:
+        manager.keepalive(first.session_id)
+    assert exc.value.status_code == 410
+    clock.now += 2
+    with pytest.raises(ApiError) as exc:  # expired at lookup time even before a sweep
+        manager.keepalive(first.session_id)
+    assert exc.value.status_code == 404
+    await manager.sweep_idle()
+    assert manager.tombstones == {}
+    for _ in range(MAX_TOMBSTONES + 3):
+        session = await manager.create_session(spec())
+        await manager.stop_by_admin(session.session_id)
+        clock.now += 1
+    assert len(manager.tombstones) == MAX_TOMBSTONES
+    assert session.session_id in manager.tombstones
+    assert first.session_id not in manager.tombstones
+
+
+async def test_idle_swept_sessions_are_not_tombstoned(make_settings, stub, clock):
+    settings = make_settings(playback={"session_idle_timeout_seconds": 1})
+    settings.hls_dir.mkdir(parents=True, exist_ok=True)
+    mgr = new_manager(settings, stub, clock)
+    try:
+        idle = await mgr.create_session(spec())
+        clock.now += 5
+        await mgr.sweep_idle()
+        assert mgr.tombstones == {}
+        with pytest.raises(ApiError) as exc:
+            mgr.keepalive(idle.session_id)
+        assert exc.value.status_code == 404
+    finally:
+        await mgr.shutdown()

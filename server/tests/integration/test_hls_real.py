@@ -380,3 +380,155 @@ async def test_idle_cleanup_and_shutdown(make_media_app):
         hls_dir = media.app.state.settings.hls_dir
     assert not other_dir.exists()
     assert not [p for p in hls_dir.iterdir() if p.is_dir()]
+
+
+# --- video conversion (FR-S3) ------------------------------------------------------------------
+
+CONVERT_CAPS = {**WEB_CAPS, "video_codecs": ["h264", "vp9"]}  # no hevc: the video is converted
+REMUX_CAPS = {**FORCE_HLS_CAPS, "video_codecs": ["h264", "hevc"]}
+
+
+def stream_info(tmp_path: Path, init: bytes, seg: bytes) -> dict:
+    """ffprobe ``init + seg``: the first video stream's codec, profile, pixel format, size."""
+    path = tmp_path / "info.mp4"
+    path.write_bytes(init + seg)
+    out = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+         "stream=codec_name,profile,pix_fmt,height,color_transfer,nb_read_packets",
+         "-count_packets", "-of", "json", str(path)],
+        check=True, capture_output=True, text=True,
+    ).stdout  # fmt: skip
+    return json.loads(out)["streams"][0]
+
+
+async def converted_session(media, name: str, *, video_action: str, segment_seconds: int = 2):
+    from hometv.db import models as m
+
+    with media.app.state.db.read_session() as s:
+        row = s.get(m.MediaFile, media.ids[name])
+        probe = ProbeResult.from_json(row.probe)
+        path, size = row.path, row.size_bytes
+    keyframes = await keyframes_of(media, name)
+    plan = plan_segments(keyframes, probe.duration_seconds, segment_seconds)
+    session = await media.hls.create_session(
+        SessionSpec(
+            1, media.ids[name], path, size, probe, keyframes, plan, probe.audio[0].index,
+            "aac_stereo", video_action=video_action,
+        )
+    )  # fmt: skip
+    return session, plan, probe
+
+
+async def read_seg(hls, sid: str, k: int) -> tuple[bytes, bytes]:
+    opened = await hls.open_segment(sid, k)
+    with opened.file as fh:
+        data = fh.read()
+    return await hls.init_segment(sid), data
+
+
+@pytest.mark.parametrize("name", ["hevc_10bit_aac.mkv", "hevc_vfr_aac.mkv"])
+async def test_transcoded_session_plays_through_and_restarts(
+    make_media_app, tmp_path, caplog, name
+):
+    """Segments 0..2 (run 0), a far k (run 1, a restart at k > 1), k + 1, then seg_1 again
+    after its eviction (run 2): every segment passes the monitor's row/tfdt checks, starts with
+    a keyframe at the planned tfdt, the output is H.264 High yuv420p <= 1080 lines, init.mp4 is
+    identical across runs, audio starts within the remux tolerance."""
+    async with make_media_app(
+        playback={"hls_segment_seconds": 2, "hls_ahead_seconds": 120, "hls_behind_seconds": 0}
+    ) as media:
+        hls = media.hls
+        session, plan, probe = await converted_session(media, name, video_action="h264")
+        sid = session.session_id
+        frame = 1 / probe.video.frame_rate
+        # The remux window: the source's reorder delay (x265 B-frames, <= 4 frames: a restarted
+        # run's audio starts at the keyframe's DTS) plus two AAC frames.
+        audio_low = 4 * frame + 2 * 1024 / 44_100 + 0.007
+        inits = []
+        with caplog.at_level(logging.WARNING, logger="hometv"):
+            for i, k in enumerate([0, 1, 2, len(plan) - 3, len(plan) - 2, 1]):
+                if i == 3:  # force a second run: run 0 done, what it produced ahead evicted
+                    deadline = time.monotonic() + 30
+                    while session.state != "done" and time.monotonic() < deadline:
+                        await asyncio.sleep(0.05)
+                    async with session.lock:
+                        for j in [j for j in session.ready if j > 2]:
+                            hls._drop(session, j).unlink(missing_ok=True)
+                init, data = await read_seg(hls, sid, k)
+                inits.append(init)
+                info = analyze(tmp_path, init, data)
+                assert info["video_codec"] == "h264" and info["first_is_key"], (k, info)
+                split = split_fmp4(init + data)
+                video, audio = split.video_start(), split.audio_start()
+                assert abs(video - T0 - plan[k].start) <= frame + 1e-6, (k, video, plan[k].start)
+                # The converted video has no B-frame delay, so audio is compared to its own
+                # start: at most one AAC frame later, two earlier (the remux window).
+                assert audio is not None
+                assert video - audio_low - 1e-6 <= audio <= video + 1024 / 44_100 + 0.005, k
+                if i == 0:
+                    video = stream_info(tmp_path, init, data)
+                    # ``-profile:v high`` is a cap: libx264 ultrafast (no CABAC, no B-frames)
+                    # is reported as Constrained Baseline by ffprobe.
+                    assert video["profile"] in ("High", "Main", "Constrained Baseline")
+                    assert video["pix_fmt"] == "yuv420p"
+                    assert video["height"] <= 1080
+        assert hls.spawn_count == 3
+        assert len(set(inits)) == 1
+        assert not has_edit_list(inits[0])
+        for bad in ("plan_mismatch", "init_mismatch", "tfdt_mismatch"):
+            assert bad not in caplog.text
+
+
+async def test_transcoded_vfr_keeps_the_remux_timeline(make_media_app, tmp_path, caplog):
+    """A VFR source converts with the remux's per-segment tfdt and frame count (no CFR
+    duplication or drop)."""
+    name = "hevc_vfr_aac.mkv"
+    async with make_media_app(
+        playback={"hls_segment_seconds": 2, "hls_ahead_seconds": 120, "hls_behind_seconds": 0}
+    ) as media:
+        hls = media.hls
+        results = {}
+        for action in ("copy", "h264"):
+            session, plan, _ = await converted_session(media, name, video_action=action)
+            starts, frames = [], 0
+            for k in range(len(plan)):
+                init, data = await read_seg(hls, session.session_id, k)
+                starts.append(split_fmp4(init + data).video_start())
+                frames += int(stream_info(tmp_path, init, data)["nb_read_packets"])
+            results[action] = (starts, frames)
+            await hls.delete(session.session_id)
+        (copy_starts, copy_frames), (h264_starts, h264_frames) = results["copy"], results["h264"]
+        assert h264_frames == copy_frames
+        # The remux tfdt is the first DTS (B-frame delay), the conversion has none: both are
+        # within one frame of the plan, like every other tfdt check of this suite.
+        assert h264_starts == pytest.approx(copy_starts, abs=1 / 25)
+        assert "tfdt_mismatch" not in caplog.text
+
+
+async def test_transcoded_hdr10_is_tone_mapped_to_bt709(make_media_app, tmp_path):
+    filters = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-filters"], capture_output=True, text=True
+    ).stdout
+    if "zscale" not in filters:
+        pytest.skip("ffmpeg without zscale (libzimg)")
+    async with make_media_app() as media:
+        session, _, probe = await converted_session(
+            media, "hevc_10bit_hdr10.mkv", video_action="h264"
+        )
+        assert probe.video.hdr == "hdr10"
+        init, data = await read_seg(media.hls, session.session_id, 0)
+        video = stream_info(tmp_path, init, data)
+        assert (video["codec_name"], video["pix_fmt"]) == ("h264", "yuv420p")
+        assert video["color_transfer"] == "bt709"
+
+
+async def test_playback_route_converts_hevc_for_web(make_media_app, tmp_path):
+    async with make_media_app() as media:
+        body = (await media.play("hevc_10bit_aac.mkv", CONVERT_CAPS)).json()
+        assert (body["mode"], body["video_action"]) == ("hls", "h264")
+        seg = await media.client.get(f"/api/hls/{body['session_id']}/seg_0.m4s")
+        init = await media.client.get(f"/api/hls/{body['session_id']}/init.mp4")
+        assert seg.status_code == 200
+        assert stream_info(tmp_path, init.content, seg.content)["codec_name"] == "h264"
+        remux = (await media.play("hevc_10bit_aac.mkv", REMUX_CAPS)).json()
+        assert remux["video_action"] == "copy"

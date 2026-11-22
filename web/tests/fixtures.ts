@@ -225,7 +225,7 @@ export function activityEntry(overrides: Partial<ActivityEntry> = {}): ActivityE
 }
 
 export function video(overrides: Partial<VideoInfo> = {}): VideoInfo {
-  return { codec: 'h264', width: 1920, height: 1080, hdr: null, frame_rate: 23.976, ...overrides };
+  return { codec: 'h264', width: 1920, height: 1080, hdr: null, frame_rate: 23.976, profile: 'High', bit_depth: 8, ...overrides };
 }
 
 export function audioTrack(overrides: Partial<AudioTrack> = {}): AudioTrack {
@@ -696,6 +696,7 @@ export function playbackHls(overrides: Partial<PlaybackHls> = {}): PlaybackHls {
     session_id: sessionId,
     audio_stream_index: 1,
     audio_action: 'copy',
+    video_action: 'copy',
     duration_seconds: 9360.5,
     subtitle_tracks: [subtitleTrack()],
     ...overrides,

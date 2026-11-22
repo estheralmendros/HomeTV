@@ -278,7 +278,8 @@ async def test_playback_direct(client, user, make_file, app):
     }
 
 
-async def test_playback_unsupported(client, user, make_file):
+async def test_playback_unsupported(client, user, make_file, app):
+    app.state.settings.playback.max_transcodes = 0  # no conversion: the codec stays unsupported
     fid = make_file(codec="hevc")
     response = await play(client, user, fid)
     assert response.json() == {
@@ -288,6 +289,58 @@ async def test_playback_unsupported(client, user, make_file):
     }
     failed = make_file("bad.mkv", probe_error="Invalid data")
     assert (await play(client, user, failed)).json()["reason"] == "probe_failed"
+
+
+async def test_playback_hevc_is_converted_for_web(client, user, make_file, ffmpeg, app):
+    fid = make_file(codec="hevc", keyframes=KF)
+    response = await play(client, user, fid)
+    body = response.json()
+    assert (body["mode"], body["video_action"]) == ("hls", "h264")
+    session = app.state.hls.sessions[body["session_id"]]
+    assert session.spec.video_action == "h264"
+
+
+async def test_playback_av1_is_converted_without_av1_caps(client, user, make_file, ffmpeg, app):
+    fid = make_file(codec="av1", keyframes=KF)
+    caps = {**WEB, "video_codecs": ["h264", "vp9"]}
+    body = (await play(client, user, fid, caps=caps)).json()
+    assert (body["mode"], body["video_action"]) == ("hls", "h264")
+    app.state.settings.playback.max_transcodes = 0  # HOMETV_MAX_TRANSCODES=0
+    body = (await play(client, user, fid, caps=caps)).json()
+    assert (body["mode"], body["reason"]) == ("unsupported", "video_codec_unsupported")
+
+
+async def test_playback_transcode_busy(client, user, make_file, ffmpeg, app):
+    app.state.settings.playback.max_transcodes = 1
+    fid = make_file(codec="hevc", keyframes=KF)
+    first = (await play(client, user, fid)).json()
+    assert first["video_action"] == "h264"
+    response = await play(client, user, fid)
+    assert response.status_code == 503
+    error = response.json()["error"]
+    assert (error["code"], error["details"]) == ("transcode_busy", {"max_transcodes": 1})
+    # The viewer's own previous session frees its slot first (audio switch / recovery).
+    again = await play(client, user, fid, previous_session_id=first["session_id"])
+    assert again.status_code == 200 and again.json()["video_action"] == "h264"
+
+
+async def test_playback_conversion_disabled_or_unclaimed(client, user, make_file, ffmpeg, app):
+    fid = make_file(codec="hevc", keyframes=KF)
+    no_h264 = {**WEB, "video_codecs": ["vp9"]}
+    assert (await play(client, user, fid, caps=no_h264)).json()["reason"] == (
+        "video_codec_unsupported"
+    )
+    app.state.settings.playback.max_transcodes = 0
+    response = await play(client, user, fid)
+    assert response.json()["reason"] == "video_codec_unsupported"
+    assert ffmpeg.count == 0
+
+
+async def test_keyframes_too_sparse_applies_to_conversion(client, user, make_file, ffmpeg, app):
+    fid = make_file(codec="hevc", duration=600.0, keyframes=[0.0, 300.0])
+    body = (await play(client, user, fid)).json()
+    assert (body["mode"], body["reason"]) == ("unsupported", "keyframes_too_sparse")
+    assert ffmpeg.count == 0
 
 
 async def test_playback_errors(client, user, make_file):
@@ -338,6 +391,7 @@ async def test_playback_hls_session_end_to_end(client, user, make_file, ffmpeg, 
         "session_id": sid,
         "audio_stream_index": 1,
         "audio_action": "aac_5_1",
+        "video_action": "copy",
         "duration_seconds": 60.0,
         "subtitle_tracks": [],
     }
@@ -406,6 +460,7 @@ async def test_previous_session_is_stopped_whatever_the_outcome(
     client, user, profile_factory, make_file, ffmpeg, app
 ):
     hls = app.state.hls
+    app.state.settings.playback.max_transcodes = 0
     fid = make_file(keyframes=KF)
     direct = make_file("d.mp4", container="mp4")
     unsupported = make_file("u.mkv", codec="vc1")

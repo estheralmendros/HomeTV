@@ -56,6 +56,7 @@ from hometv.api.schemas import (
 )
 from hometv.db import models as m
 from hometv.metadata.artwork import image
+from hometv.probe import bit_depth
 from hometv.text import normalize_title
 from hometv.watch import (
     IN_PROGRESS_MIN_SECONDS,
@@ -184,6 +185,8 @@ def media_file_out(row: m.MediaFile, sidecars: Iterable[m.SubtitleFile] = ()) ->
             height=video.get("height"),
             hdr=video.get("hdr"),
             frame_rate=video.get("frame_rate"),
+            profile=video.get("profile"),
+            bit_depth=bit_depth(video.get("pix_fmt")),
         )
         if video
         else None,

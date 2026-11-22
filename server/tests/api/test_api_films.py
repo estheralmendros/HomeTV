@@ -263,6 +263,8 @@ def _seed_detail(db):
             width=3840,
             height=2160,
             hdr="hdr10",
+            profile="Main 10",
+            pix_fmt="yuv420p10le",
             duration=9360.5,
             audio=[
                 {
@@ -413,6 +415,8 @@ async def test_film_detail_shape(client, db, user):
             "height": 2160,
             "hdr": "hdr10",
             "frame_rate": 23.976,
+            "profile": "Main 10",
+            "bit_depth": 10,
         },
         "audio_tracks": [
             {
@@ -467,6 +471,9 @@ async def test_film_detail_shape(client, db, user):
         "probe_error": None,
         "added_at": "2026-01-01T00:00:00Z",
     }
+    # An old probe without pix_fmt/profile: both unknown.
+    old = d["media_files"][1]["video"]
+    assert (old["profile"], old["bit_depth"]) == (None, None)
     broken = d["media_files"][3]
     assert broken["label"] == "Desconocido"
     assert (broken["video"], broken["audio_tracks"], broken["subtitle_tracks"]) == (None, [], [])

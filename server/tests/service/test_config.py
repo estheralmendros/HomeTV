@@ -121,6 +121,10 @@ def test_every_env_var_is_mapped(tmp_path):
         "HOMETV_SCAN_WATCH_ENABLED": "false",
         "HOMETV_SCAN_WATCH_QUIET_SECONDS": "45",
         "HOMETV_MAX_SESSIONS": "2",
+        "HOMETV_MAX_TRANSCODES": "1",
+        "HOMETV_TRANSCODE_PRESET": "veryfast",
+        "HOMETV_TRANSCODE_CRF": "20",
+        "HOMETV_TRANSCODE_MAXRATE": "6M",
         "HOMETV_HLS_DIR": str(tmp_path / "scratch"),
         "HOMETV_HLS_SEGMENT_SECONDS": "4",
         "HOMETV_HLS_AHEAD_SECONDS": "60",
@@ -151,6 +155,8 @@ def test_every_env_var_is_mapped(tmp_path):
     assert (p.max_sessions, p.hls_dir, p.hls_segment_seconds) == (2, tmp_path / "scratch", 4)
     assert (p.hls_ahead_seconds, p.hls_behind_seconds, p.hls_max_disk_mb) == (60, 30, 100)
     assert p.session_idle_timeout_seconds == 30
+    assert (p.max_transcodes, p.transcode_preset, p.transcode_crf) == (1, "veryfast", 20)
+    assert p.transcode_maxrate == "6M"
     assert (s.auth.secret_key, s.auth.token_ttl_days, s.auth.admin_token_ttl_minutes) == (
         "s3cret",
         7,
@@ -164,6 +170,12 @@ def test_every_env_var_is_mapped(tmp_path):
     assert s.server.cors_origins == ["http://localhost:5173", "http://x"]
     assert s.server.log_level == "debug"
     assert (s.ffmpeg.ffmpeg_path, s.ffmpeg.ffprobe_path) == ("/usr/bin/ffmpeg", "/usr/bin/ffprobe")
+
+
+def test_transcode_defaults(tmp_path):
+    p = load_settings({"HOMETV_DATA_DIR": str(tmp_path)}).playback
+    assert (p.max_transcodes, p.transcode_preset, p.transcode_crf) == (2, "ultrafast", 23)
+    assert p.transcode_maxrate == "8M"
 
 
 def test_library_sources_name_env_or_yaml_key_of_each_set_library(tmp_path):
@@ -222,6 +234,11 @@ def test_relative_media_root_is_made_absolute(tmp_path, monkeypatch):
         ({"HOMETV_SCAN_INTERVAL_HOURS": "-1"}, "HOMETV_SCAN_INTERVAL_HOURS"),
         ({"HOMETV_MAX_SESSIONS": "-2"}, "HOMETV_MAX_SESSIONS"),
         ({"HOMETV_HLS_MAX_DISK_MB": "-1"}, "HOMETV_HLS_MAX_DISK_MB"),
+        ({"HOMETV_MAX_TRANSCODES": "-1"}, "HOMETV_MAX_TRANSCODES"),
+        ({"HOMETV_TRANSCODE_CRF": "60"}, "HOMETV_TRANSCODE_CRF"),
+        ({"HOMETV_TRANSCODE_PRESET": "slow2"}, "HOMETV_TRANSCODE_PRESET"),
+        ({"HOMETV_TRANSCODE_MAXRATE": "fast"}, "HOMETV_TRANSCODE_MAXRATE"),
+        ({"HOMETV_TRANSCODE_MAXRATE": "0"}, "HOMETV_TRANSCODE_MAXRATE"),
         ({"HOMETV_CAST_LIMIT": "-1"}, "HOMETV_CAST_LIMIT"),
         ({"HOMETV_SCAN_MISSING_GRACE_DAYS": "-1"}, "HOMETV_SCAN_MISSING_GRACE_DAYS"),
         ({"HOMETV_PORT": "notaport"}, "HOMETV_PORT"),

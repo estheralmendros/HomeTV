@@ -182,3 +182,65 @@ def test_no_audio_hls_action_none() -> None:
 def test_case_insensitive_matching() -> None:
     caps = WEB.model_copy(update={"containers": ["MP4"], "video_codecs": ["H264"]})
     assert decide(_probe("mp4", "h264", [("aac", 2)]), caps, None) == DirectPlay(1)
+
+
+# --- video conversion (FR-S2) ------------------------------------------------------------------
+
+
+def _convert(audio, caps=TV, *, duration=1200.0, can_transcode=True, audio_index=None):
+    probe = _probe("mkv", "av1", audio, duration=duration)
+    return decide(probe, caps, audio_index, can_transcode=can_transcode)
+
+
+@pytest.mark.parametrize(
+    ("audio", "action"),
+    [
+        ([("aac", 2)], "copy"),
+        ([("dts", 2)], "aac_stereo"),
+        ([("truehd", 8)], "aac_5_1"),
+        ([], "none"),
+    ],
+)
+def test_transcode_keeps_the_audio_rules(audio, action):
+    result = _convert(audio)
+    assert isinstance(result, HlsRemux)
+    assert result.audio_action == action
+    assert result.video_action == "h264"
+
+
+def test_transcode_audio_index_and_invalid_index():
+    result = _convert([("aac", 2), ("ac3", 6)], audio_index=2)
+    assert result == HlsRemux(2, "copy", video_action="h264")
+    with pytest.raises(InvalidAudioStream):
+        _convert([("aac", 2)], audio_index=9)
+
+
+def test_transcode_never_direct_play():
+    caps = TV.model_copy(update={"containers": ["mkv"]})
+    assert _convert([("aac", 2)], caps) == HlsRemux(1, "copy", video_action="h264")
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"caps": TV.model_copy(update={"hls": False})},
+        {"duration": None},
+        {"can_transcode": False},
+        {"caps": TV.model_copy(update={"video_codecs": ["hevc", "vp9"]})},
+    ],
+)
+def test_no_transcode_keeps_video_codec_unsupported(kwargs):
+    assert _norm(_convert([("aac", 2)], **kwargs)) == U("video_codec_unsupported")
+
+
+def test_can_transcode_defaults_to_false():
+    assert _norm(decide(_probe("mkv", "av1", [("aac", 2)]), TV, None)) == U(
+        "video_codec_unsupported"
+    )
+
+
+def test_existing_rows_are_copy():
+    assert decide(_probe("mkv", "h264", [("aac", 2)]), WEB, None) == HlsRemux(
+        1, "copy", video_action="copy"
+    )
+    assert HlsRemux(None, "none").video_action == "copy"

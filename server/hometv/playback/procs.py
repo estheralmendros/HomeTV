@@ -3,6 +3,7 @@
 - ``IDLE_PREFIX``: ``nice -n 10 ionice -c 3`` for whole-file readers. ``spawn`` drops the parts
   whose binary is missing (``ionice`` does not exist on macOS), so argv built by the modules
   (and asserted by tests) always carries the full prefix.
+- ``TRANSCODE_PREFIX``: ``nice -n 10`` for video conversions (same dropping rule).
 - ``read_rchar(pid)``: ``/proc/{pid}/io`` ``rchar`` or ``None`` when unreadable.
 - ``kill_sequence(proc)``: SIGCONT, SIGTERM, SIGKILL after a grace period.
 """
@@ -16,6 +17,7 @@ from collections.abc import Sequence
 from typing import Protocol
 
 IDLE_PREFIX = ("nice", "-n", "10", "ionice", "-c", "3")
+TRANSCODE_PREFIX = ("nice", "-n", "10")  # no ionice: a conversion reads at real-time rate
 
 
 class Proc(Protocol):
@@ -48,6 +50,12 @@ def _available(binary: str) -> bool:
 def effective_argv(argv: Sequence[str]) -> list[str]:
     """``argv`` with the idle-priority prefix reduced to the tools that exist on this host."""
     args = list(argv)
+    if (
+        tuple(args[: len(TRANSCODE_PREFIX)]) == TRANSCODE_PREFIX
+        and tuple(args[: len(IDLE_PREFIX)]) != IDLE_PREFIX
+    ):
+        rest = args[len(TRANSCODE_PREFIX) :]
+        return (["nice", "-n", "10"] if _available("nice") else []) + rest
     if tuple(args[: len(IDLE_PREFIX)]) != IDLE_PREFIX:
         return args
     rest = args[len(IDLE_PREFIX) :]

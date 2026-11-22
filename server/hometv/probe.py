@@ -8,6 +8,7 @@
 import asyncio
 import contextlib
 import json
+import re
 from collections.abc import Awaitable, Callable, Sequence
 from os import PathLike
 from typing import Any, Literal
@@ -238,6 +239,25 @@ def _frame_rate(value: Any) -> float | None:
     if n <= 0 or d <= 0:
         return None
     return round(n / d, 3)
+
+
+_EIGHT_BIT_FORMATS = frozenset(
+    {
+        "yuv420p", "yuvj420p", "yuv422p", "yuv444p", "yuvj422p", "yuvj444p",
+        "nv12", "nv21", "gray",
+    }
+)  # fmt: skip
+_DEPTH_SUFFIX = re.compile(r"(?:p|gray)(\d+)(?:le|be)?$")
+
+
+def bit_depth(pix_fmt: str | None) -> int | None:
+    """Bits per component of an ffmpeg pixel format name; ``None`` when unknown."""
+    if not pix_fmt:
+        return None
+    if pix_fmt in _EIGHT_BIT_FORMATS:
+        return 8
+    match = _DEPTH_SUFFIX.search(pix_fmt)
+    return int(match.group(1)) if match else None
 
 
 # --- Subprocess ----------------------------------------------------------------------------

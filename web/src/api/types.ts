@@ -185,6 +185,10 @@ export interface VideoInfo {
   height: number | null;
   hdr: HdrFormat | null;
   frame_rate: number | null;
+  /** ffprobe profile string as stored ("Main", "Main 10"); null when unknown. */
+  profile: string | null;
+  /** From the stored pixel format; null when unknown. */
+  bit_depth: number | null;
 }
 
 export interface AudioTrack {
@@ -597,6 +601,8 @@ export interface PlaybackHls {
   session_id: string;
   audio_stream_index: number | null;
   audio_action: 'copy' | 'aac_stereo' | 'aac_5_1' | 'none';
+  /** 'copy' = remux, 'h264' = the server converts the video; played the same way. */
+  video_action: 'copy' | 'h264';
   duration_seconds: number | null;
   subtitle_tracks: SubtitleTrack[];
 }
@@ -800,4 +806,53 @@ export interface ResolveRequest {
 
 export interface ResolveResponse {
   target: { type: 'film' | 'show'; id: number };
+}
+
+// --- Admin: playback sessions (GET /api/admin/sessions) ---
+
+export interface AdminSession {
+  session_id: string;
+  profile_id: number;
+  /** null when the profile was deleted meanwhile. */
+  profile_name: string | null;
+  media_file_id: number;
+  file_name: string;
+  /** null when the file is no longer linked to a title. */
+  item_type: 'film' | 'episode' | null;
+  /** Film title, or show title for an episode. */
+  title: string | null;
+  season_number: number | null;
+  episode_number: number | null;
+  /** Multi-episode file: the last linked episode, else null. */
+  last_episode_number: number | null;
+  video_action: 'copy' | 'h264';
+  audio_action: 'copy' | 'aac_stereo' | 'aac_5_1' | 'none';
+  state: 'running' | 'throttled' | 'done' | 'failed';
+  /** ISO 8601 UTC. */
+  started_at: string;
+  last_segment: number | null;
+  position_seconds: number | null;
+  duration_seconds: number;
+  /** Live encode speed (x real time); null for a remux or before two samples. */
+  speed: number | null;
+}
+
+export interface CpuLoad {
+  load_1m: number;
+  load_5m: number;
+  cores: number;
+}
+
+export interface SessionLimits {
+  max_sessions: number;
+  max_transcodes: number;
+}
+
+export interface AdminSessions {
+  sessions: AdminSession[];
+  active_sessions: number;
+  active_transcodes: number;
+  /** null off Linux or when /proc/loadavg cannot be read. */
+  cpu: CpuLoad | null;
+  limits: SessionLimits;
 }

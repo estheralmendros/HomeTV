@@ -8,7 +8,7 @@ Every route of ``router`` requires ``AdminUser`` (router-level dependency): vali
 import asyncio
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Path, Query, Response
+from fastapi import APIRouter, Depends, Path, Query, Request, Response
 
 from hometv import admin as admin_service
 from hometv import catalog, profiles
@@ -30,6 +30,7 @@ from hometv.api.deps import (
 from hometv.api.errors import ApiError
 from hometv.api.routes_profiles import profile_out
 from hometv.api.schemas import (
+    AdminSessions,
     BrowseResponse,
     ErrorResponse,
     FilmDetail,
@@ -48,6 +49,7 @@ from hometv.api.schemas import (
     ResolveTarget,
     Responses,
     ScanStatus,
+    SessionLimits,
     ShowDetail,
     TmdbSearchResponse,
     TmdbSeasonResponse,
@@ -391,4 +393,37 @@ async def update_profile(profile_id: int, body: ProfileUpdateRequest, db: Db) ->
 )
 def delete_profile(profile_id: int, db: Db) -> Response:
     profiles.delete_profile(db, profile_id)
+    return Response(status_code=204)
+
+
+# --- Playback sessions ---------------------------------------------------------------------
+
+
+@router.get("/sessions", response_model=AdminSessions)
+async def list_sessions(request: Request, db: Db, settings: SettingsDep) -> AdminSessions:
+    hls = request.app.state.hls
+    snapshot = hls.snapshot()
+    counts = hls.counts()
+    sessions = await asyncio.to_thread(admin_service.describe_sessions, db, snapshot)
+    return AdminSessions(
+        sessions=sessions,
+        active_sessions=counts.sessions,
+        active_transcodes=counts.transcodes,
+        cpu=request.app.state.cpu_load(),
+        limits=SessionLimits(
+            max_sessions=settings.playback.max_sessions,
+            max_transcodes=settings.playback.max_transcodes,
+        ),
+    )
+
+
+@router.delete(
+    "/sessions/{session_id}",
+    status_code=204,
+    response_class=Response,
+    responses={404: {"model": ErrorResponse, "description": "session_not_found"}},
+)
+async def stop_session(session_id: str, request: Request) -> Response:
+    if not await request.app.state.hls.stop_by_admin(session_id):
+        raise ApiError(404, "session_not_found", "No such playback session")
     return Response(status_code=204)

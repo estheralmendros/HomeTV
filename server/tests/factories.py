@@ -45,6 +45,8 @@ def probe_json(
     width: int | None = 1920,
     height: int | None = 1080,
     hdr: str | None = None,
+    profile: str | None = None,
+    pix_fmt: str | None = None,
     audio: list[dict[str, Any]] | None = None,
     subtitles: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
@@ -56,10 +58,10 @@ def probe_json(
         "video": {
             "index": 0,
             "codec": codec,
-            "profile": None,
+            "profile": profile,
             "width": width,
             "height": height,
-            "pix_fmt": None,
+            "pix_fmt": pix_fmt,
             "frame_rate": 23.976,
             "hdr": hdr,
         },

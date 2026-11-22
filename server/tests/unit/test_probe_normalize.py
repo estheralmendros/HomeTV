@@ -3,7 +3,14 @@ from pathlib import Path
 
 import pytest
 
-from hometv.probe import AudioStream, ProbeResult, SubtitleStream, VideoStream, normalize
+from hometv.probe import (
+    AudioStream,
+    ProbeResult,
+    SubtitleStream,
+    VideoStream,
+    bit_depth,
+    normalize,
+)
 
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures" / "ffprobe"
 
@@ -209,3 +216,31 @@ def test_probe_result_json_round_trip():
     stored = json.loads(json.dumps(r.to_json()))
     assert ProbeResult.from_json(stored) == r
     assert stored["video"]["hdr"] == "dolby_vision"
+
+
+@pytest.mark.parametrize(
+    ("pix_fmt", "expected"),
+    [
+        (None, None),
+        ("yuv420p10le", 10),
+        ("yuv420p10be", 10),
+        ("yuv420p12le", 12),
+        ("yuv444p16le", 16),
+        ("p010le", 10),
+        ("gray10le", 10),
+        ("yuv420p", 8),
+        ("yuvj420p", 8),
+        ("yuv422p", 8),
+        ("yuv444p", 8),
+        ("yuvj422p", 8),
+        ("yuvj444p", 8),
+        ("nv12", 8),
+        ("nv21", 8),
+        ("gray", 8),
+        ("rgb24", None),
+        ("weird", None),
+        ("", None),
+    ],
+)
+def test_bit_depth(pix_fmt, expected):
+    assert bit_depth(pix_fmt) == expected

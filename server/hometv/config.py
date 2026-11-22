@@ -33,6 +33,7 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
+from hometv.playback.transcode import parse_bitrate
 from hometv.text import empty_to_none
 
 if TYPE_CHECKING:
@@ -47,6 +48,7 @@ SECRET_FILENAME = "secret.key"
 LogLevel = Literal["debug", "info", "warning", "error", "critical"]
 # ``""`` (e.g. an empty env var) means unset for optional values.
 EmptyIsNone = BeforeValidator(empty_to_none)
+TranscodePreset = Literal["ultrafast", "superfast", "veryfast", "faster", "fast", "medium"]
 
 
 class ConfigError(Exception):
@@ -112,6 +114,17 @@ class ScanSettings(_Section):
 
 class PlaybackSettings(_Section):
     max_sessions: int = Field(4, ge=0)
+    max_transcodes: int = Field(2, ge=0)  # 0 disables video conversion
+    transcode_preset: TranscodePreset = "ultrafast"
+    transcode_crf: int = Field(23, ge=0, le=51)
+    transcode_maxrate: str = "8M"  # e.g. 8M, 800k, 8000000
+
+    @field_validator("transcode_maxrate")
+    @classmethod
+    def _maxrate(cls, value: str) -> str:
+        parse_bitrate(value)  # ValueError -> "Value error, ..." naming the key
+        return value
+
     hls_dir: Annotated[Path | None, EmptyIsNone] = None  # filled with {data_dir}/hls by Settings
     hls_segment_seconds: int = Field(6, ge=1)
     hls_ahead_seconds: int = Field(120, ge=0)
@@ -232,6 +245,10 @@ ENV_MAP: dict[str, tuple[str, ...]] = {
     "HOMETV_SCAN_WATCH_ENABLED": ("scan", "watch_enabled"),
     "HOMETV_SCAN_WATCH_QUIET_SECONDS": ("scan", "watch_quiet_seconds"),
     "HOMETV_MAX_SESSIONS": ("playback", "max_sessions"),
+    "HOMETV_MAX_TRANSCODES": ("playback", "max_transcodes"),
+    "HOMETV_TRANSCODE_PRESET": ("playback", "transcode_preset"),
+    "HOMETV_TRANSCODE_CRF": ("playback", "transcode_crf"),
+    "HOMETV_TRANSCODE_MAXRATE": ("playback", "transcode_maxrate"),
     "HOMETV_HLS_DIR": ("playback", "hls_dir"),
     "HOMETV_HLS_SEGMENT_SECONDS": ("playback", "hls_segment_seconds"),
     "HOMETV_HLS_AHEAD_SECONDS": ("playback", "hls_ahead_seconds"),

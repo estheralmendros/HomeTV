@@ -202,7 +202,11 @@ defaults below. An invalid value aborts startup with a message naming the key.
 | `HOMETV_SCAN_MISSING_GRACE_DAYS` | `scan.missing_grace_days` | `7` | days a missing file stays hidden before it (and orphaned items/progress) is purged; `0` = purge in the same scan |
 | `HOMETV_SCAN_WATCH_ENABLED` | `scan.watch_enabled` | `true` | change detection (inotify, Linux hosts only): a copy or move in a library folder triggers a scan of that folder; `false` = only periodic/manual scans |
 | `HOMETV_SCAN_WATCH_QUIET_SECONDS` | `scan.watch_quiet_seconds` | `30` | seconds without changes (and with stable video sizes) before that scan starts; minimum `5` |
-| `HOMETV_MAX_SESSIONS` | `playback.max_sessions` | `4` | concurrent HLS sessions (direct play is unlimited) |
+| `HOMETV_MAX_SESSIONS` | `playback.max_sessions` | `4` | concurrent HLS sessions (direct play is unlimited); a video conversion counts here too |
+| `HOMETV_MAX_TRANSCODES` | `playback.max_transcodes` | `2` | video conversions (to H.264 8-bit, at most 1080p) running at once when a client cannot decode a file's video codec; they also count in `HOMETV_MAX_SESSIONS`; `0` disables conversion (the file is then reported as unsupported) |
+| `HOMETV_TRANSCODE_PRESET` | `playback.transcode_preset` | `ultrafast` | libx264 preset of conversions: `ultrafast`, `superfast`, `veryfast`, `faster`, `fast` or `medium` (slower = better quality per bit, more CPU) |
+| `HOMETV_TRANSCODE_CRF` | `playback.transcode_crf` | `23` | libx264 quality of conversions, `0`-`51` (lower = better quality and bigger segments) |
+| `HOMETV_TRANSCODE_MAXRATE` | `playback.transcode_maxrate` | `8M` | bitrate cap of conversions (`8M`, `800k` or bits per second; must be above 0) |
 | `HOMETV_HLS_DIR` | `playback.hls_dir` | `{data_dir}/hls` | HLS scratch dir (point at an SSD/tmpfs if `/data` is small); never inside a media folder, never equal to or an ancestor of `data_dir`; wiped at start and stop |
 | `HOMETV_HLS_SEGMENT_SECONDS` | `playback.hls_segment_seconds` | `6` | minimum segment length (segments follow source keyframes) |
 | `HOMETV_HLS_AHEAD_SECONDS` | `playback.hls_ahead_seconds` | `120` | ffmpeg is paused once this much is ready ahead of the player |

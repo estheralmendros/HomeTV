@@ -143,6 +143,8 @@ ADMIN_ROUTES = [
     ("PUT", "/api/admin/libraries", "/api/admin/libraries", {"films": [], "shows": []}),
     ("POST", "/api/admin/libraries/plan", "/api/admin/libraries/plan", {"films": [], "shows": []}),
     ("GET", "/api/admin/libraries/browse", "/api/admin/libraries/browse", None),
+    ("GET", "/api/admin/sessions", "/api/admin/sessions", None),
+    ("DELETE", "/api/admin/sessions/{session_id}", "/api/admin/sessions/nope", None),
 ]
 
 

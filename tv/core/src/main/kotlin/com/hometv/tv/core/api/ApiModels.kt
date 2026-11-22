@@ -120,6 +120,8 @@ data class VideoInfo(
     val height: Int? = null,
     val hdr: String? = null,
     val frame_rate: Double? = null,
+    val profile: String? = null,
+    val bit_depth: Int? = null,
 )
 
 @Serializable
@@ -517,6 +519,8 @@ data class PlaybackResponse(
     val session_id: String? = null,
     val audio_stream_index: Int? = null,
     val audio_action: String? = null,
+    /** `copy` (remux) or `h264` (the server converts the video); played the same way. */
+    val video_action: String? = null,
     val duration_seconds: Double? = null,
     val subtitle_tracks: List<SubtitleTrack> = emptyList(),
     val reason: String? = null,

@@ -4,6 +4,8 @@
   with a ``ReadSession``. Entries of absent files (``missing_since`` set) are excluded.
 - ``delete_unmatched(db, entry_id)``: removes one entry, never its film/show/file; 404
   ``not_found``.
+- ``describe_sessions(db, snapshot)``: sync (run in a thread), the admin sessions rows with names
+  resolved in <= 3 SELECTs.
 - ``TmdbProxy``: ``search`` / ``tv_seasons`` / ``tv_season`` (season lookups cached in memory
   10 min, LRU 100). Raise ``ApiError`` 404 ``tmdb_not_found`` / 422 ``validation_error`` /
   502 ``tmdb_unavailable`` / 503 ``tmdb_not_configured``.
@@ -21,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from hometv.api.errors import ApiError
 from hometv.api.schemas import (
+    AdminSession,
     Page,
     TmdbEpisodeSummary,
     TmdbSearchResponse,
@@ -35,6 +38,7 @@ from hometv.db.engine import Database
 from hometv.metadata.artwork import image, tmdb_file_name
 from hometv.metadata.matching import result_year
 from hometv.metadata.tmdb import TmdbClient, TmdbError
+from hometv.playback.hls import SessionSnapshot
 from hometv.text import str_or_none
 
 SEASON_CACHE_TTL_SECONDS = 600.0
@@ -60,6 +64,85 @@ def _unmatched_base() -> Select[m.UnmatchedEntry, m.MediaFile, m.Film, m.Show, s
 def unmatched_count(session: Session) -> int:
     """Live total of unmatched entries (all libraries), as in ScanStatus.unmatched_count."""
     return session.scalar(select(func.count()).select_from(_unmatched_base().subquery())) or 0
+
+
+def describe_sessions(db: Database, snapshot: list[SessionSnapshot]) -> list[AdminSession]:
+    """Resolve profile, file and title names for the snapshot rows, ordered by start then id.
+
+    Three batched SELECTs whatever the session count: profiles, media files left-joined to their
+    film, and linked episodes joined to their show. Vanished rows leave nulls."""
+    if not snapshot:
+        return []
+    profile_ids = {s.profile_id for s in snapshot}
+    file_ids = {s.media_file_id for s in snapshot}
+    with db.read_session() as session:
+        names = {
+            profile_id: name
+            for profile_id, name in session.execute(
+                select(m.Profile.id, m.Profile.name).where(m.Profile.id.in_(profile_ids))
+            )
+        }
+        files = {
+            file_id: (relative_path, film_title)
+            for file_id, relative_path, film_title in session.execute(
+                select(m.MediaFile.id, m.MediaFile.relative_path, m.Film.title)
+                .outerjoin(m.Film, m.Film.id == m.MediaFile.film_id)
+                .where(m.MediaFile.id.in_(file_ids))
+            )
+        }
+        episodes: dict[int, list[tuple[str, int, int]]] = {}
+        for file_id, show_title, season, number in session.execute(
+            select(
+                m.MediaFileEpisode.media_file_id,
+                m.Show.title,
+                m.Episode.season_number,
+                m.Episode.episode_number,
+            )
+            .join(m.Episode, m.Episode.id == m.MediaFileEpisode.episode_id)
+            .join(m.Show, m.Show.id == m.Episode.show_id)
+            .where(m.MediaFileEpisode.media_file_id.in_(file_ids))
+            .order_by(m.Episode.season_number, m.Episode.episode_number)
+        ):
+            episodes.setdefault(file_id, []).append((show_title, season, number))
+    rows: list[AdminSession] = []
+    for snap in sorted(snapshot, key=lambda s: (s.started_at, s.session_id)):
+        relative_path, film_title = files.get(snap.media_file_id, (None, None))
+        linked = episodes.get(snap.media_file_id)
+        item_type: Literal["film", "episode"] | None = None
+        title: str | None = None
+        season_number: int | None = None
+        episode_number: int | None = None
+        last_episode_number: int | None = None
+        if linked:
+            item_type = "episode"
+            title, season_number, episode_number = linked[0]
+            if len(linked) > 1:
+                last_episode_number = linked[-1][2]
+        elif film_title is not None:
+            item_type, title = "film", film_title
+        rows.append(
+            AdminSession(
+                session_id=snap.session_id,
+                profile_id=snap.profile_id,
+                profile_name=names.get(snap.profile_id),
+                media_file_id=snap.media_file_id,
+                file_name=(relative_path or "").rsplit("/", 1)[-1],
+                item_type=item_type,
+                title=title,
+                season_number=season_number,
+                episode_number=episode_number,
+                last_episode_number=last_episode_number,
+                video_action=snap.video_action,
+                audio_action=snap.audio_action,
+                state=snap.state,
+                started_at=snap.started_at,
+                last_segment=snap.last_segment,
+                position_seconds=snap.position_seconds,
+                duration_seconds=snap.duration_seconds,
+                speed=snap.speed,
+            )
+        )
+    return rows
 
 
 def _shows_parsed(session: Session, show_ids: list[int]) -> dict[int, dict[str, Any]]:

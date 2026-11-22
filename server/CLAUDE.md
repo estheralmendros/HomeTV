@@ -16,7 +16,7 @@ Python 3.12 uv project (FastAPI, SQLAlchemy 2 sync, Alembic, guessit). Package `
   `plan_film_upgrade`, `plan_protected_key`), `subtitle_style.py` (the style `Literal`
   aliases, `DEFAULT_STYLE`, `STYLE_FIELDS` = field -> `profile.subtitle_<field>` column; a test checks it equals
   `SubtitleStyle.model_fields`; the DB CHECKs are built from the aliases in `models.py`).
-- `probe.py`: ffprobe wrapper (injectable `runner`) + pure `normalize()`.
+- `probe.py`: ffprobe wrapper (injectable `runner`) + pure `normalize()`, `bit_depth(pix_fmt)`.
 - `db/engine.py`: `Database` (read/write engines, `write_session()`), `run_migrations()`. `db/models.py`: the data
   model. Per-profile title rows (`WatchlistEntry`, `Rating`, `RatingDismissal`, `TrackChoice`) target a film or a show,
   with one partial unique index per target. `db/migrations/versions/`: Alembic; columns are added to `profile` with a
@@ -67,7 +67,21 @@ Python 3.12 uv project (FastAPI, SQLAlchemy 2 sync, Alembic, guessit). Package `
   Cues / MP4 stss readers), `keyframes.py` (`KeyframeService`, background indexer = scanner `keyframe_hook`),
   `segments.py` (pure plan/playlist, `split_fmp4`), `hls.py` (`HlsSessionManager`: check + register atomic under
   `_create_lock`; `open_segment()` opens the file before eviction, the caller closes it), `subtitles.py`, `procs.py`
-  (spawn, kill sequence).
+  (spawn, kill sequence, `IDLE_PREFIX`/`TRANSCODE_PREFIX`), `transcode.py` (pure: `parse_bitrate`, `target_size`,
+  `video_filter`, `video_args`, `parse_progress`/`split_progress`; `SessionSpec.video_action == "h264"` makes
+  `ffmpeg_argv` encode with them instead of `-c:v copy`; `decide(..., can_transcode=)` picks it when the client lacks
+  the codec but claims h264). `HlsSessionManager.counts()` is the one source of the `max_sessions` /
+  `max_transcodes` checks (`transcode_busy` 503, after `too_many_sessions`, before `hls_disk_full`);
+  `segment_wait(session, k)` (attributes `transcode_wait_start`/`transcode_wait_max`); `Session.speed` = live encode
+  speed read from `progress.txt` by `_watch_run` (h264 only).
+  Admin view: `snapshot()` (frozen `SessionSnapshot` per non-stopped session; `Session.started_at` from the
+  injectable `wall_clock`), `stop_by_admin()` sets `stopped_by_admin`, stops and records `tombstones[id]`
+  (`TOMBSTONE_SECONDS` 3600, `MAX_TOMBSTONES` 64, purged by `sweep_idle` and ignored once expired): `_get` /
+  `_check_alive` answer 410 `session_stopped` for tombstones and waiting requests; idle-swept ids stay 404;
+  `DELETE /api/hls/{id}` and `stop_owned` ignore tombstones. `admin.describe_sessions(db, snapshot)` resolves names
+  in <= 3 SELECTs for `GET /api/admin/sessions` (+ `DELETE .../{id}`, 404 `session_not_found`).
+- `sysload.py`: `parse_loadavg` (pure) + `read_cpu_load` (procfs, `None` off Linux); the lifespan binds
+  `app.state.cpu_load` and the admin sessions route calls it (tests swap it).
 - `spa.py`: `web_dist` serving + SPA fallback (catch-all appended last; `/assets/*` immutable, a stale asset is a plain
   404, else `index.html` no-cache; a placeholder page without a dist).
 - `main.py`: `create_app(settings, *, watch_backend_factory=None)` + lifespan (sets `app.state.*`). Startup order:
@@ -142,7 +156,8 @@ tests), `fmp4_builder.py` (synthetic fMP4), `hls_stub.py` (argv-driven stub ffmp
   clips remux in milliseconds: wait for a settled run (`wait_for_settled_run`) or evict
   explicitly before asserting restarts; the stub ffmpeg has `lockstep` (producer slower than the
   monitor) and `burst` (producer ahead of it) for deterministic throttle tests.
-- Integration clips: `tests/integration/conftest.py` `CLIPS` (generated once per session; a
+- Integration clips: `tests/integration/conftest.py` `CLIPS` (generated once per session; the `hevc_10bit_*` /
+  `hevc_vfr_aac.mkv` clips drive the conversion tests in `test_hls_real.py`; a
   hand-built PGS `.sup` provides the image-subtitle track and sidecar);
   `make_media_app()` gives a scanned app over the clip library. Keyframe reader fixtures are
   regenerated with `uv run python -m tests.fixtures.keyframes.make_fixtures`.

@@ -231,6 +231,49 @@ class ScanStatus(BaseModel):
     watcher: WatcherStatus
 
 
+# --- Admin: playback sessions ----------------------------------------------------------------
+
+
+class AdminSession(BaseModel):
+    session_id: str
+    profile_id: int
+    profile_name: str | None  # null when the profile was deleted meanwhile
+    media_file_id: int
+    file_name: str  # basename of media_file.relative_path
+    item_type: Literal["film", "episode"] | None  # null when the file is no longer linked
+    title: str | None  # film title, or show title for an episode
+    season_number: int | None  # episodes only (first linked episode)
+    episode_number: int | None
+    last_episode_number: int | None  # multi-episode file: last linked episode, else null
+    video_action: Literal["copy", "h264"]
+    audio_action: Literal["copy", "aac_stereo", "aac_5_1", "none"]
+    state: Literal["running", "throttled", "done", "failed"]
+    started_at: UtcDateTime
+    last_segment: int | None
+    position_seconds: float | None
+    duration_seconds: float
+    speed: float | None  # live encode speed (x real time); null for copy or before 2 samples
+
+
+class CpuLoad(BaseModel):
+    load_1m: float
+    load_5m: float
+    cores: int
+
+
+class SessionLimits(BaseModel):
+    max_sessions: int
+    max_transcodes: int
+
+
+class AdminSessions(BaseModel):
+    sessions: list[AdminSession]  # ordered by started_at, then session_id
+    active_sessions: int  # counted against max_sessions (state not failed/stopped)
+    active_transcodes: int  # of those, video_action == "h264"
+    cpu: CpuLoad | None  # null off Linux or when /proc/loadavg cannot be read
+    limits: SessionLimits
+
+
 # --- Admin: library folders ----------------------------------------------------------------
 
 LibraryType = Literal["films", "shows"]
@@ -626,6 +669,8 @@ class VideoInfo(BaseModel):
     height: int | None
     hdr: Literal["hdr10", "hlg", "dolby_vision"] | None
     frame_rate: float | None
+    profile: str | None
+    bit_depth: int | None
 
 
 class AudioTrack(BaseModel):
@@ -913,6 +958,7 @@ class PlaybackHls(BaseModel):
     session_id: str
     audio_stream_index: int | None
     audio_action: Literal["copy", "aac_stereo", "aac_5_1", "none"]
+    video_action: Literal["copy", "h264"]
     duration_seconds: float | None
     subtitle_tracks: list[SubtitleTrack]
 

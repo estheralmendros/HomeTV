@@ -30,6 +30,10 @@ def _audio(duration: int = 20) -> list[str]:
 
 
 X264 = ["-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p"]
+HEVC_10BIT = [
+    "-c:v", "libx265", "-preset", "ultrafast", "-x265-params", "log-level=error:keyint=25",
+    "-pix_fmt", "yuv420p10le",
+]  # fmt: skip
 SRT_INPUT = "subs_input.srt"
 SUP_INPUT = "subs_input.sup"
 
@@ -72,6 +76,17 @@ CLIPS: dict[str, list[str]] = {
     "hevc_eac3.mkv": [
         *_video(), *_audio(), "-c:v", "libx265", "-preset", "ultrafast",
         "-x265-params", "log-level=error", "-pix_fmt", "yuv420p", "-c:a", "eac3",
+    ],
+    "hevc_10bit_aac.mkv": [
+        *_video(), *_audio(), *HEVC_10BIT, "-c:a", "aac",
+    ],
+    "hevc_10bit_hdr10.mkv": [
+        *_video(), *_audio(), *HEVC_10BIT, "-color_primaries", "bt2020",
+        "-color_trc", "smpte2084", "-colorspace", "bt2020nc", "-c:a", "aac",
+    ],
+    "hevc_vfr_aac.mkv": [  # frames dropped before encoding: irregular intervals, ms timebase
+        *_video(), *_audio(), "-vf", "select=not(eq(mod(n\\,5)\\,3))", "-fps_mode", "vfr",
+        *HEVC_10BIT[:-2], "-pix_fmt", "yuv420p", "-c:a", "aac",
     ],
     "vp9_opus.webm": [
         *_video(), *_audio(), "-c:v", "libvpx-vp9", "-deadline", "realtime", "-cpu-used", "8",
