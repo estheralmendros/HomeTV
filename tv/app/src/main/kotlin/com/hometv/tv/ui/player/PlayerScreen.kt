@@ -186,10 +186,13 @@ private fun VideoSurface(vm: PlayerViewModel, engine: PlaybackEngine?, keepScree
     // creates the right one with the controller that exists at that moment.
     key(engine) {
         val controller = vm.playerController
+        // FR-T5: the first-frame watchdog counts only while a video surface is bound (ExoPlayer renders nothing without one).
+        DisposableEffect(Unit) { onDispose { vm.onVideoSurface(false) } }
+        val bound = { vm.onVideoSurface(true); probe(engine, controller) }
         when (engine) {
             null -> Box(Modifier.fillMaxSize().testTag("player_video")) // no controller yet
-            PlaybackEngine.EXO -> ExoSurface(controller as? ExoPlayerController, keepScreenOn, look, overlayClearance) { probe(engine, controller) }
-            PlaybackEngine.VLC -> VlcSurface(controller as? VlcPlayerController, keepScreenOn) { probe(engine, controller) }
+            PlaybackEngine.EXO -> ExoSurface(controller as? ExoPlayerController, keepScreenOn, look, overlayClearance, bound)
+            PlaybackEngine.VLC -> VlcSurface(controller as? VlcPlayerController, keepScreenOn, bound)
         }
     }
 }

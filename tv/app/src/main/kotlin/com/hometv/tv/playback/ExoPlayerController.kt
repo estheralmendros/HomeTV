@@ -40,7 +40,7 @@ class ExoPlayerController(private val player: ExoPlayer) : PlayerController {
     private var checkPending = false
     private var lastLoad: LoadRecord? = null
 
-    private val playerListener = object : Player.Listener {
+    internal val playerListener = object : Player.Listener {
         override fun onTracksChanged(tracks: Tracks) {
             if (tracks.groups.isEmpty()) return
             val changed = applySelection(tracks)
@@ -52,6 +52,10 @@ class ExoPlayerController(private val player: ExoPlayer) : PlayerController {
 
         override fun onPlaybackStateChanged(playbackState: Int) {
             listener?.onStateChanged(stateOf(playbackState))
+        }
+
+        override fun onRenderedFirstFrame() {
+            listener?.onRenderedFirstFrame()
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {

@@ -6,6 +6,8 @@ data class VideoDecoder(
     val hardware: Boolean,
     val maxWidth: Int,
     val maxHeight: Int,
+    /** `CodecCapabilities.profileLevels[].profile` of this decoder for [mime] ([CodecProfiles] values); empty = it reports none. */
+    val profiles: Set<Int> = emptySet(),
     /** `VideoCapabilities.isSizeSupported(w, h)`. */
     val supports: (width: Int, height: Int) -> Boolean = { w, h -> w <= maxWidth && h <= maxHeight },
 )
@@ -51,4 +53,21 @@ object Mimes {
     const val AUDIO_TRUEHD = "audio/true-hd"
     const val APPLICATION_M3U8 = "application/x-mpegURL"
     const val TEXT_VTT = "text/vtt"
+}
+
+/** `MediaCodecInfo.CodecProfileLevel` profile values (core has no Android dependency; `app` asserts they match). */
+object CodecProfiles {
+    const val AVC_HIGH10 = 0x10
+    const val HEVC_MAIN = 0x1
+    const val HEVC_MAIN10 = 0x2
+    const val HEVC_MAIN10_HDR10 = 0x1000
+    const val HEVC_MAIN10_HDR10_PLUS = 0x2000
+    const val VP9_PROFILE0 = 0x1
+    const val VP9_PROFILE2 = 0x4
+    const val VP9_PROFILE2_HDR = 0x1000
+    const val VP9_PROFILE2_HDR10_PLUS = 0x4000
+    const val AV1_MAIN8 = 0x1
+    const val AV1_MAIN10 = 0x2
+    const val AV1_MAIN10_HDR10 = 0x1000
+    const val AV1_MAIN10_HDR10_PLUS = 0x2000
 }

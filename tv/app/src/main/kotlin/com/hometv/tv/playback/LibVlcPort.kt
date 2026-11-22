@@ -86,6 +86,7 @@ class LibVlcPort(private val libVlc: LibVLC) : VlcPlayerPort {
         MediaPlayer.Event.EncounteredError -> VlcEvent.EncounteredError
         MediaPlayer.Event.TimeChanged -> VlcEvent.TimeChanged(event.timeChanged)
         MediaPlayer.Event.LengthChanged -> VlcEvent.LengthChanged(event.lengthChanged)
+        MediaPlayer.Event.Vout -> VlcEvent.Vout(event.voutCount)
         MediaPlayer.Event.ESAdded, MediaPlayer.Event.ESDeleted, MediaPlayer.Event.ESSelected -> VlcEvent.TracksChanged
         else -> null
     }

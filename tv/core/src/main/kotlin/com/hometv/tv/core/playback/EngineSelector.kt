@@ -59,7 +59,12 @@ data class EngineHistory(
     val excludeContainers: Set<String> = emptySet(),
     /** ExoPlayer failed on this file during this playback (`PlaybackDecision.FallBackToVlc`). */
     val exoFailed: Boolean = false,
+    /** The first-frame watchdog fired on this file (the codec is then also in [excludeVideo]). */
+    val noFirstFrame: Boolean = false,
 )
+
+/** Modern codecs the server can convert to H.264 (`video_action = "h264"`). */
+val MODERN_VIDEO_CODECS: Set<String> = setOf("h264", "hevc", "vp9", "av1")
 
 data class EngineChoice(val engine: PlaybackEngine, val caps: ClientCaps)
 
@@ -80,19 +85,35 @@ object EngineSelector {
         setOf("mpeg4", "msmpeg4v1", "msmpeg4v2", "msmpeg4v3", "wmv1", "wmv2", "wmv3", "h263", "flv1", "rv30", "rv40")
 
     /**
-     * EXO with [exoCaps] unless libVLC is available and one of: [EngineInputs.forceVlc]; the file has a video
-     * stream and no `probe_error`, and [EngineHistory.exoFailed], or it is [isLegacy] (a legacy container or video
-     * codec, FR-1.4), or its `video.codec` is not in `exoCaps(…).video_codecs` (case-insensitive). Then VLC with
-     * `VlcCapsBuilder.build()`. H.264 in M2TS stays on EXO (the server remuxes it).
+     * Engine choice, in order (case-insensitive codec comparisons): libVLC unavailable → EXO; [EngineInputs.forceVlc] →
+     * VLC; [EngineHistory.noFirstFrame] and not [isLegacy] → EXO (the excluded codec makes the server convert); no
+     * video codec or `probe_error` → EXO; [isLegacy] → VLC; [EngineHistory.exoFailed] → VLC; [isConversionOnly] → EXO
+     * (the server converts, libVLC would decode in software); codec not in `exoCaps(…).video_codecs` → VLC; else EXO.
+     * VLC uses `VlcCapsBuilder.build()`. H.264 in M2TS stays on EXO (the server remuxes it).
      */
     fun select(inputs: EngineInputs, file: MediaFile, history: EngineHistory = EngineHistory()): EngineChoice {
         val exo = exoCaps(inputs, file, history)
         if (!inputs.vlcAvailable) return EngineChoice(PlaybackEngine.EXO, exo)
         if (inputs.forceVlc) return vlc()
+        if (history.noFirstFrame && !isLegacy(file)) return EngineChoice(PlaybackEngine.EXO, exo)
         val codec = file.video?.codec
         if (codec == null || file.probe_error != null) return EngineChoice(PlaybackEngine.EXO, exo)
-        if (history.exoFailed || isLegacy(file) || exo.video_codecs.none { it.equals(codec, ignoreCase = true) }) return vlc()
+        if (isLegacy(file) || history.exoFailed) return vlc()
+        if (isConversionOnly(inputs, file, history)) return EngineChoice(PlaybackEngine.EXO, exo)
+        if (exo.video_codecs.none { it.equals(codec, ignoreCase = true) }) return vlc()
         return EngineChoice(PlaybackEngine.EXO, exo)
+    }
+
+
+    /**
+     * The file has a [MODERN_VIDEO_CODECS] codec, no `probe_error`, is not [isLegacy], `forceVlc` is off, and its codec
+     * is not in `exoCaps(…).video_codecs` (not claimed by the hardware, or excluded after a decoder failure / no first
+     * frame). It plays only through the server conversion: libVLC would decode it in software.
+     */
+    fun isConversionOnly(inputs: EngineInputs, file: MediaFile, history: EngineHistory = EngineHistory()): Boolean {
+        val codec = file.video?.codec?.lowercase() ?: return false
+        if (codec !in MODERN_VIDEO_CODECS || file.probe_error != null || isLegacy(file) || inputs.forceVlc) return false
+        return exoCaps(inputs, file, history).video_codecs.none { it.equals(codec, ignoreCase = true) }
     }
 
     /** A [LEGACY_CONTAINERS] container or a [LEGACY_VIDEO_CODECS] video codec (case-insensitive). */
@@ -120,4 +141,22 @@ object EngineSelector {
                 caps
             }
         }
+
+    /**
+     * `CapsForFile` for the conversion tier of the version choice: [exoCapsForFile] plus the file's own codec when it is
+     * [isConversionOnly] and its Exo caps claim `h264` (the conversion output). Never sent to the server: the request
+     * keeps [capsForFile], so the server sees the codec missing and converts.
+     */
+    fun convertCapsForFile(inputs: EngineInputs, history: (MediaFile) -> EngineHistory): CapsForFile {
+        val exoTier = exoCapsForFile(inputs, history)
+        return CapsForFile { file ->
+            val caps = exoTier.capsFor(file)
+            val codec = file.video?.codec?.lowercase()
+            if (codec != null && isConversionOnly(inputs, file, history(file)) && caps.video_codecs.any { it == "h264" }) {
+                caps.copy(video_codecs = caps.video_codecs + codec)
+            } else {
+                caps
+            }
+        }
+    }
 }

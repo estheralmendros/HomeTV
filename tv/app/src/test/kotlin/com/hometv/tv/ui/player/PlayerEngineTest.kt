@@ -110,16 +110,19 @@ class PlayerEngineTest : PlayerTestBase() {
     }
 
     @Test
-    fun `AC-3_4 an EXO video decoder failure continues on VLC at the same position, once`() = playerTest {
+    fun `AC-3_4 an EXO video decoder failure converts first, then continues on VLC at the same position, once`() = playerTest {
         vlcAvailable = true
         val vm = startDirect()
         assertEquals(EXO, vm.state.value.engine)
         controller.positionMs = 600_000
-        answerWith(direct())
+        // A modern codec the hardware failed on converts first (H.264 excluded: the server cannot, so libVLC once).
+        answerWith(unsupported("video_codec_unsupported"), direct())
         controller.fail(PlayerFailure(PlaybackErrorCodes.DECODING_FAILED, RendererType.VIDEO, "video/avc"))
         runCurrent()
         val retry = bodies().last()
-        assertEquals(2, bodies().size)
+        assertEquals(3, bodies().size)
+        assertFalse("h264" in bodies()[1].client_caps.video_codecs)
+        assertFalse(bodies()[1].isVlc())
         assertEquals(600.0, retry.start_position_seconds)
         assertTrue(retry.isVlc())
         assertNull(retry.previous_session_id)
@@ -131,7 +134,7 @@ class PlayerEngineTest : PlayerTestBase() {
         controller.listener?.onFailure(PlayerFailure(PlaybackErrorCodes.DECODING_FAILED, RendererType.VIDEO, "video/avc"))
         runCurrent()
         assertEquals(SessionState.Playing, vm.session)
-        assertEquals(2, bodies().size)
+        assertEquals(3, bodies().size)
     }
 
     @Test
@@ -411,7 +414,7 @@ class PlayerEngineTest : PlayerTestBase() {
         vlcAvailable = true
         film(F.file(1))
         val gate = CompletableDeferred<Unit>()
-        answer({ gate.await(); direct() }, { direct() })
+        answer({ gate.await(); direct() }, { unsupported("video_codec_unsupported") }, { direct() })
         val vm = vm()
         val engines = mutableListOf<PlaybackEngine?>()
         val createdWhenPublished = mutableListOf<List<PlaybackEngine>>()

@@ -135,5 +135,8 @@ class FakePlayerController : PlayerController {
         listener?.onFailure(failure)
     }
 
+    /** The decoder rendered the first frame (ExoPlayer `onRenderedFirstFrame`, libVLC `Vout`). */
+    fun emitFirstFrame() = listener?.onRenderedFirstFrame()
+
     fun clearLog() = log.clear()
 }

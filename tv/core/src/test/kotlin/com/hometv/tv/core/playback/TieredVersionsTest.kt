@@ -29,7 +29,7 @@ class TieredVersionsTest {
     /** Exo tier = Chromecast-like caps; `any` = VLC caps for every file the Exo caps refuse (what `EngineSelector.capsForFile` does). */
     private val exoTier = CapsForFile.of(caps)
     private val anyTier = CapsForFile { f -> if (vs.isPlayable(f, caps)) caps else vlcCaps }
-    private val tiers = VersionCaps(exoTier, anyTier)
+    private val tiers = VersionCaps(exoTier, exoTier, anyTier)
 
     /** The `VersionSelectorTest` fixtures: file sets and progress values. */
     private val fileSets: List<List<MediaFile>> = listOf(
@@ -64,7 +64,7 @@ class TieredVersionsTest {
     fun `AC-1_8 with exo == any every function returns what VersionSelector returns`() {
         for (c in listOf(caps, hevcCaps)) {
             val single = CapsForFile.of(c)
-            val same = VersionCaps(single, single)
+            val same = VersionCaps(single, single, single)
             for (files in fileSets) {
                 for (p in progresses) {
                     assertEquals(vs.defaultChoice(files, single, p), tv.defaultChoice(files, same, p), "$files $p")
@@ -92,7 +92,7 @@ class TieredVersionsTest {
     fun `AC-1_10 a mpeg4-only episode is a candidate only with the VLC tier`() {
         val files = listOf(file(1, video = mpeg4, container = "avi"))
         assertEquals(listOf(1L), ids(tv.candidates(files, tiers)))
-        assertTrue(tv.candidates(files, VersionCaps(exoTier, exoTier)).isEmpty())
+        assertTrue(tv.candidates(files, VersionCaps(exoTier, exoTier, exoTier)).isEmpty())
         assertEquals(1L, tv.defaultChoice(files, tiers, null)?.file?.id)
     }
 
@@ -175,7 +175,7 @@ class TieredVersionsTest {
         )
         val on = EngineInputs(inventory, AudioRouteCaps(emptySet(), 2), vlcAvailable = true)
         fun tiersOf(inputs: EngineInputs) =
-            VersionCaps(EngineSelector.exoCapsForFile(inputs) { EngineHistory() }, EngineSelector.capsForFile(inputs) { EngineHistory() })
+            VersionCaps(EngineSelector.exoCapsForFile(inputs) { EngineHistory() }, EngineSelector.convertCapsForFile(inputs) { EngineHistory() }, EngineSelector.capsForFile(inputs) { EngineHistory() })
         val xvid = file(1, video = mpeg4.copy(width = 1920, height = 1080), container = "avi", fileName = "film.avi", label = "1080p Xvid")
         val h264Avi = file(2, container = "avi", fileName = "film2.avi", label = "1080p AVI")
         val mkv = file(3, video = VideoInfo("h264", 1280, 720), label = "720p MKV")
@@ -189,5 +189,88 @@ class TieredVersionsTest {
         // Without libVLC: today's VersionSelector result over today's caps.
         val off = on.copy(vlcAvailable = false)
         assertEquals(vs.defaultChoice(files, CapsForFile { EngineSelector.exoCaps(off, it) }, null), tv.defaultChoice(files, tiersOf(off), null))
+    }
+
+    // ---- Video conversion: the conversion tier (specs/video-transcoding/prd2.md FR-T4) ----
+
+    private fun hwP(mime: String, vararg profiles: Int) = VideoDecoder(mime, hardware = true, maxWidth = 3840, maxHeight = 2160, profiles = profiles.toSet())
+
+    /** HEVC Main only, no AV1 decoder; every file's `h264` claim stays. */
+    private val mainOnlyInputs = EngineInputs(
+        CodecInventory(listOf(hwP(Mimes.VIDEO_H264), hwP(Mimes.VIDEO_HEVC, CodecProfiles.HEVC_MAIN)), emptySet()),
+        AudioRouteCaps(emptySet(), 2),
+        vlcAvailable = true,
+    )
+
+    private fun threeTiers(inputs: EngineInputs) = VersionCaps(
+        EngineSelector.exoCapsForFile(inputs) { EngineHistory() },
+        EngineSelector.convertCapsForFile(inputs) { EngineHistory() },
+        EngineSelector.capsForFile(inputs) { EngineHistory() },
+    )
+
+    private val hevc10Uhd = file(1, video = VideoInfo("hevc", 3840, 2160, profile = "Main 10", bit_depth = 10), label = "2160p HEVC")
+    private val h264Fhd = file(2, label = "1080p H264")
+    private val av1 = file(3, video = VideoInfo("av1", 1920, 1080, bit_depth = 10), label = "1080p AV1")
+    private val xvid = file(4, video = mpeg4, container = "avi", fileName = "film.avi", label = "Xvid")
+
+    @Test
+    fun `FR-T4 a direct H264 is the default and a conversion HEVC is listed after it`() {
+        val files = listOf(hevc10Uhd, h264Fhd)
+        val t = threeTiers(mainOnlyInputs)
+        assertEquals(2L, tv.defaultChoice(files, t, null)?.file?.id)
+        assertEquals(2L, tv.select(files, t, null, Standalone)?.id)
+        assertEquals(listOf(2L, 1L), ids(tv.candidates(files, t)))
+    }
+
+    @Test
+    fun `FR-T4 a title with only a conversion version defaults to it`() {
+        val t = threeTiers(mainOnlyInputs)
+        assertEquals(3L, tv.defaultChoice(listOf(av1), t, null)?.file?.id)
+        assertEquals(listOf(3L), ids(tv.candidates(listOf(av1), t)))
+    }
+
+    @Test
+    fun `FR-T4 a conversion version comes before a libVLC-only one`() {
+        val files = listOf(xvid, av1)
+        val t = threeTiers(mainOnlyInputs)
+        assertEquals(3L, tv.defaultChoice(files, t, null)?.file?.id)
+        assertEquals(3L, tv.select(files, t, null, Standalone)?.id)
+        assertEquals(listOf(3L, 4L), ids(tv.candidates(files, t)))
+    }
+
+    @Test
+    fun `FR-T4 a resumable last-played conversion version with no direct matching version is chosen`() {
+        val short = file(5, duration = 3000.0, label = "Extra")
+        val av1Long = file(3, video = VideoInfo("av1", 1920, 1080, bit_depth = 10), duration = 7200.0, label = "1080p AV1")
+        val files = listOf(short, av1Long)
+        val p = progress(3, 1200.0, 7200.0)
+        val t = threeTiers(mainOnlyInputs)
+        assertEquals(Choice(Standalone, av1Long, startAtZero = false), tv.defaultChoice(files, t, p))
+        assertEquals(3L, tv.select(files, t, p, Standalone)?.id)
+        assertEquals(3L, ids(tv.candidates(files, t, Standalone, p)).first())
+        // A direct version that matches takes over.
+        val match = file(6, duration = 7210.0)
+        assertEquals(6L, tv.defaultChoice(listOf(match, av1Long), t, p)?.file?.id)
+    }
+
+    @Test
+    fun `FR-T4 nextPart follows the same tiers`() {
+        val p1 = part(1, 1)
+        val avPart = part(2, 2, video = VideoInfo("av1", 1920, 1080, bit_depth = 10), label = p1.label)
+        val xvidPart = part(3, 2, video = mpeg4, label = "Other")
+        val t = threeTiers(mainOnlyInputs)
+        assertEquals(2L, tv.nextPart(listOf(p1, xvidPart, avPart), t, p1)?.id)
+        val direct = part(4, 2, label = "Web")
+        assertEquals(4L, tv.nextPart(listOf(p1, avPart, direct), t, p1)?.id)
+    }
+
+    @Test
+    fun `FR-T4 without libVLC the conversion tier still applies`() {
+        val off = mainOnlyInputs.copy(vlcAvailable = false)
+        val t = threeTiers(off)
+        val files = listOf(av1, xvid)
+        assertEquals(3L, tv.defaultChoice(files, t, null)?.file?.id)
+        assertEquals(listOf(3L), ids(tv.candidates(files, t)).take(1))
+        assertEquals(3L, tv.select(files, t, null, Standalone)?.id)
     }
 }

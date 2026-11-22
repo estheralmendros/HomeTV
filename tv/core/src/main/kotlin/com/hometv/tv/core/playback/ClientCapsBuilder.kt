@@ -2,6 +2,7 @@ package com.hometv.tv.core.playback
 
 import com.hometv.tv.core.api.ClientCaps
 import com.hometv.tv.core.api.MediaFile
+import com.hometv.tv.core.api.VideoInfo
 
 /**
  * Pure: device decoders + current audio route (+ the file, + exclusions) → `ClientCaps`.
@@ -71,13 +72,53 @@ object ClientCapsBuilder {
         )
     }
 
-    /** Per-file refinement: the file's codec stays only if a hardware decoder supports its size (HDR is not filtered). */
+    /**
+     * Per-file refinement: the file's codec stays only if a hardware decoder of that MIME supports its size **and**
+     * reports a profile the file needs ([requiredProfiles]; HDR is not filtered).
+     */
     private fun fitsDecoder(codec: String, file: MediaFile?, hardware: List<VideoDecoder>): Boolean {
         val video = file?.video ?: return true
         if (!video.codec.equals(codec, ignoreCase = true)) return true
         val width = video.width ?: return true
         val height = video.height ?: return true
         val mime = VIDEO_MIMES[codec] ?: return true
-        return hardware.any { it.mime == mime && it.supports(width, height) }
+        val required = requiredProfiles(codec, video)
+        if (required != null && required.isEmpty()) return false // bit depth above 10: no consumer hardware decoder
+        return hardware.any { it.mime == mime && it.supports(width, height) && (required == null || it.profiles.isEmpty() || it.profiles.any { p -> p in required }) }
+    }
+
+    private val AVC_10 = setOf(CodecProfiles.AVC_HIGH10)
+    private val HEVC_8 = setOf(CodecProfiles.HEVC_MAIN, CodecProfiles.HEVC_MAIN10, CodecProfiles.HEVC_MAIN10_HDR10, CodecProfiles.HEVC_MAIN10_HDR10_PLUS)
+    private val HEVC_10 = setOf(CodecProfiles.HEVC_MAIN10, CodecProfiles.HEVC_MAIN10_HDR10, CodecProfiles.HEVC_MAIN10_HDR10_PLUS)
+    private val VP9_8 = setOf(CodecProfiles.VP9_PROFILE0, CodecProfiles.VP9_PROFILE2, CodecProfiles.VP9_PROFILE2_HDR, CodecProfiles.VP9_PROFILE2_HDR10_PLUS)
+    private val VP9_10 = setOf(CodecProfiles.VP9_PROFILE2, CodecProfiles.VP9_PROFILE2_HDR, CodecProfiles.VP9_PROFILE2_HDR10_PLUS)
+    private val AV1_8 = setOf(CodecProfiles.AV1_MAIN8, CodecProfiles.AV1_MAIN10, CodecProfiles.AV1_MAIN10_HDR10, CodecProfiles.AV1_MAIN10_HDR10_PLUS)
+    private val AV1_10 = setOf(CodecProfiles.AV1_MAIN10, CodecProfiles.AV1_MAIN10_HDR10, CodecProfiles.AV1_MAIN10_HDR10_PLUS)
+
+    /**
+     * Profiles of which at least one must be reported by a hardware decoder for [video]; null = no requirement (claim
+     * as today); empty = never claimed (bit depth above 10: no consumer hardware decoder). `bit_depth` decides when
+     * present; the ffprobe `profile` (case-insensitive, exact) only when it is null.
+     */
+    fun requiredProfiles(codec: String, video: VideoInfo): Set<Int>? {
+        val c = codec.lowercase()
+        if (c !in setOf("h264", "hevc", "vp9", "av1")) return null
+        val depth = video.bit_depth
+        if (depth != null && depth > 10) return emptySet()
+        val profile = video.profile?.lowercase()
+        val ten = when {
+            depth != null -> depth == 10
+            c == "h264" && profile == "high 10" -> true
+            c == "hevc" && profile == "main 10" -> true
+            c == "vp9" && profile == "profile 2" -> true
+            else -> null
+        }
+        val eight = depth == 8 || (depth == null && when (c) { "hevc" -> profile == "main"; "vp9" -> profile == "profile 0"; else -> false })
+        return when (c) {
+            "h264" -> if (ten == true) AVC_10 else null
+            "hevc" -> if (ten == true) HEVC_10 else if (eight) HEVC_8 else null
+            "vp9" -> if (ten == true) VP9_10 else if (eight) VP9_8 else null
+            else -> if (ten == true) AV1_10 else if (eight) AV1_8 else null // av1: depth null has no profile rule
+        }
     }
 }

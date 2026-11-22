@@ -41,15 +41,18 @@ class AndroidCodecInventory(private val context: Context, scope: CoroutineScope)
             for (type in info.supportedTypes) {
                 val mime = type.lowercase()
                 when {
-                    mime.startsWith("video/") -> runCatching { info.getCapabilitiesForType(type).videoCapabilities }.getOrNull()?.let { vc ->
-                        video += VideoDecoder(
+                    mime.startsWith("video/") -> runCatching {
+                        val caps = info.getCapabilitiesForType(type)
+                        val vc = caps.videoCapabilities
+                        VideoDecoder(
                             mime = mime,
                             hardware = isHardware(info),
                             maxWidth = vc.supportedWidths.upper,
                             maxHeight = vc.supportedHeights.upper,
                             supports = { w, h -> vc.isSizeSupported(w, h) },
+                            profiles = caps.profileLevels.map { it.profile }.toSet(),
                         )
-                    }
+                    }.getOrNull()?.let { video += it }
                     mime.startsWith("audio/") -> audio += mime
                 }
             }

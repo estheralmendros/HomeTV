@@ -60,6 +60,14 @@ class PlaybackPlannerTest {
     }
 
     @Test
+    fun `video_action is carried into the plan (copy, h264, absent)`() {
+        fun plan(action: String?) = PlaybackPlanner.plan(PlaybackResponse(mode = "hls", url = "/h/1/index.m3u8", video_action = action), server, file) as PlaybackPlan.Play
+        assertEquals("h264", plan("h264").videoAction)
+        assertEquals("copy", plan("copy").videoAction)
+        assertNull(plan(null).videoAction)
+    }
+
+    @Test
     fun `duration_seconds null is accepted`() {
         val plan = PlaybackPlanner.plan(PlaybackResponse(mode = "direct", url = "/api/media-files/91/stream", audio_stream_index = null), server, file) as PlaybackPlan.Play
         assertNull(plan.durationSeconds)

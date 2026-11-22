@@ -268,4 +268,38 @@ class PlayerFocusTest : UiTestBase() {
         back()
         assertFocused("player_tracks")
     }
+
+    @Test
+    fun theTranscodeBusyScreenOpensWithRetryFocused() {
+        useLibrary()
+        api.onFilm = { id -> com.hometv.tv.core.api.FilmDetail(id = id, title = "Dune", media_files = listOf(F.file(1), F.file(2, label = "720p H264 · AAC 2.0"))) }
+        api.onPlayback = { _, _ -> throw com.hometv.tv.core.data.FakeHomeTvApi.httpError(503, "transcode_busy") }
+        launch()
+        press(Key.DirectionCenter)
+        node("player_error").assertIsDisplayed()
+        text("El servidor está ocupado convirtiendo otros vídeos. Inténtalo más tarde.").assertIsDisplayed()
+        rule.onNodeWithText("Reintentar").assertIsFocused()
+        press(Key.DirectionRight)
+        rule.onNodeWithText("Probar otra versión").assertIsFocused()
+        press(Key.DirectionRight)
+        rule.onNodeWithText("Volver").assertIsFocused()
+        press(Key.DirectionDown)
+        rule.onNodeWithText("Volver").assertIsFocused()
+    }
+
+    @Test
+    fun theStoppedFromTheServerScreenFocusesRetryFromHereAndBackLeavesThePlayer() {
+        openFilm(PlaybackResponse("hls", url = "/api/hls/S1/index.m3u8", session_id = "S1", audio_stream_index = 1, audio_action = "copy", duration_seconds = 9360.0))
+        onPlayer {
+            fail(com.hometv.tv.core.playback.PlayerFailure(com.hometv.tv.core.playback.PlaybackErrorCodes.IO_BAD_HTTP_STATUS, httpStatus = 410, urlKind = com.hometv.tv.core.playback.UrlKind.HLS))
+        }
+        node("player_error").assertIsDisplayed()
+        text("La reproducción se ha detenido desde el servidor").assertIsDisplayed()
+        rule.onNodeWithText("Reintentar desde aquí").assertIsFocused()
+        press(Key.DirectionRight)
+        rule.onNodeWithText("Volver").assertIsFocused()
+        back()
+        settle()
+        node("card_continue:film:12").assertIsDisplayed()
+    }
 }

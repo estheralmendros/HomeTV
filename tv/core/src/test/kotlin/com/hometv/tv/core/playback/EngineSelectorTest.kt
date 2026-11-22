@@ -79,8 +79,9 @@ class EngineSelectorTest {
     }
 
     @Test
-    fun `AC-1_4 HEVC 2160p on a 1080p hardware decoder goes to VLC`() {
-        assertEquals(VLC, EngineSelector.select(on, hevcUhd).engine)
+    fun `AC-1_4 HEVC 2160p on a 1080p hardware decoder is converted by the server (EXO), not decoded by libVLC`() {
+        assertEquals(exo(on, hevcUhd), EngineSelector.select(on, hevcUhd))
+        assertFalse("hevc" in EngineSelector.select(on, hevcUhd).caps.video_codecs)
         val fhd = F.file(8, video = VideoInfo("HEVC", 1920, 1080))
         assertEquals(exo(on, fhd), EngineSelector.select(on, fhd))
     }
@@ -166,5 +167,91 @@ class EngineSelectorTest {
         // Without libVLC the Exo tier is today's caps for every file.
         val offTier = EngineSelector.exoCapsForFile(mp4vOn.copy(vlcAvailable = false)) { EngineHistory() }
         for (file in tableRows) assertEquals(EngineSelector.exoCaps(mp4vOn, file), offTier.capsFor(file), "${file.id}")
+    }
+
+    // ---- Video conversion: conversion-only files (specs/video-transcoding/prd2.md FR-T4) ----
+
+    private fun hwP(mime: String, vararg profiles: Int, w: Int = 3840, h: Int = 2160) =
+        VideoDecoder(mime, hardware = true, maxWidth = w, maxHeight = h, profiles = profiles.toSet())
+
+    /** A device with HEVC Main only and no AV1 decoder. */
+    private val mainOnly = inventory.copy(video = listOf(hwP(Mimes.VIDEO_H264), hwP(Mimes.VIDEO_HEVC, CodecProfiles.HEVC_MAIN)))
+    private val convOn = on.copy(inventory = mainOnly)
+    private val hevc10 = F.file(30, video = VideoInfo("hevc", 1920, 1080, profile = "Main 10", bit_depth = 10))
+    private val hevc8 = F.file(31, video = VideoInfo("hevc", 1920, 1080, profile = "Main", bit_depth = 8))
+    private val av110 = F.file(32, video = VideoInfo("av1", 1920, 1080, bit_depth = 10))
+    private val av1Avi = F.file(33, video = VideoInfo("av1", 1920, 1080, bit_depth = 10), container = "avi", fileName = "film.avi")
+    private val high10 = F.file(34, video = VideoInfo("h264", 1920, 1080, profile = "High 10", bit_depth = 10))
+
+    @Test
+    fun `FR-T4 isConversionOnly table`() {
+        val none = EngineHistory()
+        assertTrue(EngineSelector.isConversionOnly(convOn, hevc10, none), "not claimed by the hardware")
+        assertTrue(EngineSelector.isConversionOnly(convOn, av110, none), "no decoder at all")
+        assertFalse(EngineSelector.isConversionOnly(convOn, hevc8, none), "claimed")
+        assertFalse(EngineSelector.isConversionOnly(convOn, h264Mkv, none), "h264 8-bit is always claimed")
+        assertFalse(EngineSelector.isConversionOnly(convOn, high10, none), "an AVC decoder that reports no profiles claims it")
+        val avcNoHigh10 = convOn.copy(inventory = mainOnly.copy(video = listOf(hwP(Mimes.VIDEO_H264, 0x8))))
+        assertTrue(EngineSelector.isConversionOnly(avcNoHigh10, high10, none), "High 10 without AVC_HIGH10")
+        assertTrue(EngineSelector.isConversionOnly(convOn, hevc8, EngineHistory(excludeVideo = setOf("hevc"))), "excluded after a decoder failure")
+        assertFalse(EngineSelector.isConversionOnly(convOn, av1Avi, none), "legacy container")
+        assertFalse(EngineSelector.isConversionOnly(convOn, F.file(35, video = VideoInfo("mpeg4", 720, 400)), none), "legacy codec, and not a modern codec")
+        assertFalse(EngineSelector.isConversionOnly(convOn.copy(forceVlc = true), hevc10, none), "forced")
+        assertFalse(EngineSelector.isConversionOnly(convOn, F.file(36, video = VideoInfo("av1", 1920, 1080), probeError = "x"), none), "probe_error")
+        assertFalse(EngineSelector.isConversionOnly(convOn, noVideo, none))
+        assertFalse(EngineSelector.isConversionOnly(convOn, F.file(37, video = VideoInfo("vc1", 720, 400)), none), "not a modern codec")
+        assertFalse(EngineSelector.isConversionOnly(convOn, F.file(38, video = VideoInfo("mpeg2video", 720, 400)), none), "not a modern codec")
+        assertTrue(EngineSelector.isConversionOnly(convOn, F.file(39, video = VideoInfo("AV1", 1920, 1080, bit_depth = 10)), none), "case-insensitive")
+    }
+
+    @Test
+    fun `FR-T4 a conversion-only file plays on EXO even with libVLC available`() {
+        assertEquals(exo(convOn, av110), EngineSelector.select(convOn, av110))
+        assertFalse("av1" in EngineSelector.select(convOn, av110).caps.video_codecs)
+        assertEquals(exo(convOn, hevc10), EngineSelector.select(convOn, hevc10))
+        // 4K HEVC on a 1080p-only decoder (the size rule)
+        assertEquals(EXO, EngineSelector.select(on, hevcUhd).engine)
+        // an excluded codec
+        assertEquals(EXO, EngineSelector.select(convOn, hevc8, EngineHistory(excludeVideo = setOf("hevc"))).engine)
+    }
+
+    @Test
+    fun `FR-T4 forceVlc, exoFailed, legacy files and old codecs keep going to VLC`() {
+        assertEquals(VLC, EngineSelector.select(convOn.copy(forceVlc = true), av110).engine)
+        assertEquals(VLC, EngineSelector.select(convOn, av110, EngineHistory(exoFailed = true)).engine)
+        assertEquals(VLC, EngineSelector.select(convOn, av1Avi).engine)
+        assertEquals(VLC, EngineSelector.select(convOn, F.file(40, video = VideoInfo("mpeg4", 720, 400))).engine)
+        assertEquals(VLC, EngineSelector.select(convOn, F.file(41, video = VideoInfo("vc1", 720, 400))).engine)
+        assertEquals(EXO, EngineSelector.select(off, av110).engine)
+    }
+
+    @Test
+    fun `FR-T4 noFirstFrame goes to EXO with exoCaps, except a legacy file, and before the exoFailed and forced rules`() {
+        val history = EngineHistory(excludeVideo = setOf("hevc"), noFirstFrame = true)
+        assertEquals(exo(convOn, hevc8, history), EngineSelector.select(convOn, hevc8, history))
+        assertEquals(exo(convOn, hevc8, history.copy(exoFailed = true)), EngineSelector.select(convOn, hevc8, history.copy(exoFailed = true)))
+        assertEquals(VLC, EngineSelector.select(convOn, av1Avi, EngineHistory(noFirstFrame = true)).engine)
+        assertEquals(VLC, EngineSelector.select(convOn.copy(forceVlc = true), hevc8, history).engine)
+        assertEquals(EXO, EngineSelector.select(convOn, h264Mkv, EngineHistory(noFirstFrame = true)).engine)
+    }
+
+    @Test
+    fun `FR-T4 convertCapsForFile adds the file's codec for a conversion-only file when h264 is claimed`() {
+        val exoTier = EngineSelector.exoCapsForFile(convOn) { EngineHistory() }
+        val convert = EngineSelector.convertCapsForFile(convOn) { EngineHistory() }
+        assertFalse(VersionSelector.isPlayable(av110, exoTier))
+        assertTrue(VersionSelector.isPlayable(av110, convert))
+        assertTrue(VersionSelector.isPlayable(hevc10, convert))
+        // the request caps never carry it
+        assertFalse("av1" in EngineSelector.exoCaps(convOn, av110).video_codecs)
+        // directly playable and legacy files are untouched
+        assertEquals(exoTier.capsFor(hevc8), convert.capsFor(hevc8))
+        assertEquals(exoTier.capsFor(av1Avi), convert.capsFor(av1Avi))
+        assertFalse(VersionSelector.isPlayable(av1Avi, convert))
+        // h264 not claimed for this file (High 10 without AVC High 10): no conversion output
+        val noHigh10 = convOn.copy(inventory = convOn.inventory.copy(video = listOf(hwP(Mimes.VIDEO_H264, 0x8))))
+        assertFalse(VersionSelector.isPlayable(high10, EngineSelector.convertCapsForFile(noHigh10) { EngineHistory() }))
+        // without libVLC the tier still applies
+        assertTrue(VersionSelector.isPlayable(av110, EngineSelector.convertCapsForFile(convOn.copy(vlcAvailable = false)) { EngineHistory() }))
     }
 }

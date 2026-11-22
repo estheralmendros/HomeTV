@@ -14,6 +14,9 @@ sealed interface VlcEvent {
     data class TimeChanged(val timeMs: Long) : VlcEvent
     data class LengthChanged(val lengthMs: Long) : VlcEvent
 
+    /** `Vout`: [count] video outputs now exist (0 = none): an output was created, not a frame shown. */
+    data class Vout(val count: Int) : VlcEvent
+
     /** `ESAdded` / `ESDeleted` / `ESSelected`: the track lists may have changed. */
     data object TracksChanged : VlcEvent
 }

@@ -41,6 +41,7 @@ import com.hometv.tv.core.playback.EngineHistory
 import com.hometv.tv.core.playback.EngineInputs
 import com.hometv.tv.core.playback.EngineSelector
 import com.hometv.tv.core.playback.FailureContext
+import com.hometv.tv.core.playback.FirstFrameWatchdog
 import com.hometv.tv.core.playback.MediaItemSpec
 import com.hometv.tv.core.playback.MessageKey
 import com.hometv.tv.core.playback.PlaybackDecision
@@ -68,6 +69,7 @@ import com.hometv.tv.core.playback.TrackCheckInput
 import com.hometv.tv.core.playback.TrackChoiceRules
 import com.hometv.tv.core.playback.TrackRules
 import com.hometv.tv.core.playback.UnsupportedReason
+import com.hometv.tv.core.playback.UrlKind
 import com.hometv.tv.core.playback.VersionCaps
 import com.hometv.tv.core.playback.VersionGroup
 import com.hometv.tv.core.playback.VersionNames
@@ -236,6 +238,9 @@ class PlayerViewModel(
 
         /** The one libVLC renew + recovery of this file was used (reset by an explicit retry). */
         var vlcRecovered = false
+
+        /** The first-frame watchdog fired on this file: its codec was excluded so the server converts it (once). */
+        var noFirstFrame = false
     }
 
     private sealed interface NextTarget {
@@ -286,8 +291,14 @@ class PlayerViewModel(
     private var itemJob: Job? = null
     private var inFlight: InFlightPlayback? = null
     private var engineInputs: EngineInputs? = null
-    private var versionCaps: VersionCaps = CapsForFile { ClientCaps(emptyList(), emptyList(), emptyList(), 6, true, true) }.let { VersionCaps(it, it) }
+    private var versionCaps: VersionCaps = CapsForFile { ClientCaps(emptyList(), emptyList(), emptyList(), 6, true, true) }.let { VersionCaps(it, it, it) }
     private val history = HashMap<Long, FileHistory>()
+
+    /** FR-T5: counts READY + playing time of the current attachment until its first rendered frame. */
+    private val firstFrame = FirstFrameWatchdog()
+
+    /** The engine's video surface is bound ([onVideoSurface]): ExoPlayer renders no frame without one. */
+    private var videoSurfaceBound = false
     private val refused = mutableSetOf<Long>()
     private var lastRenewalAtMs: Long? = null
     private var lastRecoveryAtMs: Long? = null
@@ -401,6 +412,11 @@ class PlayerViewModel(
         override fun onFailure(failure: PlayerFailure) {
             if (active) this@PlayerViewModel.onFailure(failure)
         }
+
+        override fun onRenderedFirstFrame() {
+            if (active) this@PlayerViewModel.onRenderedFirstFrame()
+        }
+
         // No onRemote* overrides: remote commands come from ControllerSessionPlayer, whose listener is the ViewModel.
     }
 
@@ -579,7 +595,11 @@ class PlayerViewModel(
     private suspend fun refreshCaps(): EngineInputs {
         val inputs = EngineInputs(deps.codecs.inventory(), deps.codecs.audioRoute(), deps.vlcAvailable(), deps.forceVlc())
         engineInputs = inputs
-        versionCaps = VersionCaps(exo = EngineSelector.exoCapsForFile(inputs, ::engineHistory), any = EngineSelector.capsForFile(inputs, ::engineHistory))
+        versionCaps = VersionCaps(
+            exo = EngineSelector.exoCapsForFile(inputs, ::engineHistory),
+            convert = EngineSelector.convertCapsForFile(inputs, ::engineHistory),
+            any = EngineSelector.capsForFile(inputs, ::engineHistory),
+        )
         return inputs
     }
 
@@ -587,8 +607,11 @@ class PlayerViewModel(
 
     private fun engineHistory(f: MediaFile): EngineHistory {
         val h = history[f.id] ?: return EngineHistory()
-        return EngineHistory(h.video.toSet(), h.audio.toSet(), h.containers.toSet(), h.exoFailed)
+        return EngineHistory(h.video.toSet(), h.audio.toSet(), h.containers.toSet(), h.exoFailed, h.noFirstFrame)
     }
+
+    /** [f] plays only through the server conversion (`EngineSelector.isConversionOnly`): libVLC is no fallback for it. */
+    private fun isConversionOnly(f: MediaFile): Boolean = engineInputs?.let { EngineSelector.isConversionOnly(it, f, engineHistory(f)) } == true
 
     /** libVLC can take over [f] after an EXO failure: available, and ExoPlayer hasn't already failed on it. */
     private fun vlcFallbackAllowed(engine: PlaybackEngine, f: MediaFile) =
@@ -678,7 +701,7 @@ class PlayerViewModel(
 
     private fun onUnsupported(spec: RequestSpec, plan: PlaybackPlan.Unsupported, engine: PlaybackEngine) {
         val audioKind = spec.kind == Kind.DIRECT_AUDIO_SWITCH || spec.kind == Kind.HLS_AUDIO_SWITCH || spec.kind == Kind.RELEASED_AUDIO
-        if (!audioKind && PlaybackErrorMapper.fallsBackToVlc(plan.reason, vlcFallbackAllowed(engine, spec.file))) {
+        if (!audioKind && PlaybackErrorMapper.fallsBackToVlc(plan.reason, vlcFallbackAllowed(engine, spec.file), isConversionOnly(spec.file))) {
             // Decision 14: the server can't remux this file for ExoPlayer; libVLC plays it directly (once per file).
             historyOf(spec.file).exoFailed = true
             deps.log("remux unavailable (${plan.wireReason}): retry on VLC", null)
@@ -750,7 +773,7 @@ class PlayerViewModel(
             return
         }
         val allowed = vlcFallbackAllowed(engine, spec.file)
-        when (val decision = PlaybackErrorMapper.forRequestError(e, hasOtherVersion(spec.file), spec.audioIndexRetried, allowed)) {
+        when (val decision = PlaybackErrorMapper.forRequestError(e, hasOtherVersion(spec.file), spec.audioIndexRetried, allowed, isConversionOnly(spec.file))) {
             PlaybackDecision.RetryWithoutAudioIndex -> send(spec.copy(audioIndex = null, audioIndexRetried = true, audioFromChoice = false, previousSessionId = null))
             PlaybackDecision.FallBackToVlc -> {
                 historyOf(spec.file).exoFailed = true
@@ -879,6 +902,7 @@ class PlayerViewModel(
         controller.setMediaItem(spec, startMs)
         controller.selectAudio(selectedAudioIndex)
         controller.selectSubtitle(selectedSubtitleId?.takeIf { it in a.itemSubtitles || isNative(a, it) })
+        firstFrame.reset()
         trackCheckArmed = true
         subtitleRebuild = rebuildForSubtitle
         play?.let(::setPlayIntent)
@@ -973,11 +997,41 @@ class PlayerViewModel(
             while (true) {
                 delay(KEEP_ALIVE_MS)
                 if (!a.holdsSession) return@launch
-                if (deps.playback.keepAliveHlsSession(sessionId) == KeepAliveResult.SESSION_LOST) {
-                    a.sessionLost = true
-                    return@launch
+                when (deps.playback.keepAliveHlsSession(sessionId)) {
+                    KeepAliveResult.SESSION_LOST -> {
+                        a.sessionLost = true
+                        return@launch
+                    }
+                    KeepAliveResult.STOPPED -> {
+                        onSessionStopped(a)
+                        return@launch
+                    }
+                    KeepAliveResult.ALIVE, KeepAliveResult.FAILED -> Unit
                 }
             }
+        }
+    }
+
+    /**
+     * The keep-alive answered 410 `session_stopped` (an admin stopped the session): never recovered silently. Paused →
+     * the stopped screen; Countdown / EndedResolving → the next item starts its own session, so just drop this one.
+     * No DELETE in either case (the server already stopped it).
+     */
+    private fun onSessionStopped(a: Attachment) {
+        if (att !== a) return
+        when (session) {
+            SessionState.Paused -> {
+                a.released = true
+                errorPositionSec = controller.positionMs / 1000.0
+                stopHeldTimers()
+                controller.stop()
+                showError(PlayerError(MessageKey.SESSION_STOPPED, actions = listOf(PlayerAction.RETRY_FROM_HERE, PlayerAction.BACK)), null, errorPositionSec)
+            }
+            SessionState.Countdown, SessionState.EndedResolving -> {
+                a.released = true
+                stopHeldTimers()
+            }
+            else -> Unit
         }
     }
 
@@ -1049,6 +1103,13 @@ class PlayerViewModel(
 
     override fun onDurationChanged(durationMs: Long?) = render()
 
+    override fun onRenderedFirstFrame() = firstFrame.onFirstFrame()
+
+    /** `PlayerScreen`: the engine's video surface is bound (ExoPlayer `PlayerView` / the libVLC layout) or gone. */
+    fun onVideoSurface(bound: Boolean) {
+        videoSurfaceBound = bound
+    }
+
     // The media session's commands (headset, Bluetooth AVRCP, media controllers) are the
     // remote's Play / Pause keys and the overlay's 10 s seek buttons.
     override fun onRemotePlay() {
@@ -1067,6 +1128,8 @@ class PlayerViewModel(
         if (!attached) return
         if (switchBase != null) abandonSwitch() // row 41
         deps.log("player failure $failure", null)
+        // 410 session_stopped: the server already stopped the session, there is nothing to DELETE.
+        if (failure.httpStatus == 410 && failure.urlKind == UrlKind.HLS) att?.released = true
         errorPositionSec = recoveryPositionMs() / 1000.0
         val decision = PlaybackErrorMapper.forPlayerFailure(failure, failureContext())
         if (decision is PlaybackDecision.SubtitleUnavailable) {
@@ -1096,6 +1159,11 @@ class PlayerViewModel(
             engine = a?.engine ?: PlaybackEngine.EXO,
             vlcFallbackAllowed = a != null && vlcFallbackAllowed(a.engine, a.file),
             vlcRecovered = h?.vlcRecovered == true,
+            conversionOnly = f != null && isConversionOnly(f),
+            videoAction = a?.plan?.videoAction,
+            noFirstFrameRetried = h?.noFirstFrame == true,
+            forceVlc = deps.forceVlc(),
+            legacy = f != null && EngineSelector.isLegacy(f),
         )
     }
 
@@ -1129,6 +1197,7 @@ class PlayerViewModel(
                 recover(a, recoveryPositionMs(), wasPlaying)
             }
             is PlaybackDecision.RetryExcludingVideo -> retryExcluding(a, wasPlaying) { historyOf(f).apply { video += decision.codec; videoRetried = true } }
+            is PlaybackDecision.RetryWithoutFirstFrame -> retryExcluding(a, wasPlaying) { historyOf(f).apply { video += decision.codec; noFirstFrame = true } }
             is PlaybackDecision.RetryExcludingAudio -> retryExcluding(a, wasPlaying) { historyOf(f).apply { audio += decision.codec; audioRetried = true } }
             is PlaybackDecision.RetryExcludingContainer -> retryExcluding(a, wasPlaying) { historyOf(f).apply { containers += decision.container; containerRetried = true } }
             // ExoPlayer can't play this file (decoder, parsing, or the server conversion): libVLC at the recovery position.
@@ -2190,6 +2259,7 @@ class PlayerViewModel(
 
     private fun startTicker() {
         if (tickJob?.isActive == true) return
+        firstFrameTick() // a fresh baseline: the time the ticker was stopped is never counted
         tickJob = viewModelScope.launch {
             while (true) {
                 delay(TICK_MS)
@@ -2203,7 +2273,25 @@ class PlayerViewModel(
         tickJob = null
     }
 
+    /**
+     * FR-T5: feeds the watchdog on the position ticker. It counts only while attached and playing (no pending switch
+     * base, no error/background/paused/countdown state) with a bound video surface; when it fires the codec is
+     * excluded and the server converts ([PlaybackErrorMapper.forNoFirstFrame]).
+     */
+    private fun firstFrameTick() {
+        val a = att
+        val c = createdController
+        val counting = a != null && c != null && a.file.video != null && session == SessionState.Playing && switchBase == null &&
+            videoSurfaceBound && c.isPlaying
+        val fired = firstFrame.tick(deps.nowMs(), c?.state ?: PlayerState.IDLE, counting)
+        if (!fired || a == null) return
+        deps.log("no first frame: codec=${a.file.video?.codec} engine=${a.engine} mode=${a.mode}", null)
+        errorPositionSec = recoveryPositionMs() / 1000.0
+        handleDecision(PlaybackErrorMapper.forNoFirstFrame(failureContext()))
+    }
+
     private fun onTick() {
+        firstFrameTick()
         val a = att
         if (a != null && session == SessionState.Playing && ::item.isInitialized && item.type == "episode" && next == NextState.NotStarted) {
             val duration = effectiveDurationMs(a)

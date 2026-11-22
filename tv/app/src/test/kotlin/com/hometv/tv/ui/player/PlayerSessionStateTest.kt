@@ -628,7 +628,7 @@ class PlayerSessionStateTest : PlayerTestBase() {
 
     @Test
     fun `row 19 - an empty nextPlan shows the end screen and DELETEs at once, Back sends no second DELETE`() = playerTest {
-        val av1 = F.file(2, video = com.hometv.tv.core.api.VideoInfo("av1", 1920, 1080))
+        val av1 = F.file(2, video = com.hometv.tv.core.api.VideoInfo("vc1", 1920, 1080))
         val vm = episodePlaying(nextFiles = listOf(av1))
         prefetch(vm)
         clearCalls()
@@ -764,7 +764,7 @@ class PlayerSessionStateTest : PlayerTestBase() {
 
     @Test
     fun `row 27 - ON_STOP and ON_START on an end screen send nothing`() = playerTest {
-        val av1 = F.file(2, video = com.hometv.tv.core.api.VideoInfo("av1", 1920, 1080))
+        val av1 = F.file(2, video = com.hometv.tv.core.api.VideoInfo("vc1", 1920, 1080))
         val vm = episodePlaying(nextFiles = listOf(av1))
         prefetch(vm)
         controller.end()
@@ -1116,6 +1116,88 @@ class PlayerSessionStateTest : PlayerTestBase() {
         assertNull(bodies().last().previous_session_id)
         assertEquals(2, bodies().last().audio_stream_index)
         assertEquals(emptyList<String>(), deletes().filter { it.endsWith("S1") })
+    }
+
+    // ---- transcode_busy and session_stopped (specs/video-transcoding/prd2.md FR-T6, FR-T7) --------
+
+    private val stoppedMessage = UiText.Res(R.string.player_session_stopped)
+
+    @Test
+    fun `an HLS audio switch answered 503 transcode_busy shows the busy screen and Retry re-requests at the switch position`() = playerTest {
+        val vm = startFilm(hls("S1"), twoAudio)
+        controller.positionMs = 600_000
+        answer({ throw httpError(503, "transcode_busy") })
+        vm.onSelectAudio(2)
+        runCurrent()
+        val error = vm.state.value.screen as PlayerScreenUi.Error
+        assertEquals(UiText.Res(R.string.player_transcode_busy), error.message)
+        assertEquals(listOf(PlayerAction.RETRY, PlayerAction.BACK), error.actions)
+        answerWith(hls("S2", audio = 2))
+        vm.onErrorAction(PlayerAction.RETRY)
+        runCurrent()
+        assertEquals(600.0, bodies().last().start_position_seconds)
+        assertEquals(2, bodies().last().audio_stream_index)
+    }
+
+    @Test
+    fun `a keep-alive 410 while paused shows the stopped screen, no request until Retry from here at the stopped position`() = playerTest {
+        val vm = startHls()
+        controller.positionMs = 600_000
+        paused(vm)
+        clearCalls()
+        api.onKeepAlive = { com.hometv.tv.core.data.FakeHomeTvApi.empty(410) }
+        advance(30_000)
+        val error = vm.state.value.screen as PlayerScreenUi.Error
+        assertEquals(stoppedMessage, error.message)
+        assertEquals(listOf(PlayerAction.RETRY_FROM_HERE, PlayerAction.BACK), error.actions)
+        assertTrue(controller.stopped)
+        advance(120_000)
+        assertEquals(emptyList<String>(), posts())
+        assertEquals(emptyList<String>(), deletes())
+        assertEquals(1, keepAlives().size)
+        answerWith(hls("S2"))
+        vm.onErrorAction(PlayerAction.RETRY_FROM_HERE)
+        runCurrent()
+        assertEquals(600.0, bodies().single().start_position_seconds)
+        assertNull(bodies().single().previous_session_id)
+        assertEquals(emptyList<String>(), deletes())
+    }
+
+    @Test
+    fun `an HLS 410 while playing shows the stopped screen without a DELETE`() = playerTest {
+        val vm = startHls()
+        clearCalls()
+        controller.fail(PlayerFailure(PlaybackErrorCodes.IO_BAD_HTTP_STATUS, httpStatus = 410, urlKind = UrlKind.HLS, bodyCode = "session_stopped"))
+        runCurrent()
+        val error = vm.state.value.screen as PlayerScreenUi.Error
+        assertEquals(stoppedMessage, error.message)
+        assertEquals(emptyList<String>(), posts())
+        assertEquals(emptyList<String>(), deletes())
+    }
+
+    @Test
+    fun `a keep-alive 410 while the next episode resolves shows no error and the stopped session is never deleted`() = playerTest {
+        val vm = episodePlaying()
+        api.onEpisode = { id ->
+            delay(45_000)
+            episodeDetail(id, listOf(F.file(2)), title = "Halloween")
+        }
+        api.onKeepAlive = { com.hometv.tv.core.data.FakeHomeTvApi.empty(410) }
+        clearCalls()
+        controller.end()
+        runCurrent()
+        assertEquals(SessionState.EndedResolving, vm.session)
+        advance(30_000)
+        assertEquals(listOf("POST /api/hls/S1/keepalive"), keepAlives())
+        assertEquals(SessionState.EndedResolving, vm.session)
+        advance(15_000)
+        assertEquals(SessionState.Countdown, vm.session)
+        answerWith(direct(fileId = 2))
+        advance(10_000)
+        assertEquals(1, keepAlives().size)
+        assertEquals("POST /api/media-files/2/playback", posts().last())
+        assertNull(bodies().last().previous_session_id)
+        assertEquals(emptyList<String>(), deletes())
     }
 
     data class SwitchCase(val name: String, val answer: suspend (PlaybackRequest) -> PlaybackResponse, val toast: Int, val waitMs: Long = 0) {

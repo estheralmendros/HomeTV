@@ -33,6 +33,8 @@ enum class MessageKey {
     AUDIO_TRACK_UNPLAYABLE,
     AUDIO_SWITCH_FAILED,
     AUDIO_PREPARING_TIMEOUT,
+    TRANSCODE_BUSY,
+    SESSION_STOPPED,
 }
 
 enum class PlayerAction { RETRY, RETRY_FROM_HERE, TRY_OTHER_VERSION, BACK }
@@ -72,6 +74,9 @@ sealed interface PlaybackDecision {
 
     data class RetryExcludingVideo(val codec: String) : PlaybackDecision
 
+    /** The decoder rendered no picture: exclude [codec] and re-request so the server converts it (once per file). */
+    data class RetryWithoutFirstFrame(val codec: String) : PlaybackDecision
+
     data class RetryExcludingAudio(val codec: String) : PlaybackDecision
 
     data class RetryExcludingContainer(val container: String) : PlaybackDecision
@@ -103,6 +108,16 @@ data class FailureContext(
     val vlcFallbackAllowed: Boolean = false,
     /** The one libVLC renew + recovery of this file was used. */
     val vlcRecovered: Boolean = false,
+    /** `EngineSelector.isConversionOnly` for the attachment's file: libVLC is never a fallback (it would decode in software). */
+    val conversionOnly: Boolean = false,
+    /** The attachment's `video_action` (`copy` = HLS remux, `h264` = converted video), null for direct play. */
+    val videoAction: String? = null,
+    /** The first-frame retry of this file was already used. */
+    val noFirstFrameRetried: Boolean = false,
+    /** The admin force-libVLC switch is on. */
+    val forceVlc: Boolean = false,
+    /** The file is libVLC-only (`EngineSelector.isLegacy`): the server does not convert it. */
+    val legacy: Boolean = false,
 )
 
 /** "Preparando el vídeo…" estimate: none, "queda menos de un minuto", or "quedan unos N min". */
@@ -134,7 +149,7 @@ object PlaybackErrorMapper {
     private val KNOWN_CODES = setOf(
         "preparing", "too_many_sessions", "hls_disk_full", "transcoder_failed", "file_missing", "not_found",
         "invalid_audio_stream", "validation_error", "unauthorized", "forbidden", "session_not_found", "segment_timeout",
-        "segment_not_found", "media_file_not_linked", "profile_not_found", "internal_error",
+        "segment_not_found", "media_file_not_linked", "profile_not_found", "internal_error", "transcode_busy", "session_stopped",
     )
 
     private val REASON_KEYS = mapOf(
@@ -163,14 +178,24 @@ object PlaybackErrorMapper {
     /** Server reasons that mean "this client needs an HLS remux the server can't make"; libVLC plays the file directly. */
     val REMUX_REASONS: Set<UnsupportedReason> = setOf(UnsupportedReason.HLS_NOT_SUPPORTED, UnsupportedReason.DURATION_UNKNOWN, UnsupportedReason.KEYFRAMES_TOO_SPARSE)
 
-    /** True when an `unsupported` answer to an EXO request should be retried once on libVLC. */
-    fun fallsBackToVlc(reason: UnsupportedReason, vlcFallbackAllowed: Boolean): Boolean =
-        vlcFallbackAllowed && reason in REMUX_REASONS
+    /**
+     * True when an `unsupported` answer to an EXO request should be retried once on libVLC: a remux reason, or
+     * `video_codec_unsupported` for a conversion-only file (the server cannot convert it).
+     */
+    fun fallsBackToVlc(reason: UnsupportedReason, vlcFallbackAllowed: Boolean, conversionOnly: Boolean): Boolean =
+        vlcFallbackAllowed && (reason in REMUX_REASONS || (conversionOnly && reason == UnsupportedReason.VIDEO_CODEC_UNSUPPORTED))
 
     fun forPreparingTimeout(): PlayerError = PlayerError(MessageKey.PREPARING_TIMEOUT, actions = listOf(PlayerAction.RETRY, PlayerAction.BACK))
 
     /** A failed `POST .../playback` (after the repository's `preparing` loop and the session renewal). */
-    fun forRequestError(e: ApiException, hasOtherVersion: Boolean, audioIndexRetried: Boolean = false, vlcFallbackAllowed: Boolean = false): PlaybackDecision {
+    fun forRequestError(
+        e: ApiException,
+        hasOtherVersion: Boolean,
+        audioIndexRetried: Boolean = false,
+        vlcFallbackAllowed: Boolean = false,
+        conversionOnly: Boolean = false,
+    ): PlaybackDecision {
+        val vlc = vlcFallbackAllowed && !conversionOnly
         val retry = listOf(PlayerAction.RETRY, PlayerAction.BACK)
         return when (e) {
             is ApiException.ProfileGone -> PlaybackDecision.AuthExpired
@@ -181,10 +206,11 @@ object PlaybackErrorMapper {
                 e.code == "preparing" -> PlaybackDecision.Preparing
                 e.code == "too_many_sessions" -> show(MessageKey.TOO_MANY_SESSIONS, retry)
                 e.code == "hls_disk_full" -> show(MessageKey.HLS_DISK_FULL, retry)
+                e.code == "transcode_busy" -> show(MessageKey.TRANSCODE_BUSY, withOther(hasOtherVersion, PlayerAction.BACK, first = PlayerAction.RETRY))
                 e.status == 503 -> show(MessageKey.SERVER_UNAVAILABLE, retry)
-                isKeyframeIndexFailure(e) && vlcFallbackAllowed -> PlaybackDecision.FallBackToVlc
+                isKeyframeIndexFailure(e) && vlc -> PlaybackDecision.FallBackToVlc
                 // FR-2.4: any other server failure (5xx; 503 is handled above) → libVLC plays the file directly.
-                e.status >= 500 && vlcFallbackAllowed -> PlaybackDecision.FallBackToVlc
+                e.status >= 500 && vlc -> PlaybackDecision.FallBackToVlc
                 isKeyframeIndexFailure(e) -> PlaybackDecision.ShowError(
                     PlayerError(MessageKey.KEYFRAME_INDEX_FAILED, actions = withOther(hasOtherVersion, PlayerAction.BACK)),
                     refuseVersion = true,
@@ -216,6 +242,7 @@ object PlaybackErrorMapper {
             return PlaybackDecision.SubtitleUnavailable
         }
         when (failure.httpStatus) {
+            410 -> if (failure.urlKind == UrlKind.HLS) return show(MessageKey.SESSION_STOPPED, listOf(PlayerAction.RETRY_FROM_HERE, PlayerAction.BACK))
             401 -> return if (allowed(ctx.lastRenewalAtMs, ctx.nowMs)) PlaybackDecision.RenewAndRecover else generic(ctx)
             404 -> when (failure.urlKind) {
                 UrlKind.STREAM -> return PlaybackDecision.ShowError(PlayerError(MessageKey.FILE_MISSING, actions = withOther(ctx.hasOtherVersion, PlayerAction.BACK)))
@@ -226,7 +253,7 @@ object PlaybackErrorMapper {
         val status = failure.httpStatus
         if (status != null && status >= 500 && failure.urlKind == UrlKind.HLS) {
             // The server conversion failed: libVLC plays the file directly (checked before HLS_FAILED).
-            if (ctx.vlcFallbackAllowed) return PlaybackDecision.FallBackToVlc
+            if (vlcAllowed(ctx)) return PlaybackDecision.FallBackToVlc
             return show(MessageKey.HLS_FAILED, listOf(PlayerAction.RETRY_FROM_HERE, PlayerAction.BACK))
         }
         if (code == PlaybackErrorCodes.IO_NETWORK_CONNECTION_FAILED || code == PlaybackErrorCodes.IO_NETWORK_CONNECTION_TIMEOUT) {
@@ -239,6 +266,17 @@ object PlaybackErrorMapper {
             return if (!ctx.containerRetried && container != null) PlaybackDecision.RetryExcludingContainer(container) else genericOrVlc(failure, ctx)
         }
         return genericOrVlc(failure, ctx)
+    }
+
+    /**
+     * The first-frame watchdog fired: READY and playing but no picture. A file the server can convert is
+     * re-requested without its codec once; anything else is the generic screen.
+     */
+    fun forNoFirstFrame(ctx: FailureContext): PlaybackDecision {
+        val codec = ctx.videoCodec
+        val cannotHelp = ctx.videoAction == "h264" || ctx.noFirstFrameRetried || ctx.legacy ||
+            (ctx.engine == PlaybackEngine.VLC && ctx.forceVlc)
+        return if (codec == null || cannotHelp) generic(ctx) else PlaybackDecision.RetryWithoutFirstFrame(codec)
     }
 
     /** `TrackCheck` outcome: handled exactly like a decoder failure of that type (generic on libVLC); null for NONE. */
@@ -276,7 +314,8 @@ object PlaybackErrorMapper {
         return when {
             kind == RendererType.AUDIO && !ctx.audioRetried && audioCodec != null &&
                 (ctx.mode == PlaybackMode.DIRECT || ctx.audioAction == "copy") -> PlaybackDecision.RetryExcludingAudio(audioCodec)
-            kind == RendererType.VIDEO && ctx.vlcFallbackAllowed -> PlaybackDecision.FallBackToVlc
+            kind == RendererType.VIDEO && convertsFirst(ctx) -> PlaybackDecision.RetryExcludingVideo(videoCodec!!)
+            kind == RendererType.VIDEO && vlcAllowed(ctx) -> PlaybackDecision.FallBackToVlc
             kind == RendererType.VIDEO && ctx.mode == PlaybackMode.DIRECT && !ctx.videoRetried && videoCodec != null ->
                 PlaybackDecision.RetryExcludingVideo(videoCodec)
             else -> lastResort(ctx)
@@ -293,7 +332,7 @@ object PlaybackErrorMapper {
 
     /** FR-2.4: libVLC once (when allowed) before the generic screen of an EXO attachment. */
     private fun lastResort(ctx: FailureContext): PlaybackDecision =
-        if (ctx.vlcFallbackAllowed) PlaybackDecision.FallBackToVlc else generic(ctx)
+        if (vlcAllowed(ctx)) PlaybackDecision.FallBackToVlc else generic(ctx)
 
     private fun rendererKind(failure: PlayerFailure): RendererType = when {
         failure.errorCode == PlaybackErrorCodes.AUDIO_TRACK_INIT_FAILED || failure.errorCode == PlaybackErrorCodes.AUDIO_TRACK_WRITE_FAILED -> RendererType.AUDIO
@@ -301,6 +340,16 @@ object PlaybackErrorMapper {
         failure.rendererMime?.startsWith("video/") == true -> RendererType.VIDEO
         failure.rendererMime == null && failure.rendererType != null -> failure.rendererType
         else -> RendererType.OTHER
+    }
+
+    /** libVLC may take over: allowed, and the file is not conversion-only. */
+    private fun vlcAllowed(ctx: FailureContext) = ctx.vlcFallbackAllowed && !ctx.conversionOnly
+
+    /** A modern codec the hardware just failed on: the server converts it before libVLC is tried (direct or an HLS remux). */
+    private fun convertsFirst(ctx: FailureContext): Boolean {
+        val codec = ctx.videoCodec?.lowercase() ?: return false
+        return codec in MODERN_VIDEO_CODECS && !ctx.videoRetried && ctx.videoAction != "h264" &&
+            (ctx.mode == PlaybackMode.DIRECT || (ctx.mode == PlaybackMode.HLS && ctx.videoAction == "copy"))
     }
 
     private fun isKeyframeIndexFailure(e: ApiException.Http) = e.code == "transcoder_failed" && e.detail?.startsWith(KEYFRAME_INDEX_FAILED_PREFIX) == true

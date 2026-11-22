@@ -152,6 +152,9 @@ interface PlayerController {
 
         fun onFailure(failure: PlayerFailure)
 
+        /** The first video frame was rendered (ExoPlayer `onRenderedFirstFrame`; libVLC: a video output was created). */
+        fun onRenderedFirstFrame() {}
+
         /**
          * A play command from outside the app's key handling (headset and Bluetooth
          * play/pause: the Player's media session, i.e. Bluetooth AVRCP, the headset button or any

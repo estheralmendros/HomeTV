@@ -331,8 +331,9 @@ class PlaybackErrorMapperTest {
         fun `AC-2_8 only the remux reasons fall back, and only when allowed`() {
             for (reason in UnsupportedReason.entries) {
                 val remux = reason in setOf(UnsupportedReason.HLS_NOT_SUPPORTED, UnsupportedReason.DURATION_UNKNOWN, UnsupportedReason.KEYFRAMES_TOO_SPARSE)
-                assertEquals(remux, mapper.fallsBackToVlc(reason, vlcFallbackAllowed = true), "$reason")
-                assertFalse(mapper.fallsBackToVlc(reason, vlcFallbackAllowed = false), "$reason")
+                assertEquals(remux, mapper.fallsBackToVlc(reason, vlcFallbackAllowed = true, conversionOnly = false), "$reason")
+                assertEquals(remux, mapper.fallsBackToVlc(reason, vlcFallbackAllowed = true, conversionOnly = true) && reason != UnsupportedReason.VIDEO_CODEC_UNSUPPORTED, "$reason")
+                assertFalse(mapper.fallsBackToVlc(reason, vlcFallbackAllowed = false, conversionOnly = true), "$reason")
             }
             assertEquals(setOf(UnsupportedReason.HLS_NOT_SUPPORTED, UnsupportedReason.DURATION_UNKNOWN, UnsupportedReason.KEYFRAMES_TOO_SPARSE), mapper.REMUX_REASONS)
         }
@@ -408,6 +409,129 @@ class PlaybackErrorMapperTest {
             assertEquals(MessageKey.SERVER_UNAVAILABLE, shown(mapper.forRequestError(http(503, "internal_error"), false, vlcFallbackAllowed = true)).message)
             assertEquals(MessageKey.PLAYBACK_FAILED, shown(mapper.forRequestError(http(422, "validation_error"), false, vlcFallbackAllowed = true)).message)
             assertEquals(MessageKey.CONNECTION_ERROR, shown(mapper.forRequestError(ApiException.Unreachable(IOException("down")), false, vlcFallbackAllowed = true)).message)
+        }
+    }
+
+    /** Conversion-only files and the video-first conversion retry (specs/video-transcoding/prd2.md FR-T4). */
+    @Nested
+    inner class VideoConversion {
+        private val direct = FailureContext(PlaybackMode.DIRECT, nowMs = 100_000, videoCodec = "hevc", audioCodec = "aac", container = "mkv", vlcFallbackAllowed = true)
+        private val convert = FailureContext(PlaybackMode.HLS, nowMs = 100_000, videoCodec = "hevc", audioCodec = "aac", audioAction = "copy", videoAction = "h264", vlcFallbackAllowed = true, conversionOnly = true)
+        private val video = PlayerFailure(C.DECODING_FAILED, RendererType.VIDEO, "video/hevc")
+        private val generic = ShowError(PlayerError(MessageKey.PLAYBACK_FAILED, actions = listOf(RETRY_FROM_HERE, BACK)))
+
+        @Test
+        fun `a conversion-only file answered video_codec_unsupported falls back to VLC once, a vc1 file does not`() {
+            assertTrue(mapper.fallsBackToVlc(UnsupportedReason.VIDEO_CODEC_UNSUPPORTED, vlcFallbackAllowed = true, conversionOnly = true))
+            assertFalse(mapper.fallsBackToVlc(UnsupportedReason.VIDEO_CODEC_UNSUPPORTED, vlcFallbackAllowed = true, conversionOnly = false))
+            assertFalse(mapper.fallsBackToVlc(UnsupportedReason.VIDEO_CODEC_UNSUPPORTED, vlcFallbackAllowed = false, conversionOnly = true))
+        }
+
+        @Test
+        fun `an HLS 5xx of a conversion is HLS_FAILED, never libVLC`() {
+            val f = PlayerFailure(C.IO_BAD_HTTP_STATUS, httpStatus = 500, urlKind = UrlKind.HLS)
+            assertEquals(PlayerError(MessageKey.HLS_FAILED, actions = listOf(RETRY_FROM_HERE, BACK)), shown(mapper.forPlayerFailure(f, convert)))
+            assertEquals(PlaybackDecision.FallBackToVlc, mapper.forPlayerFailure(f, convert.copy(conversionOnly = false)))
+        }
+
+        @Test
+        fun `a video decoder failure on a modern direct codec converts first, then libVLC`() {
+            assertEquals(RetryExcludingVideo("hevc"), mapper.forPlayerFailure(video, direct))
+            assertEquals(RetryExcludingVideo("hevc"), mapper.forTrackFailure(TrackFailure.VIDEO, direct))
+            for (codec in listOf("h264", "vp9", "av1")) assertEquals(RetryExcludingVideo(codec), mapper.forPlayerFailure(video, direct.copy(videoCodec = codec)), codec)
+            // the retry was used: libVLC (today)
+            assertEquals(PlaybackDecision.FallBackToVlc, mapper.forPlayerFailure(video, direct.copy(videoRetried = true)))
+            // other codecs keep libVLC first
+            assertEquals(PlaybackDecision.FallBackToVlc, mapper.forPlayerFailure(video, direct.copy(videoCodec = "mpeg2video")))
+            assertEquals(PlaybackDecision.FallBackToVlc, mapper.forPlayerFailure(video, direct.copy(videoCodec = "mpeg4")))
+        }
+
+        @Test
+        fun `a video decoder failure on an HLS remux converts first, on a conversion it is generic`() {
+            val remux = direct.copy(mode = PlaybackMode.HLS, videoAction = "copy")
+            assertEquals(RetryExcludingVideo("hevc"), mapper.forPlayerFailure(video, remux))
+            assertEquals(PlaybackDecision.FallBackToVlc, mapper.forPlayerFailure(video, remux.copy(videoRetried = true)))
+            assertEquals(generic, mapper.forPlayerFailure(video, convert))
+            assertEquals(generic, mapper.forTrackFailure(TrackFailure.VIDEO, convert))
+        }
+
+        @Test
+        fun `a conversion-only file never falls back to VLC at the end of the rows`() {
+            val conversionOnlyDirect = direct.copy(conversionOnly = true, videoRetried = true)
+            assertEquals(generic, mapper.forPlayerFailure(video, conversionOnlyDirect))
+            assertEquals(generic, mapper.forPlayerFailure(PlayerFailure(C.IO_UNSPECIFIED, urlKind = UrlKind.STREAM), conversionOnlyDirect))
+            assertEquals(generic, mapper.forPlayerFailure(PlayerFailure(1000), convert))
+            assertEquals(generic, mapper.forTrackFailure(TrackFailure.AUDIO, convert.copy(audioRetried = true)))
+            val container = PlayerFailure(C.PARSING_CONTAINER_MALFORMED, urlKind = UrlKind.STREAM)
+            assertEquals(generic, mapper.forPlayerFailure(container, conversionOnlyDirect.copy(containerRetried = true)))
+        }
+
+        @Test
+        fun `request errors of a conversion-only file never fall back to VLC`() {
+            val keyframe = http(500, "transcoder_failed", """{"detail": "keyframe_index_failed: x"}""")
+            assertEquals(PlaybackDecision.FallBackToVlc, mapper.forRequestError(keyframe, false, vlcFallbackAllowed = true, conversionOnly = false))
+            assertEquals(
+                ShowError(PlayerError(MessageKey.KEYFRAME_INDEX_FAILED, actions = listOf(BACK)), refuseVersion = true),
+                mapper.forRequestError(keyframe, false, vlcFallbackAllowed = true, conversionOnly = true),
+            )
+            val fiveHundred = http(500, "transcoder_failed", """{"detail": "ffmpeg died"}""")
+            assertEquals(PlaybackDecision.FallBackToVlc, mapper.forRequestError(fiveHundred, false, vlcFallbackAllowed = true))
+            assertEquals(MessageKey.PLAYBACK_FAILED, shown(mapper.forRequestError(fiveHundred, false, vlcFallbackAllowed = true, conversionOnly = true)).message)
+        }
+
+        @Test
+        fun `existing 503, 404 and HLS recovery rows are unchanged for a conversion`() {
+            assertEquals(PlayerError(MessageKey.TOO_MANY_SESSIONS, actions = listOf(RETRY, BACK)), shown(mapper.forRequestError(http(503, "too_many_sessions"), false, conversionOnly = true)))
+            assertEquals(PlayerError(MessageKey.HLS_DISK_FULL, actions = listOf(RETRY, BACK)), shown(mapper.forRequestError(http(503, "hls_disk_full"), false, conversionOnly = true)))
+            assertEquals(MessageKey.SERVER_UNAVAILABLE, shown(mapper.forRequestError(http(503, "something_new"), false, conversionOnly = true)).message)
+            val hls404 = PlayerFailure(C.IO_BAD_HTTP_STATUS, httpStatus = 404, urlKind = UrlKind.HLS)
+            assertEquals(Recover, mapper.forPlayerFailure(hls404, convert))
+        }
+    }
+
+    /** `transcode_busy`, `session_stopped` and the first-frame watchdog (specs/video-transcoding/prd2.md FR-T5..T7). */
+    @Nested
+    inner class BusyStoppedAndNoFrame {
+        private val av1 = FailureContext(PlaybackMode.DIRECT, nowMs = 100_000, videoCodec = "av1", vlcFallbackAllowed = true)
+        private val generic = ShowError(PlayerError(MessageKey.PLAYBACK_FAILED, actions = listOf(RETRY_FROM_HERE, BACK)))
+
+        @Test
+        fun `transcode_busy shows the busy screen before the generic 503 row, never libVLC`() {
+            assertEquals(PlayerError(MessageKey.TRANSCODE_BUSY, actions = listOf(RETRY, BACK)), shown(mapper.forRequestError(http(503, "transcode_busy"), false)))
+            assertEquals(
+                PlayerError(MessageKey.TRANSCODE_BUSY, actions = listOf(RETRY, TRY_OTHER_VERSION, BACK)),
+                shown(mapper.forRequestError(http(503, "transcode_busy"), true, vlcFallbackAllowed = true)),
+            )
+        }
+
+        @Test
+        fun `an HLS 410 is session_stopped, an HLS 404 still recovers`() {
+            val stopped = PlayerFailure(C.IO_BAD_HTTP_STATUS, httpStatus = 410, urlKind = UrlKind.HLS, bodyCode = "session_stopped")
+            val expected = ShowError(PlayerError(MessageKey.SESSION_STOPPED, actions = listOf(RETRY_FROM_HERE, BACK)))
+            assertEquals(expected, mapper.forPlayerFailure(stopped, av1.copy(mode = PlaybackMode.HLS)))
+            assertEquals(expected, mapper.forPlayerFailure(stopped, av1.copy(mode = PlaybackMode.HLS, conversionOnly = true, hasOtherVersion = true)))
+            val hls404 = PlayerFailure(C.IO_BAD_HTTP_STATUS, httpStatus = 404, urlKind = UrlKind.HLS)
+            assertEquals(Recover, mapper.forPlayerFailure(hls404, av1.copy(mode = PlaybackMode.HLS)))
+        }
+
+        @Test
+        fun `no first frame retries without the codec once`() {
+            assertEquals(PlaybackDecision.RetryWithoutFirstFrame("av1"), mapper.forNoFirstFrame(av1))
+            assertEquals(PlaybackDecision.RetryWithoutFirstFrame("hevc"), mapper.forNoFirstFrame(av1.copy(videoCodec = "hevc", mode = PlaybackMode.HLS, videoAction = "copy")))
+            assertEquals(PlaybackDecision.RetryWithoutFirstFrame("av1"), mapper.forNoFirstFrame(av1.copy(engine = PlaybackEngine.VLC)))
+        }
+
+        @Test
+        fun `no first frame is generic when it cannot help`() {
+            assertEquals(generic, mapper.forNoFirstFrame(av1.copy(videoCodec = null)))
+            assertEquals(generic, mapper.forNoFirstFrame(av1.copy(mode = PlaybackMode.HLS, videoAction = "h264")))
+            assertEquals(generic, mapper.forNoFirstFrame(av1.copy(noFirstFrameRetried = true)))
+            assertEquals(generic, mapper.forNoFirstFrame(av1.copy(engine = PlaybackEngine.VLC, forceVlc = true)))
+            assertEquals(generic, mapper.forNoFirstFrame(av1.copy(legacy = true)))
+            assertEquals(
+                ShowError(PlayerError(MessageKey.PLAYBACK_FAILED, actions = listOf(RETRY_FROM_HERE, TRY_OTHER_VERSION, BACK))),
+                mapper.forNoFirstFrame(av1.copy(noFirstFrameRetried = true, hasOtherVersion = true)),
+            )
         }
     }
 }

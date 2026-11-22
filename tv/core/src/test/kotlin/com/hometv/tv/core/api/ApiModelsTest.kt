@@ -15,6 +15,25 @@ class ApiModelsTest {
     }
 
     @Test
+    fun `VideoInfo and PlaybackResponse decode the conversion fields, and without them (old servers)`() {
+        val withFields = ApiJson.decodeFromString(VideoInfo.serializer(), """{"codec": "hevc", "width": 3840, "profile": "Main 10", "bit_depth": 10}""")
+        assertEquals("Main 10", withFields.profile)
+        assertEquals(10, withFields.bit_depth)
+        val old = ApiJson.decodeFromString(VideoInfo.serializer(), """{"codec": "hevc", "width": 3840}""")
+        assertNull(old.profile)
+        assertNull(old.bit_depth)
+        val nulls = ApiJson.decodeFromString(VideoInfo.serializer(), """{"codec": "av1", "profile": null, "bit_depth": null}""")
+        assertNull(nulls.profile)
+        assertNull(nulls.bit_depth)
+
+        val hls = ApiJson.decodeFromString(PlaybackResponse.serializer(), """{"mode": "hls", "url": "/h/1/index.m3u8", "audio_action": "copy", "video_action": "h264"}""")
+        assertEquals("h264", hls.video_action)
+        val copy = ApiJson.decodeFromString(PlaybackResponse.serializer(), """{"mode": "hls", "video_action": "copy"}""")
+        assertEquals("copy", copy.video_action)
+        assertNull(ApiJson.decodeFromString(PlaybackResponse.serializer(), """{"mode": "direct", "url": "/s/1"}""").video_action)
+    }
+
+    @Test
     fun `nulls for non-null fields with defaults are coerced`() {
         val file = ApiJson.decodeFromString(MediaFile.serializer(), """{"id": 1, "file_name": "a.mkv", "label": null, "audio_tracks": null}""")
         assertEquals("", file.label)

@@ -227,7 +227,7 @@ class PlaybackRepositoryTest {
     inner class HlsSessions {
         @Test
         fun `keep-alive and delete`() = runTest {
-            val statuses = ArrayDeque(listOf(204, 404, 500))
+            val statuses = ArrayDeque(listOf(204, 404, 410, 500))
             val deleted = mutableListOf<String>()
             val h = Harness(this)
             val api = object : FakeHomeTvApi() {
@@ -237,6 +237,7 @@ class PlaybackRepositoryTest {
             val repo = PlaybackRepository({ api }, h.guard, backgroundScope, { error("unused") })
             assertEquals(KeepAliveResult.ALIVE, repo.keepAliveHlsSession("s1"))
             assertEquals(KeepAliveResult.SESSION_LOST, repo.keepAliveHlsSession("s1"))
+            assertEquals(KeepAliveResult.STOPPED, repo.keepAliveHlsSession("s1"))
             assertEquals(KeepAliveResult.FAILED, repo.keepAliveHlsSession("s1"))
             assertTrue(repo.deleteHlsSession("s1"))
             assertEquals(listOf("s1"), deleted)

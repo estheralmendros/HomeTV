@@ -26,13 +26,14 @@ class VlcEventMapperTest {
             VlcEvent.TimeChanged(1) to null,
             VlcEvent.LengthChanged(1) to null,
             VlcEvent.TracksChanged to null,
+            VlcEvent.Vout(1) to null,
         )
         // Every VlcEvent subtype is in the table: a new one breaks the exhaustive `when` below at compile time.
         assertEquals(VlcEventKind.entries.toSet(), expected.map { kindOf(it.first) }.toSet())
         expected.forEach { (event, state) -> assertEquals(state, VlcEventMapper.state(event), "$event") }
     }
 
-    private enum class VlcEventKind { OPENING, BUFFERING, PLAYING, PAUSED, STOPPED, END, ERROR, TIME, LENGTH, TRACKS }
+    private enum class VlcEventKind { OPENING, BUFFERING, PLAYING, PAUSED, STOPPED, END, ERROR, TIME, LENGTH, TRACKS, VOUT }
 
     private fun kindOf(event: VlcEvent): VlcEventKind = when (event) {
         VlcEvent.Opening -> VlcEventKind.OPENING
@@ -45,6 +46,7 @@ class VlcEventMapperTest {
         is VlcEvent.TimeChanged -> VlcEventKind.TIME
         is VlcEvent.LengthChanged -> VlcEventKind.LENGTH
         VlcEvent.TracksChanged -> VlcEventKind.TRACKS
+        is VlcEvent.Vout -> VlcEventKind.VOUT
     }
 
     @Test

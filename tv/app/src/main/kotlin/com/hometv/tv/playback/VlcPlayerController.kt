@@ -344,6 +344,7 @@ class VlcPlayerController(
                 }
             }
             VlcEvent.TracksChanged -> applySelection()
+            is VlcEvent.Vout -> if (event.count > 0) listener?.onRenderedFirstFrame()
             VlcEvent.EncounteredError -> error()
             VlcEvent.EndReached -> if (VlcEventMapper.isEarlyEnd(position, length)) {
                 log("early end at ${position / 1000} of ${length / 1000}", null)

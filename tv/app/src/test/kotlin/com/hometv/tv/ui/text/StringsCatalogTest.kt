@@ -73,6 +73,8 @@ class StringsCatalogTest {
             "player_last_episode|Este es el último episodio",
             "player_too_many_sessions|El servidor ya está emitiendo en el número máximo de dispositivos. Detén la reproducción en otro dispositivo y vuelve a intentarlo.",
             "player_hls_disk_full|Al servidor le queda poco espacio para emitir. Detén otra reproducción o inténtalo de nuevo más tarde.",
+            "player_transcode_busy|El servidor está ocupado convirtiendo otros vídeos. Inténtalo más tarde.",
+            "player_session_stopped|La reproducción se ha detenido desde el servidor",
             "reason_video_codec_unsupported|Este televisor no admite el códec de vídeo %1\$s.",
             "reason_keyframes_too_sparse|Los fotogramas clave del archivo están demasiado separados para convertirlo.",
             "reason_unknown|Este formato no es compatible.",

@@ -76,4 +76,24 @@ class ExoPlayerControllerTest {
         assertEquals(PlayerState.ENDED, ExoPlayerController.stateOf(androidx.media3.common.Player.STATE_ENDED))
         assertEquals(PlayerState.IDLE, ExoPlayerController.stateOf(androidx.media3.common.Player.STATE_IDLE))
     }
+
+    @Test
+    fun `the first rendered frame is forwarded to the listener`() {
+        val exo = androidx.media3.exoplayer.ExoPlayer.Builder(androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()).build()
+        val controller = ExoPlayerController(exo)
+        var frames = 0
+        controller.setListener(object : com.hometv.tv.core.playback.PlayerController.Listener {
+            override fun onTracksChanged(check: com.hometv.tv.core.playback.TrackCheckInput) = Unit
+            override fun onStateChanged(state: PlayerState) = Unit
+            override fun onIsPlayingChanged(isPlaying: Boolean) = Unit
+            override fun onDurationChanged(durationMs: Long?) = Unit
+            override fun onFailure(failure: com.hometv.tv.core.playback.PlayerFailure) = Unit
+            override fun onRenderedFirstFrame() {
+                frames++
+            }
+        })
+        controller.playerListener.onRenderedFirstFrame()
+        assertEquals(1, frames)
+        exo.release()
+    }
 }

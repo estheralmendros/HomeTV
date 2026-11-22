@@ -531,9 +531,9 @@ class PlayerViewModelTest : PlayerTestBase() {
 
     @Test
     fun `the different-version chip shows for 5 s after READY when the position does not carry`() = playerTest {
-        // Progress on a 2160p HEVC version this TV cannot play; the only playable version is another cut.
+        // Progress on a 2160p VC-1 version this TV cannot play; the only playable version is another cut.
         codecs.inventory = codecs.inventory.copy(video = codecs.inventory.video.filter { it.mime == "video/avc" })
-        film(F.hevc(1, duration = 9360.0), F.file(2, duration = 8100.0), progress = F.progress(1, position = 3723.0, duration = 9360.0))
+        film(F.file(1, video = VideoInfo("vc1", 3840, 2160), duration = 9360.0), F.file(2, duration = 8100.0), progress = F.progress(1, position = 3723.0, duration = 9360.0))
         answerWith(direct(fileId = 2))
         val vm = vm()
         runCurrent()

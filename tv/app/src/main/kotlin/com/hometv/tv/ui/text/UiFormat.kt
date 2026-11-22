@@ -148,6 +148,8 @@ class UiFormat(private val res: StringResolver) {
             MessageKey.AUDIO_TRACK_UNPLAYABLE -> R.string.audio_track_unplayable
             MessageKey.AUDIO_SWITCH_FAILED -> R.string.audio_switch_failed
             MessageKey.AUDIO_PREPARING_TIMEOUT -> R.string.audio_preparing_timeout
+            MessageKey.TRANSCODE_BUSY -> R.string.player_transcode_busy
+            MessageKey.SESSION_STOPPED -> R.string.player_session_stopped
         }
 
         @StringRes

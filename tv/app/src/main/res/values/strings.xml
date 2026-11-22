@@ -285,6 +285,8 @@
     <string name="player_preparing_timeout">El servidor todavía está preparando este vídeo. Inténtalo de nuevo dentro de unos minutos.</string>
     <string name="player_too_many_sessions">El servidor ya está emitiendo en el número máximo de dispositivos. Detén la reproducción en otro dispositivo y vuelve a intentarlo.</string>
     <string name="player_hls_disk_full">Al servidor le queda poco espacio para emitir. Detén otra reproducción o inténtalo de nuevo más tarde.</string>
+    <string name="player_transcode_busy">El servidor está ocupado convirtiendo otros vídeos. Inténtalo más tarde.</string>
+    <string name="player_session_stopped">La reproducción se ha detenido desde el servidor</string>
     <string name="player_server_unavailable">El servidor no está disponible en este momento.</string>
     <string name="player_keyframe_index_failed">El servidor no puede preparar esta versión para emitirla.</string>
     <string name="player_unsupported">Este vídeo no se puede reproducir en este televisor</string>

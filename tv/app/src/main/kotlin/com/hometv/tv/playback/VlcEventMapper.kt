@@ -15,7 +15,7 @@ object VlcEventMapper {
         VlcEvent.Playing, VlcEvent.Paused -> PlayerState.READY
         VlcEvent.EndReached -> PlayerState.ENDED
         VlcEvent.Stopped, VlcEvent.EncounteredError -> PlayerState.IDLE
-        is VlcEvent.TimeChanged, is VlcEvent.LengthChanged, VlcEvent.TracksChanged -> null
+        is VlcEvent.TimeChanged, is VlcEvent.LengthChanged, VlcEvent.TracksChanged, is VlcEvent.Vout -> null
     }
 
     fun failure(): PlayerFailure = PlayerFailure(errorCode = PlaybackErrorCodes.VLC_ERROR, engine = PlaybackEngine.VLC)

@@ -52,6 +52,10 @@ class VlcPlayerControllerTest {
             events += "duration $durationMs"
         }
 
+        override fun onRenderedFirstFrame() {
+            events += "firstFrame"
+        }
+
         override fun onFailure(failure: PlayerFailure) {
             events += "failure $failure"
         }
@@ -296,6 +300,16 @@ class VlcPlayerControllerTest {
         port.clear()
         port.emit(VlcEvent.Paused)
         assertEquals(listOf("play"), port.commands())
+    }
+
+    @Test
+    fun `a video output is the first frame, no output is not`() {
+        playing()
+        events.clear()
+        port.emit(VlcEvent.Vout(0))
+        assertEquals(emptyList<String>(), events)
+        port.emit(VlcEvent.Vout(1))
+        assertEquals(listOf("firstFrame"), events)
     }
 
     @Test

@@ -2,8 +2,10 @@ package com.hometv.tv
 
 import androidx.media3.common.C
 import androidx.media3.common.MimeTypes
+import android.media.MediaCodecInfo.CodecProfileLevel
 import androidx.media3.common.PlaybackException
 import com.hometv.tv.core.playback.AudioEncodings
+import com.hometv.tv.core.playback.CodecProfiles
 import com.hometv.tv.core.playback.Mimes
 import com.hometv.tv.core.playback.PlaybackErrorCodes
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -61,5 +63,22 @@ class Media3ConstantsTest {
         assertEquals(MimeTypes.TEXT_VTT, Mimes.TEXT_VTT)
         assertEquals(MimeTypes.VIDEO_MATROSKA, "video/x-matroska")
         assertEquals(MimeTypes.VIDEO_MP2T, "video/mp2t")
+    }
+
+    @Test
+    fun `codec profiles`() {
+        assertEquals(CodecProfileLevel.AVCProfileHigh10, CodecProfiles.AVC_HIGH10)
+        assertEquals(CodecProfileLevel.HEVCProfileMain, CodecProfiles.HEVC_MAIN)
+        assertEquals(CodecProfileLevel.HEVCProfileMain10, CodecProfiles.HEVC_MAIN10)
+        assertEquals(CodecProfileLevel.HEVCProfileMain10HDR10, CodecProfiles.HEVC_MAIN10_HDR10)
+        assertEquals(CodecProfileLevel.HEVCProfileMain10HDR10Plus, CodecProfiles.HEVC_MAIN10_HDR10_PLUS)
+        assertEquals(CodecProfileLevel.VP9Profile0, CodecProfiles.VP9_PROFILE0)
+        assertEquals(CodecProfileLevel.VP9Profile2, CodecProfiles.VP9_PROFILE2)
+        assertEquals(CodecProfileLevel.VP9Profile2HDR, CodecProfiles.VP9_PROFILE2_HDR)
+        assertEquals(CodecProfileLevel.VP9Profile2HDR10Plus, CodecProfiles.VP9_PROFILE2_HDR10_PLUS)
+        assertEquals(CodecProfileLevel.AV1ProfileMain8, CodecProfiles.AV1_MAIN8)
+        assertEquals(CodecProfileLevel.AV1ProfileMain10, CodecProfiles.AV1_MAIN10)
+        assertEquals(CodecProfileLevel.AV1ProfileMain10HDR10, CodecProfiles.AV1_MAIN10_HDR10)
+        assertEquals(CodecProfileLevel.AV1ProfileMain10HDR10Plus, CodecProfiles.AV1_MAIN10_HDR10_PLUS)
     }
 }

@@ -13,6 +13,7 @@ import com.hometv.tv.core.data.AppEvent
 import com.hometv.tv.core.playback.AudioRouteCaps
 import com.hometv.tv.core.playback.CapsForFile
 import com.hometv.tv.core.playback.CodecInventory
+import com.hometv.tv.core.playback.CodecProfiles
 import com.hometv.tv.core.playback.EngineHistory
 import com.hometv.tv.core.playback.EngineInputs
 import com.hometv.tv.core.playback.EngineSelector
@@ -63,7 +64,7 @@ class FilmDetailViewModelTest {
         repos.api.onFilm = { film }
     }
 
-    private fun vm() = FilmDetailViewModel(12, repos.catalog, repos.watch, repos.watchlist, repos.ratings, repos.ratingPrompts, repos.store, { versionCaps ?: VersionCaps(caps, caps) }, repos.events, refresh, detailRefresh)
+    private fun vm() = FilmDetailViewModel(12, repos.catalog, repos.watch, repos.watchlist, repos.ratings, repos.ratingPrompts, repos.store, { versionCaps ?: VersionCaps(caps, caps, caps) }, repos.events, refresh, detailRefresh)
 
     private fun FilmDetailViewModel.content() = state.value as FilmDetailUiState.Content
 
@@ -816,7 +817,7 @@ class FilmDetailViewModelTest {
             AudioRouteCaps(emptySet(), 2),
             vlcAvailable = true,
         )
-        return VersionCaps(EngineSelector.exoCapsForFile(inputs) { EngineHistory() }, EngineSelector.capsForFile(inputs) { EngineHistory() })
+        return VersionCaps(EngineSelector.exoCapsForFile(inputs) { EngineHistory() }, EngineSelector.convertCapsForFile(inputs) { EngineHistory() }, EngineSelector.capsForFile(inputs) { EngineHistory() })
     }
 
     @Test
@@ -833,8 +834,8 @@ class FilmDetailViewModelTest {
     fun `AC-1_13 with no Exo-playable version the default is the libVLC tier's choice`() = runTest(main.dispatcher) {
         val tiers = vlcTiers()
         versionCaps = tiers
-        val files = listOf(F.file(1, video = VideoInfo("mpeg4", 720, 576), container = "avi", fileName = "film.avi"), F.file(2, video = F.HEVC))
-        // Last played on libVLC: the Exo tier alone would fall back to the first readable file (the HEVC one).
+        val files = listOf(F.file(1, video = VideoInfo("mpeg4", 720, 576), container = "avi", fileName = "film.avi"), F.file(2, video = VideoInfo("vc1", 1920, 1080)))
+        // Last played on libVLC: the Exo tier alone would fall back to the first readable file (the VC-1 one).
         val progress = F.progress(1, position = 1000.0)
         withFiles(*files.toTypedArray(), progress = progress)
         val expected = TieredVersions.defaultChoice(files, tiers, progress)!!.file.id
@@ -844,5 +845,41 @@ class FilmDetailViewModelTest {
         advanceUntilIdle()
         vm.onButton(ButtonId.RESUME)
         assertEquals(NavRequest.Play(PlayRequest("film", 12, mediaFileId = expected)), vm.navigation.first())
+    }
+
+    /** HEVC Main only, libVLC available: the tiers of `AppContainer.versionCaps()` with the conversion tier. */
+    private fun convertTiers(): VersionCaps {
+        val inputs = EngineInputs(
+            CodecInventory(
+                listOf(
+                    VideoDecoder(Mimes.VIDEO_H264, true, 3840, 2160),
+                    VideoDecoder(Mimes.VIDEO_HEVC, true, 3840, 2160, profiles = setOf(CodecProfiles.HEVC_MAIN)),
+                ),
+                emptySet(),
+            ),
+            AudioRouteCaps(emptySet(), 2),
+            vlcAvailable = true,
+        )
+        return VersionCaps(EngineSelector.exoCapsForFile(inputs) { EngineHistory() }, EngineSelector.convertCapsForFile(inputs) { EngineHistory() }, EngineSelector.capsForFile(inputs) { EngineHistory() })
+    }
+
+    @Test
+    fun `FR-T4 the default version follows the three tiers - direct, then server conversion, then libVLC`() = runTest(main.dispatcher) {
+        versionCaps = convertTiers()
+        val hevc10 = F.file(1, video = VideoInfo("hevc", 3840, 2160, profile = "Main 10", bit_depth = 10))
+        val xvid = F.file(2, video = VideoInfo("mpeg4", 720, 576), container = "avi", fileName = "film.avi")
+        val h264 = F.file(3, video = F.H264.copy(height = 720))
+        // Direct H.264 wins over the conversion version.
+        withFiles(hevc10, xvid, h264)
+        var vm = vm()
+        advanceUntilIdle()
+        vm.onButton(ButtonId.PLAY)
+        assertEquals(NavRequest.Play(PlayRequest("film", 12, mediaFileId = 3)), vm.navigation.first())
+        // The conversion version wins over the libVLC-only one.
+        withFiles(xvid, hevc10)
+        vm = vm()
+        advanceUntilIdle()
+        vm.onButton(ButtonId.PLAY)
+        assertEquals(NavRequest.Play(PlayRequest("film", 12, mediaFileId = 1)), vm.navigation.first())
     }
 }

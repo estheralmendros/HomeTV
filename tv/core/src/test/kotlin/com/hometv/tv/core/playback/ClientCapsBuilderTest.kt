@@ -2,6 +2,7 @@ package com.hometv.tv.core.playback
 
 import com.hometv.tv.core.api.ApiJson
 import com.hometv.tv.core.api.ClientCaps
+import com.hometv.tv.core.api.VideoInfo
 import com.hometv.tv.core.playback.AudioEncodings.DTS
 import com.hometv.tv.core.playback.AudioEncodings.E_AC3
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -153,5 +154,96 @@ class ClientCapsBuilderTest {
         assertEquals(tvExample.video_codecs.toSet() + "av1", caps.video_codecs.toSet())
         assertEquals(tvExample.audio_codecs.toSet() + "pcm_s16le", caps.audio_codecs.toSet())
         assertEquals(tvExample.copy(containers = caps.containers, video_codecs = caps.video_codecs, audio_codecs = caps.audio_codecs), caps)
+    }
+
+    // ---- Video conversion: caps by profile and bit depth (specs/video-transcoding/prd2.md FR-T3) ----
+
+    private fun hwP(mime: String, vararg profiles: Int, w: Int = 3840, h: Int = 2160) =
+        VideoDecoder(mime, hardware = true, maxWidth = w, maxHeight = h, profiles = profiles.toSet())
+
+    private fun inv(vararg video: VideoDecoder) = CodecInventory(video = video.toList(), audioDecoderMimes = emptySet())
+
+    private fun claims(inventory: CodecInventory, codec: String, bitDepth: Int?, profile: String? = null, w: Int = 1920, h: Int = 1080) =
+        codec in ClientCapsBuilder.build(inventory, stereo, F.file(1, video = VideoInfo(codec, w, h, profile = profile, bit_depth = bitDepth))).video_codecs
+
+    @Test
+    fun `AV1 10-bit needs a decoder that reports AV1 Main 10`() {
+        assertFalse(claims(inv(hwP(Mimes.VIDEO_AV1, CodecProfiles.AV1_MAIN8)), "av1", 10))
+        assertTrue(claims(inv(hwP(Mimes.VIDEO_AV1, CodecProfiles.AV1_MAIN10)), "av1", 10))
+        assertTrue(claims(inv(hwP(Mimes.VIDEO_AV1, CodecProfiles.AV1_MAIN10_HDR10)), "av1", 10))
+        assertTrue(claims(inv(hwP(Mimes.VIDEO_AV1, CodecProfiles.AV1_MAIN10_HDR10_PLUS)), "av1", 10))
+        assertTrue(claims(inv(hwP(Mimes.VIDEO_AV1)), "av1", 10), "a decoder that reports no profiles satisfies any requirement")
+    }
+
+    @Test
+    fun `AV1 8-bit is claimed with Main 8 or Main 10`() {
+        assertTrue(claims(inv(hwP(Mimes.VIDEO_AV1, CodecProfiles.AV1_MAIN8)), "av1", 8))
+        assertTrue(claims(inv(hwP(Mimes.VIDEO_AV1, CodecProfiles.AV1_MAIN10)), "av1", 8))
+    }
+
+    @Test
+    fun `HEVC Main 10 is not claimed by a Main-only decoder, Main is claimed by Main 10 too`() {
+        val mainOnly = inv(hwP(Mimes.VIDEO_HEVC, CodecProfiles.HEVC_MAIN))
+        assertFalse(claims(mainOnly, "hevc", 10))
+        assertTrue(claims(mainOnly, "hevc", 8))
+        assertTrue(claims(inv(hwP(Mimes.VIDEO_HEVC, CodecProfiles.HEVC_MAIN10)), "hevc", 10))
+        assertTrue(claims(inv(hwP(Mimes.VIDEO_HEVC, CodecProfiles.HEVC_MAIN10_HDR10)), "hevc", 8))
+        assertTrue(claims(inv(hwP(Mimes.VIDEO_HEVC, CodecProfiles.HEVC_MAIN, CodecProfiles.HEVC_MAIN10)), "hevc", 10))
+    }
+
+    @Test
+    fun `VP9 Profile 2 is not claimed by a Profile 0 decoder`() {
+        val p0 = inv(hwP(Mimes.VIDEO_VP9, CodecProfiles.VP9_PROFILE0))
+        assertFalse(claims(p0, "vp9", 10))
+        assertTrue(claims(p0, "vp9", 8))
+        assertTrue(claims(inv(hwP(Mimes.VIDEO_VP9, CodecProfiles.VP9_PROFILE2)), "vp9", 10))
+        assertTrue(claims(inv(hwP(Mimes.VIDEO_VP9, CodecProfiles.VP9_PROFILE2_HDR10_PLUS)), "vp9", 10))
+    }
+
+    @Test
+    fun `H264 is claimed for 8-bit with any inventory, 10-bit needs High 10`() {
+        assertTrue(claims(inv(hwP(Mimes.VIDEO_H264, 0x8)), "h264", 8))
+        assertFalse(claims(inv(hwP(Mimes.VIDEO_H264, 0x8)), "h264", 10))
+        assertTrue(claims(inv(hwP(Mimes.VIDEO_H264, CodecProfiles.AVC_HIGH10)), "h264", 10))
+        assertTrue(claims(inv(hwP(Mimes.VIDEO_H264)), "h264", 10), "no profiles reported")
+        // The generic caps (no file) keep h264.
+        assertTrue("h264" in ClientCapsBuilder.build(inv(hwP(Mimes.VIDEO_H264, 0x8)), stereo).video_codecs)
+    }
+
+    @Test
+    fun `bit depths above 10 are never claimed`() {
+        val all = inv(hwP(Mimes.VIDEO_HEVC, CodecProfiles.HEVC_MAIN10), hwP(Mimes.VIDEO_VP9, CodecProfiles.VP9_PROFILE2), hwP(Mimes.VIDEO_AV1, CodecProfiles.AV1_MAIN10))
+        for (codec in listOf("hevc", "vp9", "av1", "h264")) assertFalse(claims(all, codec, 12), codec)
+        assertFalse(claims(inv(hwP(Mimes.VIDEO_HEVC)), "hevc", 12), "even a decoder that reports no profiles")
+    }
+
+    @Test
+    fun `without bit_depth the ffprobe profile decides, case-insensitively and exactly`() {
+        val mainOnly = inv(hwP(Mimes.VIDEO_HEVC, CodecProfiles.HEVC_MAIN))
+        assertFalse(claims(mainOnly, "hevc", null, "Main 10"))
+        assertFalse(claims(mainOnly, "hevc", null, "main 10"))
+        assertTrue(claims(mainOnly, "hevc", null, "Main"))
+        assertTrue(claims(mainOnly, "hevc", null, "Main Still Picture"), "unknown profile: today's result")
+        assertTrue(claims(mainOnly, "hevc", null, null), "no bit depth and no profile: today's result")
+        assertFalse(claims(inv(hwP(Mimes.VIDEO_VP9, CodecProfiles.VP9_PROFILE0)), "vp9", null, "Profile 2"))
+        assertFalse(claims(inv(hwP(Mimes.VIDEO_H264, 0x8)), "h264", null, "High 10"))
+        assertTrue(claims(inv(hwP(Mimes.VIDEO_H264, 0x8)), "h264", null, "High"))
+        // bit_depth wins over the profile.
+        assertTrue(claims(mainOnly, "hevc", 8, "Main 10"))
+    }
+
+    @Test
+    fun `other codecs have no profile requirement, and the size rule still applies`() {
+        assertEquals(null, ClientCapsBuilder.requiredProfiles("mpeg4", VideoInfo("mpeg4", bit_depth = 10)))
+        assertEquals(null, ClientCapsBuilder.requiredProfiles("mpeg2video", VideoInfo("mpeg2video")))
+        assertEquals(null, ClientCapsBuilder.requiredProfiles("h264", VideoInfo("h264", bit_depth = 8)))
+        assertEquals(emptySet<Int>(), ClientCapsBuilder.requiredProfiles("av1", VideoInfo("av1", bit_depth = 12)))
+        assertEquals(setOf(CodecProfiles.AVC_HIGH10), ClientCapsBuilder.requiredProfiles("h264", VideoInfo("h264", profile = "High 10")))
+        val fhdOnly = inv(hwP(Mimes.VIDEO_HEVC, CodecProfiles.HEVC_MAIN10, w = 1920, h = 1080))
+        assertFalse(claims(fhdOnly, "hevc", 10, w = 3840, h = 2160))
+        assertTrue(claims(fhdOnly, "hevc", 10, w = 1920, h = 1080))
+        // Size and profile must hold on the same decoder.
+        val split = inv(hwP(Mimes.VIDEO_HEVC, CodecProfiles.HEVC_MAIN, w = 3840, h = 2160), hwP(Mimes.VIDEO_HEVC, CodecProfiles.HEVC_MAIN10, w = 1920, h = 1080))
+        assertFalse(claims(split, "hevc", 10, w = 3840, h = 2160))
     }
 }

@@ -56,7 +56,8 @@ fun interface SubtitleSource {
     suspend fun fetch(url: String): SubtitleFetch
 }
 
-enum class KeepAliveResult { ALIVE, SESSION_LOST, FAILED }
+/** 204 alive, 404 lost (the next play recovers), 410 `session_stopped` (an admin stopped it), anything else failed. */
+enum class KeepAliveResult { ALIVE, SESSION_LOST, STOPPED, FAILED }
 
 /**
  * Playback requests and HLS/subtitle side calls.
@@ -182,6 +183,7 @@ class PlaybackRepository(
         when {
             response.isSuccessful -> KeepAliveResult.ALIVE
             response.code() == 404 -> KeepAliveResult.SESSION_LOST
+            response.code() == 410 -> KeepAliveResult.STOPPED
             else -> KeepAliveResult.FAILED
         }
     } catch (e: CancellationException) {

@@ -68,7 +68,7 @@ class PlayerNextEpisodeTest : PlayerTestBase() {
     @Test
     fun `the next episode starts on a matching playable version at its saved position`() = playerTest {
         codecs.inventory = codecs.inventory.copy(video = codecs.inventory.video.filter { it.mime == "video/avc" })
-        val uhd = F.hevc(21, duration = 1320.0)
+        val uhd = F.file(21, video = VideoInfo("vc1", 3840, 2160), duration = 1320.0)
         val hd = F.file(22, duration = 1325.0)
         episodes(
             episodeDetail(203, listOf(F.file(1, duration = 1320.0)), next = 204),
@@ -94,7 +94,7 @@ class PlayerNextEpisodeTest : PlayerTestBase() {
         codecs.inventory = codecs.inventory.copy(video = codecs.inventory.video.filter { it.mime == "video/avc" })
         episodes(
             episodeDetail(203, listOf(F.file(1, duration = 1320.0)), next = 204),
-            episodeDetail(204, listOf(F.hevc(21, duration = 1320.0), F.file(22, duration = 900.0)), progress = F.progress(21, position = 300.0, duration = 1320.0)),
+            episodeDetail(204, listOf(F.file(21, video = VideoInfo("vc1", 3840, 2160), duration = 1320.0), F.file(22, duration = 900.0)), progress = F.progress(21, position = 300.0, duration = 1320.0)),
         )
         answerWith(direct(duration = 1320.0))
         val vm = vm(itemType = "episode", itemId = 203)
@@ -137,7 +137,7 @@ class PlayerNextEpisodeTest : PlayerTestBase() {
     fun `the end screen reason of an unplayable next episode names the codec`() = playerTest {
         episodes(
             episodeDetail(203, listOf(F.file(1, duration = 1320.0)), next = 204),
-            episodeDetail(204, listOf(F.file(21, video = VideoInfo("av1", 1920, 1080)))),
+            episodeDetail(204, listOf(F.file(21, video = VideoInfo("vc1", 1920, 1080)))),
         )
         answerWith(direct(duration = 1320.0))
         val vm = vm(itemType = "episode", itemId = 203)
@@ -146,6 +146,6 @@ class PlayerNextEpisodeTest : PlayerTestBase() {
         controller.end()
         runCurrent()
         val detail = (vm.state.value.screen as PlayerScreenUi.EndScreen).detail as UiText.Joined
-        assertTrue(detail.parts.contains(UiText.Res(R.string.reason_video_codec_unsupported, listOf("AV1"))))
+        assertTrue(detail.parts.contains(UiText.Res(R.string.reason_video_codec_unsupported, listOf("VC1"))))
     }
 }
