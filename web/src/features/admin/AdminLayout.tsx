@@ -1,5 +1,5 @@
 // Admin section layout (lazy admin chunk, entered through RequireAdmin's PIN gate): tabs
-// "Escaneo" / "Bibliotecas" / "Sin identificar" (badge = ScanStatus.unmatched_count) / "Perfiles".
+// "Escaneo" / "Bibliotecas" / "Sin identificar" (badge = ScanStatus.unmatched_count) / "Perfiles" / "Reproducciones".
 // It owns the scan polling, so a scan that finishes while another tab is open still
 // invalidates the catalog and shows the summary toast.
 import { useQueryClient } from '@tanstack/react-query';
@@ -20,6 +20,7 @@ const TABS = [
   { to: 'libraries', label: S.admin.tabs.libraries },
   { to: 'unmatched', label: S.admin.tabs.unmatched },
   { to: 'profiles', label: S.admin.tabs.profiles },
+  { to: 'sessions', label: S.admin.tabs.sessions },
 ] as const;
 
 /** running → completed | failed: invalidate the catalog and `['admin','unmatched']`, toast the summary. */

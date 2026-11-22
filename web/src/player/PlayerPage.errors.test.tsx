@@ -79,7 +79,7 @@ describe('503 preparing', () => {
   });
 });
 
-describe('busy (503 too_many_sessions / hls_disk_full)', () => {
+describe('busy (503 too_many_sessions / hls_disk_full / transcode_busy)', () => {
   it.each([
     [
       'too_many_sessions',
@@ -89,6 +89,7 @@ describe('busy (503 too_many_sessions / hls_disk_full)', () => {
       'hls_disk_full',
       'El servidor no tiene espacio para convertir vídeo ahora mismo. Vuelve a intentarlo en unos minutos o detén la reproducción en otro dispositivo.',
     ],
+    ['transcode_busy', 'El servidor está ocupado convirtiendo otros vídeos. Inténtalo más tarde.'],
   ])('%s: the busy screen with [Reintentar] [Volver]; Retry re-requests', async (code, message) => {
     answerPlayback(apiError(503, code), f.playbackDirect());
     const p = renderPlayer('/watch/film/12');

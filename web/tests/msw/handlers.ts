@@ -106,6 +106,8 @@ export const handlers = [
 
   // Admin
   http.post(`${API}/admin/unlock`, () => HttpResponse.json(f.unlockResponse())),
+  http.get(`${API}/admin/sessions`, () => HttpResponse.json(f.adminSessions())),
+  http.delete(`${API}/admin/sessions/:id`, () => new HttpResponse(null, { status: 204 })),
   http.get(`${API}/admin/scan`, () => HttpResponse.json(f.scanStatus())),
   http.post(`${API}/admin/scan`, () =>
     HttpResponse.json(f.scanStatus({ state: 'running', phase: 'walking', finished_at: null }), { status: 202 }),

@@ -29,6 +29,8 @@ export const adminRoutes: RouteObject[] = [
       { path: 'scan', lazy: lazyRoute(() => import('@/features/admin/ScanPage'), (m) => m.ScanPage) },
       { path: 'libraries', lazy: lazyRoute(() => import('@/features/admin/LibrariesPage'), (m) => m.LibrariesPage) },
       { path: 'unmatched', lazy: lazyRoute(() => import('@/features/admin/UnmatchedPage'), (m) => m.UnmatchedPage) },
+      { path: 'sessions', lazy: lazyRoute(() => import('@/features/admin/SessionsPage'), (m) => m.SessionsPage) },
+      { path: 'sessions', lazy: lazyRoute(() => import('@/features/admin/SessionsPage'), (m) => m.SessionsPage) },
       {
         path: 'profiles',
         lazy: lazyRoute(() => import('@/features/admin/ProfilesAdminPage'), (m) => m.ProfilesAdminPage),

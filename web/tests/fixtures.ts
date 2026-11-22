@@ -3,6 +3,8 @@
 // film 12 "Dune" (2021, file 91), show 7 "The Office" (season 2, episode 345, file 501).
 import { DEFAULT_SUBTITLE_STYLE } from '@/api/subtitleStyleDefaults';
 import type {
+  AdminSession,
+  AdminSessions,
   ActivityEntry,
   AudioChoice,
   AudioTrack,
@@ -726,3 +728,40 @@ export function clientCaps(overrides: Partial<ClientCaps> = {}): ClientCaps {
 }
 
 export const WEBVTT = 'WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nHola\n';
+
+/** A running remux (copy/copy) session of "Dune" watched by Esther. */
+export function adminSession(overrides: Partial<AdminSession> = {}): AdminSession {
+  return {
+    session_id: 'sess-1',
+    profile_id: 1,
+    profile_name: 'Esther',
+    media_file_id: 91,
+    file_name: 'Dune.2021.1080p.mkv',
+    item_type: 'film',
+    title: 'Dune',
+    season_number: null,
+    episode_number: null,
+    last_episode_number: null,
+    video_action: 'copy',
+    audio_action: 'copy',
+    state: 'running',
+    started_at: '2026-10-31T20:04:00Z',
+    last_segment: 3,
+    position_seconds: 18,
+    duration_seconds: 9360.5,
+    speed: null,
+    ...overrides,
+  };
+}
+
+/** Default: empty list, 0 / 0 counts, no CPU reading, limits 4 / 2. */
+export function adminSessions(overrides: Partial<AdminSessions> = {}): AdminSessions {
+  return {
+    sessions: [],
+    active_sessions: 0,
+    active_transcodes: 0,
+    cpu: null,
+    limits: { max_sessions: 4, max_transcodes: 2 },
+    ...overrides,
+  };
+}

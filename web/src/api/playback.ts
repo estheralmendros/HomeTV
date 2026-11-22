@@ -8,8 +8,8 @@ export const requestPlayback = (fileId: number, body: PlaybackRequest, signal?: 
   apiFetch<PlaybackResponse>(`/api/media-files/${fileId}/playback`, { method: 'POST', body, signal });
 
 /** HLS endpoints are authorized by the session id; the Bearer header is harmless. */
-export const keepAliveHls = (sessionId: string) =>
-  apiFetch<void>(`/api/hls/${encodeURIComponent(sessionId)}/keepalive`, { method: 'POST' });
+export const keepAliveHls = (sessionId: string, signal?: AbortSignal) =>
+  apiFetch<void>(`/api/hls/${encodeURIComponent(sessionId)}/keepalive`, { method: 'POST', signal });
 
 export const deleteHlsSession = (sessionId: string, options: { keepalive?: boolean } = {}) =>
   apiFetch<void>(`/api/hls/${encodeURIComponent(sessionId)}`, { method: 'DELETE', ...options });

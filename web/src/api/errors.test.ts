@@ -24,6 +24,8 @@ describe('errorMessage', () => {
     ['not_found', 'Este contenido no está disponible. Puede que se haya eliminado o que su disco esté desconectado.'],
     ['forbidden', 'Solo para administradores.'],
     ['too_many_sessions', 'El servidor ya está convirtiendo el número máximo de vídeos. Detén la reproducción en otro dispositivo y vuelve a intentarlo.'],
+    ['transcode_busy', 'El servidor está ocupado convirtiendo otros vídeos. Inténtalo más tarde.'],
+    ['session_stopped', 'La reproducción se ha detenido desde el servidor.'],
     ['invalid_pin', 'PIN incorrecto.'],
     ['admin_locked', 'Introduce tu PIN de administrador para continuar.'],
     ['scan_in_progress', 'Ya hay un escaneo en curso.'],

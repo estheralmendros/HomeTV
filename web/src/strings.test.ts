@@ -119,6 +119,9 @@ export function catalogPathsRead(source: string, fileName = 'x.tsx'): string[] {
 /** Catalog objects read with a computed key (`S.errors.byCode[code]`): every leaf below counts. */
 const DYNAMIC_PARENTS = [
   'errors.byCode',
+  'admin.sessions.video',
+  'admin.sessions.audio',
+  'admin.sessions.state',
   'show.status',
   'library.noMatch',
   'watchlist.noMatch',

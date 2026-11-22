@@ -31,6 +31,16 @@ describe('PlayerErrorScreen', () => {
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
+  it('stopped: the message with [Reintentar] [Volver]', async () => {
+    const message = 'La reproducción se ha detenido desde el servidor.';
+    const { onRetry, onBack } = renderScreen({ error: error({ kind: 'stopped', code: 'session_stopped', message }) });
+    expect(screen.getByRole('alert')).toHaveTextContent(message);
+    await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Volver' }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
   it('gone (item 404): the item-type copy and only [Volver]', () => {
     renderScreen({ error: error({ kind: 'gone', code: 'not_found', message: 'x' }) });
     expect(screen.getByRole('alert')).toHaveTextContent(

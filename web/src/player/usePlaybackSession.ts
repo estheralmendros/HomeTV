@@ -8,7 +8,10 @@
 //   releasing the previous source (tracker snapshot → hls.destroy() / src reset);
 // - maps element signals to machine events; fatal errors release the source first, so the
 //   recovery request uses the tracked position (direct MEDIA_ERR_NETWORK checks the file first);
-// - HLS keep-alive every 30 s (paused/blocked/buffering/ended; also playing on native HLS);
+// - HLS keep-alive every 30 s (paused/blocked/buffering/ended; also playing on native HLS); a 410
+//   session_stopped (an admin stopped the session) shows the stopped screen, no DELETE;
+// - an HLS fatal first probes the session with a keep-alive (5 s cap): 410 session_stopped → stopped
+//   screen, anything else → the recovery request;
 // - pause release: after 30 min of continuous pause, release + one DELETE + PAUSE_RELEASE;
 // - exit (unmount or pagehide): release the element / DELETE the owned session (keepalive). A session handed over as
 //   previous_session_id (the server stops it) is never kept alive or DELETEd again.
@@ -32,6 +35,7 @@ import {
 import type { PositionTracker } from './useProgressReporter';
 
 export const KEEPALIVE_INTERVAL_MS = 30_000;
+export const FATAL_PROBE_TIMEOUT_MS = 5_000;
 export const PAUSE_RELEASE_MS = 30 * 60_000;
 export const PREPARING_RETRY_FALLBACK_S = 5;
 
@@ -84,6 +88,8 @@ export function usePlaybackSession(options: PlaybackSessionOptions): PlaybackSes
   const ownedSession = useRef<string | null>(null);
   /** Sessions whose keep-alive answered 404. */
   const lostSessions = useRef(new Set<string>());
+  /** The session whose fatal probe is in flight (a second fatal for it is ignored). */
+  const probing = useRef<string | null>(null);
   const mount = useRef(new AbortController());
   // StrictMode (dev) runs a simulated unmount + remount: the exit cleanup aborted the mount's
   // controller, so a remount needs a fresh one. Declared first, so it runs before every other
@@ -114,6 +120,51 @@ export function usePlaybackSession(options: PlaybackSessionOptions): PlaybackSes
     [dispatch, tracker],
   );
 
+  /** The session was stopped from the server: forget it (no DELETE) and show the stopped screen. */
+  const markStopped = useCallback(
+    (id: string) => {
+      if (ownedSession.current === id) ownedSession.current = null;
+      lostSessions.current.add(id);
+      mediaError('hls', 'stopped');
+    },
+    [mediaError],
+  );
+
+  /**
+   * An HLS fatal: ask the server whether the session still exists before recovering. 410
+   * session_stopped → the stopped screen; anything else (2xx, 404, another error, 5 s timeout) →
+   * today's recovery. The answer is dropped when the mount ended or the state moved on.
+   */
+  const probeThenFail = useCallback(
+    (id: string, signal: Extract<MediaSignal, { type: 'FATAL' }>) => {
+      if (probing.current === id) return;
+      probing.current = id;
+      const mountSignal = mount.current.signal;
+      const request = new AbortController();
+      const abort = () => request.abort();
+      mountSignal.addEventListener('abort', abort, { once: true });
+      const timer = setTimeout(abort, FATAL_PROBE_TIMEOUT_MS);
+      keepAliveHls(id, request.signal).then(
+        () => null,
+        (err: unknown) => err,
+      ).then((outcome) => {
+        clearTimeout(timer);
+        mountSignal.removeEventListener('abort', abort);
+        probing.current = null;
+        if (mountSignal.aborted) return;
+        const s = latest.current.state;
+        if (s.sessionId !== id || !acceptsMediaError(s.name)) return;
+        if (isApiError(outcome, 'session_stopped') && outcome.status === 410) {
+          markStopped(id);
+          return;
+        }
+        deleteOwned(false); // the failed HLS session is replaced by the recovery request
+        mediaError(signal.source, signal.kind);
+      });
+    },
+    [markStopped, deleteOwned, mediaError],
+  );
+
   const handleFatal = useCallback(
     (signal: Extract<MediaSignal, { type: 'FATAL' }>) => {
       const current = latest.current.state;
@@ -129,11 +180,19 @@ export function usePlaybackSession(options: PlaybackSessionOptions): PlaybackSes
           return;
         }
       } else {
-        deleteOwned(false); // the failed HLS session is replaced by the recovery request
+        // After a keep-alive 410 in `ended` the session is lost (not owned) but is still the one a
+        // replay attached: the probe tells "stopped" from "gone".
+        const lost = current.sessionId !== null && lostSessions.current.has(current.sessionId);
+        const id = ownedSession.current ?? (lost ? current.sessionId : null);
+        if (id) {
+          probeThenFail(id, signal);
+          return;
+        }
+        deleteOwned(false);
       }
       mediaError(signal.source, signal.kind);
     },
-    [releaseSource, deleteOwned, mediaError],
+    [releaseSource, deleteOwned, mediaError, probeThenFail],
   );
 
   const onSignal = useCallback(
@@ -272,12 +331,27 @@ export function usePlaybackSession(options: PlaybackSessionOptions): PlaybackSes
     const timer = setInterval(() => {
       if (lostSessions.current.has(sessionId) || ownedSession.current !== sessionId) return;
       keepAliveHls(sessionId).catch((err: unknown) => {
-        // 404: the session is gone; the next play fails and triggers the recovery.
-        if (isApiError(err) && err.status === 404) lostSessions.current.add(sessionId);
+        if (mount.current.signal.aborted || !isApiError(err)) return;
+        if (err.status === 404) {
+          // Gone: the next play fails and triggers the recovery.
+          lostSessions.current.add(sessionId);
+        } else if (err.status === 410 && err.code === 'session_stopped') {
+          // Stopped from the server (no DELETE). The state may have moved on since the tick fired.
+          const s = latest.current.state;
+          if (s.sessionId !== sessionId) return;
+          if (acceptsMediaError(s.name)) {
+            releaseSource();
+            markStopped(sessionId);
+          } else if (s.name === 'ended') {
+            // `ended` ignores media errors: a replay fails later and reaches the probe.
+            lostSessions.current.add(sessionId);
+            if (ownedSession.current === sessionId) ownedSession.current = null;
+          }
+        }
       });
     }, KEEPALIVE_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [keepAliveWanted, sessionId]);
+  }, [keepAliveWanted, sessionId, releaseSource, markStopped]);
 
   // --- Release after 30 min of continuous pause --------------------------------------------
   const pausedWithSession = sessionId !== null && PAUSED_STATES.has(state.name);

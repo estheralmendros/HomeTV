@@ -140,7 +140,7 @@ describe('attachSource: hls.js (desktop, Safari included)', () => {
   it('HLS_CONFIG tolerates 30 s segments and the 20 s init.mp4 wait', () => {
     const frag = HLS_CONFIG.fragLoadPolicy.default;
     expect(frag.maxLoadTimeMs).toBeGreaterThanOrEqual(60_000);
-    expect(frag.maxTimeToFirstByteMs).toBeGreaterThan(20_000);
+    expect(frag.maxTimeToFirstByteMs).toBe(45_000);
     expect(HLS_CONFIG.maxBufferLength).toBeGreaterThanOrEqual(90);
     expect(HLS_CONFIG).toMatchObject({
       enableWorker: true,
@@ -153,7 +153,7 @@ describe('attachSource: hls.js (desktop, Safari included)', () => {
       enableWebVTT: false,
       fragLoadPolicy: {
         default: {
-          maxTimeToFirstByteMs: 30_000,
+          maxTimeToFirstByteMs: 45_000,
           maxLoadTimeMs: 90_000,
           timeoutRetry: { maxNumRetry: 2, retryDelayMs: 0, maxRetryDelayMs: 0 },
           errorRetry: { maxNumRetry: 4, retryDelayMs: 1000, maxRetryDelayMs: 8000 },

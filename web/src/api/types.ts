@@ -595,14 +595,18 @@ export interface PlaybackDirect {
   subtitle_tracks: SubtitleTrack[];
 }
 
+export type VideoAction = 'copy' | 'h264';
+export type AudioAction = 'copy' | 'aac_stereo' | 'aac_5_1' | 'none';
+export type AdminSessionState = 'running' | 'throttled' | 'done' | 'failed';
+
 export interface PlaybackHls {
   mode: 'hls';
   url: string;
   session_id: string;
   audio_stream_index: number | null;
-  audio_action: 'copy' | 'aac_stereo' | 'aac_5_1' | 'none';
+  audio_action: AudioAction;
   /** 'copy' = remux, 'h264' = the server converts the video; played the same way. */
-  video_action: 'copy' | 'h264';
+  video_action: VideoAction;
   duration_seconds: number | null;
   subtitle_tracks: SubtitleTrack[];
 }
@@ -825,9 +829,9 @@ export interface AdminSession {
   episode_number: number | null;
   /** Multi-episode file: the last linked episode, else null. */
   last_episode_number: number | null;
-  video_action: 'copy' | 'h264';
-  audio_action: 'copy' | 'aac_stereo' | 'aac_5_1' | 'none';
-  state: 'running' | 'throttled' | 'done' | 'failed';
+  video_action: VideoAction;
+  audio_action: AudioAction;
+  state: AdminSessionState;
   /** ISO 8601 UTC. */
   started_at: string;
   last_segment: number | null;

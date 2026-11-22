@@ -90,10 +90,13 @@ describe('endpoint modules', () => {
       { method: 'POST', path: '/api/media-files/91/playback', body: { client_caps: caps, audio_stream_index: null, start_position_seconds: 0, previous_session_id: null } }],
     ['keepAliveHls', () => playback.keepAliveHls('s1'), { method: 'POST', path: '/api/hls/s1/keepalive' }],
     ['deleteHlsSession', () => playback.deleteHlsSession('s1'), { method: 'DELETE', path: '/api/hls/s1' }],
+    ['keepAliveHls with a signal', () => playback.keepAliveHls('s1', new AbortController().signal), { method: 'POST', path: '/api/hls/s1/keepalive' }],
     ['getSubtitleText', () => playback.getSubtitleText('/api/media-files/91/subtitles/emb-3.vtt'),
       { path: '/api/media-files/91/subtitles/emb-3.vtt', query: {}, bearer: 'Bearer tok' }],
     ['unlockAdmin', () => admin.unlockAdmin('1234'), { method: 'POST', path: '/api/admin/unlock', body: { pin: '1234' }, bearer: 'Bearer tok', admin: null }],
     ['getScan', () => admin.getScan(), { path: '/api/admin/scan', admin: 'adm' }],
+    ['getSessions', () => admin.getSessions(), { method: 'GET', path: '/api/admin/sessions', admin: 'adm' }],
+    ['stopSession', () => admin.stopSession('a b'), { method: 'DELETE', path: '/api/admin/sessions/a%20b', admin: 'adm' }],
     ['startScan', () => admin.startScan(), { method: 'POST', path: '/api/admin/scan', admin: 'adm' }],
     ['listUnmatched', () => admin.listUnmatched({ library: 'films', reason: 'multi_part', page: 2 }),
       { path: '/api/admin/unmatched', query: { page_size: '50', library: 'films', reason: 'multi_part', page: '2' }, admin: 'adm' }],
@@ -134,5 +137,14 @@ describe('endpoint modules', () => {
 
   it('pages the watchlist by 50', () => {
     expect(watchlist.WATCHLIST_PAGE_SIZE).toBe(50);
+  });
+});
+
+describe('keepAliveHls abort', () => {
+  it('an aborted signal cancels the request', async () => {
+    const controller = new AbortController();
+    const pending = playback.keepAliveHls('s1', controller.signal);
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
   });
 });

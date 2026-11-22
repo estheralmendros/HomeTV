@@ -27,7 +27,7 @@ export type PlayerStateName = (typeof ALL_STATE_NAMES)[number];
 /** States that send a playback request; `preparing` returns to its origin on each tick. */
 export type RequestOrigin = 'requesting' | 'switching' | 'recovering';
 export type PlaybackMode = 'direct' | 'hls';
-export type PlayerErrorKind = 'busy' | 'gone' | 'prepare_timeout' | 'decode' | 'failed' | 'version_failed';
+export type PlayerErrorKind = 'busy' | 'gone' | 'prepare_timeout' | 'decode' | 'failed' | 'version_failed' | 'stopped';
 
 export interface PlayerError {
   kind: PlayerErrorKind;
@@ -74,7 +74,7 @@ export type PlayerNotice =
 
 export type ExitReason = 'cancel' | 'next' | 'next_part';
 export type MediaErrorSource = 'hls' | 'native' | 'direct';
-export type MediaErrorKind = 'network' | 'decode' | 'gone';
+export type MediaErrorKind = 'network' | 'decode' | 'gone' | 'stopped';
 
 export interface PlayerState {
   name: PlayerStateName;
@@ -218,7 +218,7 @@ const messageFor = (code: string) => errorMessage(new ApiError({ status: 0, code
 export function playerErrorFrom(err: unknown): PlayerError {
   if (!(err instanceof ApiError)) return { kind: 'failed', code: 'unknown', message: errorMessage(err), detail: null };
   const { code } = err;
-  if (code === 'too_many_sessions' || code === 'hls_disk_full') {
+  if (code === 'too_many_sessions' || code === 'hls_disk_full' || code === 'transcode_busy') {
     return { kind: 'busy', code, message: errorMessage(err), detail: null };
   }
   if (code === 'file_missing' || code === 'not_found') return { kind: 'gone', code, message: errorMessage(err), detail: null };
@@ -352,6 +352,9 @@ function restoreAfterSwitch(s: PlayerState, notice: PlayerNotice | null): Player
 function mediaError(s: PlayerState, e: Extract<PlayerEvent, { type: 'MEDIA_ERROR' }>): PlayerState {
   if (e.kind === 'gone') {
     return toError(s, { kind: 'gone', code: 'file_missing', message: messageFor('file_missing'), detail: null });
+  }
+  if (e.kind === 'stopped') {
+    return toError(s, { kind: 'stopped', code: 'session_stopped', message: messageFor('session_stopped'), detail: null });
   }
   if (e.kind === 'decode') {
     return toError(s, { kind: 'decode', code: e.code ?? 'decode_error', message: S.player.decodeFailed, detail: null });

@@ -164,6 +164,29 @@ describe('audio switch in direct mode', () => {
     expect(p.video().getAttribute('src')).toBe(src);
   });
 
+  it('an audio switch started during a fatal probe drops the probe result (no stopped screen)', async () => {
+    let open = () => undefined as void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    server.use(
+      http.post(`${API}/hls/:sid/keepalive`, async () => {
+        await gate;
+        return apiError(410, 'session_stopped');
+      }),
+    );
+    answerPlayback(hls(1), hls(2, 2));
+    const p = renderPlayer('/watch/film/12');
+    await playingAt400(p, 'hls');
+    FakeHls.last?.fatal();
+    await until(() => expect(p.keepalives()).toHaveLength(1));
+    chooseSpanish();
+    await until(() => expect(p.posts()).toHaveLength(2));
+    open();
+    await p.rec.settled();
+    await p.startHls(400, 2);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(p.posts()).toHaveLength(2);
+  });
+
   it('answered hls_disk_full: a toast with the message, stays on the old source (no busy screen)', async () => {
     answerPlayback(f.playbackDirect(), apiError(503, 'hls_disk_full'));
     const p = renderPlayer('/watch/film/12');
@@ -171,6 +194,18 @@ describe('audio switch in direct mode', () => {
     const src = p.video().getAttribute('src');
     chooseSpanish();
     expect(await screen.findByText(DISK_FULL)).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(p.video().getAttribute('src')).toBe(src);
+    expect(p.posts()).toHaveLength(2);
+  });
+
+  it('answered transcode_busy: a toast with the message, stays on the old source (no busy screen)', async () => {
+    answerPlayback(f.playbackDirect(), apiError(503, 'transcode_busy'));
+    const p = renderPlayer('/watch/film/12');
+    await playingAt400(p, 'direct');
+    const src = p.video().getAttribute('src');
+    chooseSpanish();
+    expect(await screen.findByText('El servidor está ocupado convirtiendo otros vídeos. Inténtalo más tarde.')).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(p.video().getAttribute('src')).toBe(src);
     expect(p.posts()).toHaveLength(2);

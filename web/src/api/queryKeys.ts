@@ -42,6 +42,7 @@ export const queryKeys = {
     tmdbSearch: (type: TmdbType, q: string, year: number | null) => ['admin', 'tmdb', type, q, year] as const,
     tmdbSeasons: (tmdbId: number) => ['admin', 'tmdb', 'tv', tmdbId, 'seasons'] as const,
     tmdbSeason: (tmdbId: number, seasonNumber: number) => ['admin', 'tmdb', 'tv', tmdbId, 'season', seasonNumber] as const,
+    sessions: () => ['admin', 'sessions'] as const,
     libraries: () => ['admin', 'libraries'] as const,
     /** Folder browser listing; `null` = the browse root. A child of `libraries()` (prefix). */
     browse: (path: string | null) => ['admin', 'libraries', 'browse', path] as const,
@@ -77,6 +78,7 @@ export const staleTimes = {
   adminScan: 0,
   adminUnmatched: 0,
   adminTmdb: 5 * MINUTE,
+  adminSessions: 0,
   adminLibraries: 0,
   adminBrowse: 0,
 } as const;
@@ -102,6 +104,8 @@ export type InvalidationEvent =
   | { type: 'librariesChanged' }
   /** DELETE /api/admin/unmatched/{id} success (or `not_found`: already gone). */
   | { type: 'unmatchedChanged' }
+  /** DELETE /api/admin/sessions/{id} success (or `session_not_found`: already gone). */
+  | { type: 'sessionStopped' }
   /** Profile create / edit / delete. */
   | { type: 'profilesChanged' }
   /** PUT /api/track-choices/... answered 204 (the remembered audio/subtitle pick). */
@@ -172,6 +176,8 @@ export function invalidateAfter(event: InvalidationEvent): QueryKey[] {
       return [queryKeys.admin.libraries(), queryKeys.admin.scan()];
     case 'unmatchedChanged':
       return [queryKeys.admin.unmatchedAll(), queryKeys.admin.scan()];
+    case 'sessionStopped':
+      return [queryKeys.admin.sessions()];
     case 'profilesChanged':
       return [queryKeys.profiles(), queryKeys.me()];
     case 'trackChoiceChanged':

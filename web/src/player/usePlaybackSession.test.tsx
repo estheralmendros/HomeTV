@@ -576,7 +576,7 @@ describe('recovery', () => {
     await startPlaying(h);
     at(400);
     act(() => FakeHls.last?.fatal());
-    expect(h.state().name).toBe('recovering');
+    await until(() => expect(h.state().name).toBe('recovering')); // after the keep-alive probe
     await until(() => expect(posts()).toHaveLength(2));
     expect((await postBodies())[1]).toMatchObject({ start_position_seconds: 400, previous_session_id: null, audio_stream_index: 1 });
   });
@@ -601,13 +601,13 @@ describe('recovery', () => {
     at(100, 'playing');
     await advance(40_000);
     act(() => FakeHls.last?.fatal());
-    expect(h.state().name).toBe('recovering');
+    await until(() => expect(h.state().name).toBe('recovering'));
     await until(() => expect(FakeHls.last?.id).toBe(3));
     act(() => FakeHls.last?.emit(FakeHls.Events.MANIFEST_PARSED));
     at(100, 'playing');
     await advance(10_000);
     act(() => FakeHls.last?.fatal());
-    expect(h.state().error?.kind).toBe('failed');
+    await until(() => expect(h.state().error?.kind).toBe('failed'));
     expect(posts()).toHaveLength(3);
   });
 

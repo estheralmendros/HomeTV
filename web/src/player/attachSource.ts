@@ -26,7 +26,7 @@ export const HLS_CONFIG = {
   enableWebVTT: false,
   fragLoadPolicy: {
     default: {
-      maxTimeToFirstByteMs: 30_000,
+      maxTimeToFirstByteMs: 45_000,
       maxLoadTimeMs: 90_000,
       timeoutRetry: { maxNumRetry: 2, retryDelayMs: 0, maxRetryDelayMs: 0 },
       errorRetry: { maxNumRetry: 4, retryDelayMs: 1000, maxRetryDelayMs: 8000 },

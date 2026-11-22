@@ -2,7 +2,7 @@
 // held; a 401 admin_locked clears the token, which pauses them
 // until RequireAdmin's keypad unlocks again, then they refetch.
 import { keepPreviousData, queryOptions, useQuery } from '@tanstack/react-query';
-import { browseFolders, getLibraries, getScan, listUnmatched, tmdbSearch, tmdbSeason, tmdbSeasons } from '@/api/admin';
+import { browseFolders, getLibraries, getScan, getSessions, listUnmatched, tmdbSearch, tmdbSeason, tmdbSeasons } from '@/api/admin';
 import { queryKeys, staleTimes } from '@/api/queryKeys';
 import type { ScanStatus, TmdbType, UnmatchedQuery } from '@/api/types';
 import { useAdminToken, type RunAdminAction } from '@/auth/useAdminAction';
@@ -119,3 +119,17 @@ export const tmdbSeasonQuery = (run: RunAdminAction, tmdbId: number, seasonNumbe
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
+
+export const SESSIONS_POLL_MS = 3000;
+
+/** `GET /api/admin/sessions` (Reproducciones): polled every 3 s while the page is mounted. */
+export function useSessionsQuery() {
+  const token = useAdminToken();
+  return useQuery({
+    queryKey: queryKeys.admin.sessions(),
+    queryFn: ({ signal }) => getSessions(signal),
+    staleTime: staleTimes.adminSessions,
+    enabled: token !== null,
+    refetchInterval: SESSIONS_POLL_MS,
+  });
+}

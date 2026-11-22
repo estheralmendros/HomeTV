@@ -68,6 +68,7 @@ describe('playerErrorFrom', () => {
   it.each([
     [503, 'too_many_sessions', {}, 'busy'],
     [503, 'hls_disk_full', {}, 'busy'],
+    [503, 'transcode_busy', {}, 'busy'],
     [404, 'file_missing', {}, 'gone'],
     [404, 'not_found', {}, 'gone'],
     [500, 'transcoder_failed', { detail: 'keyframe_index_failed: stalled' }, 'version_failed'],
@@ -76,6 +77,12 @@ describe('playerErrorFrom', () => {
     [409, 'weird_code', {}, 'failed'],
   ])('%s %s → %s', (status, code, details, kind) => {
     expect(playerErrorFrom(new ApiError({ status, code, details })).kind).toBe(kind);
+  });
+
+  it('transcode_busy uses its catalog text', () => {
+    expect(playerErrorFrom(new ApiError({ status: 503, code: 'transcode_busy' })).message).toBe(
+      'El servidor está ocupado convirtiendo otros vídeos. Inténtalo más tarde.',
+    );
   });
 
   it('uses catalog messages and keeps only the transcoder_failed diagnostic as detail', () => {
@@ -327,6 +334,21 @@ const ROWS: Row[] = [
     check: (s) =>
       expect(s.error).toMatchObject({ kind: 'decode', message: 'Este navegador no ha podido descodificar el archivo.' }),
   },
+  ...(['paused', 'blocked', 'buffering', 'playing'] as const).map((name): Row => ({
+    name: `${name} MEDIA_ERROR stopped → error stopped, no recovery`,
+    from: { paused: pausedHls, blocked, buffering, playing: playingHls }[name],
+    event: { type: 'MEDIA_ERROR', now: 0, source: 'hls', kind: 'stopped', position: 400 },
+    to: 'error',
+    check: (s) => {
+      expect(s.error).toEqual({
+        kind: 'stopped',
+        code: 'session_stopped',
+        message: 'La reproducción se ha detenido desde el servidor.',
+        detail: null,
+      });
+      expect(s.pendingRequest).toBeNull();
+    },
+  })),
   // blocked
   {
     name: 'blocked PLAYING → playing',
@@ -630,6 +652,13 @@ const ROWS: Row[] = [
     event: { type: 'RETRY', position: 250 },
     to: 'requesting',
     check: (s) => expect(s.pendingRequest?.intent).toEqual(intent({ startPositionSeconds: 250 })),
+  },
+  {
+    name: 'stopped error RETRY → requesting at the tracked position',
+    from: () => run(playingHls(), { type: 'MEDIA_ERROR', now: 0, source: 'hls', kind: 'stopped', position: 400 }),
+    event: { type: 'RETRY', position: 400 },
+    to: 'requesting',
+    check: (s) => expect(s.pendingRequest?.intent).toEqual(intent({ startPositionSeconds: 400 })),
   },
   {
     name: 'error PLAY_FILE → requesting with that file',

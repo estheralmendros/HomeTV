@@ -1,6 +1,7 @@
 // Admin endpoints: every call except unlock sends X-Admin-Token when one is held (`admin: true`).
 import { apiFetch } from './client';
 import type {
+  AdminSessions,
   BrowseResponse,
   FilmDetail,
   LibrariesPlan,
@@ -88,3 +89,8 @@ export const saveLibraries = (body: LibrariesSaveRequest) =>
 /** `path` null = the browse root. */
 export const browseFolders = (path: string | null, signal?: AbortSignal) =>
   apiFetch<BrowseResponse>('/api/admin/libraries/browse', { query: { path: path ?? undefined }, admin: true, signal });
+
+export const getSessions = (signal?: AbortSignal) => apiFetch<AdminSessions>('/api/admin/sessions', { admin: true, signal });
+
+export const stopSession = (id: string) =>
+  apiFetch<void>(`/api/admin/sessions/${encodeURIComponent(id)}`, { method: 'DELETE', admin: true });

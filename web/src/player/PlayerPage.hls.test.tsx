@@ -1,6 +1,6 @@
 // PlayerPage: HLS session lifecycle through the UI — exit DELETE, keep-alive, the 30 min pause
 // release, autoplay rejection and media-error recovery.
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setCapabilityEnv } from './capabilities';
@@ -16,6 +16,21 @@ import { answerPlayback, renderPlayer, useFakePlayerTimers } from '../../tests/p
 vi.mock('hls.js', () => import('../../tests/fakeHls'));
 
 const MIN = 60_000;
+const STOPPED = 'La reproducción se ha detenido desde el servidor.';
+const KEEPALIVE = `${API}/hls/:sid/keepalive`;
+/** A keep-alive that answers once `open()` is called. */
+function gateKeepAlive(status: number, code?: string) {
+  let open = () => undefined as void;
+  const gate = new Promise<void>((resolve) => (open = resolve));
+  server.use(
+    http.post(KEEPALIVE, async () => {
+      await gate;
+      return code ? apiError(status, code) : new HttpResponse(null, { status });
+    }),
+  );
+  return { open: () => open() };
+}
+const stoppedKeepAlive = () => server.use(http.post(KEEPALIVE, () => apiError(410, 'session_stopped')));
 const hls2 = () => f.playbackHls({ session_id: 'sess-2', url: '/api/hls/sess-2/index.m3u8' });
 const hls3 = () => f.playbackHls({ session_id: 'sess-3', url: '/api/hls/sess-3/index.m3u8' });
 
@@ -272,5 +287,217 @@ describe('media errors and recovery', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
     await until(() => expect(p.posts()).toHaveLength(4));
     expect((await p.postBodies())[3]).toMatchObject({ start_position_seconds: 450 });
+  });
+});
+
+describe('h264 conversion responses', () => {
+  it.each(['copy', 'h264'] as const)('video_action %s attaches through hls.js with the same config and the same keep-alive', async (action) => {
+    useFakePlayerTimers();
+    answerPlayback(f.playbackHls({ video_action: action }));
+    const p = renderPlayer('/watch/film/12');
+    await p.startHls(100);
+    expect(FakeHls.last?.url).toBe('/api/hls/sess-1/index.m3u8');
+    expect(FakeHls.last?.config.startPosition).toBe(100);
+    expect(FakeHls.instances).toHaveLength(1);
+    await advance(90_000);
+    expect(p.keepalives()).toHaveLength(0);
+    p.pauseAt(190);
+    await advance(30_000);
+    expect(p.keepalives().map((c) => c.url.pathname)).toEqual(['/api/hls/sess-1/keepalive']);
+    expect(p.posts()).toHaveLength(1);
+  });
+});
+
+describe('a session stopped from the server (410 session_stopped)', () => {
+  it('an HLS fatal whose keep-alive answers 410 → the stopped screen, no POST until [Reintentar] at the tracked position, no DELETE', async () => {
+    stoppedKeepAlive();
+    answerPlayback(f.playbackHls(), hls2());
+    const p = renderPlayer('/watch/film/12');
+    await p.startHls(100);
+    p.at(400);
+    FakeHls.last?.fatal();
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(STOPPED);
+    expect(p.keepalives()).toHaveLength(1);
+    await p.rec.settled();
+    expect(p.posts()).toHaveLength(1);
+    expect(p.deletes()).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+    await until(() => expect(p.posts()).toHaveLength(2));
+    expect((await p.postBodies())[1]).toMatchObject({ start_position_seconds: 400, previous_session_id: null });
+    expect(p.deletes()).toHaveLength(0);
+  });
+
+  it('[Volver] on the stopped screen sends no DELETE for the stopped session', async () => {
+    stoppedKeepAlive();
+    answerPlayback(f.playbackHls());
+    const p = renderPlayer('/watch/film/12');
+    await p.startHls(100);
+    FakeHls.last?.fatal();
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(STOPPED);
+    fireEvent.click(within(alert).getByRole('button', { name: 'Volver' }));
+    await p.rec.settled();
+    expect(p.deletes()).toHaveLength(0);
+  });
+
+  it("an HLS fatal whose keep-alive answers 404 → today's silent recovery", async () => {
+    server.use(http.post(KEEPALIVE, () => apiError(404, 'session_not_found')));
+    answerPlayback(f.playbackHls(), hls2());
+    const p = renderPlayer('/watch/film/12');
+    await p.startHls(100);
+    p.at(400);
+    FakeHls.last?.fatal();
+    await until(() => expect(p.posts()).toHaveLength(2));
+    expect((await p.postBodies())[1]).toMatchObject({ start_position_seconds: 400 });
+    await p.startHls(400, 2);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(p.deletes().map((c) => c.url.pathname)).toEqual(['/api/hls/sess-1']);
+  });
+
+  it('a keep-alive tick answering 410 while paused → the stopped screen, no DELETE', async () => {
+    useFakePlayerTimers();
+    stoppedKeepAlive();
+    answerPlayback(f.playbackHls());
+    const p = renderPlayer('/watch/film/12');
+    await p.startHls(100);
+    p.pauseAt(190);
+    await advance(30_000);
+    await until(() => expect(screen.getByRole('alert')).toHaveTextContent(STOPPED));
+    expect(FakeHls.last?.destroyed).toBe(true);
+    await advance(60_000);
+    expect(p.keepalives()).toHaveLength(1);
+    expect(p.deletes()).toHaveLength(0);
+    expect(p.posts()).toHaveLength(1);
+  });
+
+  it('a keep-alive tick answering 410 while playing on native HLS → the stopped screen, no DELETE', async () => {
+    useFakePlayerTimers();
+    setCapabilityEnv(iphoneEnv());
+    stoppedKeepAlive();
+    answerPlayback(f.playbackHls());
+    const p = renderPlayer('/watch/film/12');
+    await until(() => expect(p.video().getAttribute('src')).toBe('/api/hls/sess-1/index.m3u8'));
+    p.fire('loadedmetadata');
+    p.at(100, 'playing');
+    await advance(30_000);
+    await until(() => expect(screen.getByRole('alert')).toHaveTextContent(STOPPED));
+    expect(p.deletes()).toHaveLength(0);
+    expect(p.video().hasAttribute('src')).toBe(false);
+  });
+
+  it('a keep-alive tick answering 410 in ended → no screen, no DELETE; a replay then fails and reaches the stopped screen through the probe', async () => {
+    useFakePlayerTimers();
+    stoppedKeepAlive();
+    answerPlayback(f.playbackHls());
+    const p = renderPlayer('/watch/film/12');
+    await p.startHls(100);
+    p.at(7000);
+    p.fire('ended');
+    await advance(30_000);
+    expect(p.keepalives()).toHaveLength(1);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(p.deletes()).toHaveLength(0);
+    await advance(60_000);
+    expect(p.keepalives()).toHaveLength(1); // marked lost: no more ticks
+    // Replay: the gone session's source fails.
+    fireEvent.click(screen.getByRole('button', { name: 'Volver a reproducir' }));
+    FakeHls.last?.fatal();
+    await until(() => expect(screen.getByRole('alert')).toHaveTextContent(STOPPED));
+    expect(p.keepalives()).toHaveLength(2);
+    expect(p.posts()).toHaveLength(1);
+    expect(p.deletes()).toHaveLength(0);
+  });
+
+  it('a keep-alive tick answering 404 only marks the session lost: no screen, no more ticks, no DELETE', async () => {
+    useFakePlayerTimers();
+    server.use(http.post(KEEPALIVE, () => apiError(404, 'session_not_found')));
+    answerPlayback(f.playbackHls());
+    const p = renderPlayer('/watch/film/12');
+    await p.startHls(100);
+    p.pauseAt(190);
+    await advance(30_000);
+    expect(p.keepalives()).toHaveLength(1);
+    await advance(60_000);
+    expect(p.keepalives()).toHaveLength(1);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(p.deletes()).toHaveLength(0);
+  });
+});
+
+describe('fatal probe', () => {
+  it.each([
+    ['2xx', () => server.use(http.post(KEEPALIVE, () => new HttpResponse(null, { status: 204 })))],
+    ['404', () => server.use(http.post(KEEPALIVE, () => apiError(404, 'session_not_found')))],
+    ['500', () => server.use(http.post(KEEPALIVE, () => apiError(500, 'internal_error')))],
+  ])('a probe answering %s recovers exactly once (one POST, the failed session DELETEd)', async (_name, arrange) => {
+    arrange();
+    answerPlayback(f.playbackHls(), hls2());
+    const p = renderPlayer('/watch/film/12');
+    await p.startHls(100);
+    p.at(400);
+    FakeHls.last?.fatal();
+    await until(() => expect(p.posts()).toHaveLength(2));
+    await p.startHls(400, 2);
+    await p.rec.settled();
+    expect(p.posts()).toHaveLength(2);
+    expect(p.keepalives()).toHaveLength(1);
+    expect(p.deletes().map((c) => c.url.pathname)).toEqual(['/api/hls/sess-1']);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('two fatals during one probe → one probe, one outcome', async () => {
+    const gate = gateKeepAlive(204);
+    answerPlayback(f.playbackHls(), hls2());
+    const p = renderPlayer('/watch/film/12');
+    await p.startHls(100);
+    p.at(400);
+    const hls = FakeHls.last;
+    hls?.fatal();
+    hls?.fatal();
+    p.fire('error');
+    await until(() => expect(p.keepalives()).toHaveLength(1));
+    gate.open();
+    await until(() => expect(p.posts()).toHaveLength(2));
+    await p.rec.settled();
+    expect(p.keepalives()).toHaveLength(1);
+    expect(p.posts()).toHaveLength(2);
+    expect(p.deletes()).toHaveLength(1);
+  });
+
+  it('unmount during the probe → no POST, no dispatch afterwards, only the exit release', async () => {
+    const gate = gateKeepAlive(410, 'session_stopped');
+    answerPlayback(f.playbackHls(), hls2());
+    const p = renderPlayer('/watch/film/12');
+    await p.startHls(100);
+    p.at(400);
+    FakeHls.last?.fatal();
+    await until(() => expect(p.keepalives()).toHaveLength(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Volver' }));
+    await until(() => expect(p.deletes()).toHaveLength(1));
+    await p.rec.settled();
+    const after = p.rec.calls.length;
+    gate.open();
+    await p.rec.settled();
+    expect(p.posts()).toHaveLength(1);
+    expect(p.rec.calls.length).toBe(after);
+    expect(p.deletes().map((c) => c.url.pathname)).toEqual(['/api/hls/sess-1']);
+  });
+
+  it("a probe that hangs past 5 s falls back to today's recovery", async () => {
+    useFakePlayerTimers();
+    server.use(http.post(KEEPALIVE, () => new Promise<never>(() => undefined)));
+    answerPlayback(f.playbackHls(), hls2());
+    const p = renderPlayer('/watch/film/12');
+    await p.startHls(100);
+    p.at(400);
+    FakeHls.last?.fatal();
+    await until(() => expect(p.keepalives()).toHaveLength(1));
+    await advance(4_900);
+    expect(p.posts()).toHaveLength(1);
+    await advance(200);
+    await until(() => expect(p.posts()).toHaveLength(2));
+    expect((await p.postBodies())[1]).toMatchObject({ start_position_seconds: 400 });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });

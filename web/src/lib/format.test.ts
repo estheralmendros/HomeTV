@@ -4,6 +4,8 @@ import {
   formatActivityTime,
   episodeShort,
   formatBytes,
+  formatClockTime,
+  formatDecimal,
   formatCount,
   formatDate,
   formatDuration,
@@ -139,5 +141,39 @@ describe('formatActivityTime (local time zone)', () => {
 
   it('defaults now to the current time', () => {
     expect(formatActivityTime(new Date().toISOString())).toBe('ahora mismo');
+  });
+});
+
+describe('formatClockTime (local time zone)', () => {
+  it.each<[string, string, string]>([
+    ['evening', new Date(2026, 9, 31, 21, 4, 59).toISOString(), '21:04'],
+    ['morning, zero padded', new Date(2026, 9, 31, 7, 5).toISOString(), '07:05'],
+    ['midnight', new Date(2026, 9, 31, 0, 0).toISOString(), '00:00'],
+  ])('%s', (_name, iso, text) => {
+    expect(formatClockTime(iso)).toBe(text);
+  });
+
+  it('a fixed UTC instant renders in the test time zone', () => {
+    const iso = '2026-10-31T20:04:00Z';
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    expect(formatClockTime(iso)).toBe(`${pad(d.getHours())}:${pad(d.getMinutes())}`);
+  });
+
+  it.each(['', 'not a date'])('unparseable %j → ""', (iso) => {
+    expect(formatClockTime(iso)).toBe('');
+  });
+});
+
+describe('formatDecimal', () => {
+  it.each<[number, number, string]>([
+    [2.84, 1, '2,8'],
+    [3, 1, '3,0'],
+    [1.4, 1, '1,4'],
+    [0.04, 1, '0,0'],
+    [3.14159, 2, '3,14'],
+    [4, 0, '4'],
+  ])('formatDecimal(%s, %s) → %s', (n, digits, text) => {
+    expect(formatDecimal(n, digits)).toBe(text);
   });
 });

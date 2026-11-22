@@ -107,6 +107,18 @@ export function formatCount(n: number): string {
   return countFormat.format(n);
 }
 
+const fixedFormats = new Map<number, Intl.NumberFormat>();
+
+/** Fixed fraction digits with the es-ES decimal comma: formatDecimal(2.84, 1) is "2,8". */
+export function formatDecimal(n: number, digits: number): string {
+  let format = fixedFormats.get(digits);
+  if (!format) {
+    format = new Intl.NumberFormat(LOCALE, { minimumFractionDigits: digits, maximumFractionDigits: digits });
+    fixedFormats.set(digits, format);
+  }
+  return format.format(n);
+}
+
 /** "7,8" */
 export function formatRating(value: number): string {
   return oneDecimalFormat.format(value);
@@ -155,4 +167,12 @@ export function parseEpisodeList(input: string): number[] {
     for (let n = from; n <= to; n += 1) numbers.add(n);
   }
   return [...numbers].sort((a, b) => a - b);
+}
+
+const clockFormat = new Intl.DateTimeFormat(LOCALE, { hour: '2-digit', minute: '2-digit' });
+
+/** Local clock time "21:04"; "" for an unparseable timestamp. */
+export function formatClockTime(iso: string): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? '' : clockFormat.format(date);
 }

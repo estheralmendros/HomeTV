@@ -7,7 +7,7 @@ Web notes, read on demand. Project overview, commands and shared conventions: th
 - `src/strings.es.ts`: `S`, the only UI string catalog (es-ES; functions for values and plurals).
 - `src/api/`: `client.ts` (`apiFetch`, 401 hook, `X-Admin-Token`), `errors.ts` (`ApiError`, `errorMessage`),
   `types.ts` (REST shapes, snake_case), one module per area, `paging.ts` (`nextPageParam`), `queryKeys.ts`
-  (`queryKeys`, `mutationKeys`, `staleTimes`, `invalidateAfter(event)`: which keys each event invalidates is defined
+  (`queryKeys`, `mutationKeys`, `staleTimes`, `invalidateAfter(event)`, incl. `sessionStopped`: which keys each event invalidates is defined
   only there). `['me']` holds `Me` = the profile + `subtitle_style`.
 - `src/auth/`: per-tab session (`AuthProvider`, `session.ts`), route guards (`BootGate`/`RequireProfile`/
   `RequireAdmin`), in-memory admin unlock, `useAdminAction` (keypad + one retry on `admin_locked`). `AuthProvider`
@@ -19,7 +19,8 @@ Web notes, read on demand. Project overview, commands and shared conventions: th
     `subtitleStyle` (the `::cue` font size is `calc(5vmin * factor)`, never a `%`: Firefox resolves a `::cue`
     percentage against 16 px).
   - `trackChoiceSession`: tab-lifetime picks + the per-title, per-profile write queue; `subtitleStyleDraft`.
-  - I/O hooks: `usePlaybackSession` (POST/preparing/attach/keep-alive/recovery/exit), `attachSource` (direct, hls.js,
+  - I/O hooks: `usePlaybackSession` (POST/preparing/attach/keep-alive/recovery/exit; an HLS fatal first probes the session with a keep-alive,
+    410 `session_stopped` → the `stopped` error screen, else recovery; a keep-alive tick 410 does the same), `attachSource` (direct, hls.js,
     native iOS HLS), `useProgressReporter`, `useTrackChoiceSaver`, `useSubtitleStyleSave`, `usePlayerSubtitles`,
     `useMediaSession`, `subtitleLoader` (Bearer fetch -> blob `<track>`).
   - `PlayerRoute` is the stable shell (fullscreen root + the single `<video>`, `PlayerShellContext`, the
@@ -33,11 +34,12 @@ Web notes, read on demand. Project overview, commands and shared conventions: th
   - `watchlist/`: `WatchlistPage`, `useWatchlistParams` (filters in the URL, replace navigation),
     `useWatchlistToggle` (optimistic, pending survives a remount).
   - `admin/`: `AdminLayout` (tabs; the one scan poll), `ScanPage`, `LibrariesPage` (pure `libraryDraft` reducer;
-    plan -> server-built confirmation -> PUT), `FolderBrowser`.
+    plan -> server-built confirmation -> PUT), `FolderBrowser`; `SessionsPage` ("Reproducciones": `useSessionsQuery` polls 3 s while mounted,
+    "Detener" via `useAdminAction`; pure labels in `sessionRows`; table, cards below `PHONE_QUERY`).
 - `src/components/`: shared UI (`PosterCard`/`SummaryCard`/`WideCard`, `SeeAllCard` (the "Ver todo" card ending a Home row), `PosterGrid`, `LoadMoreFooter`, `Artwork`,
   `StarRating` = `StarDisplay` + `StarInput` slider, `CastRow`, `WatchlistToggle`, `NavBar` + `MobileTabBar`).
   `styles/tokens.test.ts` checks the `--color-rating` contrast; `NavBar.styles.test.ts` checks the CSS source.
-- `src/lib/`: `format` (es-ES dates and numbers, `formatActivityTime`), pure `stars`, `routerLocation`,
+- `src/lib/`: `format` (es-ES dates and numbers, `formatActivityTime`, `formatClockTime`, `formatDecimal`), pure `stars`, `routerLocation`,
   `historyIndex`, `languages`, `chunkReload`, `RouteErrorBoundary`, `lazyRoute`, hooks (`useMediaQuery`,
   `useElementHeight`, `useOverflows`). `router.tsx`: `/admin/*` and `/watch/*` are lazy.
 - `tests/`: `setup.ts` (MSW `onUnhandledRequest: 'error'`, media/TextTrack stubs, resets), `fixtures.ts` (pure `f.*`

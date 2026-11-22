@@ -60,7 +60,7 @@ describe('queryKeys', () => {
     expect(staleTimes).toEqual({
       info: Infinity, profiles: 30_000, me: 300_000, home: 0, library: 30_000, genres: 300_000, search: 30_000,
       film: 30_000, show: 30_000, season: 30_000, episode: 30_000, person: 30_000, watchlist: 30_000, activity: 0, adminScan: 0, adminUnmatched: 0, adminTmdb: 300_000,
-      adminLibraries: 0, adminBrowse: 0,
+      adminSessions: 0, adminLibraries: 0, adminBrowse: 0,
     });
   });
 });
@@ -125,6 +125,11 @@ describe('invalidateAfter', () => {
 
   it('unmatched entry removed: the unmatched list and the scan status (badge count)', () => {
     expect(invalidateAfter({ type: 'unmatchedChanged' })).toEqual([['admin', 'unmatched'], ['admin', 'scan']]);
+  });
+
+  it('session stopped: only the admin sessions list', () => {
+    expect(invalidateAfter({ type: 'sessionStopped' })).toEqual([['admin', 'sessions']]);
+    expect(queryKeys.admin.sessions()).toEqual(['admin', 'sessions']);
   });
 
   it('profile create / edit / delete', () => {
