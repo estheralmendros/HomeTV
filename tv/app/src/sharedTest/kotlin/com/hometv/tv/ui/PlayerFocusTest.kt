@@ -9,8 +9,14 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.hometv.tv.core.api.EpisodeDetail
+import com.hometv.tv.core.api.FilmDetail
 import com.hometv.tv.core.api.PlaybackResponse
+import com.hometv.tv.core.api.VideoInfo
+import com.hometv.tv.core.data.FakeHomeTvApi
 import com.hometv.tv.core.playback.F
+import com.hometv.tv.core.playback.PlaybackErrorCodes
+import com.hometv.tv.core.playback.PlayerFailure
+import com.hometv.tv.core.playback.UrlKind
 import com.hometv.tv.testing.UiTestBase
 import com.hometv.tv.testing.UiTestPlatform
 import org.junit.Assert.assertEquals
@@ -37,7 +43,7 @@ class PlayerFocusTest : UiTestBase() {
     /** Home → OK on the "Seguir viendo" film card (Dune) → Player, READY and playing. */
     private fun openFilm(response: PlaybackResponse = PlaybackResponse("direct", url = "/api/media-files/1/stream", audio_stream_index = 1, duration_seconds = 9360.0)) {
         useLibrary()
-        api.onFilm = { id -> com.hometv.tv.core.api.FilmDetail(id = id, title = "Dune", media_files = listOf(twoAudio)) }
+        api.onFilm = { id -> FilmDetail(id = id, title = "Dune", media_files = listOf(twoAudio)) }
         api.onPlayback = { _, _ -> response }
         launch()
         assertFocused("card_continue:film:12")
@@ -69,8 +75,8 @@ class PlayerFocusTest : UiTestBase() {
     fun aFilmOnLibVlcShowsTheSameSurfaceAndOverlay() {
         vlc = true
         useLibrary()
-        val xvid = F.file(1, video = com.hometv.tv.core.api.VideoInfo("mpeg4", 720, 400), container = "avi", fileName = "dune.avi")
-        api.onFilm = { id -> com.hometv.tv.core.api.FilmDetail(id = id, title = "Dune", media_files = listOf(xvid)) }
+        val xvid = F.file(1, video = VideoInfo("mpeg4", 720, 400), container = "avi", fileName = "dune.avi")
+        api.onFilm = { id -> FilmDetail(id = id, title = "Dune", media_files = listOf(xvid)) }
         api.onPlayback = { _, _ -> PlaybackResponse("direct", url = "/api/media-files/1/stream", audio_stream_index = 1, duration_seconds = 9360.0) }
         launch()
         press(Key.DirectionCenter)
@@ -222,7 +228,7 @@ class PlayerFocusTest : UiTestBase() {
     @Test
     fun tryOtherVersionOpensTheVersionsListWithNoEntryChecked() {
         useLibrary()
-        api.onFilm = { id -> com.hometv.tv.core.api.FilmDetail(id = id, title = "Dune", media_files = listOf(F.file(1), F.file(2, label = "720p H264 · AAC 2.0"))) }
+        api.onFilm = { id -> FilmDetail(id = id, title = "Dune", media_files = listOf(F.file(1), F.file(2, label = "720p H264 · AAC 2.0"))) }
         api.onPlayback = { id, _ ->
             if (id == 1L) PlaybackResponse("unsupported", reason = "video_codec_unsupported")
             else PlaybackResponse("direct", url = "/api/media-files/$id/stream", audio_stream_index = 1, duration_seconds = 9360.0)
@@ -240,7 +246,7 @@ class PlayerFocusTest : UiTestBase() {
     @Test
     fun aRemovedFilmShowsTheItemGoneScreen() {
         useLibrary()
-        api.onFilm = { throw com.hometv.tv.core.data.FakeHomeTvApi.httpError(404, "not_found") }
+        api.onFilm = { throw FakeHomeTvApi.httpError(404, "not_found") }
         launch()
         press(Key.DirectionCenter)
         text("Este título ya no está disponible.").assertIsDisplayed()
@@ -272,8 +278,8 @@ class PlayerFocusTest : UiTestBase() {
     @Test
     fun theTranscodeBusyScreenOpensWithRetryFocused() {
         useLibrary()
-        api.onFilm = { id -> com.hometv.tv.core.api.FilmDetail(id = id, title = "Dune", media_files = listOf(F.file(1), F.file(2, label = "720p H264 · AAC 2.0"))) }
-        api.onPlayback = { _, _ -> throw com.hometv.tv.core.data.FakeHomeTvApi.httpError(503, "transcode_busy") }
+        api.onFilm = { id -> FilmDetail(id = id, title = "Dune", media_files = listOf(F.file(1), F.file(2, label = "720p H264 · AAC 2.0"))) }
+        api.onPlayback = { _, _ -> throw FakeHomeTvApi.httpError(503, "transcode_busy") }
         launch()
         press(Key.DirectionCenter)
         node("player_error").assertIsDisplayed()
@@ -291,7 +297,7 @@ class PlayerFocusTest : UiTestBase() {
     fun theStoppedFromTheServerScreenFocusesRetryFromHereAndBackLeavesThePlayer() {
         openFilm(PlaybackResponse("hls", url = "/api/hls/S1/index.m3u8", session_id = "S1", audio_stream_index = 1, audio_action = "copy", duration_seconds = 9360.0))
         onPlayer {
-            fail(com.hometv.tv.core.playback.PlayerFailure(com.hometv.tv.core.playback.PlaybackErrorCodes.IO_BAD_HTTP_STATUS, httpStatus = 410, urlKind = com.hometv.tv.core.playback.UrlKind.HLS))
+            fail(PlayerFailure(PlaybackErrorCodes.IO_BAD_HTTP_STATUS, httpStatus = 410, urlKind = UrlKind.HLS))
         }
         node("player_error").assertIsDisplayed()
         text("La reproducción se ha detenido desde el servidor").assertIsDisplayed()

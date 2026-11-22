@@ -19,6 +19,7 @@ import com.hometv.tv.ui.player.ExoCaptionApplied
 import kotlin.math.max
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -65,6 +66,18 @@ class PlayerSurfaceTest : UiTestBase() {
         val last = surfaceBindings.last()
         assertEquals(PlaybackEngine.EXO, last.first)
         assertSame(player, last.second)
+    }
+
+    @Test
+    fun theViewModelSeesTheSurfaceBoundAfterTheFirstAttach() {
+        // FR-T5: null -> EXO re-keys the surface; the old group's dispose must not leave the flag false.
+        val gate = CompletableDeferred<Unit>()
+        openFilm(gate)
+        assertFalse("no video surface before the controller exists", checkNotNull(playerViewModel).videoSurfaceBound)
+        gate.complete(Unit)
+        settle()
+        onPlayer { ready() }
+        assertTrue(checkNotNull(playerViewModel).videoSurfaceBound)
     }
 
     @Test
@@ -133,10 +146,13 @@ class PlayerSurfaceTest : UiTestBase() {
         assertFocused("card_continue:episode:203")
         press(Key.DirectionCenter)
         onPlayer { ready() }
+        assertTrue("EXO surface bound", checkNotNull(playerViewModel).videoSurfaceBound)
         endThenPlayNow { onPlayer(it) }
         onVlcPlayer { ready() }
+        assertTrue("EXO -> VLC: the new surface stays bound", checkNotNull(playerViewModel).videoSurfaceBound)
         endThenPlayNow { onVlcPlayer(it) }
         onPlayer { ready() }
+        assertTrue("VLC -> EXO: the new surface stays bound", checkNotNull(playerViewModel).videoSurfaceBound)
         val engines = surfaceBindings.filter { it.first != null }
         assertEquals(listOf(PlaybackEngine.EXO to player, PlaybackEngine.VLC to vlcPlayer, PlaybackEngine.EXO to player), engines.dedupeRuns())
         assertEquals(1 to 1, playerBuilds to vlcPlayerBuilds)

@@ -426,16 +426,22 @@ async def read_seg(hls, sid: str, k: int) -> tuple[bytes, bytes]:
     return await hls.init_segment(sid), data
 
 
+@pytest.mark.parametrize("preset", ["ultrafast", "superfast"])  # superfast: B-frames
 @pytest.mark.parametrize("name", ["hevc_10bit_aac.mkv", "hevc_vfr_aac.mkv"])
 async def test_transcoded_session_plays_through_and_restarts(
-    make_media_app, tmp_path, caplog, name
+    make_media_app, tmp_path, caplog, name, preset
 ):
     """Segments 0..2 (run 0), a far k (run 1, a restart at k > 1), k + 1, then seg_1 again
     after its eviction (run 2): every segment passes the monitor's row/tfdt checks, starts with
     a keyframe at the planned tfdt, the output is H.264 High yuv420p <= 1080 lines, init.mp4 is
     identical across runs, audio starts within the remux tolerance."""
     async with make_media_app(
-        playback={"hls_segment_seconds": 2, "hls_ahead_seconds": 120, "hls_behind_seconds": 0}
+        playback={
+            "hls_segment_seconds": 2,
+            "hls_ahead_seconds": 120,
+            "hls_behind_seconds": 0,
+            "transcode_preset": preset,
+        }
     ) as media:
         hls = media.hls
         session, plan, probe = await converted_session(media, name, video_action="h264")
@@ -461,8 +467,9 @@ async def test_transcoded_session_plays_through_and_restarts(
                 split = split_fmp4(init + data)
                 video, audio = split.video_start(), split.audio_start()
                 assert abs(video - T0 - plan[k].start) <= frame + 1e-6, (k, video, plan[k].start)
-                # The converted video has no B-frame delay, so audio is compared to its own
-                # start: at most one AAC frame later, two earlier (the remux window).
+                # Audio is compared to the video's own start: at most one AAC frame later, two
+                # earlier (the remux window; ``-copyts`` keeps the encoder's B-frame delay
+                # out of the first PTS, so ``superfast`` meets the same bound).
                 assert audio is not None
                 assert video - audio_low - 1e-6 <= audio <= video + 1024 / 44_100 + 0.005, k
                 if i == 0:
@@ -470,6 +477,8 @@ async def test_transcoded_session_plays_through_and_restarts(
                     # ``-profile:v high`` is a cap: libx264 ultrafast (no CABAC, no B-frames)
                     # is reported as Constrained Baseline by ffprobe.
                     assert video["profile"] in ("High", "Main", "Constrained Baseline")
+                    if preset == "superfast":  # B-frames + CABAC: the encoder reorder is real
+                        assert video["profile"] == "High"
                     assert video["pix_fmt"] == "yuv420p"
                     assert video["height"] <= 1080
         assert hls.spawn_count == 3

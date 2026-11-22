@@ -23,8 +23,6 @@ _TONEMAP = (
     "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,"
     "zscale=t=bt709:m=bt709:r=tv,format=yuv420p"
 )
-_BITRATE = re.compile(r"(\d+(?:\.\d+)?)([kKmM]?)")
-_MULTIPLIER = {"": 1, "k": 1000, "m": 1_000_000}
 
 
 @dataclass(frozen=True)
@@ -32,17 +30,6 @@ class EncoderSettings:
     preset: str
     crf: int
     maxrate_bps: int
-
-
-def parse_bitrate(value: str) -> int:
-    """``"8M"`` -> 8_000_000, ``"800k"`` -> 800_000, ``"8000000"`` -> 8_000_000 (> 0)."""
-    match = _BITRATE.fullmatch(value.strip())
-    if match is None:
-        raise ValueError(f"not a bitrate: {value!r} (use e.g. 8M, 800k or 8000000)")
-    bps = int(float(match.group(1)) * _MULTIPLIER[match.group(2).lower()])
-    if bps <= 0:
-        raise ValueError(f"bitrate must be positive: {value!r}")
-    return bps
 
 
 _BLOCK_END = re.compile(r"^progress=(?:continue|end)[ \t]*\r?\n", re.MULTILINE)
@@ -62,11 +49,10 @@ def parse_progress(text: str) -> list[float]:
 
     A trailing partial block is ignored (see ``split_progress``); a block without a numeric
     ``out_time_us`` (``N/A`` before the first output) yields nothing."""
-    complete, _partial = split_progress(text)
     values: list[float] = []
     start = 0
-    for match in _BLOCK_END.finditer(complete):
-        found = _OUT_TIME.findall(complete[start : match.start()])
+    for match in _BLOCK_END.finditer(text):  # only complete blocks end in a match
+        found = _OUT_TIME.findall(text[start : match.start()])
         if found:
             values.append(int(found[-1]) / 1_000_000)
         start = match.end()

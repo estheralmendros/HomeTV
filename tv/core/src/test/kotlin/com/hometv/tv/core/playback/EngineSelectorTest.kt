@@ -177,11 +177,11 @@ class EngineSelectorTest {
     /** A device with HEVC Main only and no AV1 decoder. */
     private val mainOnly = inventory.copy(video = listOf(hwP(Mimes.VIDEO_H264), hwP(Mimes.VIDEO_HEVC, CodecProfiles.HEVC_MAIN)))
     private val convOn = on.copy(inventory = mainOnly)
-    private val hevc10 = F.file(30, video = VideoInfo("hevc", 1920, 1080, profile = "Main 10", bit_depth = 10))
+    private val hevc10 = F.file(30, video = F.HEVC_MAIN10)
     private val hevc8 = F.file(31, video = VideoInfo("hevc", 1920, 1080, profile = "Main", bit_depth = 8))
-    private val av110 = F.file(32, video = VideoInfo("av1", 1920, 1080, bit_depth = 10))
-    private val av1Avi = F.file(33, video = VideoInfo("av1", 1920, 1080, bit_depth = 10), container = "avi", fileName = "film.avi")
-    private val high10 = F.file(34, video = VideoInfo("h264", 1920, 1080, profile = "High 10", bit_depth = 10))
+    private val av110 = F.file(32, video = F.AV1_10BIT)
+    private val av1Avi = F.file(33, video = F.AV1_10BIT, container = "avi", fileName = "film.avi")
+    private val high10 = F.file(34, video = F.H264_HIGH10)
 
     @Test
     fun `FR-T4 isConversionOnly table`() {
@@ -192,7 +192,8 @@ class EngineSelectorTest {
         assertFalse(EngineSelector.isConversionOnly(convOn, h264Mkv, none), "h264 8-bit is always claimed")
         assertFalse(EngineSelector.isConversionOnly(convOn, high10, none), "an AVC decoder that reports no profiles claims it")
         val avcNoHigh10 = convOn.copy(inventory = mainOnly.copy(video = listOf(hwP(Mimes.VIDEO_H264, 0x8))))
-        assertTrue(EngineSelector.isConversionOnly(avcNoHigh10, high10, none), "High 10 without AVC_HIGH10")
+        assertFalse(EngineSelector.isConversionOnly(avcNoHigh10, high10, none), "High 10 without AVC_HIGH10: h264 is not claimed, so the server can't convert")
+        assertFalse(EngineSelector.isConversionOnly(convOn, hevc10, EngineHistory(excludeVideo = setOf("h264"))), "h264 excluded after a retry: no conversion")
         assertTrue(EngineSelector.isConversionOnly(convOn, hevc8, EngineHistory(excludeVideo = setOf("hevc"))), "excluded after a decoder failure")
         assertFalse(EngineSelector.isConversionOnly(convOn, av1Avi, none), "legacy container")
         assertFalse(EngineSelector.isConversionOnly(convOn, F.file(35, video = VideoInfo("mpeg4", 720, 400)), none), "legacy codec, and not a modern codec")
@@ -226,10 +227,20 @@ class EngineSelectorTest {
     }
 
     @Test
-    fun `FR-T4 noFirstFrame goes to EXO with exoCaps, except a legacy file, and before the exoFailed and forced rules`() {
+    fun `an h264 file the hardware does not claim goes to VLC, the server can't convert it`() {
+        val avcNoHigh10 = convOn.copy(inventory = mainOnly.copy(video = listOf(hwP(Mimes.VIDEO_H264, 0x8))))
+        assertEquals(EngineChoice(VLC, VlcCapsBuilder.build()), EngineSelector.select(avcNoHigh10, high10))
+        assertEquals(exo(convOn, high10), EngineSelector.select(convOn, high10), "a decoder that reports no profiles claims it")
+        val afterRetry = EngineHistory(excludeVideo = setOf("h264"))
+        assertEquals(VLC, EngineSelector.select(convOn, h264Mkv, afterRetry).engine)
+    }
+
+    @Test
+    fun `FR-T4 noFirstFrame goes to EXO with exoCaps, except a legacy file, an exoFailed file and a forced one`() {
         val history = EngineHistory(excludeVideo = setOf("hevc"), noFirstFrame = true)
         assertEquals(exo(convOn, hevc8, history), EngineSelector.select(convOn, hevc8, history))
-        assertEquals(exo(convOn, hevc8, history.copy(exoFailed = true)), EngineSelector.select(convOn, hevc8, history.copy(exoFailed = true)))
+        // The retry answered video_codec_unsupported (conversion disabled): exoFailed sends it to libVLC.
+        assertEquals(VLC, EngineSelector.select(convOn, hevc8, history.copy(exoFailed = true)).engine)
         assertEquals(VLC, EngineSelector.select(convOn, av1Avi, EngineHistory(noFirstFrame = true)).engine)
         assertEquals(VLC, EngineSelector.select(convOn.copy(forceVlc = true), hevc8, history).engine)
         assertEquals(EXO, EngineSelector.select(convOn, h264Mkv, EngineHistory(noFirstFrame = true)).engine)

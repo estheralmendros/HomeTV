@@ -79,6 +79,8 @@ fun PlayerScreen(vm: PlayerViewModel, onExit: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     val exit by rememberUpdatedState(onExit)
     LaunchedEffect(vm) { vm.effects.collect { if (it == PlayerEffect.Exit) exit() } }
+    val vmProbe = LocalPlayerProbe.current
+    SideEffect { vmProbe(vm) }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, vm) {
         val observer = LifecycleEventObserver { _, event ->
@@ -187,8 +189,9 @@ private fun VideoSurface(vm: PlayerViewModel, engine: PlaybackEngine?, keepScree
     key(engine) {
         val controller = vm.playerController
         // FR-T5: the first-frame watchdog counts only while a video surface is bound (ExoPlayer renders nothing without one).
-        DisposableEffect(Unit) { onDispose { vm.onVideoSurface(false) } }
-        val bound = { vm.onVideoSurface(true); probe(engine, controller) }
+        // Tagged with the engine: when `engine` changes, this group's dispose may run after the next group bound its surface.
+        DisposableEffect(Unit) { onDispose { vm.onVideoSurface(engine, false) } }
+        val bound = { vm.onVideoSurface(engine, true); probe(engine, controller) }
         when (engine) {
             null -> Box(Modifier.fillMaxSize().testTag("player_video")) // no controller yet
             PlaybackEngine.EXO -> ExoSurface(controller as? ExoPlayerController, keepScreenOn, look, overlayClearance, bound)
@@ -301,6 +304,9 @@ private fun VlcSurface(vlc: VlcPlayerController?, keepScreenOn: Boolean, onBind:
  * with the engine and the controller it binds (the real `attach` is unchanged). Production never provides it.
  */
 internal val LocalVideoSurfaceProbe = staticCompositionLocalOf<(PlaybackEngine?, PlayerController?) -> Unit> { { _, _ -> } }
+
+/** Test seam: the Player screen's ViewModel, offered after each composition. Production never provides it. */
+internal val LocalPlayerProbe = staticCompositionLocalOf<(PlayerViewModel) -> Unit> { {} }
 
 /** What the Exo surface's `SubtitleView` was last set to (the look, the bottom padding) and the overlay clearance then. */
 internal data class ExoCaptionApplied(val spec: ExoCaptionSpec, val bottomPaddingFraction: Float, val overlayClearance: Float)

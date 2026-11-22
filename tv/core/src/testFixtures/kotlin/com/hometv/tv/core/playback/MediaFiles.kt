@@ -3,6 +3,7 @@ package com.hometv.tv.core.playback
 import com.hometv.tv.core.api.AudioTrack
 import com.hometv.tv.core.api.ClientCaps
 import com.hometv.tv.core.api.MediaFile
+import com.hometv.tv.core.api.PlaybackResponse
 import com.hometv.tv.core.api.Progress
 import com.hometv.tv.core.api.SubtitleTrack
 import com.hometv.tv.core.api.VideoInfo
@@ -11,6 +12,17 @@ import com.hometv.tv.core.api.VideoInfo
 object F {
     val H264 = VideoInfo("h264", 1920, 1080)
     val HEVC = VideoInfo("hevc", 3840, 2160, hdr = "hdr10")
+
+    /** Profile-sensitive samples (1080p): a hardware decoder claims them only when it reports the profile they need. */
+    val AV1_10BIT = VideoInfo("av1", 1920, 1080, bit_depth = 10)
+    val HEVC_MAIN10 = VideoInfo("hevc", 1920, 1080, profile = "Main 10", bit_depth = 10)
+    val H264_HIGH10 = VideoInfo("h264", 1920, 1080, profile = "High 10", bit_depth = 10)
+
+    /** The playback answer of a server conversion (`video_action = "h264"`): an HLS session of a modern-codec file. */
+    fun convertedHls(sessionId: String = "S1", audioIndex: Int? = 1, durationSeconds: Double? = 7200.0) = PlaybackResponse(
+        mode = "hls", url = "/api/hls/$sessionId/index.m3u8", session_id = sessionId, audio_stream_index = audioIndex,
+        audio_action = "copy", video_action = "h264", duration_seconds = durationSeconds,
+    )
 
     fun file(
         id: Long,

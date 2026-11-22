@@ -126,7 +126,7 @@ def describe_sessions(db: Database, snapshot: list[SessionSnapshot]) -> list[Adm
                 profile_id=snap.profile_id,
                 profile_name=names.get(snap.profile_id),
                 media_file_id=snap.media_file_id,
-                file_name=(relative_path or "").rsplit("/", 1)[-1],
+                file_name=(relative_path or snap.file_name).rsplit("/", 1)[-1],
                 item_type=item_type,
                 title=title,
                 season_number=season_number,

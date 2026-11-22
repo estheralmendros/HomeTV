@@ -3,6 +3,7 @@ package com.hometv.tv.core.data
 import com.hometv.tv.core.api.ApiClientFactory
 import com.hometv.tv.core.api.ApiClients
 import com.hometv.tv.core.api.Fixtures
+import java.time.Duration
 import java.time.Instant
 import java.util.Collections
 import okhttp3.mockwebserver.Dispatcher
@@ -11,8 +12,12 @@ import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
 import okhttp3.mockwebserver.SocketPolicy
 
-/** A MockWebServer with a routing dispatcher and a request log, plus a session store and API clients on it. */
-class TestServer(initialToken: String? = "old", profileId: Long? = 5, expiresAt: Instant? = Instant.parse("2026-11-20T00:00:00Z")) {
+/**
+ * A MockWebServer with a routing dispatcher and a request log, plus a session store and API clients on it. The default
+ * token expires 30 days from now: a fixed date would, once past, make `SessionGuard.ensureFresh` renew the token
+ * (an extra `POST /api/profiles/{id}/session`) in every test that counts requests.
+ */
+class TestServer(initialToken: String? = "old", profileId: Long? = 5, expiresAt: Instant? = Instant.now().plus(Duration.ofDays(30))) {
     val server = MockWebServer()
     val requests: MutableList<RecordedRequest> = Collections.synchronizedList(mutableListOf())
     private val routes = mutableListOf<Pair<(RecordedRequest) -> Boolean, (RecordedRequest) -> MockResponse>>()

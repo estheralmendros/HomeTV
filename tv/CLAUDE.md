@@ -20,19 +20,26 @@ root `CLAUDE.md`.
   FR-3..FR-5a; its test reads `shared/track-choice-cases.json` through the `hometv.trackChoiceCases` system property),
   `SubtitleStyles.kt` (style enums, `SubtitleLook`, `SubtitleStyleEditor`), `ClientCapsBuilder`, `VersionSelector`,
   `VersionNames` (a version is shown by its file name without extension, the web's `versionName` rule; null when blank),
-  `TieredVersions` (three tiers `exo` → `convert` → `any`: direct Exo, server conversion, libVLC-only; `VersionCaps(exo, convert, any)`),
+  `TieredVersions` (three tiers `exo` → `convert` → `any`: direct Exo, server conversion, libVLC-only;
+  `VersionCaps(exo, convert, any)`),
   `CodecProfiles` + `ClientCapsBuilder.requiredProfiles` (a modern codec is claimed for a file only if a hardware decoder
-  reports a profile it needs; `VideoDecoder.profiles` empty = reports none = satisfies anything; bit depth above 10 never),
-  `EngineSelector` (`isConversionOnly`: a h264/hevc/vp9/av1 file the hardware does not claim goes to EXO so the server
-  converts it, never to libVLC software decode; `convertCapsForFile` is for the version choice only, never sent; EXO unless libVLC is available and forced, or the file
-  has a codec outside the Exo caps or already failed on Exo; never chosen by container), `TrackRules`,
-  `PlaybackErrorMapper` (incl. the fall back to VLC, never for a conversion-only file except `video_codec_unsupported`; a
-  video decoder failure on a modern codec retries excluding it so the server converts; `transcode_busy` and HLS 410 `session_stopped`
-  have their own screens; `forNoFirstFrame` -> `RetryWithoutFirstFrame`), `FirstFrameWatchdog` (counts READY + playing ticks until
-  `onRenderedFirstFrame`, 5 s, fires once per `reset`), `PlaybackPlanner` (`Play.videoAction`), `SeekAccumulator`, `ProgressReporter`, the
-  `PlayerController` interface (no Media3 types in `core`).
+  reports a profile it needs, with or without a known size; `VideoDecoder.profiles` empty = reports none = satisfies
+  anything; bit depth above 10 never),
+  `EngineSelector` (`isConversionOnly`: a hevc/vp9/av1 file the hardware does not claim, while the caps still claim
+  `h264`, goes to EXO so the server converts, never to libVLC software decode; an h264 file is never conversion-only
+  (the server converts only to a claimed h264); `convertCapsForFile` is for the version choice only, never sent; EXO
+  unless libVLC is available and forced, or the file has a codec outside the Exo caps or already failed on Exo; never
+  chosen by container; `noFirstFrame` → EXO only while `exoFailed` is false), `TrackRules`,
+  `PlaybackErrorMapper` (incl. the fall back to VLC, never for a conversion-only file except `video_codec_unsupported`;
+  a video decoder failure on hevc/vp9/av1 retries excluding it so the server converts, h264 goes to libVLC at once;
+  `transcode_busy` and HLS 410 `session_stopped` have their own screens; `forNoFirstFrame` -> `RetryWithoutFirstFrame`),
+  `FirstFrameWatchdog` (counts READY + playing ticks until `onRenderedFirstFrame`, 5 s, fires once per `reset`;
+  `pause()` when the ticks stop, so the gap is never counted), `PlaybackPlanner` (`Play.videoAction`),
+  `SeekAccumulator`, `ProgressReporter`, the `PlayerController` interface (no Media3 types in `core`).
 - `util/`: `ServerUrl`, `Format` (es-ES numbers and dates), `Stars`, `relativeTime`, `LanguageNames`.
-- `src/testFixtures`: `FakeHomeTvApi`, `TestServer` (MockWebServer routing), `F` media files.
+- `src/testFixtures`: `FakeHomeTvApi` (`playbackAnswer` scripts `POST .../playback`), `TestServer` (MockWebServer routing;
+  its token expires 30 days from now), `F` media files (`F.AV1_10BIT`, `F.HEVC_MAIN10`, `F.H264_HIGH10`,
+  `F.convertedHls()` = a `video_action = "h264"` answer).
 
 `app/` (`com.hometv.tv`):
 
@@ -47,10 +54,12 @@ root `CLAUDE.md`.
   - Media3: `PlayerFactory`, `MediaItemBuilder`, `ExoPlayerController` (the ExoPlayer is private; views get a
     `CuePlacementPlayer` that unsets WebVTT `line:auto` so the bottom padding (Posición) applies; listeners go
     through a `java.lang.reflect.Proxy`, so `Player$Listener` is kept in `proguard-rules.pro`), `ExoSubtitleStyle`
-    (pure caption spec, never the device caption settings), `ExoTrackMapper`, `SubtitleFileCache`, `AndroidCodecInventory` (scanned once per process; fills `VideoDecoder.profiles` from `profileLevels`).
+    (pure caption spec, never the device caption settings), `ExoTrackMapper`, `SubtitleFileCache`,
+    `AndroidCodecInventory` (scanned once per process; fills `VideoDecoder.profiles` from `profileLevels`).
   - libVLC (its types live only here, in `AppContainer.create` and `PlayerScreen`'s VLC surface): `LibVlcProvider`
     (lazy, option-keyed instance on the main thread; a first-creation failure makes VLC unavailable for good),
-    `VlcPlayerPort`/`LibVlcPort` (the only pass-through to `MediaPlayer`/`Media`; `VlcEvent.Vout(count > 0)` = first frame), pure `VlcOptions`/`VlcUrls`/
+    `VlcPlayerPort`/`LibVlcPort` (the only pass-through to `MediaPlayer`/`Media`; `VlcEvent.Vout(count > 0)` = first
+    frame), pure `VlcOptions`/`VlcUrls`/
     `VlcTrackMapper`/`VlcEventMapper`, `VlcPlayerController` (the subtitle look is baked into the LibVLC options, so a
     look change rebuilds the port and reopens at the same position; opens only once a layout is attached; stale
     events are dropped by generation).
@@ -63,7 +72,8 @@ root `CLAUDE.md`.
   cards and episode rows, never tv-material's `onLongClick`: a 450 ms timer or the first repeat, so a TV remote over
   HDMI-CEC, which never auto-repeats and is released by Android ~550 ms into a hold, long-presses too; the release's
   click on the same element is swallowed), `SafeAreaBringIntoViewSpec` (scroll viewports run to the screen
-  edge, the 27 dp safe area is padding inside them and this spec stops focus scrolling there)), `common/ScreenError`, theme
+  edge, the 27 dp safe area is padding inside them and this spec stops focus scrolling there)), `common/ScreenError`,
+  theme
   (`HomeTvColors`, `HomeTvDimens`), one package per screen:
   - `home` (Back -> exit dialog -> sign out), `settings` (admin force-VLC toggle, licences), `browse`
     (`PosterGridPane`, shared with Mi lista), `watchlist`, `activity`, `person`.
@@ -71,9 +81,12 @@ root `CLAUDE.md`.
     a refetch while writing keeps the shown value).
   - `ratings`: `RatingEditor` (dialog state machine), `RatingDialog`, `StarRow`.
   - `player`: `PlayerViewModel` (the session state machine: engine choice and VLC fallback, remembered track choices,
-    the subtitle style dialog; the first-frame watchdog is fed by the position ticker and counts only while Playing with a bound
-    surface (`onVideoSurface`, called by `PlayerScreen.VideoSurface`); a keep-alive 410 (`KeepAliveResult.STOPPED`) while Paused
-    shows the stopped screen, while Countdown/EndedResolving just drops the session), `PlayerScreen` (`ExoSurface`/`VlcSurface`, overlay, `TrackSelectionDialog`,
+    the subtitle style dialog; the first-frame watchdog is fed by the position ticker (stopping it pauses the watchdog)
+    and counts only while Playing with a bound surface (`onVideoSurface(engine, bound)`, called by
+    `PlayerScreen.VideoSurface`; an unbound report of an engine other than the one that bound last is stale and
+    ignored); a keep-alive 410 (`KeepAliveResult.STOPPED`) while Paused shows the stopped screen and finishes the
+    session (final PUT, no DELETE), while Countdown/EndedResolving just drops the session), `PlayerScreen`
+    (`ExoSurface`/`VlcSurface`, overlay, `TrackSelectionDialog`,
     `SubtitleStyleDialog`).
 - `res/values/strings.xml` is the only catalog; the APK keeps only `es` resources (`localeFilters`).
 
@@ -86,7 +99,8 @@ Tests:
 - `app/src/sharedTest`: Compose focus, navigation and layout-fit tests on Robolectric through `UiTestBase` (`press`,
   `back`, `assertFocused`, `assertFullyVisible`/`assertInsideSafeArea`) and `testContainer(...)` + `ScriptedApi` (one
   `on*` seam per endpoint, 404 / empty / 204 by default; suspend in a seam to gate a request). Dialog nodes live in the
-  dialog window: check them against the dialog's tag, not the screen. Also compiled into `androidTest`.
+  dialog window: check them against the dialog's tag, not the screen. `playerViewModel`, `surfaceBindings` and
+  `exoCaption` read the Player screen through its test probes. Also compiled into `androidTest`.
 
 ## TV conventions
 
@@ -110,5 +124,6 @@ Tests:
   (`robolectric.graphicsMode=NATIVE` in `app/build.gradle.kts`): real text metrics, so layout and focus
   bugs that only show on a device fail here too. Drive the player through `FakePlayerController`; never touch
   ExoPlayer outside `ExoPlayerController`, nor libVLC's `MediaPlayer`/`Media` outside `LibVlcPort`: libVLC types live
-  only in `app/…/playback/` (`LibVlcPort`, the `LibVlcProvider` factory), `AppContainer.create` and `PlayerScreen.VlcSurface`.
+  only in `app/…/playback/` (`LibVlcPort`, the `LibVlcProvider` factory), `AppContainer.create` and
+  `PlayerScreen.VlcSurface`.
   JVM tests use `FakeVlcPort` (libVLC's native code can't load on Robolectric).

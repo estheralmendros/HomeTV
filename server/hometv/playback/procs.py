@@ -55,13 +55,13 @@ def effective_argv(argv: Sequence[str]) -> list[str]:
         and tuple(args[: len(IDLE_PREFIX)]) != IDLE_PREFIX
     ):
         rest = args[len(TRANSCODE_PREFIX) :]
-        return (["nice", "-n", "10"] if _available("nice") else []) + rest
+        return (list(TRANSCODE_PREFIX) if _available("nice") else []) + rest
     if tuple(args[: len(IDLE_PREFIX)]) != IDLE_PREFIX:
         return args
     rest = args[len(IDLE_PREFIX) :]
     prefix: list[str] = []
     if _available("nice"):
-        prefix += ["nice", "-n", "10"]
+        prefix += list(TRANSCODE_PREFIX)
     if _available("ionice"):
         prefix += ["ionice", "-c", "3"]
     return prefix + rest

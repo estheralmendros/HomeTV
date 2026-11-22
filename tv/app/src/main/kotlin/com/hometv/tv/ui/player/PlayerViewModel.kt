@@ -298,7 +298,9 @@ class PlayerViewModel(
     private val firstFrame = FirstFrameWatchdog()
 
     /** The engine's video surface is bound ([onVideoSurface]): ExoPlayer renders no frame without one. */
-    private var videoSurfaceBound = false
+    var videoSurfaceBound = false
+        private set
+    private var boundSurfaceEngine: PlaybackEngine? = null
     private val refused = mutableSetOf<Long>()
     private var lastRenewalAtMs: Long? = null
     private var lastRecoveryAtMs: Long? = null
@@ -1021,11 +1023,8 @@ class PlayerViewModel(
         if (att !== a) return
         when (session) {
             SessionState.Paused -> {
-                a.released = true
-                errorPositionSec = controller.positionMs / 1000.0
-                stopHeldTimers()
-                controller.stop()
-                showError(PlayerError(MessageKey.SESSION_STOPPED, actions = listOf(PlayerAction.RETRY_FROM_HERE, PlayerAction.BACK)), null, errorPositionSec)
+                a.released = true // the server stopped it: failAttached's finishSession sends the final PUT, no DELETE
+                failAttached(a, PlayerError(MessageKey.SESSION_STOPPED, actions = listOf(PlayerAction.RETRY_FROM_HERE, PlayerAction.BACK)))
             }
             SessionState.Countdown, SessionState.EndedResolving -> {
                 a.released = true
@@ -1106,8 +1105,14 @@ class PlayerViewModel(
     override fun onRenderedFirstFrame() = firstFrame.onFirstFrame()
 
     /** `PlayerScreen`: the engine's video surface is bound (ExoPlayer `PlayerView` / the libVLC layout) or gone. */
-    fun onVideoSurface(bound: Boolean) {
-        videoSurfaceBound = bound
+    fun onVideoSurface(engine: PlaybackEngine?, bound: Boolean) {
+        if (bound) {
+            videoSurfaceBound = true
+            boundSurfaceEngine = engine
+        } else if (engine == boundSurfaceEngine) {
+            // A group that was replaced (engine switch, null → engine) disposes after the new surface bound: its `false` is stale.
+            videoSurfaceBound = false
+        }
     }
 
     // The media session's commands (headset, Bluetooth AVRCP, media controllers) are the
@@ -2259,18 +2264,20 @@ class PlayerViewModel(
 
     private fun startTicker() {
         if (tickJob?.isActive == true) return
-        firstFrameTick() // a fresh baseline: the time the ticker was stopped is never counted
         tickJob = viewModelScope.launch {
             while (true) {
                 delay(TICK_MS)
                 onTick()
             }
         }
+        // A fresh baseline (`stopTicker` cleared the watchdog's): launched first, so a decision this tick makes can stop the ticker.
+        firstFrameTick()
     }
 
     private fun stopTicker() {
         tickJob?.cancel()
         tickJob = null
+        firstFrame.pause() // the ticks stop here: the time until the next `startTicker` is never counted
     }
 
     /**

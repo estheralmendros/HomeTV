@@ -4,7 +4,6 @@ import pytest
 
 from hometv.playback.transcode import (
     EncoderSettings,
-    parse_bitrate,
     parse_progress,
     split_progress,
     target_size,
@@ -12,6 +11,7 @@ from hometv.playback.transcode import (
     video_filter,
 )
 from hometv.probe import VideoStream
+from hometv.text import parse_bitrate
 
 ENC = EncoderSettings(preset="ultrafast", crf=23, maxrate_bps=8_000_000)
 SCALE_EXPR = (

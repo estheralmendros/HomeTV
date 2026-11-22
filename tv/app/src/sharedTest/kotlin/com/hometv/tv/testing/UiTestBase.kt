@@ -37,7 +37,9 @@ import com.hometv.tv.data.EnginePrefs
 import com.hometv.tv.data.InMemoryEnginePrefs
 import com.hometv.tv.di.AppContainer
 import com.hometv.tv.ui.HomeTvRoot
+import com.hometv.tv.ui.player.LocalPlayerProbe
 import com.hometv.tv.ui.player.LocalVideoSurfaceProbe
+import com.hometv.tv.ui.player.PlayerViewModel
 import com.hometv.tv.ui.theme.HomeTvDimens
 import java.time.Clock
 import java.time.Instant
@@ -85,6 +87,9 @@ abstract class UiTestBase {
     /** Every (engine, controller) pair the video surface bound, through `LocalVideoSurfaceProbe`. */
     protected val surfaceBindings = mutableListOf<Pair<PlaybackEngine?, PlayerController?>>()
 
+    /** The Player screen's ViewModel (the last one composed), through `LocalPlayerProbe`. */
+    internal var playerViewModel: PlayerViewModel? = null
+
     /** What the Exo surface last applied to its `SubtitleView` (look, bottom padding, overlay clearance), through `LocalExoCaptionProbe`. */
     internal var exoCaption: ExoCaptionApplied? = null
 
@@ -116,6 +121,7 @@ abstract class UiTestBase {
             CompositionLocalProvider(
                 LocalVideoSurfaceProbe provides { e, c -> surfaceBindings += e to c },
                 LocalExoCaptionProbe provides { applied -> exoCaption = applied },
+                LocalPlayerProbe provides { vm -> playerViewModel = vm },
             ) {
                 HomeTvRoot(container, onExit = { exited = true }, keyDispatch = keyDispatch)
             }

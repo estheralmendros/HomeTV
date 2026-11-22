@@ -41,13 +41,14 @@ export function SessionsPage() {
     setStopping((current) => new Set(current).add(id));
     try {
       await runAdmin(() => stopSession(id), T.stopPurpose);
-      void runInvalidation(queryClient, { type: 'sessionStopped' });
       toast.show(T.stopped);
+      // The id stays in `stopping` until the refetch has removed the row (no second DELETE).
+      await runInvalidation(queryClient, { type: 'sessionStopped' });
     } catch (err) {
       if (isAdminActionCancelled(err)) return;
       if (isApiError(err, 'session_not_found')) {
-        void runInvalidation(queryClient, { type: 'sessionStopped' });
         toast.show(T.stopped);
+        await runInvalidation(queryClient, { type: 'sessionStopped' });
       } else {
         toast.show(errorMessage(err));
       }
@@ -136,7 +137,9 @@ function SessionTable({ sessions, stopping, onStop }: TableProps) {
                 {label}
               </th>
             ))}
-            <td />
+            <th scope="col">
+              <span className="visually-hidden">{c.actions}</span>
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -171,7 +174,7 @@ function SessionCard({ session: s, stopping, onStop }: RowProps) {
       <p>{`${profileLabel(s)} · ${sessionStateLabel(s)} · ${speedText(s.speed)}`}</p>
       <p>{T.videoLine(videoLabel(s.video_action))}</p>
       <p>{T.audioLine(audioLabel(s.audio_action))}</p>
-      <p>{`${formatClockTime(s.started_at)} · ${lastSegmentText(s)}`}</p>
+      <p>{[formatClockTime(s.started_at), T.segmentLine(lastSegmentText(s))].filter((part) => part !== '').join(' · ')}</p>
       <div className={styles.cardActions}>
         <StopButton session={s} stopping={stopping} onStop={onStop} />
       </div>

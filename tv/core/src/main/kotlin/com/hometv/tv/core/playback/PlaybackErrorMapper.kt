@@ -303,18 +303,20 @@ object PlaybackErrorMapper {
     fun forSwitchPreparingTimeout(): SwitchFailure = SwitchFailure.Toast(MessageKey.AUDIO_PREPARING_TIMEOUT)
 
     /**
-     * Video → libVLC when allowed (DIRECT or HLS, row 4), else in direct mode one retry without the file's video
-     * codec (the server then answers unsupported). Audio → one retry without the current audio codec in direct
+     * Video → first, for a modern codec but h264 ([convertsFirst]: hevc/vp9/av1, direct or an HLS remux), one retry
+     * without that codec so the server converts it; then libVLC when allowed (DIRECT or HLS, row 4), else in direct
+     * mode one retry without the file's video codec (the server then answers unsupported). Audio → one retry without the current audio codec in direct
      * mode, or in HLS only with `audio_action = copy` (the server converts to AAC). Anything else tries libVLC once
      * when allowed (FR-2.4, e.g. the second audio failure), else is generic.
      */
     private fun forDecoderFailure(kind: RendererType, ctx: FailureContext): PlaybackDecision {
         val audioCodec = ctx.audioCodec
         val videoCodec = ctx.videoCodec
+        val convertCodec = convertsFirst(ctx)
         return when {
             kind == RendererType.AUDIO && !ctx.audioRetried && audioCodec != null &&
                 (ctx.mode == PlaybackMode.DIRECT || ctx.audioAction == "copy") -> PlaybackDecision.RetryExcludingAudio(audioCodec)
-            kind == RendererType.VIDEO && convertsFirst(ctx) -> PlaybackDecision.RetryExcludingVideo(videoCodec!!)
+            kind == RendererType.VIDEO && convertCodec != null -> PlaybackDecision.RetryExcludingVideo(convertCodec)
             kind == RendererType.VIDEO && vlcAllowed(ctx) -> PlaybackDecision.FallBackToVlc
             kind == RendererType.VIDEO && ctx.mode == PlaybackMode.DIRECT && !ctx.videoRetried && videoCodec != null ->
                 PlaybackDecision.RetryExcludingVideo(videoCodec)
@@ -345,11 +347,16 @@ object PlaybackErrorMapper {
     /** libVLC may take over: allowed, and the file is not conversion-only. */
     private fun vlcAllowed(ctx: FailureContext) = ctx.vlcFallbackAllowed && !ctx.conversionOnly
 
-    /** A modern codec the hardware just failed on: the server converts it before libVLC is tried (direct or an HLS remux). */
-    private fun convertsFirst(ctx: FailureContext): Boolean {
-        val codec = ctx.videoCodec?.lowercase() ?: return false
-        return codec in MODERN_VIDEO_CODECS && !ctx.videoRetried && ctx.videoAction != "h264" &&
+    /**
+     * The codec to retry without when the hardware just failed on a modern codec: the server converts it before libVLC
+     * is tried (direct or an HLS remux). Null otherwise; never for h264, which is the conversion's own output (the
+     * server can't convert it once it is excluded, prd.md D3).
+     */
+    private fun convertsFirst(ctx: FailureContext): String? {
+        val codec = ctx.videoCodec?.lowercase() ?: return null
+        val converts = codec in MODERN_VIDEO_CODECS && codec != "h264" && !ctx.videoRetried && ctx.videoAction != "h264" &&
             (ctx.mode == PlaybackMode.DIRECT || (ctx.mode == PlaybackMode.HLS && ctx.videoAction == "copy"))
+        return codec.takeIf { converts }
     }
 
     private fun isKeyframeIndexFailure(e: ApiException.Http) = e.code == "transcoder_failed" && e.detail?.startsWith(KEYFRAME_INDEX_FAILED_PREFIX) == true

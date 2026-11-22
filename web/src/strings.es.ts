@@ -208,6 +208,7 @@ export const S = {
         started: 'Inicio',
         lastSegment: 'Último segmento',
         speed: 'Velocidad',
+        actions: 'Acciones',
       },
       video: { copy: 'Copia', h264: 'Conversión H.264' },
       audio: { copy: 'Copia', aac_stereo: 'AAC estéreo', aac_5_1: 'AAC 5.1', none: 'Sin audio' },
@@ -222,6 +223,7 @@ export const S = {
       stopped: 'Reproducción detenida.',
       videoLine: (label: string) => `Vídeo: ${label}`,
       audioLine: (label: string) => `Audio: ${label}`,
+      segmentLine: (text: string) => `seg. ${text}`,
     },
 
     scan: {

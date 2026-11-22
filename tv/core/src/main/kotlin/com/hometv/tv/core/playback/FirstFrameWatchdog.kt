@@ -15,6 +15,15 @@ class FirstFrameWatchdog(private val thresholdMs: Long = THRESHOLD_MS) {
         lastCounting = false
     }
 
+    /**
+     * The ticks stopped (pause, error, a new request): the next tick is a fresh baseline, so the silent gap is never
+     * counted. The time counted so far is kept.
+     */
+    fun pause() {
+        lastTickMs = null
+        lastCounting = false
+    }
+
     /** Disarms until the next [reset]. */
     fun onFirstFrame() {
         armed = false

@@ -73,18 +73,23 @@ object ClientCapsBuilder {
     }
 
     /**
-     * Per-file refinement: the file's codec stays only if a hardware decoder of that MIME supports its size **and**
-     * reports a profile the file needs ([requiredProfiles]; HDR is not filtered).
+     * Per-file refinement: the file's codec stays only if a hardware decoder of that MIME supports its size (when
+     * known) **and** reports a profile the file needs ([requiredProfiles]; HDR is not filtered).
      */
     private fun fitsDecoder(codec: String, file: MediaFile?, hardware: List<VideoDecoder>): Boolean {
         val video = file?.video ?: return true
         if (!video.codec.equals(codec, ignoreCase = true)) return true
-        val width = video.width ?: return true
-        val height = video.height ?: return true
         val mime = VIDEO_MIMES[codec] ?: return true
         val required = requiredProfiles(codec, video)
         if (required != null && required.isEmpty()) return false // bit depth above 10: no consumer hardware decoder
-        return hardware.any { it.mime == mime && it.supports(width, height) && (required == null || it.profiles.isEmpty() || it.profiles.any { p -> p in required }) }
+        val width = video.width
+        val height = video.height
+        // An unknown size skips only the size check: the profile is still required (a 10-bit file must not be claimed on a Main-only decoder).
+        if ((width == null || height == null) && required == null) return true
+        return hardware.any {
+            it.mime == mime && (width == null || height == null || it.supports(width, height)) &&
+                (required == null || it.profiles.isEmpty() || it.profiles.any { p -> p in required })
+        }
     }
 
     private val AVC_10 = setOf(CodecProfiles.AVC_HIGH10)
@@ -102,7 +107,7 @@ object ClientCapsBuilder {
      */
     fun requiredProfiles(codec: String, video: VideoInfo): Set<Int>? {
         val c = codec.lowercase()
-        if (c !in setOf("h264", "hevc", "vp9", "av1")) return null
+        if (c !in MODERN_VIDEO_CODECS) return null
         val depth = video.bit_depth
         if (depth != null && depth > 10) return emptySet()
         val profile = video.profile?.lowercase()

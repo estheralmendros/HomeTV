@@ -62,7 +62,11 @@ open class FakeHomeTvApi : HomeTvApi {
     override suspend fun removeRating(segment: String, id: Long): Unit = unused()
     override suspend fun dismissRatingPrompt(segment: String, id: Long): Unit = unused()
     override suspend fun activity(page: Int, pageSize: Int): Page<com.hometv.tv.core.api.ActivityEntry> = unused()
-    override suspend fun playback(mediaFileId: Long, body: PlaybackRequest): PlaybackResponse = unused()
+    /** The `POST .../playback` answer (e.g. `F.convertedHls()` for a `video_action = "h264"` session); unset = unused. */
+    var playbackAnswer: (suspend (Long, PlaybackRequest) -> PlaybackResponse)? = null
+
+    override suspend fun playback(mediaFileId: Long, body: PlaybackRequest): PlaybackResponse =
+        playbackAnswer?.invoke(mediaFileId, body) ?: unused()
     override suspend fun keepAlive(sessionId: String): Response<Unit> = unused()
     override suspend fun deleteHlsSession(sessionId: String): Response<Unit> = unused()
 

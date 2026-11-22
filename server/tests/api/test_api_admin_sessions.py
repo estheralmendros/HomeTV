@@ -127,6 +127,17 @@ async def test_deleted_profile_and_unlinked_file_keep_snapshot_fields(
     assert (row["file_name"], row["profile_id"]) == ("orphan.mkv", user.id)
 
 
+async def test_vanished_file_keeps_its_name_from_the_session(
+    client, admin, user, make_file, ffmpeg, db
+):
+    fid = make_file("gone.mkv", keyframes=KF)
+    await play(client, user, fid)
+    with db.write_session() as s:
+        s.delete(s.get(m.MediaFile, fid))
+    row = (await listing(client, admin))["sessions"][0]
+    assert (row["file_name"], row["item_type"], row["title"]) == ("gone.mkv", None, None)
+
+
 async def test_counts_ignore_failed_sessions(
     client, app, admin, user, make_episode_file, make_file, ffmpeg
 ):

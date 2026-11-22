@@ -51,6 +51,7 @@ from hometv.playback.segments import (
     verify_tfdt,
 )
 from hometv.probe import ProbeResult, run_subprocess
+from hometv.text import parse_bitrate
 
 logger = logging.getLogger("hometv.hls")
 
@@ -66,7 +67,12 @@ SPEED_WINDOW_SECONDS = 10.0
 TOMBSTONE_SECONDS = 3600.0  # how long an admin-stopped id answers 410 instead of 404
 MAX_TOMBSTONES = 64
 # Upper bound of the audio bitrate of a converted session's estimate (``copy``: unknown source).
-AUDIO_BOUND_BPS = {"copy": 640_000, "aac_5_1": 384_000, "aac_stereo": 192_000, "none": 0}
+AUDIO_BOUND_BPS: dict[AudioAction, int] = {
+    "copy": 640_000,
+    "aac_5_1": 384_000,
+    "aac_stereo": 192_000,
+    "none": 0,
+}
 # ``movie_timescale=1000`` pins 5.x's default: newer movenc derives the mvhd timescale per
 # file from the fragment start, which would make init.mp4 differ between segments/runs.
 MOVFLAGS = (
@@ -201,6 +207,7 @@ class SessionSnapshot:
     session_id: str
     profile_id: int
     media_file_id: int
+    file_name: str
     video_action: VideoAction
     audio_action: AudioAction
     state: Literal["running", "throttled", "done", "failed"]
@@ -362,8 +369,10 @@ class HlsSessionManager:
 
     def _get(self, session_id: str) -> Session:
         session = self.sessions.get(session_id)
-        if session is None and self._is_tombstoned(session_id):
-            raise self._stopped_error()
+        if (session is None and self._is_tombstoned(session_id)) or (
+            session is not None and session.stopped_by_admin
+        ):
+            raise self._stopped_error()  # also while ffmpeg is still being killed
         if session is None or session.state == "stopped":
             raise ApiError(404, "session_not_found", "HLS session not found")
         return session
@@ -427,6 +436,7 @@ class HlsSessionManager:
                     session_id=s.session_id,
                     profile_id=s.profile_id,
                     media_file_id=s.spec.media_file_id,
+                    file_name=os.path.basename(s.spec.path),
                     video_action=s.spec.video_action,
                     audio_action=s.spec.audio_action,
                     state=s.state,
@@ -450,7 +460,7 @@ class HlsSessionManager:
 
     def estimate_bytes(self, spec: SessionSpec) -> int:
         if spec.video_action == "h264":
-            maxrate = transcode.parse_bitrate(self.settings.playback.transcode_maxrate)
+            maxrate = self._encoder_settings().maxrate_bps
             return int(
                 (maxrate + AUDIO_BOUND_BPS[spec.audio_action]) / 8 * (self.ahead + self.behind)
             )
@@ -517,7 +527,7 @@ class HlsSessionManager:
     async def stop_by_admin(self, session_id: str) -> bool:
         """Stop a listed session and remember its id: its URLs answer 410, not 404."""
         session = self.sessions.get(session_id)
-        if session is None or session.state == "stopped":
+        if session is None or session.state == "stopped" or session.stopped_by_admin:
             return False
         session.stopped_by_admin = True
         self.tombstones[session_id] = self.clock()
@@ -595,7 +605,7 @@ class HlsSessionManager:
         return transcode.EncoderSettings(
             preset=playback.transcode_preset,
             crf=playback.transcode_crf,
-            maxrate_bps=transcode.parse_bitrate(playback.transcode_maxrate),
+            maxrate_bps=parse_bitrate(playback.transcode_maxrate),
         )
 
     @staticmethod
@@ -708,11 +718,18 @@ class HlsSessionManager:
         try:
             while True:
                 exited = wait_task.done()
-                if session.spec.video_action == "h264":
-                    await self._poll_progress(session, run)
-                    if run is not session.run:
-                        return
-                lines = await asyncio.to_thread(self._read_rows, session.dir, run)
+                lines, progress = await asyncio.to_thread(
+                    self._read_files,
+                    session.dir,
+                    run,
+                    (session.progress_offset, session.progress_partial)
+                    if session.spec.video_action == "h264"
+                    else None,
+                )
+                if progress is not None:
+                    self._apply_progress(session, run, *progress)
+                if run is not session.run:
+                    return
                 for line in lines:
                     if run is not session.run:
                         return
@@ -728,11 +745,9 @@ class HlsSessionManager:
             if not wait_task.done():
                 wait_task.cancel()
 
-    async def _poll_progress(self, session: Session, run: Run) -> None:
-        offset, partial = session.progress_offset, session.progress_partial
-        offset, partial, values = await asyncio.to_thread(
-            self._read_progress, session.dir, offset, partial
-        )
+    def _apply_progress(
+        self, session: Session, run: Run, offset: int, partial: str, values: list[float]
+    ) -> None:
         if run is not session.run:
             return
         session.progress_offset, session.progress_partial = offset, partial
@@ -745,6 +760,17 @@ class HlsSessionManager:
             samples.popleft()
         if len(samples) >= 2 and samples[-1][0] > samples[0][0]:
             session.speed = (samples[-1][1] - samples[0][1]) / (samples[-1][0] - samples[0][0])
+
+    @classmethod
+    def _read_files(
+        cls, directory: Path, run: Run, progress_state: tuple[int, str] | None
+    ) -> tuple[list[str], tuple[int, str, list[float]] | None]:
+        """One worker-thread hop per poll: the new ``run.csv`` rows and, for a conversion, the
+        new ``progress.txt`` samples."""
+        rows = cls._read_rows(directory, run)
+        if progress_state is None:
+            return rows, None
+        return rows, cls._read_progress(directory, *progress_state)
 
     @staticmethod
     def _read_progress(directory: Path, offset: int, partial: str) -> tuple[int, str, list[float]]:

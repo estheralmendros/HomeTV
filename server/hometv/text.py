@@ -6,6 +6,7 @@
 - ``search_text``: ``normalize_title(title) + " " + normalize_title(original_title)``.
 - ``str_or_none`` / ``is_blank``: TMDB string fields (blank or non-string -> missing).
 - ``empty_to_none``: config values where ``""`` (e.g. an empty env var) means unset.
+- ``parse_bitrate``: a bitrate setting (``8M``, ``800k``, ``8000000``) in bits per second.
 - ``undecodable``: a file name that is not valid UTF-8 (``os.fsdecode`` surrogate escapes); the
   scanner, the folder browser and change detection skip such names.
 """
@@ -16,6 +17,8 @@ from typing import Any
 
 _ARTICLE_RE = re.compile(r"^\s*(?:(?:the|a|an|el|la|los|las|un|una|le|les)\s+|l['’]\s*)", re.I)
 _SPACES_RE = re.compile(r"\s+")
+_BITRATE = re.compile(r"(\d+(?:\.\d+)?)([kKmM]?)")
+_BITRATE_MULTIPLIER = {"": 1, "k": 1000, "m": 1_000_000}
 
 
 def normalize_title(value: str) -> str:
@@ -61,3 +64,14 @@ def undecodable(name: str) -> bool:
     except UnicodeEncodeError:
         return True
     return False
+
+
+def parse_bitrate(value: str) -> int:
+    """``"8M"`` -> 8_000_000, ``"800k"`` -> 800_000, ``"8000000"`` -> 8_000_000 (> 0)."""
+    match = _BITRATE.fullmatch(value.strip())
+    if match is None:
+        raise ValueError(f"not a bitrate: {value!r} (use e.g. 8M, 800k or 8000000)")
+    bps = int(float(match.group(1)) * _BITRATE_MULTIPLIER[match.group(2).lower()])
+    if bps <= 0:
+        raise ValueError(f"bitrate must be positive: {value!r}")
+    return bps

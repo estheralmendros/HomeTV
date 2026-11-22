@@ -1,17 +1,24 @@
 package com.hometv.tv.playback
 
+import android.content.Context
 import android.net.Uri
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlaybackException
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.hometv.tv.core.playback.PlaybackErrorCodes
+import com.hometv.tv.core.playback.PlayerController
+import com.hometv.tv.core.playback.PlayerFailure
 import com.hometv.tv.core.playback.PlayerState
 import com.hometv.tv.core.playback.RendererType
+import com.hometv.tv.core.playback.TrackCheckInput
 import com.hometv.tv.core.playback.UrlKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -71,23 +78,23 @@ class ExoPlayerControllerTest {
 
     @Test
     fun `player states map to the core enum`() {
-        assertEquals(PlayerState.BUFFERING, ExoPlayerController.stateOf(androidx.media3.common.Player.STATE_BUFFERING))
-        assertEquals(PlayerState.READY, ExoPlayerController.stateOf(androidx.media3.common.Player.STATE_READY))
-        assertEquals(PlayerState.ENDED, ExoPlayerController.stateOf(androidx.media3.common.Player.STATE_ENDED))
-        assertEquals(PlayerState.IDLE, ExoPlayerController.stateOf(androidx.media3.common.Player.STATE_IDLE))
+        assertEquals(PlayerState.BUFFERING, ExoPlayerController.stateOf(Player.STATE_BUFFERING))
+        assertEquals(PlayerState.READY, ExoPlayerController.stateOf(Player.STATE_READY))
+        assertEquals(PlayerState.ENDED, ExoPlayerController.stateOf(Player.STATE_ENDED))
+        assertEquals(PlayerState.IDLE, ExoPlayerController.stateOf(Player.STATE_IDLE))
     }
 
     @Test
     fun `the first rendered frame is forwarded to the listener`() {
-        val exo = androidx.media3.exoplayer.ExoPlayer.Builder(androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()).build()
+        val exo = ExoPlayer.Builder(ApplicationProvider.getApplicationContext<Context>()).build()
         val controller = ExoPlayerController(exo)
         var frames = 0
-        controller.setListener(object : com.hometv.tv.core.playback.PlayerController.Listener {
-            override fun onTracksChanged(check: com.hometv.tv.core.playback.TrackCheckInput) = Unit
+        controller.setListener(object : PlayerController.Listener {
+            override fun onTracksChanged(check: TrackCheckInput) = Unit
             override fun onStateChanged(state: PlayerState) = Unit
             override fun onIsPlayingChanged(isPlaying: Boolean) = Unit
             override fun onDurationChanged(durationMs: Long?) = Unit
-            override fun onFailure(failure: com.hometv.tv.core.playback.PlayerFailure) = Unit
+            override fun onFailure(failure: PlayerFailure) = Unit
             override fun onRenderedFirstFrame() {
                 frames++
             }

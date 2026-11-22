@@ -18,7 +18,7 @@
 // Call useProgressReporter BEFORE this hook: its final report must run before the release.
 import { useCallback, useEffect, useRef, type Dispatch } from 'react';
 import { retryDelaySeconds } from '@/api/client';
-import { isApiError } from '@/api/errors';
+import { isApiError, type ApiError } from '@/api/errors';
 import { deleteHlsSession, getMediaFile, keepAliveHls, requestPlayback } from '@/api/playback';
 import type { ClientCaps } from '@/api/types';
 import { attachSource, playMedia, type AttachHandle, type HlsModule, type MediaSignal } from './attachSource';
@@ -72,6 +72,9 @@ const PAUSED_STATES: ReadonlySet<PlayerStateName> = new Set(['paused', 'blocked'
 const RELEASE_ON_ENTRY: ReadonlySet<PlayerStateName> = new Set(['error', 'unsupported', 'exited']);
 
 const ignore = () => undefined;
+
+/** An admin stopped the session: 410 `session_stopped`. */
+const isSessionStopped = (err: unknown): err is ApiError => isApiError(err, 'session_stopped') && err.status === 410;
 
 export function usePlaybackSession(options: PlaybackSessionOptions): PlaybackSession {
   const { state, dispatch, video, tracker } = options;
@@ -137,7 +140,7 @@ export function usePlaybackSession(options: PlaybackSessionOptions): PlaybackSes
    */
   const probeThenFail = useCallback(
     (id: string, signal: Extract<MediaSignal, { type: 'FATAL' }>) => {
-      if (probing.current === id) return;
+      if (probing.current === id) return; // defensive: releaseSource() detaches the handle, so a second FATAL is not expected
       probing.current = id;
       const mountSignal = mount.current.signal;
       const request = new AbortController();
@@ -154,7 +157,7 @@ export function usePlaybackSession(options: PlaybackSessionOptions): PlaybackSes
         if (mountSignal.aborted) return;
         const s = latest.current.state;
         if (s.sessionId !== id || !acceptsMediaError(s.name)) return;
-        if (isApiError(outcome, 'session_stopped') && outcome.status === 410) {
+        if (isSessionStopped(outcome)) {
           markStopped(id);
           return;
         }
@@ -335,7 +338,7 @@ export function usePlaybackSession(options: PlaybackSessionOptions): PlaybackSes
         if (err.status === 404) {
           // Gone: the next play fails and triggers the recovery.
           lostSessions.current.add(sessionId);
-        } else if (err.status === 410 && err.code === 'session_stopped') {
+        } else if (isSessionStopped(err)) {
           // Stopped from the server (no DELETE). The state may have moved on since the tick fired.
           const s = latest.current.state;
           if (s.sessionId !== sessionId) return;

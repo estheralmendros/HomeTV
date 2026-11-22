@@ -6,6 +6,7 @@ import com.hometv.tv.core.api.PlaybackRequest
 import com.hometv.tv.core.api.PlaybackResponse
 import com.hometv.tv.core.api.SessionResponse
 import com.hometv.tv.core.data.FakeHomeTvApi.Companion.httpError
+import com.hometv.tv.core.playback.F
 import java.io.IOException
 import java.time.Clock
 import java.time.Instant
@@ -70,6 +71,17 @@ class PlaybackRepositoryTest {
     }
 
     private fun List<Pair<Long, PlaybackProgress>>.withoutSent() = filterNot { it.second is PlaybackProgress.Sent }
+
+    @Test
+    fun `a server conversion answer keeps its video_action`() = runTest {
+        val api = FakeHomeTvApi().apply { playbackAnswer = { _, _ -> F.convertedHls("S9") } }
+        val store = InMemorySessionStore(Session("https://hometv.ts.net", 5, "tok", Instant.parse("2026-12-01T00:00:00Z")))
+        val guard = SessionGuard(store, { api.createSession(it) }, {}, Clock.fixed(Instant.parse("2026-10-22T12:00:00Z"), ZoneOffset.UTC))
+        val repo = PlaybackRepository({ api }, guard, backgroundScope, { error("unused") })
+        val success = repo.requestPlayback(91, first).toList().last() as PlaybackProgress.Success
+        assertEquals("h264", success.response.video_action)
+        assertEquals("S9", success.response.session_id)
+    }
 
     @Nested
     inner class PreparingLoop {

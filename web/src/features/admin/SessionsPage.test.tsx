@@ -54,7 +54,7 @@ describe('SessionsPage', () => {
     renderSessions();
     const table = await screen.findByRole('table', { name: 'Reproducciones' });
     expect(within(table).getAllByRole('columnheader').map((c) => c.textContent)).toEqual([
-      'Perfil', 'Título', 'Archivo', 'Vídeo', 'Audio', 'Estado', 'Inicio', 'Último segmento', 'Velocidad',
+      'Perfil', 'Título', 'Archivo', 'Vídeo', 'Audio', 'Estado', 'Inicio', 'Último segmento', 'Velocidad', 'Acciones',
     ]);
     const rows = within(table).getAllByRole('row').slice(1);
     expect(rows).toHaveLength(2);
@@ -152,7 +152,7 @@ describe('SessionsPage', () => {
       expect(first.getByText('Esther · Convirtiendo · 1,4×')).toBeInTheDocument();
       expect(first.getByText('Vídeo: Conversión H.264')).toBeInTheDocument();
       expect(first.getByText('Audio: Copia')).toBeInTheDocument();
-      expect(first.getByText('21:04 · 12 · 1:12')).toBeInTheDocument();
+      expect(first.getByText('21:04 · seg. 12 · 1:12')).toBeInTheDocument();
       expect(first.getByRole('button', { name: 'Detener la reproducción de Jane the Virgin · T4 · E1' })).toBeInTheDocument();
       expect(within(cards[1]!).getByText('Lucía · Emitiendo · —')).toBeInTheDocument();
     });
@@ -213,9 +213,36 @@ describe('SessionsPage', () => {
       );
       const { user } = renderSessions();
       await user.click(await screen.findByRole('button', { name: 'Detener la reproducción de Dune' }));
-      await waitFor(() => expect(toastRegion().textContent).not.toBe(''));
+      await waitFor(() => expect(toastRegion()).toHaveTextContent('Se ha producido un error inesperado (internal_error).'));
       expect(toastRegion()).not.toHaveTextContent('Reproducción detenida.');
       expect(screen.getByRole('button', { name: 'Detener la reproducción de Dune' })).toBeEnabled();
+    });
+
+    it('the button stays disabled until the refetch removes the row (no second DELETE)', async () => {
+      let stopped = false;
+      let releaseList!: () => void;
+      const listGate = new Promise<void>((resolve) => {
+        releaseList = resolve;
+      });
+      server.use(
+        http.get(`${API}/admin/sessions`, async () => {
+          if (stopped) await listGate;
+          return HttpResponse.json(stopped ? f.adminSessions() : one());
+        }),
+        http.delete(`${API}/admin/sessions/:id`, () => {
+          stopped = true;
+          return new HttpResponse(null, { status: 204 });
+        }),
+      );
+      const rec = recordRequests();
+      const { user } = renderSessions();
+      const button = await screen.findByRole('button', { name: 'Detener la reproducción de Dune' });
+      await user.click(button);
+      await waitFor(() => expect(toastRegion()).toHaveTextContent('Reproducción detenida.'));
+      expect(button).toBeDisabled();
+      releaseList();
+      expect(await screen.findByText('No hay ninguna reproducción en curso.')).toBeInTheDocument();
+      expect(rec.find('DELETE', '/api/admin/sessions/a')).toHaveLength(1);
     });
 
     it('the button is disabled while its request is in flight', async () => {

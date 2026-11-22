@@ -257,7 +257,12 @@ def bit_depth(pix_fmt: str | None) -> int | None:
     if pix_fmt in _EIGHT_BIT_FORMATS:
         return 8
     match = _DEPTH_SUFFIX.search(pix_fmt)
-    return int(match.group(1)) if match else None
+    if match is None:
+        return None
+    digits = match.group(1)
+    # Semi-planar family (p010le, p210le, p416le...): the first digit is the chroma layout.
+    depth = int(digits[-2:]) if len(digits) == 3 else int(digits)
+    return depth if 8 <= depth <= 16 else None
 
 
 # --- Subprocess ----------------------------------------------------------------------------

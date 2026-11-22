@@ -1204,6 +1204,49 @@ async def test_tombstoned_id_answers_410_everywhere(manager, stub):
     assert await manager.stop_owned(sid, session.profile_id) is False
 
 
+async def test_request_during_the_kill_window_gets_410(manager, stub):
+    session = await manager.create_session(spec())
+    sid = session.session_id
+    entered, release = asyncio.Event(), asyncio.Event()
+    real_stop_run = manager._stop_run
+
+    async def slow_stop_run(run):
+        entered.set()
+        await release.wait()
+        await real_stop_run(run)
+
+    manager._stop_run = slow_stop_run
+    stopping = asyncio.create_task(manager.stop_by_admin(sid))
+    await entered.wait()
+    assert session.state == "stopped" and sid in manager.sessions  # ffmpeg still dying
+    calls = [
+        lambda: manager.playlist(sid),
+        lambda: manager.keepalive(sid),
+        lambda: manager.init_segment(sid),
+        lambda: manager.open_segment(sid, 3),
+    ]
+    try:
+        for call in calls:
+            with pytest.raises(ApiError) as exc:
+                result = call()
+                if asyncio.iscoroutine(result):
+                    await asyncio.wait_for(result, 2)
+            assert (exc.value.status_code, exc.value.code) == (410, "session_stopped")
+    finally:
+        release.set()  # never leave the stop (and the fixture teardown) hanging
+    assert await stopping is True
+
+
+async def test_second_concurrent_admin_stop_returns_false(manager, stub):
+    session = await manager.create_session(spec())
+    await session.lock.acquire()  # both calls queue behind the same lock
+    first = asyncio.create_task(manager.stop_by_admin(session.session_id))
+    second = asyncio.create_task(manager.stop_by_admin(session.session_id))
+    await asyncio.sleep(0.05)
+    session.lock.release()
+    assert sorted([await first, await second]) == [False, True]
+
+
 async def test_waiting_segment_request_gets_410_when_the_admin_stops(manager, stub):
     stub.stop_at = 1
     session = await manager.create_session(spec())

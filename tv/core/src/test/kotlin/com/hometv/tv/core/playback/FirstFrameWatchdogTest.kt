@@ -48,9 +48,20 @@ class FirstFrameWatchdogTest {
     fun `counted time is kept across pauses and cleared by reset`() {
         run(0, 3)
         run(4_000, 30, playing = false)
-        assertTrue(dog.tick(40_000, PlayerState.READY, true).not() && run(41_000, 3))
+        assertFalse(dog.tick(40_000, PlayerState.READY, true))
+        assertTrue(run(41_000, 3))
         dog.reset()
         assertFalse(run(200_000, 4))
+    }
+
+    @Test
+    fun `a pause with no tick in it does not count after the resume`() {
+        assertFalse(run(0, 2))
+        dog.pause() // the ticker stopped here; nothing ticks for a minute
+        assertFalse(dog.tick(62_000, PlayerState.READY, true), "the resume tick is a fresh baseline")
+        assertFalse(dog.tick(63_000, PlayerState.READY, true))
+        assertFalse(dog.tick(64_000, PlayerState.READY, true))
+        assertTrue(dog.tick(65_000, PlayerState.READY, true), "2 s before + 3 s after")
     }
 
     @Test

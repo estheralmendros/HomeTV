@@ -11,7 +11,7 @@ Python 3.12 uv project (FastAPI, SQLAlchemy 2 sync, Alembic, guessit). Package `
   (mkdir + wipe). `libraries.films|shows` / `HOMETV_FILMS_PATHS|SHOWS_PATHS` only seed the stored folders once;
   `libraries.browse_root` (`HOMETV_MEDIA_BROWSE_ROOT`, default `/media`) is the folder browser base.
   `scan.watch_enabled` / `scan.watch_quiet_seconds` (default on / 30 s, `ge=5`); `make_settings` turns watching off.
-- Pure modules (no I/O): `text.py` (incl. `undecodable(name)`), `parser.py` (`PARSER_VERSION`; `EDITION_TAGS`: a new
+- Pure modules (no I/O): `text.py` (incl. `undecodable(name)`, `parse_bitrate`: the `HOMETV_TRANSCODE_MAXRATE` parser, here so `config` never imports `playback`), `parser.py` (`PARSER_VERSION`; `EDITION_TAGS`: a new
   edition tag = one tuple entry + one `EDITION_ROWS` test row), `reparse.py` (parse-upgrade plans:
   `plan_film_upgrade`, `plan_protected_key`), `subtitle_style.py` (the style `Literal`
   aliases, `DEFAULT_STYLE`, `STYLE_FIELDS` = field -> `profile.subtitle_<field>` column; a test checks it equals
@@ -67,17 +67,17 @@ Python 3.12 uv project (FastAPI, SQLAlchemy 2 sync, Alembic, guessit). Package `
   Cues / MP4 stss readers), `keyframes.py` (`KeyframeService`, background indexer = scanner `keyframe_hook`),
   `segments.py` (pure plan/playlist, `split_fmp4`), `hls.py` (`HlsSessionManager`: check + register atomic under
   `_create_lock`; `open_segment()` opens the file before eviction, the caller closes it), `subtitles.py`, `procs.py`
-  (spawn, kill sequence, `IDLE_PREFIX`/`TRANSCODE_PREFIX`), `transcode.py` (pure: `parse_bitrate`, `target_size`,
+  (spawn, kill sequence, `IDLE_PREFIX`/`TRANSCODE_PREFIX`), `transcode.py` (pure: `target_size`,
   `video_filter`, `video_args`, `parse_progress`/`split_progress`; `SessionSpec.video_action == "h264"` makes
   `ffmpeg_argv` encode with them instead of `-c:v copy`; `decide(..., can_transcode=)` picks it when the client lacks
   the codec but claims h264). `HlsSessionManager.counts()` is the one source of the `max_sessions` /
   `max_transcodes` checks (`transcode_busy` 503, after `too_many_sessions`, before `hls_disk_full`);
   `segment_wait(session, k)` (attributes `transcode_wait_start`/`transcode_wait_max`); `Session.speed` = live encode
   speed read from `progress.txt` by `_watch_run` (h264 only).
-  Admin view: `snapshot()` (frozen `SessionSnapshot` per non-stopped session; `Session.started_at` from the
-  injectable `wall_clock`), `stop_by_admin()` sets `stopped_by_admin`, stops and records `tombstones[id]`
+  Admin view: `snapshot()` (frozen `SessionSnapshot` per non-stopped session, with the file's base name for a file row that vanished; `Session.started_at` from the
+  injectable `wall_clock`), `stop_by_admin()` (False for an unknown, stopped or already admin-stopped id) sets `stopped_by_admin`, stops and records `tombstones[id]`
   (`TOMBSTONE_SECONDS` 3600, `MAX_TOMBSTONES` 64, purged by `sweep_idle` and ignored once expired): `_get` /
-  `_check_alive` answer 410 `session_stopped` for tombstones and waiting requests; idle-swept ids stay 404;
+  `_check_alive` answer 410 `session_stopped` for tombstones, a session mid-stop (ffmpeg still dying) and waiting requests; idle-swept ids stay 404;
   `DELETE /api/hls/{id}` and `stop_owned` ignore tombstones. `admin.describe_sessions(db, snapshot)` resolves names
   in <= 3 SELECTs for `GET /api/admin/sessions` (+ `DELETE .../{id}`, 404 `session_not_found`).
 - `sysload.py`: `parse_loadavg` (pure) + `read_cpu_load` (procfs, `None` off Linux); the lifespan binds

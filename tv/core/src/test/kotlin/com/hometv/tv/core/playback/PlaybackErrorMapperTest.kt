@@ -438,7 +438,11 @@ class PlaybackErrorMapperTest {
         fun `a video decoder failure on a modern direct codec converts first, then libVLC`() {
             assertEquals(RetryExcludingVideo("hevc"), mapper.forPlayerFailure(video, direct))
             assertEquals(RetryExcludingVideo("hevc"), mapper.forTrackFailure(TrackFailure.VIDEO, direct))
-            for (codec in listOf("h264", "vp9", "av1")) assertEquals(RetryExcludingVideo(codec), mapper.forPlayerFailure(video, direct.copy(videoCodec = codec)), codec)
+            for (codec in listOf("vp9", "av1")) assertEquals(RetryExcludingVideo(codec), mapper.forPlayerFailure(video, direct.copy(videoCodec = codec)), codec)
+            // h264 is the conversion's output: the server can't convert it once excluded, so libVLC at once (when allowed)
+            val h264 = direct.copy(videoCodec = "h264")
+            assertEquals(PlaybackDecision.FallBackToVlc, mapper.forPlayerFailure(video, h264))
+            assertEquals(RetryExcludingVideo("h264"), mapper.forPlayerFailure(video, h264.copy(vlcFallbackAllowed = false)))
             // the retry was used: libVLC (today)
             assertEquals(PlaybackDecision.FallBackToVlc, mapper.forPlayerFailure(video, direct.copy(videoRetried = true)))
             // other codecs keep libVLC first

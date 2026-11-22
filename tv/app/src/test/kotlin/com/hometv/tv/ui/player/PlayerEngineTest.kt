@@ -110,19 +110,17 @@ class PlayerEngineTest : PlayerTestBase() {
     }
 
     @Test
-    fun `AC-3_4 an EXO video decoder failure converts first, then continues on VLC at the same position, once`() = playerTest {
+    fun `AC-3_4 an EXO H264 decoder failure continues on VLC at the same position, once, with no conversion request`() = playerTest {
         vlcAvailable = true
         val vm = startDirect()
         assertEquals(EXO, vm.state.value.engine)
         controller.positionMs = 600_000
-        // A modern codec the hardware failed on converts first (H.264 excluded: the server cannot, so libVLC once).
-        answerWith(unsupported("video_codec_unsupported"), direct())
+        // H.264 is the conversion's own output: the server can't convert it once excluded, so libVLC at once.
+        answerWith(direct())
         controller.fail(PlayerFailure(PlaybackErrorCodes.DECODING_FAILED, RendererType.VIDEO, "video/avc"))
         runCurrent()
         val retry = bodies().last()
-        assertEquals(3, bodies().size)
-        assertFalse("h264" in bodies()[1].client_caps.video_codecs)
-        assertFalse(bodies()[1].isVlc())
+        assertEquals(2, bodies().size)
         assertEquals(600.0, retry.start_position_seconds)
         assertTrue(retry.isVlc())
         assertNull(retry.previous_session_id)
@@ -134,11 +132,28 @@ class PlayerEngineTest : PlayerTestBase() {
         controller.listener?.onFailure(PlayerFailure(PlaybackErrorCodes.DECODING_FAILED, RendererType.VIDEO, "video/avc"))
         runCurrent()
         assertEquals(SessionState.Playing, vm.session)
-        assertEquals(3, bodies().size)
+        assertEquals(2, bodies().size)
     }
 
     @Test
-    fun `AC-3_5 a VLC failure renews and recovers once, then the error screen, and a retry renews again`() = playerTest {
+    fun `AC-3_4 an EXO HEVC decoder failure converts first, then continues on VLC when the server can't convert`() = playerTest {
+        vlcAvailable = true
+        val hevc = F.file(1, video = VideoInfo("hevc", 1920, 1080))
+        val vm = startFilm(direct(), hevc)
+        controller.positionMs = 600_000
+        answerWith(unsupported("video_codec_unsupported"), direct())
+        controller.fail(PlayerFailure(PlaybackErrorCodes.DECODING_FAILED, RendererType.VIDEO, "video/hevc"))
+        runCurrent()
+        assertEquals(3, bodies().size)
+        assertFalse("hevc" in bodies()[1].client_caps.video_codecs)
+        assertFalse(bodies()[1].isVlc())
+        assertEquals(600.0, bodies()[1].start_position_seconds)
+        assertTrue(bodies()[2].isVlc())
+        assertEquals(VLC, vm.state.value.engine)
+    }
+
+    @Test
+    fun `AC-3_5a VLC failure renews and recovers once, then the error screen, and a retry renews again`() = playerTest {
         vlcAvailable = true
         film(xvid)
         answerWith(direct())
@@ -414,7 +429,8 @@ class PlayerEngineTest : PlayerTestBase() {
         vlcAvailable = true
         film(F.file(1))
         val gate = CompletableDeferred<Unit>()
-        answer({ gate.await(); direct() }, { unsupported("video_codec_unsupported") }, { direct() })
+        // H.264 is the conversion's output: no conversion retry, the decoder failure goes to libVLC at once.
+        answer({ gate.await(); direct() }, { direct() })
         val vm = vm()
         val engines = mutableListOf<PlaybackEngine?>()
         val createdWhenPublished = mutableListOf<List<PlaybackEngine>>()

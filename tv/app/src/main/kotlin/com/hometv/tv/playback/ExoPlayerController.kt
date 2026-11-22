@@ -1,6 +1,7 @@
 package com.hometv.tv.playback
 
 import androidx.annotation.OptIn
+import androidx.annotation.VisibleForTesting
 import androidx.media3.common.C
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -40,6 +41,7 @@ class ExoPlayerController(private val player: ExoPlayer) : PlayerController {
     private var checkPending = false
     private var lastLoad: LoadRecord? = null
 
+    @VisibleForTesting
     internal val playerListener = object : Player.Listener {
         override fun onTracksChanged(tracks: Tracks) {
             if (tracks.groups.isEmpty()) return

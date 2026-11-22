@@ -866,7 +866,7 @@ class FilmDetailViewModelTest {
     @Test
     fun `FR-T4 the default version follows the three tiers - direct, then server conversion, then libVLC`() = runTest(main.dispatcher) {
         versionCaps = convertTiers()
-        val hevc10 = F.file(1, video = VideoInfo("hevc", 3840, 2160, profile = "Main 10", bit_depth = 10))
+        val hevc10 = F.file(1, video = F.HEVC_MAIN10)
         val xvid = F.file(2, video = VideoInfo("mpeg4", 720, 576), container = "avi", fileName = "film.avi")
         val h264 = F.file(3, video = F.H264.copy(height = 720))
         // Direct H.264 wins over the conversion version.
@@ -881,5 +881,16 @@ class FilmDetailViewModelTest {
         advanceUntilIdle()
         vm.onButton(ButtonId.PLAY)
         assertEquals(NavRequest.Play(PlayRequest("film", 12, mediaFileId = 1)), vm.navigation.first())
+    }
+
+    @Test
+    fun `FR-T4 the other-version candidates (Probar otra versión) follow the same three tiers`() {
+        val tiers = convertTiers()
+        val hevc10 = F.file(1, video = F.HEVC_MAIN10)
+        val xvid = F.file(2, video = VideoInfo("mpeg4", 720, 576), container = "avi", fileName = "film.avi")
+        val h264 = F.file(3, video = F.H264.copy(height = 720))
+        // Direct H.264 first, then the server-converted HEVC Main 10, then the libVLC-only AVI.
+        assertEquals(listOf(3L, 1L, 2L), TieredVersions.candidates(listOf(xvid, hevc10, h264), tiers).map { it.id })
+        assertEquals(listOf(1L, 2L), TieredVersions.candidates(listOf(xvid, hevc10), tiers).map { it.id })
     }
 }

@@ -33,8 +33,7 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
-from hometv.playback.transcode import parse_bitrate
-from hometv.text import empty_to_none
+from hometv.text import empty_to_none, parse_bitrate
 
 if TYPE_CHECKING:
     from hometv.libraries import LibraryFolderSet

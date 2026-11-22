@@ -163,7 +163,7 @@ class ClientCapsBuilderTest {
 
     private fun inv(vararg video: VideoDecoder) = CodecInventory(video = video.toList(), audioDecoderMimes = emptySet())
 
-    private fun claims(inventory: CodecInventory, codec: String, bitDepth: Int?, profile: String? = null, w: Int = 1920, h: Int = 1080) =
+    private fun claims(inventory: CodecInventory, codec: String, bitDepth: Int?, profile: String? = null, w: Int? = 1920, h: Int? = 1080) =
         codec in ClientCapsBuilder.build(inventory, stereo, F.file(1, video = VideoInfo(codec, w, h, profile = profile, bit_depth = bitDepth))).video_codecs
 
     @Test
@@ -230,6 +230,19 @@ class ClientCapsBuilderTest {
         assertTrue(claims(inv(hwP(Mimes.VIDEO_H264, 0x8)), "h264", null, "High"))
         // bit_depth wins over the profile.
         assertTrue(claims(mainOnly, "hevc", 8, "Main 10"))
+    }
+
+    @Test
+    fun `a file with an unknown size is still checked against the profiles the decoder reports`() {
+        val mainOnly = inv(hwP(Mimes.VIDEO_HEVC, CodecProfiles.HEVC_MAIN))
+        assertFalse(claims(mainOnly, "hevc", 10, w = null, h = null), "Main 10 on a Main-only decoder")
+        assertFalse(claims(mainOnly, "hevc", 10, w = 1920, h = null))
+        assertTrue(claims(mainOnly, "hevc", 8, w = null, h = null))
+        assertTrue(claims(mainOnly, "hevc", null, null, w = null, h = null), "no requirement")
+        assertTrue(claims(inv(hwP(Mimes.VIDEO_HEVC, CodecProfiles.HEVC_MAIN10)), "hevc", 10, w = null, h = null))
+        assertTrue(claims(inv(hwP(Mimes.VIDEO_AV1)), "av1", 10, w = null, h = null), "a decoder that reports no profiles")
+        assertFalse(claims(inv(hwP(Mimes.VIDEO_AV1, CodecProfiles.AV1_MAIN8)), "av1", 10, w = null, h = null))
+        assertFalse(claims(inv(hwP(Mimes.VIDEO_HEVC, CodecProfiles.HEVC_MAIN10)), "hevc", 12, w = null, h = null), "bit depth above 10")
     }
 
     @Test

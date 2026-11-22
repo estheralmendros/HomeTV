@@ -105,10 +105,7 @@ def decide(
         )
     audio = select_audio(probe, audio_stream_index)
     is_default_audio = audio is None or audio == default_audio_stream(probe.audio)
-    channels = (audio.channels or 0) if audio else 0
-    audio_ok = audio is None or (
-        audio.codec.lower() in _lower(caps.audio_codecs) and channels <= caps.max_audio_channels
-    )
+    audio_ok = audio is None or _audio_claimed(audio, caps)
     container_ok = probe.container.lower() in _lower(caps.containers)
     audio_index = audio.index if audio else None
 
@@ -125,6 +122,14 @@ def decide(
     return _hls_audio(audio, caps)
 
 
+def _audio_claimed(audio: AudioStream, caps: ClientCaps) -> bool:
+    """The client claims the audio's codec and its channel count."""
+    return (
+        audio.codec.lower() in _lower(caps.audio_codecs)
+        and (audio.channels or 0) <= caps.max_audio_channels
+    )
+
+
 def _hls_audio(
     audio: AudioStream | None, caps: ClientCaps, video_action: VideoAction = "copy"
 ) -> HlsRemux:
@@ -132,10 +137,7 @@ def _hls_audio(
     if audio is None:
         return HlsRemux(None, "none", video_action)
     channels = audio.channels or 0
-    claimed = (
-        audio.codec.lower() in _lower(caps.audio_codecs) and channels <= caps.max_audio_channels
-    )
-    if claimed and audio.codec.lower() in COPYABLE_AUDIO:
+    if _audio_claimed(audio, caps) and audio.codec.lower() in COPYABLE_AUDIO:
         return HlsRemux(audio.index, "copy", video_action)
     if channels > 2 and caps.max_audio_channels >= 6:
         return HlsRemux(audio.index, "aac_5_1", video_action)

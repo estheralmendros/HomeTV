@@ -1164,6 +1164,25 @@ class PlayerSessionStateTest : PlayerTestBase() {
     }
 
     @Test
+    fun `a keep-alive 410 while paused finishes the session with the final progress PUT, and Retry from here sends no second one`() = playerTest {
+        val vm = startHls()
+        controller.positionMs = 600_000
+        paused(vm)
+        clearCalls()
+        api.onKeepAlive = { com.hometv.tv.core.data.FakeHomeTvApi.empty(410) }
+        advance(30_000)
+        assertEquals(stoppedMessage, (vm.state.value.screen as PlayerScreenUi.Error).message)
+        assertEquals(listOf("PUT /api/progress"), puts())
+        assertEquals(600.0, api.progressBodies.single().position_seconds)
+        assertEquals(emptyList<String>(), deletes(), "the server already stopped the session")
+        answerWith(hls("S2"))
+        vm.onErrorAction(PlayerAction.RETRY_FROM_HERE)
+        runCurrent()
+        assertEquals(1, puts().size)
+        assertNull(bodies().single().previous_session_id)
+    }
+
+    @Test
     fun `an HLS 410 while playing shows the stopped screen without a DELETE`() = playerTest {
         val vm = startHls()
         clearCalls()

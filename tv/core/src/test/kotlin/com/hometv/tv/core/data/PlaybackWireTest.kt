@@ -34,6 +34,7 @@ class PlaybackWireTest {
         val events = repo.requestPlayback(91, PlaybackRequest(caps, null, 1234.5, "old")).toList()
         val success = events.last() as PlaybackProgress.Success
         assertEquals("5f2c", success.response.session_id)
+        assertEquals(listOf("POST /api/media-files/91/playback"), t.paths(), "a fresh token: no renewal request before the POST")
         val request = t.requests.single()
         assertEquals("Bearer old", request.getHeader("Authorization"))
         assertEquals(
