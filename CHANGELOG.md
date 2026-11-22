@@ -4,6 +4,35 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.12.0] - Released on 2026-11-22 by Esther Almendros Pérez
+
+### Added
+
+#### Server
+- Video conversion: when a client cannot decode a file's video codec (for example AV1 or HEVC 10-bit on a TV without a matching hardware decoder, or 4K on a 1080p-only device), the server converts the video to H.264 8-bit, at most 1080p (HDR is tone-mapped to SDR), inside the usual HLS session instead of reporting the file as unsupported. Audio is copied or converted as before, and seeking works like in any other HLS session. Conversions run at lower CPU priority.
+- New settings `HOMETV_MAX_TRANSCODES` (conversions at once, default `2`, `0` turns conversion off), `HOMETV_TRANSCODE_PRESET` (`ultrafast`), `HOMETV_TRANSCODE_CRF` (`23`) and `HOMETV_TRANSCODE_MAXRATE` (`8M`). A conversion also counts in `HOMETV_MAX_SESSIONS`. When every conversion slot is taken, the next viewer who needs one gets a "server busy" message (`503 transcode_busy`).
+- The catalog's video information includes the codec `profile` and `bit_depth`.
+- `GET /api/admin/sessions` lists the running playback sessions: profile, title, file, video copy or conversion, audio, state, start time, last segment and encode speed, with the server's CPU load. `DELETE /api/admin/sessions/{id}` stops one; the viewer's player then receives `410 session_stopped`.
+
+#### Web app
+- New admin tab "Reproducciones": the active sessions, refreshed every 3 seconds, with how many conversions are running, the CPU load and a "Detener" button per session. On a phone each session is shown as a card.
+- The player shows "El servidor está ocupado convirtiendo otros vídeos. Inténtalo más tarde." when no conversion slot is free, and "La reproducción se ha detenido desde el servidor." when an admin stopped the session. Both screens offer "Reintentar" (from where playback stopped) and "Volver".
+
+#### TV app
+- The player notices a decoder that plays sound but shows no picture: after about 5 seconds of playing without a first frame it switches once to the server conversion, or to libVLC when conversion is not available.
+- New player screens for "server busy converting" ("Reintentar" or "Volver") and "stopped from the server" ("Reintentar desde aquí" or "Volver"; leaving keeps the resume point).
+
+### Changed
+
+#### TV app
+- The app claims a video codec only when a hardware decoder reports the profile and bit depth the file needs, not just the codec. Files the hardware cannot decode (AV1, HEVC Main 10 on Main-only decoders, 4K on 1080p-only decoders, VP9 without a hardware decoder, H.264 High 10) now play through the server conversion instead of libVLC's software decoding, which could show a black picture with silent audio tracks.
+
+#### Web app
+- The web player waits longer for a segment's first byte (45 s), since a converted segment can take longer to prepare.
+
+#### Documentation
+- `deploy/README.md` "Configuration reference" documents the new conversion settings.
+
 ## [0.11.0] - Released on 2026-11-14 by Esther Almendros Pérez
 
 ### Added
